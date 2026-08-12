@@ -587,6 +587,9 @@ export default function DiagnosticoPrototipo() {
   const [cargo, setCargo] = useState("");
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
+  const [consentimentoEmail, setConsentimentoEmail] = useState(true);
+  const [envioRelatorio, setEnvioRelatorio] = useState("idle");
+  const relatorioEnviadoRef = useRef(false);
   const [cnpjInput, setCnpjInput] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [empresas, setEmpresas] = useState([]);
@@ -814,10 +817,104 @@ export default function DiagnosticoPrototipo() {
     toastTimer.current = setTimeout(() => setToast(""), 2200);
   }
 
+
+  async function enviarRelatorioPorEmail() {
+    if (!empresaPrincipal || relatorioEnviadoRef.current) return;
+
+    const respostasDetalhadas = gruposSelecionados.map((g) => ({
+      area: g.label,
+      score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
+      subtemas: g.subtemas.map((s) => ({
+        tema: s.tema,
+        perguntas: s.perguntas.map((q) => ({
+          pergunta: textoDe(q, segmentoPredominante, categoriaPrincipal),
+          resposta: respostas[q.id] || "",
+        })),
+      })),
+    }));
+
+    const payloadEmail = {
+      responsavel: {
+        nome,
+        cargo,
+        telefone,
+        email,
+        consentimentoEmail,
+      },
+      empresa: {
+        razao: empresaPrincipal.razao,
+        nomeFantasia: empresaPrincipal.nomeFantasia || "",
+        cnpj: empresaPrincipal.cnpjDigits || "",
+        cnae: empresaPrincipal.cnae || "",
+        categoria: categoriaPrincipal,
+        segmento: segmentoPredominante,
+        porte: empresaPrincipal.porte || "",
+        endereco: empresaPrincipal.endereco || {},
+      },
+      perfil: {
+        faturamento: faturamento?.label || "",
+        colaboradores: colaboradores || "",
+        regime: regime || "",
+        observacao: observacao || "",
+        areasSelecionadas: gruposSelecionados.map((g) => g.label),
+      },
+      resultado: {
+        scoreGeral: score,
+        nivelGeral: tierGeral.label,
+        areas: areasComScore.map((a) => ({
+          area: a.label,
+          score: a.score,
+          nivel: tierDe(a.score).label,
+          ...(iaResultado?.areas?.[a.label] || {}),
+        })),
+        diagnosticoGeral: iaResultado?.diagnosticoGeral || null,
+        respostas: respostasDetalhadas,
+      },
+    };
+
+    try {
+      setEnvioRelatorio("sending");
+
+      const r = await fetch("/api/enviar-relatorio", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payloadEmail),
+      });
+
+      const data = await r.json().catch(() => null);
+
+      if (!r.ok) {
+        console.error("Erro ao enviar relatório:", data);
+        setEnvioRelatorio("error");
+        return;
+      }
+
+      relatorioEnviadoRef.current = true;
+      setEnvioRelatorio("sent");
+    } catch (error) {
+      console.error("Erro no envio do relatório:", error);
+      setEnvioRelatorio("error");
+    }
+  }
+
   function reiniciar() {
-    setStep("intro"); setNome(""); setCargo(""); setTelefone(""); setEmail(""); setCnpjInput("");
-    setEmpresas([]); setFaturamento(null); setColaboradores(null); setRegime(null);
-    setObservacao(""); setDores([]); setRespostas({}); setIaResultado(null);
+    setStep("intro");
+    setNome("");
+    setCargo("");
+    setTelefone("");
+    setEmail("");
+    setConsentimentoEmail(true);
+    setEnvioRelatorio("idle");
+    relatorioEnviadoRef.current = false;
+    setCnpjInput("");
+    setEmpresas([]);
+    setFaturamento(null);
+    setColaboradores(null);
+    setRegime(null);
+    setObservacao("");
+    setDores([]);
+    setRespostas({});
+    setIaResultado(null);
   }
 
   function scoreDe(perguntas) {
@@ -877,6 +974,18 @@ export default function DiagnosticoPrototipo() {
   const pontosFortesIa = diagnosticoGeral?.pontosFortes || [];
   const prioridadesIa = diagnosticoGeral?.prioridadesImediatas || [];
   const oportunidadesIa = diagnosticoGeral?.oportunidades || [];
+
+
+  useEffect(() => {
+    if (
+      step === "resultado" &&
+      empresaPrincipal &&
+      gruposSelecionados.length > 0 &&
+      !relatorioEnviadoRef.current
+    ) {
+      enviarRelatorioPorEmail();
+    }
+  }, [step]);
 
   function gerarPdf() {
     if (!empresaPrincipal) {
@@ -968,6 +1077,7 @@ export default function DiagnosticoPrototipo() {
     ].filter(Boolean).join(", ");
 
     const whatsappEspecialista = "https://wa.me/5541989049616";
+    const logoUrl = `${window.location.origin}/finder-logo.png`;
     const dataGeracao = new Date().toLocaleString("pt-BR");
 
     const html = `<!doctype html>
@@ -989,6 +1099,7 @@ export default function DiagnosticoPrototipo() {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  .capa-logo { width: 230px; max-width: 70%; background: #fff; border-radius: 8px; padding: 8px; margin-bottom: 16px; }
   .capa {
     background: #17233D;
     color: #fff;
@@ -1101,6 +1212,7 @@ export default function DiagnosticoPrototipo() {
 <body>
 
   <section class="capa">
+    <img src="${logoUrl}" alt="Finder of Solutions" class="capa-logo" />
     <div class="marca">Finder of Solutions</div>
     <h1>Diagnóstico Empresarial Preliminar</h1>
     <p class="empresa">${escaparHtml(empresaPrincipal.razao)}</p>
@@ -1249,9 +1361,14 @@ export default function DiagnosticoPrototipo() {
           <div style={{ flex: 1, padding: "18px 22px 22px", display: "flex", flexDirection: "column" }}>
 
             {step === "intro" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
-                <div style={{ width: 84, height: 84, borderRadius: "50%", background: ICE, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <QrCode size={38} color={NAVY} />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+                <img
+                  src="/finder-logo.png"
+                  alt="Finder of Solutions"
+                  style={{ width: 210, maxWidth: "88%", height: "auto", objectFit: "contain", marginBottom: 2 }}
+                />
+                <div style={{ width: 72, height: 72, borderRadius: "50%", background: ICE, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <QrCode size={32} color={NAVY} />
                 </div>
                 <div>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "0 0 8px" }}>Escaneie para começar</p>
@@ -1285,6 +1402,27 @@ export default function DiagnosticoPrototipo() {
 
                 <label style={labelStyle}>E-mail</label>
                 <input style={inputStyle} placeholder="voce@empresa.com.br" value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
+
+                <label style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "flex-start",
+                  fontSize: 10.8,
+                  lineHeight: 1.4,
+                  color: MUTED,
+                  margin: "-4px 0 14px",
+                  cursor: "pointer",
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={consentimentoEmail}
+                    onChange={(e) => setConsentimentoEmail(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    Quero receber meu diagnóstico por e-mail e comunicações relacionadas à consultoria da Finder.
+                  </span>
+                </label>
 
                 <div style={{ flex: 1 }} />
                 <PrimaryButton disabled={!nome || !cargo || telefone.replace(/\D/g, "").length < 10 || !email.includes("@")} onClick={() => setStep("cnpj")}>
@@ -1537,6 +1675,23 @@ export default function DiagnosticoPrototipo() {
                         • {p}
                       </p>
                     ))}
+                  </div>
+                )}
+
+                {envioRelatorio === "sent" && (
+                  <div style={{ background: "#E1F5EE", borderRadius: 10, padding: 10, marginBottom: 14 }}>
+                    <p style={{ fontSize: 11.5, color: "#0F6E56", margin: 0, lineHeight: 1.4 }}>
+                      Diagnóstico registrado e enviado para a Finder
+                      {consentimentoEmail && email ? ` e para ${email}` : ""}.
+                    </p>
+                  </div>
+                )}
+
+                {envioRelatorio === "error" && (
+                  <div style={{ background: "#FAECE7", borderRadius: 10, padding: 10, marginBottom: 14 }}>
+                    <p style={{ fontSize: 11.5, color: "#993C1D", margin: 0, lineHeight: 1.4 }}>
+                      O diagnóstico foi concluído, mas houve falha no envio por e-mail. Você ainda pode gerar o PDF normalmente.
+                    </p>
                   </div>
                 )}
 
