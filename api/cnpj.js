@@ -17,9 +17,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch(
-      `https://brasilapi.com.br/api/cnpj/v1/${digits}`
-    );
+   const response = await fetch(
+  `https://brasilapi.com.br/api/cnpj/v1/${digits}`,
+  {
+    method: "GET",
+    headers: {
+      "User-Agent": "evento-diagnostico-finder/1.0",
+      "Accept": "application/json"
+    }
+  }
+);
 
    if (!response.ok) {
   const detalhe = await response.text();
