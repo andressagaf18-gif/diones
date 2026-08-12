@@ -115,7 +115,6 @@ export default async function handler(req, res) {
 
     // =======================================================
     // SAÚDE / CLÍNICAS
-    // Divisão CNAE 86
     // =======================================================
 
     if (
@@ -155,7 +154,7 @@ export default async function handler(req, res) {
 
     // =======================================================
     // TECNOLOGIA
-    // Divisões CNAE 62 e 63
+    // CNAE divisões 62 e 63
     // =======================================================
 
     if (
@@ -194,13 +193,10 @@ export default async function handler(req, res) {
 
     // =======================================================
     // CONSTRUÇÃO CIVIL
-    // Divisões CNAE 41, 42 e 43
+    // CNAE 41, 42 e 43
     // =======================================================
 
-    if (
-      divisao >= 41 &&
-      divisao <= 43
-    ) {
+    if (divisao >= 41 && divisao <= 43) {
       return {
         segmento: "Construção",
 
@@ -228,7 +224,6 @@ export default async function handler(req, res) {
 
     // =======================================================
     // E-COMMERCE
-    // Identificação principalmente pela descrição.
     // =======================================================
 
     if (
@@ -264,13 +259,10 @@ export default async function handler(req, res) {
 
     // =======================================================
     // COMÉRCIO
-    // Divisões CNAE 45, 46 e 47
+    // CNAE 45, 46 e 47
     // =======================================================
 
-    if (
-      divisao >= 45 &&
-      divisao <= 47
-    ) {
+    if (divisao >= 45 && divisao <= 47) {
       return {
         segmento: "Comércio",
 
@@ -298,13 +290,10 @@ export default async function handler(req, res) {
 
     // =======================================================
     // INDÚSTRIA
-    // Divisões CNAE 10 a 33
+    // CNAE 10 até 33
     // =======================================================
 
-    if (
-      divisao >= 10 &&
-      divisao <= 33
-    ) {
+    if (divisao >= 10 && divisao <= 33) {
       return {
         segmento: "Indústria",
 
@@ -332,13 +321,10 @@ export default async function handler(req, res) {
 
     // =======================================================
     // TRANSPORTE / LOGÍSTICA
-    // Divisões CNAE 49 a 53
+    // CNAE 49 até 53
     // =======================================================
 
-    if (
-      divisao >= 49 &&
-      divisao <= 53
-    ) {
+    if (divisao >= 49 && divisao <= 53) {
       return {
         segmento: "Serviços",
 
@@ -366,7 +352,6 @@ export default async function handler(req, res) {
 
     // =======================================================
     // ALIMENTAÇÃO
-    // Divisão CNAE 56
     // =======================================================
 
     if (
@@ -403,7 +388,7 @@ export default async function handler(req, res) {
 
     // =======================================================
     // IMOBILIÁRIO
-    // Divisão CNAE 68
+    // CNAE divisão 68
     // =======================================================
 
     if (
@@ -438,13 +423,10 @@ export default async function handler(req, res) {
 
     // =======================================================
     // SERVIÇOS PROFISSIONAIS
-    // Divisões 69 a 75
+    // CNAE 69 até 75
     // =======================================================
 
-    if (
-      divisao >= 69 &&
-      divisao <= 75
-    ) {
+    if (divisao >= 69 && divisao <= 75) {
       return {
         segmento: "Serviços Profissionais",
 
@@ -472,7 +454,6 @@ export default async function handler(req, res) {
 
     // =======================================================
     // FALLBACK
-    // Nenhuma empresa deve ficar sem classificação.
     // =======================================================
 
     return {
@@ -511,20 +492,14 @@ export default async function handler(req, res) {
         method: "GET",
 
         headers: {
-          /*
-           * Importante:
-           * algumas chamadas serverless podem receber 403
-           * sem User-Agent explícito.
-           */
           "User-Agent": "finder-diagnostico-empresarial/1.0",
-
           Accept: "application/json",
         },
       }
     );
 
     // =======================================================
-    // 5. TRATAMENTO DOS ERROS DA BRASILAPI
+    // 5. TRATAMENTO DE ERROS
     // =======================================================
 
     if (!response.ok) {
@@ -560,7 +535,7 @@ export default async function handler(req, res) {
     }
 
     // =======================================================
-    // 6. DADOS RETORNADOS
+    // 6. LER DADOS
     // =======================================================
 
     const data = await response.json();
@@ -576,7 +551,7 @@ export default async function handler(req, res) {
       "";
 
     // =======================================================
-    // 7. CLASSIFICAR EMPRESA
+    // 7. CLASSIFICAR PELO CNAE
     // =======================================================
 
     const classificacao = classificarEmpresa(
@@ -585,7 +560,7 @@ export default async function handler(req, res) {
     );
 
     // =======================================================
-    // 8. RETORNO PARA O APP
+    // 8. RETORNAR PARA O APP
     // =======================================================
 
     return res.status(200).json({
@@ -666,7 +641,6 @@ export default async function handler(req, res) {
           "",
       },
     });
-
   } catch (error) {
     // =======================================================
     // 9. ERRO INTERNO
