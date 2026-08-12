@@ -58,22 +58,6 @@ const SIMPLES_ALIQUOTAS = {
 const PRESUMIDO_ALIQUOTAS = { "Comércio": 11, "Indústria": 11, "Serviço": 16 };
 const REAL_ALIQUOTAS = { "Comércio": 20, "Indústria": 20, "Serviço": 24 };
 
-function normalizarSegmentoTributario(segmento) {
-  if (!segmento) return "Serviço";
-
-  const valor = String(segmento).toLowerCase();
-
-  if (valor.includes("indústria") || valor.includes("industria")) {
-    return "Indústria";
-  }
-
-  if (valor.includes("comércio") || valor.includes("comercio")) {
-    return "Comércio";
-  }
-
-  return "Serviço";
-}
-
 function estimarAliquota(regime, segmento, anual) {
   const segmentoNormalizado = normalizarSegmentoTributario(segmento);
 
@@ -110,17 +94,208 @@ function tierDe(score) {
   if (score >= 40) return { label: "Crítico", color: "#993C1D", bg: "#FAECE7" };
   return { label: "Emergencial", color: "#791F1F", bg: "#FCEBEB" };
 }
-// Perguntas com variação de texto por segmento usam porSegmento; as demais valem para todos.
+// Contexto por categoria: adapta o checklist ao CNAE identificado.
+const CATEGORY_CONTEXT = {
+  "Contabilidade": {
+    cliente: "cliente da carteira contábil",
+    oferta: "abertura, troca de contabilidade, BPO e consultoria",
+    operacao: "entregas contábeis, fiscais e trabalhistas",
+    unidadeRentabilidade: "cliente, carteira ou responsável",
+    capacidade: "capacidade da equipe por carteira e período",
+    documentoFiscal: "NFS-e e documentos fiscais dos clientes",
+  },
+  "Advocacia": {
+    cliente: "cliente ou processo",
+    oferta: "consultas, contratos e serviços jurídicos",
+    operacao: "prazos, processos e entregas jurídicas",
+    unidadeRentabilidade: "cliente, processo ou área jurídica",
+    capacidade: "capacidade da equipe por processo e prazo",
+    documentoFiscal: "notas de serviço e retenções aplicáveis",
+  },
+  "Saúde / Clínica": {
+    cliente: "paciente",
+    oferta: "consultas, procedimentos e tratamentos",
+    operacao: "agenda, atendimento e execução dos procedimentos",
+    unidadeRentabilidade: "procedimento, profissional ou unidade",
+    capacidade: "ocupação da agenda e capacidade dos profissionais",
+    documentoFiscal: "notas de serviço e retenções aplicáveis à clínica",
+  },
+  "Tecnologia": {
+    cliente: "cliente ou conta",
+    oferta: "projetos, licenças, SaaS e serviços de tecnologia",
+    operacao: "desenvolvimento, suporte e entrega de projetos",
+    unidadeRentabilidade: "projeto, contrato ou cliente",
+    capacidade: "capacidade do time por sprint, projeto ou contrato",
+    documentoFiscal: "notas de serviço e tributação das receitas de tecnologia",
+  },
+  "Construção Civil": {
+    cliente: "cliente, obra ou contrato",
+    oferta: "obras, reformas e serviços de construção",
+    operacao: "obras, medições, compras e execução em campo",
+    unidadeRentabilidade: "obra, contrato ou centro de custo",
+    capacidade: "capacidade de execução por equipe e obra",
+    documentoFiscal: "notas, retenções e documentos vinculados às obras",
+  },
+  "Comércio": {
+    cliente: "cliente",
+    oferta: "produtos e linhas comercializadas",
+    operacao: "compra, estoque, venda e entrega",
+    unidadeRentabilidade: "produto, categoria, loja ou canal",
+    capacidade: "giro e capacidade de reposição de estoque",
+    documentoFiscal: "NF-e/NFC-e, NCM, CST e tributação das mercadorias",
+  },
+  "E-commerce": {
+    cliente: "cliente do e-commerce",
+    oferta: "produtos, kits e campanhas online",
+    operacao: "pedido, pagamento, separação, expedição e pós-venda",
+    unidadeRentabilidade: "SKU, campanha, canal ou pedido",
+    capacidade: "capacidade de separação, expedição e reposição",
+    documentoFiscal: "NF-e, NCM, CST e tributação das vendas online",
+  },
+  "Indústria": {
+    cliente: "cliente industrial",
+    oferta: "produtos, projetos e linhas fabricadas",
+    operacao: "PCP, produção, qualidade, estoque e expedição",
+    unidadeRentabilidade: "produto, ordem de produção ou centro de custo",
+    capacidade: "capacidade produtiva por máquina, linha ou turno",
+    documentoFiscal: "NF-e, NCM, CST, créditos e tributação industrial",
+  },
+  "Transporte / Logística": {
+    cliente: "embarcador ou cliente",
+    oferta: "fretes, rotas e serviços logísticos",
+    operacao: "roteirização, coleta, transporte e entrega",
+    unidadeRentabilidade: "rota, veículo, contrato ou cliente",
+    capacidade: "capacidade da frota e ocupação por rota",
+    documentoFiscal: "CT-e, MDF-e e tributação dos serviços de transporte",
+  },
+  "Alimentação": {
+    cliente: "cliente",
+    oferta: "pratos, produtos e canais de venda",
+    operacao: "compras, estoque, produção, atendimento e entrega",
+    unidadeRentabilidade: "produto, prato, canal ou unidade",
+    capacidade: "capacidade de produção e atendimento",
+    documentoFiscal: "documentos fiscais e tributação das vendas de alimentação",
+  },
+  "Imobiliária / Atividades Imobiliárias": {
+    cliente: "proprietário, comprador ou locatário",
+    oferta: "locação, venda e administração de imóveis",
+    operacao: "captação, atendimento, contratos e gestão dos imóveis",
+    unidadeRentabilidade: "imóvel, contrato ou carteira",
+    capacidade: "capacidade de atendimento e gestão da carteira",
+    documentoFiscal: "notas de serviço e tributação das receitas imobiliárias",
+  },
+  "Serviços Profissionais": {
+    cliente: "cliente",
+    oferta: "serviços e projetos profissionais",
+    operacao: "prospecção, execução e entrega dos serviços",
+    unidadeRentabilidade: "cliente, projeto ou profissional",
+    capacidade: "capacidade da equipe por cliente e projeto",
+    documentoFiscal: "notas de serviço e tributação das receitas",
+  },
+};
+
+const CATEGORY_AREA_FALLBACK = {
+  "Contabilidade": ["administrativo", "comercial", "financeiro", "tecnologia", "rh"],
+  "Advocacia": ["comercial", "administrativo", "financeiro", "juridico", "tecnologia"],
+  "Saúde / Clínica": ["financeiro", "comercial", "administrativo", "marketing", "tecnologia"],
+  "Tecnologia": ["comercial", "financeiro", "marketing", "tecnologia", "gestao"],
+  "Construção Civil": ["financeiro", "operacional", "administrativo", "juridico", "gestao"],
+  "Comércio": ["financeiro", "operacional", "comercial", "marketing", "contabilidade"],
+  "E-commerce": ["marketing", "comercial", "financeiro", "operacional", "tecnologia"],
+  "Indústria": ["operacional", "financeiro", "administrativo", "gestao", "contabilidade"],
+  "Transporte / Logística": ["operacional", "financeiro", "administrativo", "gestao", "tecnologia"],
+  "Alimentação": ["operacional", "financeiro", "marketing", "rh", "administrativo"],
+  "Imobiliária / Atividades Imobiliárias": ["comercial", "financeiro", "marketing", "juridico", "administrativo"],
+  "Serviços Profissionais": ["comercial", "financeiro", "marketing", "administrativo", "gestao"],
+};
+
+function categoriaContexto(categoria) {
+  return CATEGORY_CONTEXT[categoria] || CATEGORY_CONTEXT["Serviços Profissionais"];
+}
+
+function textoCategoria(q, categoria) {
+  const c = categoriaContexto(categoria);
+  const templates = {
+    m1: `Você conhece o custo de aquisição de cada ${c.cliente}?`,
+    m2: `Existe um funil mapeado para ${c.oferta}, do primeiro contato ao fechamento?`,
+    m3: `Você mede o retorno das campanhas usadas para vender ${c.oferta}?`,
+    m7: `Sua base de ${c.cliente} está segmentada para relacionamento, recompra ou novas ofertas?`,
+    m8: `Existe um pós-venda estruturado após a entrega de ${c.oferta}?`,
+    c4: `A emissão e o tratamento de ${c.documentoFiscal} passam por revisão periódica?`,
+    c5: `A empresa revisa créditos, benefícios e oportunidades tributárias relacionados a ${c.documentoFiscal}?`,
+    f3a: `Você sabe quanto precisa faturar com ${c.oferta} para cobrir os custos mensais?`,
+    f7a: `A margem e o resultado são acompanhados por ${c.unidadeRentabilidade}?`,
+    f9a: `A empresa conhece o custo e a rentabilidade por ${c.unidadeRentabilidade}?`,
+    a1: `Existem procedimentos escritos para as rotinas críticas de ${c.operacao}?`,
+    a5: `As responsabilidades sobre ${c.operacao} estão claramente definidas entre os responsáveis?`,
+    a7: `A empresa usa sistema estruturado para controlar ${c.operacao}?`,
+    g3: `Os principais indicadores de ${c.operacao} são acompanhados com regularidade?`,
+    g5: `As decisões sobre ${c.operacao} são tomadas com base em dados confiáveis?`,
+    o1: `Os principais gargalos de ${c.operacao} estão mapeados?`,
+    o2: `Os prazos de ${c.operacao} são medidos e acompanhados?`,
+    o3: `${c.capacidade.charAt(0).toUpperCase() + c.capacidade.slice(1)} é conhecida com precisão?`,
+    o7: `Existe controle de qualidade formal para ${c.operacao}?`,
+    v1: `Os leads e oportunidades de ${c.oferta} são registrados e acompanhados em CRM?`,
+    v2: `Existe processo comercial definido para vender ${c.oferta}?`,
+    v3: `A conversão das oportunidades de ${c.oferta} é acompanhada por etapa?`,
+    v4: `Existe padrão de follow-up para oportunidades de ${c.oferta}?`,
+    v7: `Existe previsão de vendas confiável para ${c.oferta}?`,
+    v8: `O ticket médio de ${c.oferta} é acompanhado?`,
+    t1: `Os sistemas usados em ${c.operacao} estão integrados ou centralizados?`,
+    t2: `Existe dashboard para acompanhar indicadores de ${c.operacao}?`,
+    t3: `Os dados de ${c.operacao} estão centralizados e acessíveis aos responsáveis?`,
+  };
+  return templates[q.id];
+}
+
+function riscoCategoria(q, categoria) {
+  const c = categoriaContexto(categoria);
+  const templates = {
+    m1: `O custo de aquisição de ${c.cliente} não é conhecido`,
+    m2: `Não há funil estruturado para ${c.oferta}`,
+    m3: `O retorno das campanhas de ${c.oferta} não é medido`,
+    m7: `A base de ${c.cliente} não está segmentada`,
+    m8: `Falta pós-venda estruturado após ${c.oferta}`,
+    c4: `Pode haver falhas na emissão ou tratamento de ${c.documentoFiscal}`,
+    c5: `Créditos ou oportunidades tributárias podem não estar sendo revisados`,
+    f3a: `O faturamento mínimo necessário para cobrir custos não é conhecido`,
+    f7a: `Resultado e margem por ${c.unidadeRentabilidade} não são acompanhados`,
+    f9a: `Custo e rentabilidade por ${c.unidadeRentabilidade} não são conhecidos`,
+    a1: `As rotinas críticas de ${c.operacao} não estão documentadas`,
+    a5: `Responsabilidades sobre ${c.operacao} podem estar pouco claras`,
+    a7: `O controle de ${c.operacao} depende de ferramentas pouco estruturadas`,
+    g3: `Indicadores de ${c.operacao} não são acompanhados regularmente`,
+    g5: `Decisões sobre ${c.operacao} podem depender mais de percepção do que dados`,
+    o1: `Os gargalos de ${c.operacao} não estão mapeados`,
+    o2: `Os prazos de ${c.operacao} não são monitorados`,
+    o3: `${c.capacidade.charAt(0).toUpperCase() + c.capacidade.slice(1)} não é conhecida`,
+    o7: `Não há controle formal de qualidade em ${c.operacao}`,
+    v1: `Oportunidades de ${c.oferta} podem se perder sem CRM`,
+    v2: `Não há processo comercial estruturado para ${c.oferta}`,
+    v3: `A conversão de ${c.oferta} não é conhecida por etapa`,
+    v4: `Não há padrão de follow-up para ${c.oferta}`,
+    v7: `Não há previsão de vendas confiável para ${c.oferta}`,
+    v8: `O ticket médio de ${c.oferta} não é acompanhado`,
+    t1: `Os sistemas de ${c.operacao} podem estar fragmentados`,
+    t2: `Não há dashboard de indicadores de ${c.operacao}`,
+    t3: `Os dados de ${c.operacao} podem estar dispersos`,
+  };
+  return templates[q.id];
+}
+
 function textoDe(q, segmento, categoria) {
   return (
     q.porCategoria?.[categoria]?.text ||
+    textoCategoria(q, categoria) ||
     q.porSegmento?.[segmento]?.text ||
     q.text
   );
 }
+
 function riscoDe(q, segmento, categoria) {
   return (
     q.porCategoria?.[categoria]?.risco ||
+    riscoCategoria(q, categoria) ||
     q.porSegmento?.[segmento]?.risco ||
     q.risco
   );
@@ -317,7 +492,7 @@ const CHECKLISTS = {
 };
 
 function areaLabel(id) { return AREAS.find((a) => a.id === id)?.label || id; }
-function formatBRL(v) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }); }
+function formatBRL(v) { return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }); }
 
 function pickCompany(cnpjDigits) {
   const sum = cnpjDigits.split("").reduce((acc, d) => acc + Number(d), 0);
@@ -325,7 +500,27 @@ function pickCompany(cnpjDigits) {
   return COMPANIES[idx];
 }
 
+function normalizarSegmentoTributario(segmento) {
+  if (!segmento) return "Serviço";
 
+  const valor = String(segmento).toLowerCase();
+
+  if (
+    valor.includes("indústria") ||
+    valor.includes("industria")
+  ) {
+    return "Indústria";
+  }
+
+  if (
+    valor.includes("comércio") ||
+    valor.includes("comercio")
+  ) {
+    return "Comércio";
+  }
+
+  return "Serviço";
+}
 
 function segmentoPredominanteDe(empresas) {
   if (!empresas.length) return null;
@@ -397,8 +592,8 @@ export default function DiagnosticoPrototipo() {
 
   const segmentoPredominante = segmentoPredominanteDe(empresas);
   const empresaPrincipal = empresas[0] || null;
+  const categoriaPrincipal = empresaPrincipal?.categoria || "Serviços Profissionais";
   const codigoQuestionario = empresaPrincipal?.codigoQuestionario || null;
-  const areasPrioritarias = empresaPrincipal?.areasPrioritarias || [];
 
   const mapaAreaApiParaId = {
     "Marketing": "marketing",
@@ -417,18 +612,28 @@ export default function DiagnosticoPrototipo() {
     "Tecnologia": "tecnologia",
     "Processos": "administrativo",
     "Atendimento": "comercial",
+    "Custos": "financeiro",
+    "Produção": "operacional",
+    "Estoque": "operacional",
+    "Compras": "operacional",
+    "Logística": "operacional",
+    "Qualidade": "operacional",
+    "Contratos": "juridico",
+    "LGPD": "tecnologia",
+    "Segurança da Informação": "tecnologia",
   };
 
-  const areasSugeridas = areasPrioritarias
+  const areasPrioritariasApi = empresaPrincipal?.areasPrioritarias || [];
+  const areasSugeridasApi = areasPrioritariasApi
     .map((nome) => mapaAreaApiParaId[nome])
     .filter(Boolean);
 
- const areasDoDiagnostico = [
-  ...new Set([
-    ...dores,
-    ...areasSugeridas.slice(0, 2)
-  ])
-].slice(0, MAX_DORES);
+  const areasFallbackCategoria = CATEGORY_AREA_FALLBACK[categoriaPrincipal] || [];
+  const areasSugeridas = [...new Set([...areasSugeridasApi, ...areasFallbackCategoria])];
+
+  const areasDoDiagnostico = dores.length > 0
+    ? dores
+    : areasSugeridas.slice(0, MAX_DORES);
 
   const gruposSelecionados = areasDoDiagnostico
     .filter((id) => CHECKLISTS[id])
@@ -437,30 +642,23 @@ export default function DiagnosticoPrototipo() {
       label: areaLabel(id),
       subtemas: CHECKLISTS[id],
     }));
-
-  const todasPerguntas = gruposSelecionados.flatMap((g) =>
-    g.subtemas.flatMap((s) => s.perguntas)
-  );
-
-  const todasRespondidas =
-    todasPerguntas.length > 0 &&
-    todasPerguntas.every((q) => respostas[q.id]);
+  const todasPerguntas = gruposSelecionados.flatMap((g) => g.subtemas.flatMap((s) => s.perguntas));
+  const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
 
   useEffect(() => {
-    if (step !== "analisando" || !empresaPrincipal || areasDoDiagnostico.length === 0) return;
+    if (step !== "analisando" || !empresaPrincipal || gruposSelecionados.length === 0) return;
 
     let cancelado = false;
-    const labels = areasDoDiagnostico.map(areaLabel);
+    const labels = gruposSelecionados.map((g) => g.label);
     const msgs = [
-      `Identificando segmento predominante: ${segmentoPredominante}`,
-      `Carregando base de conhecimento: ${labels.join(", ")}`,
-      "Cruzando respostas de todos os subtemas do checklist",
+      `CNAE classificado como: ${categoriaPrincipal}`,
+      `Analisando as áreas: ${labels.join(", ")}`,
+      "Cruzando respostas com o contexto do segmento",
       "Estimando carga tributária de referência",
       "Calculando índice de maturidade por departamento",
     ];
 
     setMsgIdx(0);
-
     const interval = setInterval(
       () => setMsgIdx((i) => Math.min(i + 1, msgs.length - 1)),
       500
@@ -468,9 +666,14 @@ export default function DiagnosticoPrototipo() {
 
     const payload = {
       segmento: segmentoPredominante,
-      categoria: empresaPrincipal?.categoria || null,
+      categoria: categoriaPrincipal,
       codigoQuestionario,
-      empresas: empresas.map((e) => e.razao),
+      empresas: empresas.map((e) => ({
+        razao: e.razao,
+        categoria: e.categoria,
+        segmento: e.segmento,
+        cnae: e.cnae,
+      })),
       faturamento: faturamento?.label,
       colaboradores,
       regime,
@@ -481,19 +684,16 @@ export default function DiagnosticoPrototipo() {
         subtemas: g.subtemas.map((s) => ({
           tema: s.tema,
           perguntas: s.perguntas.map((q) => ({
-            texto: textoDe(
-              q,
-              segmentoPredominante,
-              empresaPrincipal?.categoria
-            ),
+            id: q.id,
+            texto: textoDe(q, segmentoPredominante, categoriaPrincipal),
             resposta: respostas[q.id],
           })),
         })),
       })),
+      scoreGeral: scoreDe(todasPerguntas),
     };
 
     const minDelay = new Promise((resolve) => setTimeout(resolve, 1800));
-
     const chamadaIA = fetch("/api/diagnostico", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -502,7 +702,7 @@ export default function DiagnosticoPrototipo() {
       .then(async (r) => {
         if (!r.ok) {
           const erro = await r.json().catch(() => null);
-          console.error("Erro na API de diagnóstico:", erro);
+          console.error("Erro diagnóstico:", erro);
           return null;
         }
         return r.json();
@@ -521,8 +721,6 @@ export default function DiagnosticoPrototipo() {
           mapa[a.area] = a;
         });
         setIaResultado(mapa);
-      } else {
-        setIaResultado(null);
       }
 
       setStep("resultado");
@@ -541,10 +739,7 @@ export default function DiagnosticoPrototipo() {
       return;
     }
 
-    if (empresas.length >= MAX_EMPRESAS) {
-      showToast(`Limite de ${MAX_EMPRESAS} CNPJs atingido.`);
-      return;
-    }
+    if (empresas.length >= MAX_EMPRESAS) return;
 
     setBuscando(true);
 
@@ -561,34 +756,20 @@ export default function DiagnosticoPrototipo() {
         razao: data.empresa?.razaoSocial || "Razão social não informada",
         nomeFantasia: data.empresa?.nomeFantasia || "",
         porte: data.empresa?.porte || "Não informado",
-        segmento: data.classificacao?.segmento || "Serviço",
-        categoria: data.classificacao?.categoria || "",
-        codigoQuestionario: data.classificacao?.codigoQuestionario || "",
+        segmento: data.classificacao?.segmento || "Serviços Profissionais",
+        categoria: data.classificacao?.categoria || "Serviços Profissionais",
+        codigoQuestionario: data.classificacao?.codigoQuestionario || "servicos",
         cnae: `${data.cnae?.codigo || ""} — ${data.cnae?.descricao || ""}`,
-        areasPrioritarias:
-          data.classificacao?.diagnostico?.areasPrioritarias || [],
-        areasComplementares:
-          data.classificacao?.diagnostico?.areasComplementares || [],
+        areasPrioritarias: data.classificacao?.diagnostico?.areasPrioritarias || [],
+        areasComplementares: data.classificacao?.diagnostico?.areasComplementares || [],
         endereco: data.endereco || {},
       };
 
       setEmpresas((prev) => [...prev, empresa]);
-
-      if (empresas.length === 0 && dores.length === 0) {
-        const sugeridas = empresa.areasPrioritarias
-          .map((nome) => mapaAreaApiParaId[nome])
-          .filter(Boolean)
-          .slice(0, MAX_DORES);
-
-        if (sugeridas.length > 0) {
-          setDores(sugeridas);
-        }
-      }
-
       setCnpjInput("");
-      showToast("Empresa encontrada com sucesso.");
+      showToast(`Empresa identificada como ${empresa.categoria}.`);
     } catch (err) {
-      console.error("Erro ao consultar CNPJ:", err);
+      console.error("Erro CNPJ:", err);
       showToast(err.message || "Erro ao consultar CNPJ");
     } finally {
       setBuscando(false);
@@ -646,10 +827,10 @@ export default function DiagnosticoPrototipo() {
 
   const perguntasComPeso = todasPerguntas.map((q) => ({
     ...q, peso: pesoResposta(q, respostas[q.id]), riscoTexto: riscoDe(
-  q,
-  segmentoPredominante,
-  empresaPrincipal?.categoria
-),
+      q,
+      segmentoPredominante,
+      categoriaPrincipal
+    ),
   }));
   const pontosAtencao = [...perguntasComPeso]
     .filter((q) => q.peso < 5)
@@ -665,10 +846,10 @@ export default function DiagnosticoPrototipo() {
 
   // Quando a IA responde, seus riscos/recomendações substituem os calculados localmente.
   const pontosAtencaoFinal = iaResultado
-    ? areasDoDiagnostico.flatMap((id) => iaResultado[areaLabel(id)]?.riscos || []).slice(0, 6)
+    ? gruposSelecionados.flatMap((g) => iaResultado[g.label]?.riscos || []).slice(0, 6)
     : pontosAtencao;
   const recomendacoesFinal = iaResultado
-    ? areasDoDiagnostico.flatMap((id) => (iaResultado[areaLabel(id)]?.recomendacoes || []).map((r) => ({ area: areaLabel(id), dica: r }))).slice(0, 3)
+    ? gruposSelecionados.flatMap((g) => (iaResultado[g.label]?.recomendacoes || []).map((r) => ({ area: g.label, dica: r }))).slice(0, 3)
     : subOrdenados.slice(0, 3);
 
   const aliquota = empresaPrincipal && regime ? estimarAliquota(regime, segmentoPredominante, faturamento?.anual || 0) : null;
@@ -754,7 +935,7 @@ export default function DiagnosticoPrototipo() {
                       <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 22px 4px 0" }}>{e.razao}</p>
                       <p style={{ fontSize: 11, color: MUTED, margin: "0 0 2px" }}>{e.cnae}</p>
                       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                        <span style={badgeStyle}>{e.segmento}</span>
+                        <span style={badgeStyle}>{e.categoria || e.segmento}</span>
                         <span style={badgeStyle}>{e.porte}</span>
                       </div>
                     </div>
@@ -857,8 +1038,7 @@ export default function DiagnosticoPrototipo() {
                   Checklist — {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
                 <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
-                  {todasPerguntas.length} perguntas · ajustado para {(empresaPrincipal?.categoria || segmentoPredominante)?.toLowerCase()}
-                  {empresas.length > 1 ? " (segmento predominante do grupo)" : ""}
+                  {todasPerguntas.length} perguntas · adaptado para {categoriaPrincipal}\n                  {empresaPrincipal?.cnae ? ` · CNAE ${empresaPrincipal.cnae.split("—")[0].trim()}` : ""}\n                  {empresas.length > 1 ? " (empresa principal do grupo)" : ""}
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 22, overflowY: "auto", maxHeight: 440, paddingRight: 2 }}>
@@ -877,7 +1057,7 @@ export default function DiagnosticoPrototipo() {
                             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                               {sub.perguntas.map((q) => (
                                 <div key={q.id}>
-                                  <p style={{ fontSize: 12.5, color: NAVY, margin: "0 0 6px", lineHeight: 1.4 }}>{textoDe(q, segmentoPredominante, empresaPrincipal?.categoria)}</p>
+                                  <p style={{ fontSize: 12.5, color: NAVY, margin: "0 0 6px", lineHeight: 1.4 }}>{textoDe(q, segmentoPredominante, categoriaPrincipal)}</p>
                                   <div style={{ display: "flex", gap: 6 }}>
                                     {[["sim", "Sim"], ["parcialmente", "Parcial"], ["nao", "Não"]].map(([val, lbl]) => (
                                       <button key={val} onClick={() => responder(q.id, val)} style={{
@@ -902,15 +1082,15 @@ export default function DiagnosticoPrototipo() {
               </div>
             )}
 
-            {step === "analisando" && empresaPrincipal && areasDoDiagnostico.length > 0 && (
+            {step === "analisando" && empresaPrincipal && gruposSelecionados.length > 0 && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
                 <Loader2 size={34} color={CORAL} className="spin" />
                 <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: 0 }}>A IA está analisando</p>
                 <p style={{ fontSize: 12.5, color: MUTED, minHeight: 18, margin: 0, padding: "0 10px" }}>
                   {[
-                    `Identificando segmento predominante: ${segmentoPredominante}`,
-                    `Carregando base de conhecimento: ${areasDoDiagnostico.map(areaLabel).join(", ")}`,
-                    "Cruzando respostas de todos os subtemas do checklist",
+                    `CNAE classificado como: ${categoriaPrincipal}`,
+                    `Analisando as áreas: ${gruposSelecionados.map((g) => g.label).join(", ")}`,
+                    "Cruzando respostas com o contexto do segmento",
                     "Estimando carga tributária de referência",
                     "Calculando índice de maturidade por departamento",
                   ][msgIdx]}
@@ -918,7 +1098,7 @@ export default function DiagnosticoPrototipo() {
               </div>
             )}
 
-            {step === "resultado" && empresaPrincipal && areasDoDiagnostico.length > 0 && areaMaisFraca && (
+            {step === "resultado" && empresaPrincipal && gruposSelecionados.length > 0 && areaMaisFraca && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
                 <div style={{ background: tierDe(areaMaisFraca.score).bg, borderRadius: 14, padding: 14, marginBottom: 16, display: "flex", gap: 10 }}>
@@ -938,7 +1118,7 @@ export default function DiagnosticoPrototipo() {
                   {empresaPrincipal.razao}{empresas.length > 1 ? ` + ${empresas.length - 1} empresa${empresas.length > 2 ? "s" : ""} do grupo` : ""}
                 </p>
                 <p style={{ fontSize: 11, color: "#9AA3B5", textAlign: "center", margin: "0 0 16px" }}>
-                  {empresaPrincipal?.categoria || segmentoPredominante} · {colaboradores} colaboradores · {areasDoDiagnostico.map(areaLabel).join(", ")}
+                  {categoriaPrincipal} · {colaboradores} colaboradores · {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
 
                 {observacao.trim() && (
@@ -967,13 +1147,9 @@ export default function DiagnosticoPrototipo() {
                         <Percent size={14} color="#C6CEDD" />
                         <p style={{ fontSize: 11, color: "#C6CEDD", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>Carga tributária estimada</p>
                       </div>
-                      <p style={{ fontFamily: DISPLAY_FONT, fontSize: 32, fontWeight: 700, color: WHITE, margin: "0 0 4px" }}>
-                        {aliquota != null ? `${aliquota}%` : "A validar"}
-                      </p>
+                      <p style={{ fontFamily: DISPLAY_FONT, fontSize: 32, fontWeight: 700, color: WHITE, margin: "0 0 4px" }}>{aliquota}%</p>
                       <p style={{ fontSize: 12, color: "#C6CEDD", margin: 0 }}>
-                        {valorAnualImposto != null
-                          ? `≈ ${formatBRL(valorAnualImposto)}/ano em ${regime}, com base no faturamento informado`
-                          : "Estimativa indisponível para os dados informados."}
+                        ≈ {formatBRL(valorAnualImposto)}/ano em {regime}, com base no faturamento informado
                       </p>
                       <p style={{ fontSize: 10, color: "#8592AC", margin: "8px 0 0", fontStyle: "italic" }}>
                         Estimativa de referência para {segmentoPredominante?.toLowerCase()}. O valor real depende de detalhes específicos da operação.
