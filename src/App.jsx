@@ -732,7 +732,11 @@ export default function DiagnosticoPrototipo() {
         data.areas.forEach((a) => {
           mapa[a.area] = a;
         });
-        setIaResultado(mapa);
+
+        setIaResultado({
+          areas: mapa,
+          diagnosticoGeral: data.diagnosticoGeral || null,
+        });
       }
 
       setStep("resultado");
@@ -858,590 +862,380 @@ export default function DiagnosticoPrototipo() {
 
   // Quando a IA responde, seus riscos/recomendações substituem os calculados localmente.
   const pontosAtencaoFinal = iaResultado
-    ? gruposSelecionados.flatMap((g) => iaResultado[g.label]?.riscos || []).slice(0, 6)
+    ? gruposSelecionados.flatMap((g) => iaResultado?.areas?.[g.label]?.riscos || []).slice(0, 8)
     : pontosAtencao;
   const recomendacoesFinal = iaResultado
-    ? gruposSelecionados.flatMap((g) => (iaResultado[g.label]?.recomendacoes || []).map((r) => ({ area: g.label, dica: r }))).slice(0, 3)
+    ? gruposSelecionados.flatMap((g) => (iaResultado?.areas?.[g.label]?.recomendacoes || []).map((r) => ({ area: g.label, dica: r }))).slice(0, 6)
     : subOrdenados.slice(0, 3);
 
   const aliquota = empresaPrincipal && regime ? estimarAliquota(regime, segmentoPredominante, faturamento?.anual || 0) : null;
   const valorAnualImposto = aliquota != null && faturamento ? faturamento.anual * (aliquota / 100) : null;
 
+  const diagnosticoGeral = iaResultado?.diagnosticoGeral || null;
+  const resumoExecutivo = diagnosticoGeral?.resumoExecutivo || "";
+  const principaisDoresIa = diagnosticoGeral?.principaisDores || [];
+  const pontosFortesIa = diagnosticoGeral?.pontosFortes || [];
+  const prioridadesIa = diagnosticoGeral?.prioridadesImediatas || [];
+  const oportunidadesIa = diagnosticoGeral?.oportunidades || [];
+
   function gerarPdf() {
-  if (!empresaPrincipal) {
-    showToast("Nenhuma empresa disponível para gerar o relatório.");
-    return;
-  }
-
-  const escaparHtml = (valor) =>
-    String(valor ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-
-  const riscosHtml = pontosAtencaoFinal.length
-    ? pontosAtencaoFinal
-        .map((r) => `<li>${escaparHtml(r)}</li>`)
-        .join("")
-    : `
-      <li>
-        Nenhum risco relevante foi identificado nas respostas selecionadas.
-      </li>
-    `;
-
-  const recomendacoesHtml = recomendacoesFinal.length
-    ? recomendacoesFinal
-        .map(
-          (r) => `
-            <li>
-              <strong>${escaparHtml(r.area || "Prioridade")}:</strong>
-              ${escaparHtml(r.dica)}
-            </li>
-          `
-        )
-        .join("")
-    : `
-      <li>
-        Manter os controles atuais e revisar periodicamente os indicadores.
-      </li>
-    `;
-
-  const areasHtml = areasComScore
-    .map(
-      (a) => `
-        <tr>
-          <td>${escaparHtml(a.label)}</td>
-          <td>${a.score}/100</td>
-          <td>${escaparHtml(tierDe(a.score).label)}</td>
-        </tr>
-      `
-    )
-    .join("");
-
-  const resumoIa =
-    iaResultado?.diagnosticoGeral?.resumoExecutivo ||
-    "";
-
-  const doresHtml =
-    iaResultado?.diagnosticoGeral?.principaisDores?.length
-      ? iaResultado.diagnosticoGeral.principaisDores
-          .map((d) => `<li>${escaparHtml(d)}</li>`)
-          .join("")
-      : "";
-
-  const html = `
-<!DOCTYPE html>
-
-<html lang="pt-BR">
-
-<head>
-
-<meta charset="UTF-8" />
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0"
-/>
-
-<title>
-Diagnóstico Finder - ${escaparHtml(empresaPrincipal.razao)}
-</title>
-
-<style>
-
-@page {
-  size: A4;
-  margin: 15mm;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  background: #ffffff;
-}
-
-body {
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
-
-  color: #17233D;
-
-  margin: 0;
-
-  font-size: 12px;
-
-  line-height: 1.5;
-}
-
-.header {
-  background: #17233D;
-
-  color: white;
-
-  padding: 24px;
-
-  margin-bottom: 22px;
-
-  border-radius: 8px;
-}
-
-.header h1 {
-  margin: 0 0 6px;
-
-  font-size: 24px;
-}
-
-.header p {
-  margin: 0;
-
-  opacity: 0.85;
-
-  font-size: 12px;
-}
-
-h2 {
-  font-size: 15px;
-
-  color: #17233D;
-
-  margin-top: 22px;
-
-  margin-bottom: 9px;
-
-  padding-bottom: 5px;
-
-  border-bottom: 2px solid #FF6B4A;
-}
-
-.grid {
-  display: grid;
-
-  grid-template-columns: 1fr 1fr;
-
-  gap: 8px 24px;
-}
-
-.card {
-  background: #F5F7FA;
-
-  border: 1px solid #E2E6ED;
-
-  border-radius: 8px;
-
-  padding: 12px;
-}
-
-.score-box {
-  display: flex;
-
-  align-items: center;
-
-  gap: 18px;
-
-  background: #F5F7FA;
-
-  padding: 16px;
-
-  border-radius: 8px;
-}
-
-.score {
-  font-size: 36px;
-
-  font-weight: 700;
-
-  color: #FF6B4A;
-}
-
-.score-label {
-  font-size: 15px;
-
-  font-weight: 700;
-}
-
-.muted {
-  color: #5B667A;
-}
-
-table {
-  width: 100%;
-
-  border-collapse: collapse;
-
-  margin-top: 8px;
-}
-
-th {
-  background: #E9EDF5;
-
-  font-weight: 700;
-}
-
-th,
-td {
-  border-bottom: 1px solid #D8DEEA;
-
-  padding: 8px 6px;
-
-  text-align: left;
-}
-
-ol,
-ul {
-  padding-left: 20px;
-}
-
-li {
-  margin-bottom: 7px;
-}
-
-.resumo {
-  background: #FFF4F0;
-
-  border-left: 4px solid #FF6B4A;
-
-  padding: 12px;
-
-  border-radius: 4px;
-}
-
-.aviso {
-  margin-top: 28px;
-
-  font-size: 10px;
-
-  color: #5B667A;
-
-  font-style: italic;
-}
-
-.footer {
-  margin-top: 20px;
-
-  padding-top: 10px;
-
-  border-top: 1px solid #D8DEEA;
-
-  font-size: 10px;
-
-  color: #5B667A;
-
-  text-align: center;
-}
-
-@media print {
-
-  body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .header,
-  .card,
-  .score-box,
-  .resumo {
-    break-inside: avoid;
-  }
-
-  table {
-    break-inside: avoid;
-  }
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="header">
-
-<h1>Diagnóstico Empresarial Finder</h1>
-
-<p>
-Diagnóstico preliminar realizado em evento
-</p>
-
-</div>
-
-<h2>Empresa</h2>
-
-<div class="card">
-
-<div class="grid">
-
-<div>
-<strong>Razão social:</strong><br>
-${escaparHtml(empresaPrincipal.razao)}
-</div>
-
-<div>
-<strong>CNPJ:</strong><br>
-${escaparHtml(empresaPrincipal.cnpjDigits || "-")}
-</div>
-
-<div>
-<strong>Categoria:</strong><br>
-${escaparHtml(categoriaPrincipal)}
-</div>
-
-<div>
-<strong>Porte:</strong><br>
-${escaparHtml(empresaPrincipal.porte || "-")}
-</div>
-
-<div style="grid-column: 1 / -1">
-
-<strong>CNAE:</strong><br>
-
-${escaparHtml(empresaPrincipal.cnae || "-")}
-
-</div>
-
-</div>
-
-</div>
-
-<h2>Responsável</h2>
-
-<div class="card">
-
-<div class="grid">
-
-<div>
-<strong>Nome:</strong><br>
-${escaparHtml(nome)}
-</div>
-
-<div>
-<strong>Cargo:</strong><br>
-${escaparHtml(cargo)}
-</div>
-
-<div>
-<strong>WhatsApp:</strong><br>
-${escaparHtml(telefone || "-")}
-</div>
-
-<div>
-<strong>E-mail:</strong><br>
-${escaparHtml(email || "-")}
-</div>
-
-</div>
-
-</div>
-
-<h2>Resultado geral</h2>
-
-<div class="score-box">
-
-<div>
-
-<div class="score">
-${score}/100
-</div>
-
-<div class="score-label">
-${escaparHtml(tierGeral.label)}
-</div>
-
-</div>
-
-<div class="muted">
-
-${escaparHtml(faturamento?.label || "Faturamento não informado")}
-
-<br>
-
-${escaparHtml(colaboradores || "-")} colaboradores
-
-<br>
-
-${escaparHtml(regime || "-")}
-
-</div>
-
-</div>
-
-${
-  resumoIa
-    ? `
-      <h2>Resumo executivo</h2>
-
-      <div class="resumo">
-
-        ${escaparHtml(resumoIa)}
-
-      </div>
-    `
-    : ""
-}
-
-<h2>Maturidade por área</h2>
-
-<table>
-
-<thead>
-
-<tr>
-
-<th>Área</th>
-
-<th>Score</th>
-
-<th>Nível</th>
-
-</tr>
-
-</thead>
-
-<tbody>
-
-${areasHtml}
-
-</tbody>
-
-</table>
-
-${
-  doresHtml
-    ? `
-      <h2>Principais dores</h2>
-
-      <ol>
-
-        ${doresHtml}
-
-      </ol>
-    `
-    : ""
-}
-
-<h2>Principais riscos identificados</h2>
-
-<ol>
-
-${riscosHtml}
-
-</ol>
-
-<h2>Ações prioritárias</h2>
-
-<ol>
-
-${recomendacoesHtml}
-
-</ol>
-
-${
-  observacao.trim()
-    ? `
-      <h2>Observação do participante</h2>
-
-      <div class="card">
-
-        ${escaparHtml(observacao.trim())}
-
-      </div>
-    `
-    : ""
-}
-
-<p class="aviso">
-
-Este diagnóstico é preliminar e educativo.
-
-As estimativas e recomendações não substituem
-análise profissional individualizada.
-
-</p>
-
-<div class="footer">
-
-Finder of Solutions · Diagnóstico Empresarial
-
-</div>
-
-</body>
-
-</html>
-`;
-
-  try {
-    const blob = new Blob(
-      [html],
-      {
-        type: "text/html;charset=utf-8",
-      }
-    );
-
-    const url = URL.createObjectURL(blob);
-
-    const janela = window.open(
-      url,
-      "_blank"
-    );
-
-    if (!janela) {
-      URL.revokeObjectURL(url);
-
-      showToast(
-        "Permita pop-ups no navegador para gerar o PDF."
-      );
-
+    if (!empresaPrincipal) {
+      showToast("Nenhuma empresa disponível para gerar o relatório.");
       return;
     }
 
-    const imprimir = () => {
-      try {
-        janela.focus();
+    const escaparHtml = (valor) =>
+      String(valor ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 
-        janela.print();
+    const listaHtml = (itens, vazio = "Nenhuma informação relevante identificada.") =>
+      itens?.length
+        ? itens.map((item) => `<li>${escaparHtml(item)}</li>`).join("")
+        : `<li>${escaparHtml(vazio)}</li>`;
 
-        setTimeout(() => {
-          URL.revokeObjectURL(url);
-        }, 10000);
+    const areasDetalhadasHtml = areasComScore
+      .map((a) => {
+        const iaArea = iaResultado?.areas?.[a.label] || {};
+        const riscos = iaArea.riscos || [];
+        const recomendacoes = iaArea.recomendacoes || [];
+        const resumo = iaArea.resumo || "";
+        const prioridade = iaArea.prioridade ?? "-";
 
-      } catch (erro) {
-        console.error(
-          "Erro ao imprimir relatório:",
-          erro
-        );
-      }
-    };
+        return `
+          <section class="area-card">
+            <div class="area-head">
+              <div>
+                <h3>${escaparHtml(a.label)}</h3>
+                <span class="nivel">${escaparHtml(tierDe(a.score).label)}</span>
+              </div>
+              <div class="area-score">${a.score}<small>/100</small></div>
+            </div>
 
-    janela.addEventListener(
-      "load",
-      () => {
-        setTimeout(
-          imprimir,
-          700
-        );
-      },
-      {
-        once: true,
-      }
-    );
+            ${resumo ? `<p class="area-resumo">${escaparHtml(resumo)}</p>` : ""}
 
-  } catch (erro) {
-    console.error(
-      "Erro ao gerar relatório:",
-      erro
-    );
+            <div class="area-grid">
+              <div>
+                <h4>Principais riscos</h4>
+                <ul>${listaHtml(riscos, "Nenhum risco relevante identificado nesta área.")}</ul>
+              </div>
+              <div>
+                <h4>Plano de ação</h4>
+                <ol>${listaHtml(recomendacoes, "Manter os controles atuais e revisar os indicadores periodicamente.")}</ol>
+              </div>
+            </div>
 
-    showToast(
-      "Não foi possível gerar o relatório."
-    );
+            <div class="prioridade">Prioridade de atuação: <strong>${escaparHtml(prioridade)}</strong></div>
+          </section>
+        `;
+      })
+      .join("");
+
+    const areasResumoHtml = areasComScore
+      .map(
+        (a) => `
+          <tr>
+            <td>${escaparHtml(a.label)}</td>
+            <td><strong>${a.score}/100</strong></td>
+            <td>${escaparHtml(tierDe(a.score).label)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const subtemasHtml = subScoresAll
+      .map(
+        (s) => `
+          <tr>
+            <td>${escaparHtml(s.area)}</td>
+            <td>${escaparHtml(s.tema)}</td>
+            <td>${s.score}/100</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const endereco = empresaPrincipal.endereco || {};
+    const enderecoTexto = [
+      endereco.logradouro,
+      endereco.numero,
+      endereco.bairro,
+      endereco.municipio,
+      endereco.uf,
+    ].filter(Boolean).join(", ");
+
+    const whatsappEspecialista = "https://wa.me/5541989049616";
+    const dataGeracao = new Date().toLocaleString("pt-BR");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Diagnóstico Finder - ${escaparHtml(empresaPrincipal.razao)}</title>
+<style>
+  @page { size: A4; margin: 13mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: #17233D;
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-}
+  .capa {
+    background: #17233D;
+    color: #fff;
+    padding: 30px 28px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+    page-break-inside: avoid;
+  }
+  .marca { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .8; }
+  .capa h1 { font-size: 27px; margin: 12px 0 7px; }
+  .capa .empresa { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  .capa .meta { color: #D7DDEA; margin: 0; }
+  h2 {
+    font-size: 16px;
+    margin: 22px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #FF6B4A;
+  }
+  h3 { font-size: 14px; margin: 0; }
+  h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; margin: 0 0 6px; }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px 20px;
+  }
+  .box {
+    border: 1px solid #D8DEEA;
+    background: #F7F8FB;
+    border-radius: 10px;
+    padding: 13px;
+    page-break-inside: avoid;
+  }
+  .score-box {
+    display: grid;
+    grid-template-columns: 125px 1fr;
+    gap: 20px;
+    align-items: center;
+    background: #17233D;
+    color: #fff;
+    padding: 18px;
+    border-radius: 12px;
+    page-break-inside: avoid;
+  }
+  .score-num { font-size: 42px; font-weight: 800; color: #FF6B4A; }
+  .score-num small { font-size: 14px; color: #D7DDEA; }
+  .score-box p { margin: 3px 0; color: #D7DDEA; }
+  .resumo {
+    border-left: 4px solid #FF6B4A;
+    background: #FFF3EF;
+    border-radius: 8px;
+    padding: 13px 15px;
+    page-break-inside: avoid;
+  }
+  .three-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .mini {
+    border: 1px solid #E0E4EC;
+    border-radius: 9px;
+    padding: 11px;
+    page-break-inside: avoid;
+  }
+  .mini strong { display: block; margin-bottom: 5px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th, td { border-bottom: 1px solid #D8DEEA; padding: 7px 6px; text-align: left; vertical-align: top; }
+  th { background: #E9EDF5; font-size: 10.5px; }
+  ul, ol { margin: 0; padding-left: 18px; }
+  li { margin-bottom: 5px; }
+  .area-card {
+    border: 1px solid #D8DEEA;
+    border-radius: 11px;
+    padding: 14px;
+    margin: 0 0 13px;
+    page-break-inside: avoid;
+  }
+  .area-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 9px; }
+  .area-score { font-size: 25px; font-weight: 800; color: #FF6B4A; }
+  .area-score small { font-size: 10px; color: #5B667A; }
+  .nivel {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: #E9EDF5;
+    font-size: 9.5px;
+    font-weight: 700;
+  }
+  .area-resumo { background: #F7F8FB; border-radius: 7px; padding: 9px; margin: 0 0 10px; }
+  .area-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .prioridade { margin-top: 9px; font-size: 10px; color: #5B667A; }
+  .cta {
+    margin-top: 24px;
+    background: #17233D;
+    color: white;
+    border-radius: 12px;
+    padding: 18px;
+    page-break-inside: avoid;
+  }
+  .cta h3 { font-size: 15px; margin-bottom: 5px; }
+  .cta a { color: #fff; font-weight: 700; }
+  .aviso { margin-top: 20px; font-size: 9.5px; color: #5B667A; font-style: italic; }
+  .footer { margin-top: 16px; padding-top: 9px; border-top: 1px solid #D8DEEA; font-size: 9px; color: #7A8495; text-align: center; }
+  @media print {
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+  <section class="capa">
+    <div class="marca">Finder of Solutions</div>
+    <h1>Diagnóstico Empresarial Preliminar</h1>
+    <p class="empresa">${escaparHtml(empresaPrincipal.razao)}</p>
+    <p class="meta">${escaparHtml(categoriaPrincipal)} · ${escaparHtml(empresaPrincipal.cnae || "")}</p>
+  </section>
+
+  <h2>1. Identificação</h2>
+  <div class="box grid">
+    <div><strong>Responsável:</strong><br>${escaparHtml(nome)}</div>
+    <div><strong>Cargo:</strong><br>${escaparHtml(cargo)}</div>
+    <div><strong>WhatsApp:</strong><br>${escaparHtml(telefone || "-")}</div>
+    <div><strong>E-mail:</strong><br>${escaparHtml(email || "-")}</div>
+    <div><strong>CNPJ:</strong><br>${escaparHtml(empresaPrincipal.cnpjDigits || "-")}</div>
+    <div><strong>Porte:</strong><br>${escaparHtml(empresaPrincipal.porte || "-")}</div>
+    <div><strong>Regime informado:</strong><br>${escaparHtml(regime || "-")}</div>
+    <div><strong>Faturamento informado:</strong><br>${escaparHtml(faturamento?.label || "-")}</div>
+    <div style="grid-column:1/-1"><strong>Endereço:</strong><br>${escaparHtml(enderecoTexto || "-")}</div>
+  </div>
+
+  <h2>2. Resultado geral</h2>
+  <div class="score-box">
+    <div>
+      <div class="score-num">${score}<small>/100</small></div>
+      <strong>${escaparHtml(tierGeral.label)}</strong>
+    </div>
+    <div>
+      <p><strong>Categoria:</strong> ${escaparHtml(categoriaPrincipal)}</p>
+      <p><strong>Colaboradores:</strong> ${escaparHtml(colaboradores || "-")}</p>
+      <p><strong>Áreas avaliadas:</strong> ${escaparHtml(gruposSelecionados.map((g) => g.label).join(", "))}</p>
+    </div>
+  </div>
+
+  ${resumoExecutivo ? `
+    <h2>3. Resumo executivo</h2>
+    <div class="resumo">${escaparHtml(resumoExecutivo)}</div>
+  ` : ""}
+
+  <h2>4. Visão executiva</h2>
+  <div class="three-cols">
+    <div class="mini">
+      <strong>Principais dores</strong>
+      <ul>${listaHtml(principaisDoresIa.length ? principaisDoresIa : pontosAtencaoFinal.slice(0,3))}</ul>
+    </div>
+    <div class="mini">
+      <strong>Pontos fortes</strong>
+      <ul>${listaHtml(pontosFortesIa, "Pontos fortes serão validados em análise aprofundada.")}</ul>
+    </div>
+    <div class="mini">
+      <strong>Prioridades</strong>
+      <ol>${listaHtml(prioridadesIa.length ? prioridadesIa : recomendacoesFinal.slice(0,3).map((r) => r.dica))}</ol>
+    </div>
+  </div>
+
+  <h2>5. Índice de maturidade por área</h2>
+  <table>
+    <thead><tr><th>Área</th><th>Score</th><th>Nível</th></tr></thead>
+    <tbody>${areasResumoHtml}</tbody>
+  </table>
+
+  <h2>6. Detalhamento por subtema</h2>
+  <table>
+    <thead><tr><th>Área</th><th>Subtema</th><th>Score</th></tr></thead>
+    <tbody>${subtemasHtml}</tbody>
+  </table>
+
+  <h2>7. Diagnóstico detalhado</h2>
+  ${areasDetalhadasHtml}
+
+  <h2>8. Oportunidades identificadas</h2>
+  <div class="box">
+    <ul>${listaHtml(oportunidadesIa.length ? oportunidadesIa : recomendacoesFinal.map((r) => r.dica))}</ul>
+  </div>
+
+  ${regime !== "Não sei" && aliquota != null ? `
+    <h2>9. Referência tributária</h2>
+    <div class="box">
+      <strong>Carga tributária estimada de referência:</strong> ${escaparHtml(String(aliquota))}%<br>
+      <strong>Estimativa anual:</strong> ${escaparHtml(formatBRL(valorAnualImposto))}<br>
+      <span style="color:#5B667A">Estimativa simplificada com base nas informações fornecidas; não representa cálculo fiscal definitivo.</span>
+    </div>
+  ` : ""}
+
+  ${observacao.trim() ? `
+    <h2>10. Observação do participante</h2>
+    <div class="box">${escaparHtml(observacao.trim())}</div>
+  ` : ""}
+
+  <section class="cta">
+    <h3>Quer aprofundar este diagnóstico?</h3>
+    <div>Fale com um especialista Finder pelo WhatsApp:</div>
+    <a href="${whatsappEspecialista}">(41) 98904-9616</a>
+  </section>
+
+  <p class="aviso">
+    As informações apresentadas possuem caráter preliminar e foram elaboradas a partir das respostas fornecidas pelo participante.
+    Recomenda-se análise individualizada para validação das oportunidades identificadas.
+  </p>
+
+  <div class="footer">
+    Finder of Solutions · Diagnóstico Empresarial · Gerado em ${escaparHtml(dataGeracao)}
+  </div>
+
+</body>
+</html>`;
+
+    try {
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const janela = window.open(url, "_blank");
+
+      if (!janela) {
+        URL.revokeObjectURL(url);
+        showToast("Permita pop-ups no navegador para gerar o PDF.");
+        return;
+      }
+
+      janela.addEventListener(
+        "load",
+        () => {
+          setTimeout(() => {
+            try {
+              janela.focus();
+              janela.print();
+            } finally {
+              setTimeout(() => URL.revokeObjectURL(url), 10000);
+            }
+          }, 700);
+        },
+        { once: true }
+      );
+    } catch (erro) {
+      console.error("Erro ao gerar relatório:", erro);
+      showToast("Não foi possível gerar o relatório.");
+    }
+  }
 
   return (
     <div style={{ background: "#EEF0F5", minHeight: 760, display: "flex", justifyContent: "center", padding: "32px 16px", fontFamily: BODY_FONT }}>
@@ -1724,6 +1518,28 @@ Finder of Solutions · Diagnóstico Empresarial
                   {categoriaPrincipal} · {colaboradores} colaboradores · {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
 
+                {resumoExecutivo && (
+                  <div style={{ background: "#FFF3EF", borderLeft: `4px solid ${CORAL}`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 5px" }}>
+                      Resumo executivo
+                    </p>
+                    <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.5 }}>{resumoExecutivo}</p>
+                  </div>
+                )}
+
+                {pontosFortesIa.length > 0 && (
+                  <div style={{ background: "#E1F5EE", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 6px" }}>
+                      Pontos fortes
+                    </p>
+                    {pontosFortesIa.slice(0, 3).map((p, i) => (
+                      <p key={i} style={{ fontSize: 11.5, color: "#0F6E56", margin: i ? "5px 0 0" : 0, lineHeight: 1.4 }}>
+                        • {p}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 {observacao.trim() && (
                   <div style={{ background: ICE, borderRadius: 12, padding: 12, marginBottom: 16 }}>
                     <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 4px" }}>Observação do participante</p>
@@ -1826,15 +1642,32 @@ Finder of Solutions · Diagnóstico Empresarial
                 </div>
 
                 <p style={{ fontSize: 10.5, color: "#9AA3B5", fontStyle: "italic", margin: "0 0 16px", lineHeight: 1.4 }}>
-                  Diagnóstico preliminar e educativo, gerado por IA, incluindo a estimativa tributária. Não substitui análise profissional individualizada.
+                  Diagnóstico empresarial preliminar elaborado a partir das respostas fornecidas. Recomenda-se análise profissional individualizada para validação.
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <PrimaryButton onClick={gerarPdf}>
                     <Download size={15} /> Baixar relatório em PDF
                   </PrimaryButton>
-                  <PrimaryButton style={{ background: NAVY }} onClick={() => showToast("Solicitação enviada (simulação)")}>
-                    <CalendarCheck size={15} /> Agendar com especialista
+                  <PrimaryButton
+                    style={{ background: NAVY }}
+                    onClick={() => {
+                      const numero = "5541989049616";
+                      const mensagem = encodeURIComponent(
+                        `Olá! Acabei de realizar o Diagnóstico Empresarial Finder.
+
+Empresa: ${empresaPrincipal?.razao || ""}
+Responsável: ${nome || ""}
+Score: ${score}/100
+Principal ponto de atenção: ${areaMaisFraca?.label || ""}
+
+Gostaria de falar com um especialista sobre o resultado.`
+                      );
+
+                      window.open(`https://wa.me/${numero}?text=${mensagem}`, "_blank");
+                    }}
+                  >
+                    <CalendarCheck size={15} /> Falar com especialista
                   </PrimaryButton>
                   <button onClick={reiniciar} style={{
                     background: "none", border: "none", color: MUTED, fontSize: 11.5,
