@@ -58,14 +58,42 @@ const SIMPLES_ALIQUOTAS = {
 const PRESUMIDO_ALIQUOTAS = { "Comércio": 11, "Indústria": 11, "Serviço": 16 };
 const REAL_ALIQUOTAS = { "Comércio": 20, "Indústria": 20, "Serviço": 24 };
 
-function estimarAliquota(regime, segmento, anual) {
-  if (regime === "Simples Nacional") {
-    const faixaIdx = SIMPLES_FAIXAS.findIndex((teto) => anual <= teto);
-    const idx = faixaIdx === -1 ? SIMPLES_ALIQUOTAS[segmento].length - 1 : faixaIdx;
-    return SIMPLES_ALIQUOTAS[segmento][idx];
+function normalizarSegmentoTributario(segmento) {
+  if (!segmento) return "Serviço";
+
+  const valor = String(segmento).toLowerCase();
+
+  if (valor.includes("indústria") || valor.includes("industria")) {
+    return "Indústria";
   }
-  if (regime === "Lucro Presumido") return PRESUMIDO_ALIQUOTAS[segmento];
-  if (regime === "Lucro Real") return REAL_ALIQUOTAS[segmento];
+
+  if (valor.includes("comércio") || valor.includes("comercio")) {
+    return "Comércio";
+  }
+
+  return "Serviço";
+}
+
+function estimarAliquota(regime, segmento, anual) {
+  const segmentoNormalizado = normalizarSegmentoTributario(segmento);
+
+  if (regime === "Simples Nacional") {
+    const aliquotas = SIMPLES_ALIQUOTAS[segmentoNormalizado];
+    if (!aliquotas) return null;
+
+    const faixaIdx = SIMPLES_FAIXAS.findIndex((teto) => anual <= teto);
+    const idx = faixaIdx === -1 ? aliquotas.length - 1 : faixaIdx;
+    return aliquotas[idx];
+  }
+
+  if (regime === "Lucro Presumido") {
+    return PRESUMIDO_ALIQUOTAS[segmentoNormalizado] ?? null;
+  }
+
+  if (regime === "Lucro Real") {
+    return REAL_ALIQUOTAS[segmentoNormalizado] ?? null;
+  }
+
   return null;
 }
 
@@ -297,27 +325,7 @@ function pickCompany(cnpjDigits) {
   return COMPANIES[idx];
 }
 
-function normalizarSegmentoTributario(segmento) {
-  if (!segmento) return "Serviço";
 
-  const valor = String(segmento).toLowerCase();
-
-  if (
-    valor.includes("indústria") ||
-    valor.includes("industria")
-  ) {
-    return "Indústria";
-  }
-
-  if (
-    valor.includes("comércio") ||
-    valor.includes("comercio")
-  ) {
-    return "Comércio";
-  }
-
-  return "Serviço";
-}
 
 function segmentoPredominanteDe(empresas) {
   if (!empresas.length) return null;
@@ -389,50 +397,57 @@ export default function DiagnosticoPrototipo() {
 
   const segmentoPredominante = segmentoPredominanteDe(empresas);
   const empresaPrincipal = empresas[0] || null;
-  const codigoQuestionario =
-  empresaPrincipal?.codigoQuestionario || null;
+  const codigoQuestionario = empresaPrincipal?.codigoQuestionario || null;
+  const areasPrioritarias = empresaPrincipal?.areasPrioritarias || [];
 
-const areasPrioritarias =
-  empresaPrincipal?.areasPrioritarias || [];
+  const mapaAreaApiParaId = {
+    "Marketing": "marketing",
+    "Jurídico": "juridico",
+    "Contábil / Fiscal": "contabilidade",
+    "Contabilidade": "contabilidade",
+    "Financeiro": "financeiro",
+    "Financeiro PF/PJ": "financeiro",
+    "Administrativo": "administrativo",
+    "Gestão": "gestao",
+    "Operacional": "operacional",
+    "Pessoas": "rh",
+    "Recursos Humanos": "rh",
+    "Comercial": "comercial",
+    "Comercial / Vendas": "comercial",
+    "Tecnologia": "tecnologia",
+    "Processos": "administrativo",
+    "Atendimento": "comercial",
+  };
 
-const mapaAreaApiParaId = {
-  "Marketing": "marketing",
-  "Jurídico": "juridico",
-  "Contábil / Fiscal": "contabilidade",
-  "Contabilidade": "contabilidade",
-  "Financeiro": "financeiro",
-  "Administrativo": "administrativo",
-  "Gestão": "gestao",
-  "Operacional": "operacional",
-  "Pessoas": "rh",
-  "Recursos Humanos": "rh",
-  "Comercial": "comercial",
-  "Tecnologia": "tecnologia",
-  "Processos": "administrativo",
-  "Atendimento": "comercial",
-};
+  const areasSugeridas = areasPrioritarias
+    .map((nome) => mapaAreaApiParaId[nome])
+    .filter(Boolean);
 
-const areasSugeridas = areasPrioritarias
-  .map((nome) => mapaAreaApiParaId[nome])
-  .filter(Boolean);
-
-  const areasDoDiagnostico =
-  dores.length > 0
+  const areasDoDiagnostico = dores.length > 0
     ? dores
     : areasSugeridas.slice(0, MAX_DORES);
 
-const gruposSelecionados = areasDoDiagnostico.map((id) => ({
-  id,
-  label: areaLabel(id),
-  subtemas: CHECKLISTS[id]
-}));
-  const todasPerguntas = gruposSelecionados.flatMap((g) => g.subtemas.flatMap((s) => s.perguntas));
-  const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
+  const gruposSelecionados = areasDoDiagnostico
+    .filter((id) => CHECKLISTS[id])
+    .map((id) => ({
+      id,
+      label: areaLabel(id),
+      subtemas: CHECKLISTS[id],
+    }));
+
+  const todasPerguntas = gruposSelecionados.flatMap((g) =>
+    g.subtemas.flatMap((s) => s.perguntas)
+  );
+
+  const todasRespondidas =
+    todasPerguntas.length > 0 &&
+    todasPerguntas.every((q) => respostas[q.id]);
 
   useEffect(() => {
-    if (step !== "analisando" || !empresaPrincipal || dores.length === 0) return;
+    if (step !== "analisando" || !empresaPrincipal || areasDoDiagnostico.length === 0) return;
+
     let cancelado = false;
-    const labels = dores.map(areaLabel);
+    const labels = areasDoDiagnostico.map(areaLabel);
     const msgs = [
       `Identificando segmento predominante: ${segmentoPredominante}`,
       `Carregando base de conhecimento: ${labels.join(", ")}`,
@@ -440,11 +455,18 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
       "Estimando carga tributária de referência",
       "Calculando índice de maturidade por departamento",
     ];
+
     setMsgIdx(0);
-    const interval = setInterval(() => setMsgIdx((i) => Math.min(i + 1, msgs.length - 1)), 500);
+
+    const interval = setInterval(
+      () => setMsgIdx((i) => Math.min(i + 1, msgs.length - 1)),
+      500
+    );
 
     const payload = {
       segmento: segmentoPredominante,
+      categoria: empresaPrincipal?.categoria || null,
+      codigoQuestionario,
       empresas: empresas.map((e) => e.razao),
       faturamento: faturamento?.label,
       colaboradores,
@@ -452,96 +474,123 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
       observacao,
       areas: gruposSelecionados.map((g) => ({
         area: g.label,
+        score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
         subtemas: g.subtemas.map((s) => ({
           tema: s.tema,
           perguntas: s.perguntas.map((q) => ({
-            areas: gruposSelecionados.map((g) => ({
-  area: g.label,
-  subtemas: g.subtemas.map((s) => ({
-    tema: s.tema,
-    perguntas: s.perguntas.map((q) => ({
-      texto: textoDe(
-        q,
-        segmentoPredominante,
-        empresaPrincipal?.categoria
-      ),
-      resposta: respostas[q.id],
-    })),
-  })),
-})),
+            texto: textoDe(
+              q,
+              segmentoPredominante,
+              empresaPrincipal?.categoria
+            ),
+            resposta: respostas[q.id],
+          })),
+        })),
+      })),
+    };
 
     const minDelay = new Promise((resolve) => setTimeout(resolve, 1800));
+
     const chamadaIA = fetch("/api/diagnostico", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
-    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const erro = await r.json().catch(() => null);
+          console.error("Erro na API de diagnóstico:", erro);
+          return null;
+        }
+        return r.json();
+      })
+      .catch((erro) => {
+        console.error("Erro ao chamar diagnóstico:", erro);
+        return null;
+      });
 
     Promise.all([chamadaIA, minDelay]).then(([data]) => {
       if (cancelado) return;
+
       if (data?.areas) {
         const mapa = {};
-        data.areas.forEach((a) => { mapa[a.area] = a; });
+        data.areas.forEach((a) => {
+          mapa[a.area] = a;
+        });
         setIaResultado(mapa);
+      } else {
+        setIaResultado(null);
       }
+
       setStep("resultado");
     });
 
-    return () => { cancelado = true; clearInterval(interval); };
+    return () => {
+      cancelado = true;
+      clearInterval(interval);
+    };
   }, [step]);
+  async function adicionarCnpj() {
+    const digits = cnpjInput.replace(/\D/g, "");
 
- async function adicionarCnpj() {
-  const digits = cnpjInput.replace(/\D/g, "");
-
-  if (digits.length !== 14 || empresas.length >= MAX_EMPRESAS) return;
-
-  setBuscando(true);
-
-  try {
-    const r = await fetch(`/api/cnpj?cnpj=${digits}`);
-    const data = await r.json();
-
-    if (!r.ok || !data.sucesso) {
-      throw new Error(data.error || "Erro ao consultar CNPJ");
+    if (digits.length !== 14) {
+      showToast("Digite um CNPJ válido com 14 dígitos.");
+      return;
     }
 
-    const empresa = {
-      cnpjDigits: data.empresa.cnpj,
-      razao: data.empresa.razaoSocial,
-      nomeFantasia: data.empresa.nomeFantasia,
-      porte: data.empresa.porte,
+    if (empresas.length >= MAX_EMPRESAS) {
+      showToast(`Limite de ${MAX_EMPRESAS} CNPJs atingido.`);
+      return;
+    }
 
-      segmento: data.classificacao.segmento,
+    setBuscando(true);
 
-      categoria: data.classificacao.categoria,
+    try {
+      const r = await fetch(`/api/cnpj?cnpj=${digits}`);
+      const data = await r.json();
 
-      codigoQuestionario:
-        data.classificacao.codigoQuestionario,
+      if (!r.ok || !data?.sucesso) {
+        throw new Error(data?.error || "Erro ao consultar CNPJ");
+      }
 
-      cnae:
-        `${data.cnae.codigo} — ${data.cnae.descricao}`,
+      const empresa = {
+        cnpjDigits: data.empresa?.cnpj || digits,
+        razao: data.empresa?.razaoSocial || "Razão social não informada",
+        nomeFantasia: data.empresa?.nomeFantasia || "",
+        porte: data.empresa?.porte || "Não informado",
+        segmento: data.classificacao?.segmento || "Serviço",
+        categoria: data.classificacao?.categoria || "",
+        codigoQuestionario: data.classificacao?.codigoQuestionario || "",
+        cnae: `${data.cnae?.codigo || ""} — ${data.cnae?.descricao || ""}`,
+        areasPrioritarias:
+          data.classificacao?.diagnostico?.areasPrioritarias || [],
+        areasComplementares:
+          data.classificacao?.diagnostico?.areasComplementares || [],
+        endereco: data.endereco || {},
+      };
 
-      areasPrioritarias:
-        data.classificacao.diagnostico.areasPrioritarias,
+      setEmpresas((prev) => [...prev, empresa]);
 
-      areasComplementares:
-        data.classificacao.diagnostico.areasComplementares,
+      if (empresas.length === 0 && dores.length === 0) {
+        const sugeridas = empresa.areasPrioritarias
+          .map((nome) => mapaAreaApiParaId[nome])
+          .filter(Boolean)
+          .slice(0, MAX_DORES);
 
-      endereco: data.endereco,
-    };
+        if (sugeridas.length > 0) {
+          setDores(sugeridas);
+        }
+      }
 
-    setEmpresas((prev) => [...prev, empresa]);
-
-    setCnpjInput("");
-
-  } catch (err) {
-    console.error(err);
-
-    showToast(err.message || "Erro ao consultar CNPJ");
-  } finally {
-    setBuscando(false);
+      setCnpjInput("");
+      showToast("Empresa encontrada com sucesso.");
+    } catch (err) {
+      console.error("Erro ao consultar CNPJ:", err);
+      showToast(err.message || "Erro ao consultar CNPJ");
+    } finally {
+      setBuscando(false);
+    }
   }
-}
 
   function removerEmpresa(idx) {
     setEmpresas((prev) => prev.filter((_, i) => i !== idx));
@@ -613,10 +662,10 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
 
   // Quando a IA responde, seus riscos/recomendações substituem os calculados localmente.
   const pontosAtencaoFinal = iaResultado
-    ? dores.flatMap((id) => iaResultado[areaLabel(id)]?.riscos || []).slice(0, 6)
+    ? areasDoDiagnostico.flatMap((id) => iaResultado[areaLabel(id)]?.riscos || []).slice(0, 6)
     : pontosAtencao;
   const recomendacoesFinal = iaResultado
-    ? dores.flatMap((id) => (iaResultado[areaLabel(id)]?.recomendacoes || []).map((r) => ({ area: areaLabel(id), dica: r }))).slice(0, 3)
+    ? areasDoDiagnostico.flatMap((id) => (iaResultado[areaLabel(id)]?.recomendacoes || []).map((r) => ({ area: areaLabel(id), dica: r }))).slice(0, 3)
     : subOrdenados.slice(0, 3);
 
   const aliquota = empresaPrincipal && regime ? estimarAliquota(regime, segmentoPredominante, faturamento?.anual || 0) : null;
@@ -805,7 +854,7 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
                   Checklist — {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
                 <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
-                  {todasPerguntas.length} perguntas · ajustado para {segmentoPredominante?.toLowerCase()}
+                  {todasPerguntas.length} perguntas · ajustado para {(empresaPrincipal?.categoria || segmentoPredominante)?.toLowerCase()}
                   {empresas.length > 1 ? " (segmento predominante do grupo)" : ""}
                 </p>
 
@@ -825,7 +874,7 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
                             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                               {sub.perguntas.map((q) => (
                                 <div key={q.id}>
-                                  <p style={{ fontSize: 12.5, color: NAVY, margin: "0 0 6px", lineHeight: 1.4 }}>{textoDe(q, segmentoPredominante)}</p>
+                                  <p style={{ fontSize: 12.5, color: NAVY, margin: "0 0 6px", lineHeight: 1.4 }}>{textoDe(q, segmentoPredominante, empresaPrincipal?.categoria)}</p>
                                   <div style={{ display: "flex", gap: 6 }}>
                                     {[["sim", "Sim"], ["parcialmente", "Parcial"], ["nao", "Não"]].map(([val, lbl]) => (
                                       <button key={val} onClick={() => responder(q.id, val)} style={{
@@ -850,14 +899,14 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
               </div>
             )}
 
-            {step === "analisando" && empresaPrincipal && dores.length > 0 && (
+            {step === "analisando" && empresaPrincipal && areasDoDiagnostico.length > 0 && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
                 <Loader2 size={34} color={CORAL} className="spin" />
                 <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: 0 }}>A IA está analisando</p>
                 <p style={{ fontSize: 12.5, color: MUTED, minHeight: 18, margin: 0, padding: "0 10px" }}>
                   {[
                     `Identificando segmento predominante: ${segmentoPredominante}`,
-                    `Carregando base de conhecimento: ${dores.map(areaLabel).join(", ")}`,
+                    `Carregando base de conhecimento: ${areasDoDiagnostico.map(areaLabel).join(", ")}`,
                     "Cruzando respostas de todos os subtemas do checklist",
                     "Estimando carga tributária de referência",
                     "Calculando índice de maturidade por departamento",
@@ -866,7 +915,7 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
               </div>
             )}
 
-            {step === "resultado" && empresaPrincipal && dores.length > 0 && areaMaisFraca && (
+            {step === "resultado" && empresaPrincipal && areasDoDiagnostico.length > 0 && areaMaisFraca && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
                 <div style={{ background: tierDe(areaMaisFraca.score).bg, borderRadius: 14, padding: 14, marginBottom: 16, display: "flex", gap: 10 }}>
@@ -886,7 +935,7 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
                   {empresaPrincipal.razao}{empresas.length > 1 ? ` + ${empresas.length - 1} empresa${empresas.length > 2 ? "s" : ""} do grupo` : ""}
                 </p>
                 <p style={{ fontSize: 11, color: "#9AA3B5", textAlign: "center", margin: "0 0 16px" }}>
-                  {segmentoPredominante} · {colaboradores} colaboradores · {dores.map(areaLabel).join(", ")}
+                  {empresaPrincipal?.categoria || segmentoPredominante} · {colaboradores} colaboradores · {areasDoDiagnostico.map(areaLabel).join(", ")}
                 </p>
 
                 {observacao.trim() && (
@@ -915,9 +964,13 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
                         <Percent size={14} color="#C6CEDD" />
                         <p style={{ fontSize: 11, color: "#C6CEDD", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>Carga tributária estimada</p>
                       </div>
-                      <p style={{ fontFamily: DISPLAY_FONT, fontSize: 32, fontWeight: 700, color: WHITE, margin: "0 0 4px" }}>{aliquota}%</p>
+                      <p style={{ fontFamily: DISPLAY_FONT, fontSize: 32, fontWeight: 700, color: WHITE, margin: "0 0 4px" }}>
+                        {aliquota != null ? `${aliquota}%` : "A validar"}
+                      </p>
                       <p style={{ fontSize: 12, color: "#C6CEDD", margin: 0 }}>
-                        ≈ {formatBRL(valorAnualImposto)}/ano em {regime}, com base no faturamento informado
+                        {valorAnualImposto != null
+                          ? `≈ ${formatBRL(valorAnualImposto)}/ano em ${regime}, com base no faturamento informado`
+                          : "Estimativa indisponível para os dados informados."}
                       </p>
                       <p style={{ fontSize: 10, color: "#8592AC", margin: "8px 0 0", fontStyle: "italic" }}>
                         Estimativa de referência para {segmentoPredominante?.toLowerCase()}. O valor real depende de detalhes específicos da operação.
