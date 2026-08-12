@@ -404,24 +404,58 @@ export default function DiagnosticoPrototipo() {
     return () => { cancelado = true; clearInterval(interval); };
   }, [step]);
 
-  async function adicionarCnpj() {
-    const digits = cnpjInput.replace(/\D/g, "");
-    if (!digits || empresas.length >= MAX_EMPRESAS) return;
-    setBuscando(true);
-    try {
-      const r = await fetch(`/api/cnpj?cnpj=${digits}`);
-      if (!r.ok) throw new Error("CNPJ não encontrado");
-      const data = await r.json();
-      setEmpresas((prev) => [...prev, data]);
-      setCnpjInput("");
-    } catch (e) {
-      setEmpresas((prev) => [...prev, { ...pickCompany(digits), cnpjDigits: digits }]);
-      setCnpjInput("");
-      showToast("CNPJ real indisponível agora — usando dado simulado.");
-    } finally {
-      setBuscando(false);
+ async function adicionarCnpj() {
+  const digits = cnpjInput.replace(/\D/g, "");
+
+  if (digits.length !== 14 || empresas.length >= MAX_EMPRESAS) return;
+
+  setBuscando(true);
+
+  try {
+    const r = await fetch(`/api/cnpj?cnpj=${digits}`);
+    const data = await r.json();
+
+    if (!r.ok || !data.sucesso) {
+      throw new Error(data.error || "Erro ao consultar CNPJ");
     }
+
+    const empresa = {
+      cnpjDigits: data.empresa.cnpj,
+      razao: data.empresa.razaoSocial,
+      nomeFantasia: data.empresa.nomeFantasia,
+      porte: data.empresa.porte,
+
+      segmento: data.classificacao.segmento,
+
+      categoria: data.classificacao.categoria,
+
+      codigoQuestionario:
+        data.classificacao.codigoQuestionario,
+
+      cnae:
+        `${data.cnae.codigo} — ${data.cnae.descricao}`,
+
+      areasPrioritarias:
+        data.classificacao.diagnostico.areasPrioritarias,
+
+      areasComplementares:
+        data.classificacao.diagnostico.areasComplementares,
+
+      endereco: data.endereco,
+    };
+
+    setEmpresas((prev) => [...prev, empresa]);
+
+    setCnpjInput("");
+
+  } catch (err) {
+    console.error(err);
+
+    showToast(err.message || "Erro ao consultar CNPJ");
+  } finally {
+    setBuscando(false);
   }
+}
 
   function removerEmpresa(idx) {
     setEmpresas((prev) => prev.filter((_, i) => i !== idx));
