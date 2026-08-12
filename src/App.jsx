@@ -301,6 +301,15 @@ function riscoDe(q, segmento, categoria) {
   );
 }
 
+// No evento usamos 5 perguntas por área: 2 do primeiro subtema, 2 do segundo e 1 do terceiro.
+function checklistEnxuto(subtemas) {
+  const quantidade = [2, 2, 1];
+  return subtemas.map((sub, idx) => ({
+    ...sub,
+    perguntas: sub.perguntas.slice(0, quantidade[idx] || 1),
+  }));
+}
+
 // Cada área tem 3 subtemas, cada um com 3 perguntas.
 const CHECKLISTS = {
   marketing: [
@@ -576,6 +585,8 @@ export default function DiagnosticoPrototipo() {
   const [step, setStep] = useState("intro");
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [email, setEmail] = useState("");
   const [cnpjInput, setCnpjInput] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [empresas, setEmpresas] = useState([]);
@@ -640,7 +651,7 @@ export default function DiagnosticoPrototipo() {
     .map((id) => ({
       id,
       label: areaLabel(id),
-      subtemas: CHECKLISTS[id],
+      subtemas: checklistEnxuto(CHECKLISTS[id]),
     }));
   const todasPerguntas = gruposSelecionados.flatMap((g) => g.subtemas.flatMap((s) => s.perguntas));
   const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
@@ -665,6 +676,7 @@ export default function DiagnosticoPrototipo() {
     );
 
     const payload = {
+      responsavel: { nome, cargo, telefone, email },
       segmento: segmentoPredominante,
       categoria: categoriaPrincipal,
       codigoQuestionario,
@@ -799,7 +811,7 @@ export default function DiagnosticoPrototipo() {
   }
 
   function reiniciar() {
-    setStep("intro"); setNome(""); setCargo(""); setCnpjInput("");
+    setStep("intro"); setNome(""); setCargo(""); setTelefone(""); setEmail(""); setCnpjInput("");
     setEmpresas([]); setFaturamento(null); setColaboradores(null); setRegime(null);
     setObservacao(""); setDores([]); setRespostas({}); setIaResultado(null);
   }
@@ -855,6 +867,104 @@ export default function DiagnosticoPrototipo() {
   const aliquota = empresaPrincipal && regime ? estimarAliquota(regime, segmentoPredominante, faturamento?.anual || 0) : null;
   const valorAnualImposto = aliquota != null && faturamento ? faturamento.anual * (aliquota / 100) : null;
 
+  function gerarPdf() {
+    if (!empresaPrincipal) return;
+
+    const riscosHtml = pontosAtencaoFinal.length
+      ? pontosAtencaoFinal.map((r) => `<li>${r}</li>`).join("")
+      : "<li>Nenhum risco relevante foi identificado nas respostas selecionadas.</li>";
+
+    const recomendacoesHtml = recomendacoesFinal.length
+      ? recomendacoesFinal.map((r) => `<li><strong>${r.area || "Prioridade"}:</strong> ${r.dica}</li>`).join("")
+      : "<li>Manter os controles atuais e revisar periodicamente os indicadores.</li>";
+
+    const areasHtml = areasComScore
+      .map((a) => `<tr><td>${a.label}</td><td>${a.score}/100</td><td>${tierDe(a.score).label}</td></tr>`)
+      .join("");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Diagnóstico Finder - ${empresaPrincipal.razao}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; color: #17233D; margin: 0; font-size: 12px; line-height: 1.45; }
+  .header { background: #17233D; color: white; padding: 22px; margin: -14mm -14mm 18px; }
+  .header h1 { margin: 0 0 5px; font-size: 22px; }
+  .header p { margin: 0; opacity: .8; }
+  h2 { font-size: 15px; margin: 20px 0 8px; border-bottom: 2px solid #FF6B4A; padding-bottom: 5px; }
+  .score { font-size: 28px; font-weight: 700; color: #FF6B4A; }
+  .muted { color: #5B667A; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border-bottom: 1px solid #D8DEEA; padding: 7px 5px; text-align: left; }
+  th { background: #E9EDF5; }
+  li { margin-bottom: 6px; }
+  .aviso { margin-top: 24px; font-size: 10px; color: #5B667A; font-style: italic; }
+  .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #D8DEEA; font-size: 10px; color: #5B667A; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Diagnóstico Empresarial Finder</h1>
+    <p>Diagnóstico preliminar realizado em evento</p>
+  </div>
+
+  <h2>Empresa</h2>
+  <div class="grid">
+    <div><strong>Razão social:</strong> ${empresaPrincipal.razao}</div>
+    <div><strong>CNPJ:</strong> ${empresaPrincipal.cnpjDigits || "-"}</div>
+    <div><strong>Categoria:</strong> ${categoriaPrincipal}</div>
+    <div><strong>Porte:</strong> ${empresaPrincipal.porte || "-"}</div>
+    <div style="grid-column: 1 / -1"><strong>CNAE:</strong> ${empresaPrincipal.cnae || "-"}</div>
+  </div>
+
+  <h2>Responsável</h2>
+  <div class="grid">
+    <div><strong>Nome:</strong> ${nome}</div>
+    <div><strong>Cargo:</strong> ${cargo}</div>
+    <div><strong>WhatsApp:</strong> ${telefone || "-"}</div>
+    <div><strong>E-mail:</strong> ${email || "-"}</div>
+  </div>
+
+  <h2>Resultado geral</h2>
+  <div class="score">${score}/100</div>
+  <div><strong>${tierGeral.label}</strong></div>
+  <p class="muted">${faturamento?.label || "Faturamento não informado"} · ${colaboradores || "-"} colaboradores · ${regime || "-"}</p>
+
+  <h2>Maturidade por área</h2>
+  <table>
+    <thead><tr><th>Área</th><th>Score</th><th>Nível</th></tr></thead>
+    <tbody>${areasHtml}</tbody>
+  </table>
+
+  <h2>Principais riscos identificados</h2>
+  <ol>${riscosHtml}</ol>
+
+  <h2>Ações prioritárias</h2>
+  <ol>${recomendacoesHtml}</ol>
+
+  ${observacao.trim() ? `<h2>Observação do participante</h2><p>${observacao.trim()}</p>` : ""}
+
+  <p class="aviso">Diagnóstico preliminar e educativo. As estimativas e recomendações não substituem análise profissional individualizada.</p>
+  <div class="footer">Finder of Solutions · Diagnóstico Empresarial</div>
+
+  <script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
+</body>
+</html>`;
+
+    const janela = window.open("", "_blank", "noopener,noreferrer");
+    if (!janela) {
+      showToast("Permita pop-ups para gerar o PDF.");
+      return;
+    }
+    janela.document.open();
+    janela.document.write(html);
+    janela.document.close();
+  }
+
   return (
     <div style={{ background: "#EEF0F5", minHeight: 760, display: "flex", justifyContent: "center", padding: "32px 16px", fontFamily: BODY_FONT }}>
       <div style={{ width: 380, borderRadius: 40, background: NAVY, padding: 12, boxShadow: "0 30px 60px rgba(23,35,61,0.25)" }}>
@@ -898,8 +1008,14 @@ export default function DiagnosticoPrototipo() {
                   ))}
                 </div>
 
+                <label style={labelStyle}>WhatsApp</label>
+                <input style={inputStyle} placeholder="(41) 99999-9999" value={telefone} onChange={(e) => setTelefone(e.target.value)} inputMode="tel" />
+
+                <label style={labelStyle}>E-mail</label>
+                <input style={inputStyle} placeholder="voce@empresa.com.br" value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
+
                 <div style={{ flex: 1 }} />
-                <PrimaryButton disabled={!nome || !cargo} onClick={() => setStep("cnpj")}>
+                <PrimaryButton disabled={!nome || !cargo || telefone.replace(/\D/g, "").length < 10 || !email.includes("@")} onClick={() => setStep("cnpj")}>
                   Continuar <ArrowRight size={16} />
                 </PrimaryButton>
               </div>
@@ -1001,11 +1117,18 @@ export default function DiagnosticoPrototipo() {
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                 <p style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: NAVY, margin: "6px 0 4px" }}>Quais suas maiores dores hoje?</p>
                 <p style={{ fontSize: 12.5, color: MUTED, margin: "0 0 4px" }}>Escolha até {MAX_DORES} áreas que mais preocupam agora.</p>
-                <p style={{ fontSize: 11, color: dores.length === MAX_DORES ? CORAL : "#9AA3B5", margin: "0 0 14px", fontWeight: 600 }}>
+                <p style={{ fontSize: 11, color: dores.length === MAX_DORES ? CORAL : "#9AA3B5", margin: "0 0 8px", fontWeight: 600 }}>
                   {dores.length} de {MAX_DORES} selecionadas
                 </p>
+                {areasSugeridas.length > 0 && (
+                  <div style={{ background: ICE, borderRadius: 10, padding: "8px 10px", marginBottom: 12 }}>
+                    <p style={{ fontSize: 10.5, color: MUTED, margin: 0, lineHeight: 1.4 }}>
+                      Pelo CNAE <strong>{categoriaPrincipal}</strong>, as áreas mais relevantes tendem a ser: {areasSugeridas.slice(0, 3).map(areaLabel).join(", ")}.
+                    </p>
+                  </div>
+                )}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, overflowY: "auto", maxHeight: 420, paddingRight: 2 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, overflowY: "auto", maxHeight: 390, paddingRight: 2 }}>
                   {AREAS.map(({ id, label, Icon }) => {
                     const selecionada = dores.includes(id);
                     const bloqueada = !selecionada && dores.length >= MAX_DORES;
@@ -1038,7 +1161,9 @@ export default function DiagnosticoPrototipo() {
                   Checklist — {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
                 <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
-                  {todasPerguntas.length} perguntas · adaptado para {categoriaPrincipal}\n                  {empresaPrincipal?.cnae ? ` · CNAE ${empresaPrincipal.cnae.split("—")[0].trim()}` : ""}\n                  {empresas.length > 1 ? " (empresa principal do grupo)" : ""}
+                  {todasPerguntas.length} perguntas · adaptado para {categoriaPrincipal}
+                  {empresaPrincipal?.cnae ? ` · CNAE ${empresaPrincipal.cnae.split("—")[0].trim()}` : ""}
+                  {empresas.length > 1 ? " (empresa principal do grupo)" : ""}
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 22, overflowY: "auto", maxHeight: 440, paddingRight: 2 }}>
@@ -1227,7 +1352,7 @@ export default function DiagnosticoPrototipo() {
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <PrimaryButton onClick={() => showToast("PDF gerado (simulação)")}>
+                  <PrimaryButton onClick={gerarPdf}>
                     <Download size={15} /> Baixar relatório em PDF
                   </PrimaryButton>
                   <PrimaryButton style={{ background: NAVY }} onClick={() => showToast("Solicitação enviada (simulação)")}>
