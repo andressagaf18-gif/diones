@@ -1404,9 +1404,11 @@ export default function DiagnosticoPrototipo() {
                   alt="Finder of Solutions"
                   style={{ width: 210, maxWidth: "88%", height: "auto", objectFit: "contain", marginBottom: 2 }}
                 />
-                <div style={{ width: 72, height: 72, borderRadius: "50%", background: ICE, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <QrCode size={32} color={NAVY} />
-                </div>
+                <img
+  src="/qrcode-diagnostico.png"
+  alt="QR Code — Escanear aqui — evento-diagnostico-3.vercel.app"
+  style={{ width: 190, maxWidth: "70%", height: "auto", objectFit: "contain" }}
+/>
                 <div>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "0 0 8px" }}>Escaneie para começar</p>
                   <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: 0 }}>
