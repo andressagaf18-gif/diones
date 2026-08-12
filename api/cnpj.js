@@ -1,4 +1,10 @@
+// api/cnpj.js
+
 export default async function handler(req, res) {
+  // =========================================================
+  // 1. PERMITIR APENAS GET
+  // =========================================================
+
   if (req.method !== "GET") {
     return res.status(405).json({
       sucesso: false,
@@ -6,552 +12,675 @@ export default async function handler(req, res) {
     });
   }
 
+  // =========================================================
+  // 2. LIMPAR E VALIDAR CNPJ
+  // =========================================================
+
   const { cnpj } = req.query;
+
   const digits = String(cnpj || "").replace(/\D/g, "");
 
   if (digits.length !== 14) {
     return res.status(400).json({
       sucesso: false,
-      error: "CNPJ inválido. Informe 14 dígitos.",
+      error: "CNPJ inválido. Informe os 14 dígitos.",
     });
   }
 
-  try {
-   const response = await fetch(
-  `https://brasilapi.com.br/api/cnpj/v1/${digits}`,
-  {
-    method: "GET",
-    headers: {
-      "User-Agent": "evento-diagnostico-finder/1.0",
-      "Accept": "application/json"
+  // =========================================================
+  // 3. CLASSIFICAÇÃO DA EMPRESA PELO CNAE
+  // =========================================================
+
+  function classificarEmpresa(cnae, descricao = "") {
+    const codigo = String(cnae || "").replace(/\D/g, "");
+    const desc = String(descricao || "").toLowerCase();
+
+    const divisao = parseInt(codigo.slice(0, 2), 10);
+
+    /*
+     * A ordem importa.
+     *
+     * Primeiro classificamos atividades específicas.
+     * Depois usamos classificações mais genéricas.
+     */
+
+    // =======================================================
+    // CONTABILIDADE
+    // CNAE 6920-6/01
+    // =======================================================
+
+    if (
+      codigo.startsWith("6920601") ||
+      desc.includes("contabilidade")
+    ) {
+      return {
+        segmento: "Serviços Profissionais",
+
+        categoria: "Contabilidade",
+
+        codigoQuestionario: "contabilidade",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Processos",
+            "Comercial",
+            "Financeiro",
+            "Tecnologia",
+            "Pessoas",
+          ],
+
+          areasComplementares: [
+            "Marketing",
+            "Gestão",
+            "Atendimento",
+          ],
+        },
+      };
     }
+
+    // =======================================================
+    // ADVOCACIA / SERVIÇOS JURÍDICOS
+    // =======================================================
+
+    if (
+      codigo.startsWith("69117") ||
+      desc.includes("advocacia") ||
+      desc.includes("serviços advocatícios") ||
+      desc.includes("servicos advocaticios")
+    ) {
+      return {
+        segmento: "Serviços Profissionais",
+
+        categoria: "Advocacia",
+
+        codigoQuestionario: "advocacia",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Comercial",
+            "Processos",
+            "Financeiro",
+            "Jurídico",
+            "Tecnologia",
+          ],
+
+          areasComplementares: [
+            "Marketing",
+            "Gestão",
+            "Pessoas",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // SAÚDE / CLÍNICAS
+    // Divisão CNAE 86
+    // =======================================================
+
+    if (
+      divisao === 86 ||
+      desc.includes("médic") ||
+      desc.includes("medic") ||
+      desc.includes("odontolog") ||
+      desc.includes("clínica") ||
+      desc.includes("clinica") ||
+      desc.includes("psicolog") ||
+      desc.includes("fisioterapia")
+    ) {
+      return {
+        segmento: "Serviços",
+
+        categoria: "Saúde / Clínica",
+
+        codigoQuestionario: "saude",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Financeiro",
+            "Atendimento",
+            "Processos",
+            "Marketing",
+            "Tecnologia",
+          ],
+
+          areasComplementares: [
+            "Pessoas",
+            "Gestão",
+            "LGPD",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // TECNOLOGIA
+    // Divisões CNAE 62 e 63
+    // =======================================================
+
+    if (
+      divisao === 62 ||
+      divisao === 63 ||
+      desc.includes("software") ||
+      desc.includes("tecnologia da informação") ||
+      desc.includes("tecnologia da informacao") ||
+      desc.includes("programação") ||
+      desc.includes("programacao")
+    ) {
+      return {
+        segmento: "Serviços",
+
+        categoria: "Tecnologia",
+
+        codigoQuestionario: "tecnologia",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Comercial",
+            "Financeiro",
+            "Tecnologia",
+            "Processos",
+            "Gestão",
+          ],
+
+          areasComplementares: [
+            "Marketing",
+            "Pessoas",
+            "Segurança da Informação",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // CONSTRUÇÃO CIVIL
+    // Divisões CNAE 41, 42 e 43
+    // =======================================================
+
+    if (
+      divisao >= 41 &&
+      divisao <= 43
+    ) {
+      return {
+        segmento: "Construção",
+
+        categoria: "Construção Civil",
+
+        codigoQuestionario: "construcao",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Financeiro",
+            "Operacional",
+            "Processos",
+            "Jurídico",
+            "Gestão",
+          ],
+
+          areasComplementares: [
+            "Pessoas",
+            "Comercial",
+            "Tecnologia",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // E-COMMERCE
+    // Identificação principalmente pela descrição.
+    // =======================================================
+
+    if (
+      desc.includes("internet") ||
+      desc.includes("comércio eletrônico") ||
+      desc.includes("comercio eletronico") ||
+      desc.includes("e-commerce")
+    ) {
+      return {
+        segmento: "Comércio",
+
+        categoria: "E-commerce",
+
+        codigoQuestionario: "ecommerce",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Marketing",
+            "Comercial",
+            "Financeiro",
+            "Operacional",
+            "Tecnologia",
+          ],
+
+          areasComplementares: [
+            "Logística",
+            "Atendimento",
+            "Contábil / Fiscal",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // COMÉRCIO
+    // Divisões CNAE 45, 46 e 47
+    // =======================================================
+
+    if (
+      divisao >= 45 &&
+      divisao <= 47
+    ) {
+      return {
+        segmento: "Comércio",
+
+        categoria: "Comércio",
+
+        codigoQuestionario: "comercio",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Financeiro",
+            "Comercial",
+            "Estoque",
+            "Marketing",
+            "Contábil / Fiscal",
+          ],
+
+          areasComplementares: [
+            "Operacional",
+            "Atendimento",
+            "Tecnologia",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // INDÚSTRIA
+    // Divisões CNAE 10 a 33
+    // =======================================================
+
+    if (
+      divisao >= 10 &&
+      divisao <= 33
+    ) {
+      return {
+        segmento: "Indústria",
+
+        categoria: "Indústria",
+
+        codigoQuestionario: "industria",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Produção",
+            "Custos",
+            "Financeiro",
+            "Estoque",
+            "Processos",
+          ],
+
+          areasComplementares: [
+            "Qualidade",
+            "Comercial",
+            "Contábil / Fiscal",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // TRANSPORTE / LOGÍSTICA
+    // Divisões CNAE 49 a 53
+    // =======================================================
+
+    if (
+      divisao >= 49 &&
+      divisao <= 53
+    ) {
+      return {
+        segmento: "Serviços",
+
+        categoria: "Transporte / Logística",
+
+        codigoQuestionario: "logistica",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Operacional",
+            "Financeiro",
+            "Processos",
+            "Gestão",
+            "Tecnologia",
+          ],
+
+          areasComplementares: [
+            "Pessoas",
+            "Comercial",
+            "Contábil / Fiscal",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // ALIMENTAÇÃO
+    // Divisão CNAE 56
+    // =======================================================
+
+    if (
+      divisao === 56 ||
+      desc.includes("restaurante") ||
+      desc.includes("lanchonete") ||
+      desc.includes("alimentação") ||
+      desc.includes("alimentacao")
+    ) {
+      return {
+        segmento: "Comércio / Serviços",
+
+        categoria: "Alimentação",
+
+        codigoQuestionario: "alimentacao",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Operacional",
+            "Financeiro",
+            "Estoque",
+            "Marketing",
+            "Pessoas",
+          ],
+
+          areasComplementares: [
+            "Atendimento",
+            "Compras",
+            "Gestão",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // IMOBILIÁRIO
+    // Divisão CNAE 68
+    // =======================================================
+
+    if (
+      divisao === 68 ||
+      desc.includes("imobiliár") ||
+      desc.includes("imobiliar")
+    ) {
+      return {
+        segmento: "Serviços",
+
+        categoria: "Imobiliária / Atividades Imobiliárias",
+
+        codigoQuestionario: "imobiliario",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Comercial",
+            "Financeiro",
+            "Marketing",
+            "Jurídico",
+            "Processos",
+          ],
+
+          areasComplementares: [
+            "Atendimento",
+            "Tecnologia",
+            "Gestão",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // SERVIÇOS PROFISSIONAIS
+    // Divisões 69 a 75
+    // =======================================================
+
+    if (
+      divisao >= 69 &&
+      divisao <= 75
+    ) {
+      return {
+        segmento: "Serviços Profissionais",
+
+        categoria: "Serviços Profissionais",
+
+        codigoQuestionario: "servicos_profissionais",
+
+        diagnostico: {
+          areasPrioritarias: [
+            "Comercial",
+            "Financeiro",
+            "Processos",
+            "Marketing",
+            "Gestão",
+          ],
+
+          areasComplementares: [
+            "Tecnologia",
+            "Pessoas",
+            "Atendimento",
+          ],
+        },
+      };
+    }
+
+    // =======================================================
+    // FALLBACK
+    // Nenhuma empresa deve ficar sem classificação.
+    // =======================================================
+
+    return {
+      segmento: "Serviços",
+
+      categoria: "Serviços Profissionais",
+
+      codigoQuestionario: "servicos",
+
+      diagnostico: {
+        areasPrioritarias: [
+          "Financeiro",
+          "Comercial",
+          "Processos",
+          "Gestão",
+          "Marketing",
+        ],
+
+        areasComplementares: [
+          "Tecnologia",
+          "Pessoas",
+          "Atendimento",
+        ],
+      },
+    };
   }
-);
 
-   if (!response.ok) {
-  const detalhe = await response.text();
+  // =========================================================
+  // 4. CONSULTAR CNPJ
+  // =========================================================
 
-  console.error("Erro BrasilAPI:", {
-    status: response.status,
-    statusText: response.statusText,
-    detalhe
-  });
+  try {
+    const response = await fetch(
+      `https://brasilapi.com.br/api/cnpj/v1/${digits}`,
+      {
+        method: "GET",
 
-  return res.status(502).json({
-    sucesso: false,
-    error: "Erro retornado pela BrasilAPI.",
-    statusBrasilAPI: response.status,
-    detalhe: detalhe || response.statusText
-  });
-}
+        headers: {
+          /*
+           * Importante:
+           * algumas chamadas serverless podem receber 403
+           * sem User-Agent explícito.
+           */
+          "User-Agent": "finder-diagnostico-empresarial/1.0",
+
+          Accept: "application/json",
+        },
+      }
+    );
+
+    // =======================================================
+    // 5. TRATAMENTO DOS ERROS DA BRASILAPI
+    // =======================================================
+
+    if (!response.ok) {
+      const detalhe = await response.text();
+
+      console.error("Erro BrasilAPI:", {
+        status: response.status,
+        statusText: response.statusText,
+        detalhe,
+      });
+
+      if (response.status === 404) {
+        return res.status(404).json({
+          sucesso: false,
+          error: "CNPJ não encontrado.",
+        });
+      }
+
+      if (response.status === 403) {
+        return res.status(503).json({
+          sucesso: false,
+          error:
+            "O serviço de consulta de CNPJ está temporariamente indisponível.",
+          statusBrasilAPI: 403,
+        });
+      }
+
+      return res.status(502).json({
+        sucesso: false,
+        error: "Não foi possível consultar o CNPJ.",
+        statusBrasilAPI: response.status,
+      });
+    }
+
+    // =======================================================
+    // 6. DADOS RETORNADOS
+    // =======================================================
 
     const data = await response.json();
 
-    const codigoCnae = String(data.cnae_fiscal || "").replace(/\D/g, "");
-    const descricaoCnae = String(
-      data.cnae_fiscal_descricao || ""
-    ).toLowerCase();
+    const cnaeCodigo =
+      data.cnae_fiscal ||
+      data.cnaeFiscal ||
+      "";
+
+    const cnaeDescricao =
+      data.cnae_fiscal_descricao ||
+      data.cnaeFiscalDescricao ||
+      "";
+
+    // =======================================================
+    // 7. CLASSIFICAR EMPRESA
+    // =======================================================
 
     const classificacao = classificarEmpresa(
-      codigoCnae,
-      descricaoCnae
+      cnaeCodigo,
+      cnaeDescricao
     );
+
+    // =======================================================
+    // 8. RETORNO PARA O APP
+    // =======================================================
 
     return res.status(200).json({
       sucesso: true,
 
       empresa: {
         cnpj: digits,
-        razaoSocial: data.razao_social || "",
-        nomeFantasia: data.nome_fantasia || "",
-        porte: data.porte || "Não informado",
-        naturezaJuridica: data.natureza_juridica || "",
-        situacao: data.descricao_situacao_cadastral || "",
-        abertura: data.data_inicio_atividade || "",
+
+        razaoSocial:
+          data.razao_social ||
+          "",
+
+        nomeFantasia:
+          data.nome_fantasia ||
+          "",
+
+        porte:
+          data.porte ||
+          "Não informado",
+
+        naturezaJuridica:
+          data.natureza_juridica ||
+          "",
+
+        situacao:
+          data.descricao_situacao_cadastral ||
+          data.situacao_cadastral ||
+          "",
+
+        abertura:
+          data.data_inicio_atividade ||
+          "",
 
         telefone:
           data.ddd_telefone_1 ||
           data.ddd_telefone_2 ||
           "",
 
-        email: data.email || "",
+        email:
+          data.email ||
+          "",
       },
 
       cnae: {
-        codigo: data.cnae_fiscal || "",
-        descricao: data.cnae_fiscal_descricao || "",
+        codigo: cnaeCodigo,
+        descricao: cnaeDescricao,
       },
 
       classificacao,
 
       endereco: {
-        logradouro: data.logradouro || "",
-        numero: data.numero || "",
-        complemento: data.complemento || "",
-        bairro: data.bairro || "",
-        municipio: data.municipio || "",
-        uf: data.uf || "",
-        cep: data.cep || "",
+        logradouro:
+          data.logradouro ||
+          "",
+
+        numero:
+          data.numero ||
+          "",
+
+        complemento:
+          data.complemento ||
+          "",
+
+        bairro:
+          data.bairro ||
+          "",
+
+        municipio:
+          data.municipio ||
+          "",
+
+        uf:
+          data.uf ||
+          "",
+
+        cep:
+          data.cep ||
+          "",
       },
     });
+
   } catch (error) {
-    console.error("Erro CNPJ:", error);
+    // =======================================================
+    // 9. ERRO INTERNO
+    // =======================================================
+
+    console.error(
+      "Erro ao consultar CNPJ:",
+      error
+    );
 
     return res.status(500).json({
       sucesso: false,
-      error: "Erro interno ao consultar o CNPJ.",
+      error:
+        "Erro interno ao consultar o CNPJ.",
     });
   }
-}
-
-/**
- * Classifica a empresa com base no CNAE principal.
- */
-function classificarEmpresa(cnae, descricao) {
-  const divisao = Number(cnae.substring(0, 2));
-  const grupo = cnae.substring(0, 4);
-
-  let segmento = "Serviços";
-  let categoria = "Prestação de Serviços";
-
-  /*
-   * CATEGORIAS ESPECÍFICAS
-   * Essas regras vêm antes das regras gerais.
-   */
-
-  // Advocacia
-  if (
-    cnae.startsWith("6911") ||
-    descricao.includes("advocacia") ||
-    descricao.includes("serviços advocatícios")
-  ) {
-    categoria = "Advocacia";
-    segmento = "Serviços Profissionais";
-  }
-
-  // Contabilidade
-  else if (
-    cnae.startsWith("6920") ||
-    descricao.includes("contabilidade") ||
-    descricao.includes("contábil")
-  ) {
-    categoria = "Contabilidade";
-    segmento = "Serviços Profissionais";
-  }
-
-  // Oficina / manutenção automotiva
-  else if (
-    cnae.startsWith("4520") ||
-    descricao.includes("manutenção e reparação de veículos") ||
-    descricao.includes("oficina mecânica")
-  ) {
-    categoria = "Oficina Mecânica";
-    segmento = "Serviços Automotivos";
-  }
-
-  // E-commerce
-  else if (
-    cnae.startsWith("4791") ||
-    descricao.includes("internet") ||
-    descricao.includes("comércio eletrônico") ||
-    descricao.includes("correspondência")
-  ) {
-    categoria = "E-commerce";
-    segmento = "Comércio";
-  }
-
-  // Clínica / Saúde
-  else if (
-    divisao === 86 ||
-    descricao.includes("clínica") ||
-    descricao.includes("médica") ||
-    descricao.includes("odontológica") ||
-    descricao.includes("fisioterapia") ||
-    descricao.includes("psicologia")
-  ) {
-    categoria = "Saúde / Clínica";
-    segmento = "Saúde";
-  }
-
-  // Construção civil
-  else if (divisao >= 41 && divisao <= 43) {
-    categoria = "Construção Civil";
-    segmento = "Construção";
-  }
-
-  // Tecnologia
-  else if (
-    divisao === 62 ||
-    divisao === 63 ||
-    descricao.includes("software") ||
-    descricao.includes("tecnologia da informação") ||
-    descricao.includes("desenvolvimento de programas")
-  ) {
-    categoria = "Tecnologia";
-    segmento = "Tecnologia";
-  }
-
-  // Imobiliário
-  else if (divisao === 68) {
-    categoria = "Imobiliária / Atividades Imobiliárias";
-    segmento = "Imobiliário";
-  }
-
-  // Hotelaria
-  else if (divisao === 55) {
-    categoria = "Hotelaria / Hospedagem";
-    segmento = "Hotelaria";
-  }
-
-  // Alimentação
-  else if (divisao === 56) {
-    categoria = "Alimentação";
-    segmento = "Alimentação";
-  }
-
-  // Educação
-  else if (divisao === 85) {
-    categoria = "Educação";
-    segmento = "Educação";
-  }
-
-  // Transporte
-  else if (divisao >= 49 && divisao <= 53) {
-    categoria = "Transporte / Logística";
-    segmento = "Transportes";
-  }
-
-  // Agronegócio
-  else if (divisao >= 1 && divisao <= 3) {
-    categoria = "Agronegócio";
-    segmento = "Agronegócio";
-  }
-
-  // Indústria
-  else if (divisao >= 10 && divisao <= 33) {
-    categoria = "Indústria";
-    segmento = "Indústria";
-  }
-
-  // Comércio
-  else if (divisao >= 45 && divisao <= 47) {
-    categoria = "Comércio";
-    segmento = "Comércio";
-  }
-
-  /*
-   * Define quais módulos do diagnóstico
-   * devem aparecer primeiro.
-   */
-
-  const areas = gerarAreasDiagnostico(categoria);
-
-  return {
-    segmento,
-    categoria,
-    codigoQuestionario: gerarCodigoQuestionario(categoria),
-
-    diagnostico: {
-      areasPrioritarias: areas.prioritarias,
-      areasComplementares: areas.complementares,
-    },
-  };
-}
-
-function gerarCodigoQuestionario(categoria) {
-  const codigos = {
-    "Advocacia": "advocacia",
-    "Contabilidade": "contabilidade",
-    "Oficina Mecânica": "oficina",
-    "E-commerce": "ecommerce",
-    "Saúde / Clínica": "saude",
-    "Construção Civil": "construcao",
-    "Tecnologia": "tecnologia",
-    "Imobiliária / Atividades Imobiliárias": "imobiliario",
-    "Hotelaria / Hospedagem": "hotelaria",
-    "Alimentação": "alimentacao",
-    "Educação": "educacao",
-    "Transporte / Logística": "transporte",
-    "Agronegócio": "agronegocio",
-    "Indústria": "industria",
-    "Comércio": "comercio",
-    "Prestação de Serviços": "servicos",
-  };
-
-  return codigos[categoria] || "servicos";
-}
-
-function gerarAreasDiagnostico(categoria) {
-  const base = {
-    "Advocacia": {
-      prioritarias: [
-        "Financeiro",
-        "Comercial",
-        "Marketing",
-        "Gestão",
-        "Processos",
-      ],
-      complementares: [
-        "Tributário",
-        "Tecnologia",
-        "Pessoas",
-        "LGPD",
-      ],
-    },
-
-    "Contabilidade": {
-      prioritarias: [
-        "Processos",
-        "Comercial",
-        "Financeiro",
-        "Tecnologia",
-        "Pessoas",
-      ],
-      complementares: [
-        "Marketing",
-        "Gestão",
-        "Atendimento",
-      ],
-    },
-
-    "Oficina Mecânica": {
-      prioritarias: [
-        "Financeiro",
-        "Estoque",
-        "Compras",
-        "Precificação",
-        "Atendimento",
-      ],
-      complementares: [
-        "Marketing",
-        "Tributário",
-        "Pessoas",
-        "Processos",
-      ],
-    },
-
-    "E-commerce": {
-      prioritarias: [
-        "Marketing",
-        "Comercial",
-        "Financeiro",
-        "Estoque",
-        "Logística",
-      ],
-      complementares: [
-        "Fiscal",
-        "Tributário",
-        "Tecnologia",
-        "Atendimento",
-      ],
-    },
-
-    "Saúde / Clínica": {
-      prioritarias: [
-        "Financeiro",
-        "Agenda",
-        "Atendimento",
-        "Marketing",
-        "Processos",
-      ],
-      complementares: [
-        "Tributário",
-        "Pessoas",
-        "LGPD",
-        "Tecnologia",
-      ],
-    },
-
-    "Construção Civil": {
-      prioritarias: [
-        "Financeiro",
-        "Custos",
-        "Obras",
-        "Compras",
-        "Processos",
-      ],
-      complementares: [
-        "Tributário",
-        "Pessoas",
-        "Contratos",
-        "Comercial",
-      ],
-    },
-
-    "Tecnologia": {
-      prioritarias: [
-        "Comercial",
-        "Financeiro",
-        "Produto",
-        "Marketing",
-        "Tecnologia",
-      ],
-      complementares: [
-        "Pessoas",
-        "Processos",
-        "Segurança da Informação",
-        "Tributário",
-      ],
-    },
-
-    "Imobiliária / Atividades Imobiliárias": {
-      prioritarias: [
-        "Comercial",
-        "Financeiro",
-        "Marketing",
-        "Atendimento",
-        "Contratos",
-      ],
-      complementares: [
-        "Tributário",
-        "Processos",
-        "Tecnologia",
-      ],
-    },
-
-    "Hotelaria / Hospedagem": {
-      prioritarias: [
-        "Financeiro",
-        "Atendimento",
-        "Marketing",
-        "Operacional",
-        "Pessoas",
-      ],
-      complementares: [
-        "Compras",
-        "Tributário",
-        "Tecnologia",
-        "Comercial",
-      ],
-    },
-
-    "Alimentação": {
-      prioritarias: [
-        "Financeiro",
-        "Custos",
-        "Estoque",
-        "Compras",
-        "Atendimento",
-      ],
-      complementares: [
-        "Marketing",
-        "Pessoas",
-        "Tributário",
-        "Processos",
-      ],
-    },
-
-    "Educação": {
-      prioritarias: [
-        "Financeiro",
-        "Comercial",
-        "Marketing",
-        "Atendimento",
-        "Pessoas",
-      ],
-      complementares: [
-        "Tecnologia",
-        "Processos",
-        "Tributário",
-      ],
-    },
-
-    "Transporte / Logística": {
-      prioritarias: [
-        "Financeiro",
-        "Custos",
-        "Operacional",
-        "Frota",
-        "Pessoas",
-      ],
-      complementares: [
-        "Tributário",
-        "Comercial",
-        "Tecnologia",
-        "Processos",
-      ],
-    },
-
-    "Agronegócio": {
-      prioritarias: [
-        "Financeiro",
-        "Custos",
-        "Produção",
-        "Compras",
-        "Gestão",
-      ],
-      complementares: [
-        "Tributário",
-        "Pessoas",
-        "Comercial",
-        "Tecnologia",
-      ],
-    },
-
-    "Indústria": {
-      prioritarias: [
-        "Financeiro",
-        "Custos",
-        "Produção",
-        "Estoque",
-        "Compras",
-      ],
-      complementares: [
-        "Tributário",
-        "Qualidade",
-        "Pessoas",
-        "Comercial",
-        "Tecnologia",
-      ],
-    },
-
-    "Comércio": {
-      prioritarias: [
-        "Financeiro",
-        "Estoque",
-        "Compras",
-        "Comercial",
-        "Marketing",
-      ],
-      complementares: [
-        "Tributário",
-        "Atendimento",
-        "Pessoas",
-        "Tecnologia",
-      ],
-    },
-
-    "Prestação de Serviços": {
-      prioritarias: [
-        "Financeiro",
-        "Comercial",
-        "Marketing",
-        "Processos",
-        "Atendimento",
-      ],
-      complementares: [
-        "Tributário",
-        "Pessoas",
-        "Tecnologia",
-        "Gestão",
-      ],
-    },
-  };
-
-  return (
-    base[categoria] || {
-      prioritarias: [
-        "Financeiro",
-        "Comercial",
-        "Marketing",
-        "Gestão",
-        "Processos",
-      ],
-      complementares: [
-        "Tributário",
-        "Pessoas",
-        "Tecnologia",
-      ],
-    }
-  );
 }
