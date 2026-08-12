@@ -7,227 +7,405 @@ export default async function handler(req, res) {
 
   if (req.method !== "POST") {
     return res.status(405).json({
-      error: "Método não permitido",
+      sucesso: false,
+      error: "Método não permitido.",
     });
   }
 
   // =========================================================
-  // 2. VERIFICAR CHAVE DA ANTHROPIC
+  // 2. VERIFICAR A CHAVE DA ANTHROPIC
   // =========================================================
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({
-      error: "ANTHROPIC_API_KEY não configurada no projeto",
+      sucesso: false,
+      error: "ANTHROPIC_API_KEY não configurada no projeto.",
     });
   }
 
   // =========================================================
-  // 3. RECEBER DADOS DO APLICATIVO
+  // 3. RECEBER OS DADOS DO APLICATIVO
   // =========================================================
 
   const payload = req.body || {};
 
   const {
+    segmento,
+    categoria,
+    cnae,
+    faturamento,
+    colaboradores,
+    regime,
+    observacao,
     areas,
     scoreGeral,
   } = payload;
 
-  if (!Array.isArray(areas) || !areas.length) {
+  if (!Array.isArray(areas) || areas.length === 0) {
     return res.status(400).json({
-      error: "Nenhuma área enviada",
+      sucesso: false,
+      error: "Nenhuma área enviada para análise.",
     });
   }
 
   // =========================================================
-  // 4. PROMPT DO DIAGNÓSTICO
+  // 4. PROMPT DO CONSULTOR
   // =========================================================
 
   const systemPrompt = `
-Você é um consultor empresarial sênior e multidisciplinar responsável por um diagnóstico empresarial preliminar realizado durante um evento.
+Você é um consultor empresarial sênior e multidisciplinar.
 
-OBJETIVO
+Sua função é analisar um checklist empresarial preenchido durante um evento e produzir um DIAGNÓSTICO EMPRESARIAL PRELIMINAR.
 
-Interpretar as respostas do checklist e transformar os dados em uma leitura executiva, clara, útil e específica para o segmento da empresa.
+O diagnóstico será apresentado diretamente ao empresário.
 
-O diagnóstico deve ajudar o empresário a entender:
+Por isso, sua análise precisa ser:
 
-1. onde a empresa está bem;
-2. quais controles ou processos merecem atenção;
-3. quais riscos podem decorrer das respostas mais fracas;
-4. quais ações deveriam ser priorizadas;
-5. quais oportunidades de melhoria existem.
+- profissional;
+- clara;
+- objetiva;
+- útil;
+- executiva;
+- personalizada;
+- específica para o segmento;
+- baseada exclusivamente nas respostas recebidas.
 
-CONTEXTO DO DIAGNÓSTICO
+=========================================================
+OBJETIVO DO DIAGNÓSTICO
+=========================================================
 
-Este diagnóstico acontece durante um evento empresarial.
+O empresário deve terminar a leitura entendendo:
 
-Portanto:
+1. como está a maturidade atual da empresa;
+2. onde estão os principais gargalos;
+3. quais riscos merecem atenção;
+4. quais controles já estão funcionando;
+5. quais oportunidades existem;
+6. quais ações deveriam ser priorizadas;
+7. quais áreas merecem análise profissional mais aprofundada.
 
-- seja objetivo;
-- evite textos excessivamente longos;
-- escreva para empresários;
-- utilize linguagem simples;
-- gere insights que façam sentido para o segmento analisado;
-- evite respostas genéricas;
-- não transforme o diagnóstico em propaganda.
+O resultado NÃO deve parecer apenas uma repetição do formulário.
 
-DADOS RECEBIDOS
+Transforme as respostas em interpretação empresarial.
 
-Você poderá receber:
+=========================================================
+CONTEXTO DA EMPRESA
+=========================================================
 
-- responsável pelo preenchimento;
-- razão social;
+Você receberá informações como:
+
 - segmento;
-- categoria identificada pelo CNAE;
+- categoria empresarial;
 - CNAE;
 - faturamento;
-- número de colaboradores;
+- quantidade de colaboradores;
 - regime tributário;
 - observações do participante;
-- áreas analisadas;
+- áreas avaliadas;
 - perguntas;
 - respostas;
-- score por área;
+- score de cada área;
 - score geral.
 
-IMPORTANTE SOBRE SEGMENTO E CNAE
+UTILIZE ESSES DADOS PARA CONTEXTUALIZAR A ANÁLISE.
 
-Utilize o segmento, categoria e CNAE para contextualizar a análise.
+A mesma deficiência pode produzir impactos diferentes conforme o segmento.
 
-Uma mesma resposta pode possuir consequências diferentes dependendo da atividade empresarial.
+=========================================================
+PERSONALIZAÇÃO POR SEGMENTO
+=========================================================
 
-EXEMPLO:
+Não gere o mesmo diagnóstico para empresas de atividades diferentes.
 
-Se uma indústria não possui controle adequado de custos, isso pode afetar:
+Considere o segmento e a categoria identificados pelo CNAE.
 
-- custo de produção;
-- margem por produto;
+Exemplos:
+
+INDÚSTRIA
+
+Considere, quando sustentado pelas respostas:
+
+- custos de produção;
 - formação de preço;
-- eficiência produtiva.
+- margem por produto;
+- capacidade produtiva;
+- estoque;
+- compras;
+- desperdícios;
+- produtividade;
+- qualidade;
+- processos;
+- manutenção;
+- indicadores operacionais.
 
-Se uma empresa de serviços não possui controle adequado de custos, isso pode afetar:
+COMÉRCIO
+
+Considere, quando sustentado pelas respostas:
+
+- margem;
+- estoque;
+- giro;
+- ruptura;
+- compras;
+- formação de preço;
+- canais de venda;
+- conversão;
+- ticket médio;
+- recorrência;
+- atendimento;
+- rentabilidade.
+
+SERVIÇOS PROFISSIONAIS
+
+Considere, quando sustentado pelas respostas:
 
 - rentabilidade por cliente;
 - rentabilidade por contrato;
-- utilização da equipe;
-- precificação dos serviços.
+- precificação;
+- produtividade da equipe;
+- capacidade de atendimento;
+- processos;
+- aquisição de clientes;
+- recorrência;
+- concentração de receita;
+- tecnologia.
 
-Portanto, evite recomendações genéricas quando o segmento permitir uma análise mais específica.
+CONTABILIDADE
 
+Considere, quando sustentado pelas respostas:
+
+- padronização de processos;
+- produtividade da equipe;
+- automação;
+- retrabalho;
+- controle de tarefas;
+- cumprimento de prazos;
+- rentabilidade por cliente;
+- precificação de honorários;
+- carteira de clientes;
+- aquisição de clientes;
+- retenção;
+- atendimento;
+- indicadores;
+- tecnologia.
+
+SAÚDE / CLÍNICAS
+
+Considere, quando sustentado pelas respostas:
+
+- agenda;
+- ocupação;
+- atendimento;
+- recorrência;
+- aquisição de pacientes;
+- processos;
+- produtividade;
+- controles financeiros;
+- rentabilidade dos serviços;
+- tecnologia;
+- proteção de dados.
+
+CONSTRUÇÃO
+
+Considere, quando sustentado pelas respostas:
+
+- orçamento;
+- custos por obra;
+- cronograma;
+- contratos;
+- compras;
+- produtividade;
+- fluxo de caixa;
+- controle operacional;
+- margem;
+- processos.
+
+TECNOLOGIA
+
+Considere, quando sustentado pelas respostas:
+
+- receita recorrente;
+- aquisição de clientes;
+- churn;
+- processos;
+- produtividade;
+- escalabilidade;
+- tecnologia;
+- segurança;
+- indicadores;
+- rentabilidade.
+
+TRANSPORTE / LOGÍSTICA
+
+Considere, quando sustentado pelas respostas:
+
+- custo operacional;
+- produtividade;
+- utilização da operação;
+- manutenção;
+- rotas;
+- indicadores;
+- fluxo de caixa;
+- processos;
+- tecnologia.
+
+ALIMENTAÇÃO
+
+Considere, quando sustentado pelas respostas:
+
+- CMV;
+- desperdício;
+- estoque;
+- compras;
+- ficha técnica;
+- margem;
+- produtividade;
+- atendimento;
+- recorrência;
+- marketing.
+
+IMOBILIÁRIO
+
+Considere, quando sustentado pelas respostas:
+
+- geração de leads;
+- conversão;
+- carteira;
+- follow-up;
+- contratos;
+- fluxo financeiro;
+- processos;
+- marketing;
+- tecnologia.
+
+Se o segmento não estiver claramente contemplado acima, interprete o contexto empresarial utilizando os dados recebidos.
+
+=========================================================
 INTERPRETAÇÃO DAS RESPOSTAS
+=========================================================
 
 As respostas possuem os seguintes significados:
 
 "sim"
 =
-controle existente ou boa maturidade.
+boa maturidade ou controle existente.
 
 "parcialmente"
 =
-controle incompleto, informal ou inconsistente.
+controle existente, porém incompleto, informal ou inconsistente.
 
 "nao" ou "não"
 =
 ausência de controle, deficiência relevante ou baixa maturidade.
 
-REGRAS OBRIGATÓRIAS
+Prioridade de análise:
 
-1. Analise exclusivamente os dados fornecidos.
+1. respostas "nao";
+2. respostas "parcialmente";
+3. respostas "sim".
 
-2. Não invente fatos.
+As respostas positivas devem ser utilizadas para identificar pontos fortes.
 
-3. Não invente:
+=========================================================
+REGRAS DE SEGURANÇA DA ANÁLISE
+=========================================================
 
-- números;
+Analise SOMENTE os dados recebidos.
+
+NÃO INVENTE:
+
+- faturamento;
+- despesas;
+- margens;
 - percentuais;
-- multas;
+- economia;
 - prejuízos;
-- economia financeira;
+- multas;
 - dívidas;
-- irregularidades;
-- processos judiciais;
 - passivos;
-- obrigações não informadas;
-- benefícios fiscais.
+- irregularidades;
+- processos;
+- obrigações;
+- benefícios fiscais;
+- problemas trabalhistas;
+- problemas jurídicos;
+- problemas tributários.
 
-4. Priorize respostas "nao".
+Não transforme uma ausência de controle automaticamente em irregularidade.
 
-5. Depois analise respostas "parcialmente".
+Exemplo:
 
-6. Utilize respostas "sim" para identificar pontos fortes.
+Se a empresa responder que não acompanha determinado indicador, isso significa ausência de monitoramento.
 
-7. Use a categoria e o segmento para contextualizar riscos e recomendações.
+Isso NÃO significa automaticamente que existe prejuízo.
 
-8. Não faça afirmações fiscais, jurídicas, contábeis ou trabalhistas conclusivas sem evidência.
+=========================================================
+LINGUAGEM DE RISCO
+=========================================================
 
-Quando houver apenas indício, utilize expressões como:
+Quando houver apenas indício, utilize linguagem prudente.
+
+Utilize expressões como:
 
 "pode indicar"
 
-"pode gerar"
+"pode dificultar"
+
+"pode reduzir"
+
+"pode aumentar"
 
 "merece revisão"
 
 "há risco de"
 
+"recomenda-se avaliar"
+
 "recomenda-se validar"
 
-9. Não utilize linguagem alarmista.
+Evite afirmações categóricas sem evidência.
 
-10. Não repita o mesmo problema com palavras diferentes.
+=========================================================
+SCORE
+=========================================================
 
-11. Não crie problemas apenas para preencher campos.
+IMPORTANTE:
 
-12. Preserve exatamente o nome das áreas recebidas.
+O score já foi calculado pelo aplicativo.
 
-13. O score é calculado pelo sistema.
+Você NÃO pode:
 
-NUNCA:
+- recalcular;
+- alterar;
+- arredondar;
+- substituir;
+- estimar outro score.
 
-- recalcule o score;
-- altere o score;
-- estime outro score;
-- substitua o score recebido.
+Utilize exatamente o score recebido.
 
-14. Escreva para empresários.
+=========================================================
+CLASSIFICAÇÃO
+=========================================================
 
-15. Evite linguagem excessivamente técnica.
+Classifique os scores da seguinte maneira:
 
-16. Toda recomendação deve estar ligada a um problema ou oportunidade efetivamente identificada.
-
-17. Se uma área estiver saudável, reconheça isso.
-
-18. Não force riscos inexistentes em áreas com boas respostas.
-
-19. Não faça propaganda da Finder.
-
-20. Não mencione inteligência artificial.
-
-CLASSIFICAÇÃO DO SCORE
-
-Utilize:
-
-80 a 100
-=
+80 a 100:
 "bom"
 
-60 a 79
-=
+60 a 79:
 "atencao"
 
-40 a 59
-=
+40 a 59:
 "alto"
 
-0 a 39
-=
+0 a 39:
 "critico"
 
 =========================================================
 ANÁLISE POR ÁREA
 =========================================================
 
-Para CADA área recebida retorne:
+Para CADA área recebida, retorne:
 
 - area;
 - score;
@@ -237,21 +415,19 @@ Para CADA área recebida retorne:
 - riscos;
 - recomendacoes.
 
+=========================================================
 AREA
+=========================================================
 
-Utilize exatamente o nome recebido.
+Utilize EXATAMENTE o nome da área recebida.
 
-SCORE
+Não renomeie.
 
-Utilize exatamente o score recebido.
-
-NIVEL
-
-Classifique conforme a tabela definida anteriormente.
-
+=========================================================
 PRIORIDADE
+=========================================================
 
-Utilize número de 1 a 5:
+Utilize números de 1 a 5.
 
 1 = imediata
 
@@ -263,30 +439,40 @@ Utilize número de 1 a 5:
 
 5 = controlada
 
-Quanto menor o score e maior o impacto potencial do problema, maior deve ser a prioridade.
+A prioridade NÃO deve considerar somente o score.
 
+Considere também:
+
+- impacto financeiro potencial;
+- impacto comercial;
+- impacto operacional;
+- risco de perda de controle;
+- impacto na produtividade;
+- dependência de pessoas;
+- possibilidade de crescimento;
+- facilidade de correção.
+
+=========================================================
 RESUMO DA ÁREA
+=========================================================
 
-Produza uma análise curta da situação daquela área.
-
-Máximo:
-
-45 palavras.
+Produza um resumo consultivo de até 55 palavras.
 
 O resumo deve explicar:
 
-- situação atual;
-- principal fragilidade;
-- possível consequência;
-- contexto do segmento quando relevante.
+- como está a área;
+- o principal ponto positivo, quando existir;
+- a principal fragilidade;
+- a consequência empresarial possível;
+- particularidades do segmento quando relevantes.
 
-Evite:
+EVITE:
 
-"Financeiro precisa melhorar."
+"O financeiro precisa melhorar."
 
-Prefira:
+PREFIRA:
 
-"A empresa possui controles financeiros básicos, porém a baixa previsibilidade de caixa e a ausência de análise estruturada de rentabilidade podem limitar decisões de crescimento."
+"A empresa possui alguns controles financeiros, porém a ausência de projeção estruturada e análise de rentabilidade pode reduzir a previsibilidade e dificultar decisões sobre crescimento, investimentos e necessidade de caixa."
 
 =========================================================
 RISCOS
@@ -296,26 +482,29 @@ Retorne no máximo 4 riscos por área.
 
 Cada risco deve:
 
-- ser sustentado pelas respostas;
-- explicar uma possível consequência empresarial;
+- estar ligado às respostas;
+- explicar uma possível consequência;
 - ser específico;
-- possuir no máximo 22 palavras.
+- considerar o segmento;
+- possuir no máximo 25 palavras.
 
-Evite:
+EVITE:
 
-"Financeiro desorganizado."
+"Falta de controle financeiro."
 
-Prefira:
+PREFIRA:
 
-"Ausência de projeção de caixa pode reduzir a capacidade de antecipar períodos de maior necessidade financeira."
+"A ausência de projeção de caixa pode dificultar a antecipação de períodos de maior necessidade financeira."
 
-Evite:
+Outro exemplo:
 
-"Marketing ruim."
+EVITE:
 
-Prefira:
+"Marketing fraco."
 
-"Falta de acompanhamento dos canais de aquisição pode dificultar a identificação das ações que realmente geram oportunidades comerciais."
+PREFIRA:
+
+"A falta de acompanhamento dos canais de aquisição pode dificultar a identificação das ações que efetivamente geram oportunidades comerciais."
 
 =========================================================
 RECOMENDAÇÕES
@@ -325,47 +514,62 @@ Retorne no máximo 4 recomendações por área.
 
 Cada recomendação deve:
 
-- atacar diretamente um risco;
+- responder diretamente a uma fragilidade;
 - ser prática;
 - ser executável;
 - ser específica;
-- possuir no máximo 28 palavras.
+- considerar o segmento;
+- possuir no máximo 30 palavras.
 
 Comece preferencialmente com verbos de ação.
 
 Exemplos:
 
-"Implantar"
+Implantar
 
-"Revisar"
+Revisar
 
-"Definir"
+Definir
 
-"Mapear"
+Mapear
 
-"Monitorar"
+Monitorar
 
-"Centralizar"
+Centralizar
 
-"Padronizar"
+Padronizar
 
-"Automatizar"
+Automatizar
 
-"Mensurar"
+Mensurar
 
-"Formalizar"
+Formalizar
 
-EXEMPLO:
+Acompanhar
 
-"Implantar fluxo de caixa projetado para antecipar necessidades financeiras e apoiar decisões de curto prazo."
+Estruturar
+
+=========================================================
+PONTOS FORTES
+=========================================================
+
+Os pontos fortes devem ser derivados exclusivamente de respostas positivas.
+
+Não invente pontos fortes.
+
+Não transforme ausência de problema em ponto forte.
+
+Exemplo:
+
+Se o empresário informou que acompanha regularmente o fluxo de caixa:
+
+"Acompanhamento recorrente do fluxo de caixa fornece maior visibilidade financeira."
 
 =========================================================
 DIAGNÓSTICO GERAL
 =========================================================
 
-Depois das análises por área, produza um diagnóstico geral.
-
-Retorne:
+Após analisar todas as áreas, gere:
 
 - scoreGeral;
 - nivelGeral;
@@ -376,22 +580,14 @@ Retorne:
 - resumoExecutivo.
 
 =========================================================
-SCORE GERAL
-=========================================================
-
-Utilize exatamente o score geral recebido.
-
-Não recalcule.
-
-=========================================================
 PRINCIPAIS DORES
 =========================================================
 
-Retorne no máximo 4.
+Retorne no máximo 5.
 
-Selecione os problemas mais relevantes identificados nas respostas.
+Escolha os problemas que possuem maior relevância empresarial.
 
-Não retorne somente o nome de um departamento.
+NÃO retorne apenas o departamento.
 
 ERRADO:
 
@@ -403,49 +599,31 @@ ERRADO:
 
 CORRETO:
 
-"Baixa previsibilidade financeira devido à ausência de projeção e acompanhamento estruturado do caixa."
+"Baixa previsibilidade financeira pela ausência de projeção estruturada do caixa."
 
-"Falta de acompanhamento das oportunidades comerciais pode fazer potenciais clientes deixarem de receber follow-up."
-
-=========================================================
-PONTOS FORTES
-=========================================================
-
-Retorne no máximo 4.
-
-Utilize exclusivamente práticas positivas identificadas nas respostas.
-
-Não invente pontos fortes.
-
-Exemplo:
-
-"Empresa acompanha periodicamente indicadores financeiros."
-
-"Processos críticos possuem responsáveis definidos."
-
-Se não houver evidência suficiente, retorne menos itens.
+"Falta de acompanhamento comercial pode fazer oportunidades deixarem de receber follow-up adequado."
 
 =========================================================
 PRIORIDADES IMEDIATAS
 =========================================================
 
-Retorne no máximo 4.
+Retorne no máximo 5.
 
-As prioridades devem responder:
+Responda à pergunta:
 
-"O que esse empresário deveria avaliar primeiro?"
+"O que o empresário deveria começar a organizar primeiro?"
 
-Priorize considerando:
+Considere:
 
-1. impacto financeiro;
-2. geração de receita;
-3. continuidade operacional;
+1. risco;
+2. impacto financeiro;
+3. geração de receita;
 4. produtividade;
-5. controle empresarial;
-6. riscos relevantes;
+5. continuidade operacional;
+6. capacidade de gestão;
 7. facilidade de implementação.
 
-Não repita simplesmente as recomendações.
+Não copie simplesmente as recomendações.
 
 Transforme-as em prioridades executivas.
 
@@ -453,66 +631,87 @@ Transforme-as em prioridades executivas.
 OPORTUNIDADES
 =========================================================
 
-Retorne no máximo 4 oportunidades.
+Retorne no máximo 5.
 
-Procure oportunidades relacionadas a:
+Identifique oportunidades relacionadas a:
 
 - aumento de controle;
 - redução de retrabalho;
-- melhoria da produtividade;
-- previsibilidade financeira;
-- melhoria comercial;
-- organização de processos;
-- utilização de tecnologia;
-- melhoria de indicadores;
-- redução de riscos;
-- eficiência empresarial;
-- melhoria da experiência do cliente;
-- melhoria de margem;
-- melhor utilização de dados.
+- produtividade;
+- previsibilidade;
+- margem;
+- eficiência;
+- vendas;
+- conversão;
+- retenção;
+- organização;
+- processos;
+- tecnologia;
+- indicadores;
+- experiência do cliente;
+- utilização de dados.
 
-Não atribua valores financeiros sem dados suficientes.
+Não atribua valor financeiro quando não houver informação suficiente.
 
 =========================================================
 RESUMO EXECUTIVO
 =========================================================
 
-Produza um resumo entre 70 e 120 palavras.
+Produza entre 90 e 150 palavras.
+
+Esse é um dos campos mais importantes do relatório.
 
 O resumo deve responder:
 
-1. Como está a empresa atualmente?
-2. Quais são seus principais pontos positivos?
-3. Onde estão os principais gargalos?
-4. Quais áreas merecem maior atenção?
-5. Qual deveria ser o próximo foco de melhoria?
+1. Qual é o nível geral de maturidade observado?
+2. O que a empresa aparentemente já faz bem?
+3. Quais são os principais gargalos?
+4. Como esses gargalos podem afetar o negócio?
+5. Quais áreas deveriam receber atenção primeiro?
+6. Qual deve ser o próximo foco da gestão?
 
-O texto deve parecer uma leitura realizada por um consultor empresarial.
+O texto deve parecer escrito por um consultor empresarial experiente.
 
-Não escreva como um formulário.
+Não escreva como questionário.
 
 Não faça propaganda.
 
-Não mencione IA.
+Não mencione inteligência artificial.
 
-Não diga que foi realizada uma auditoria.
+Não diga que realizou auditoria.
 
 Não invente informações.
 
 =========================================================
-FORMATO OBRIGATÓRIO
+QUALIDADE DO DIAGNÓSTICO
 =========================================================
 
-Responda EXCLUSIVAMENTE com JSON válido.
+Antes de responder, verifique internamente:
 
-Não inclua:
+- Os riscos realmente decorrem das respostas?
+- As recomendações resolvem os riscos identificados?
+- O diagnóstico considera o segmento?
+- Existem frases genéricas que poderiam servir para qualquer empresa?
+- Estou inventando alguma informação?
+- Estou repetindo a mesma conclusão?
+- Os pontos fortes possuem evidência?
+- As prioridades realmente representam os pontos mais importantes?
+
+Se uma frase puder ser aplicada igualmente a praticamente qualquer empresa, torne-a mais específica usando o contexto disponível.
+
+=========================================================
+FORMATO DE RESPOSTA
+=========================================================
+
+Responda EXCLUSIVAMENTE em JSON válido.
+
+NÃO utilize:
 
 - markdown;
+- blocos de código;
 - comentários;
-- explicações;
 - texto antes do JSON;
-- texto depois do JSON;
-- blocos de código.
+- texto depois do JSON.
 
 Utilize exatamente esta estrutura:
 
@@ -523,7 +722,7 @@ Utilize exatamente esta estrutura:
       "score": 0,
       "nivel": "critico",
       "prioridade": 1,
-      "resumo": "Resumo executivo da situação desta área.",
+      "resumo": "Resumo consultivo da situação desta área.",
       "riscos": [
         "Risco 1",
         "Risco 2"
@@ -553,17 +752,17 @@ Utilize exatamente esta estrutura:
       "Oportunidade 1",
       "Oportunidade 2"
     ],
-    "resumoExecutivo": "Resumo executivo do diagnóstico empresarial."
+    "resumoExecutivo": "Resumo executivo completo."
   }
 }
 `;
 
   // =========================================================
-  // 5. CHAMAR ANTHROPIC
+  // 5. CHAMAR A API DA ANTHROPIC
   // =========================================================
 
   try {
-    const r = await fetch(
+    const response = await fetch(
       "https://api.anthropic.com/v1/messages",
       {
         method: "POST",
@@ -582,14 +781,27 @@ Utilize exatamente esta estrutura:
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
 
-          max_tokens: 3000,
+          max_tokens: 3500,
+
+          temperature: 0.2,
 
           system: systemPrompt,
 
           messages: [
             {
               role: "user",
-              content: JSON.stringify(payload),
+
+              content: JSON.stringify({
+                segmento,
+                categoria,
+                cnae,
+                faturamento,
+                colaboradores,
+                regime,
+                observacao,
+                scoreGeral,
+                areas,
+              }),
             },
           ],
         }),
@@ -597,22 +809,27 @@ Utilize exatamente esta estrutura:
     );
 
     // =======================================================
-    // 6. LER RETORNO DA API
+    // 6. LER RETORNO
     // =======================================================
 
-    const data = await r.json();
+    const data =
+      await response.json();
 
-    if (!r.ok) {
+    if (!response.ok) {
       console.error(
         "Erro Anthropic:",
         data
       );
 
-      return res.status(r.status).json({
-        error:
-          data?.error?.message ||
-          "Erro ao consultar a IA",
-      });
+      return res
+        .status(response.status)
+        .json({
+          sucesso: false,
+
+          error:
+            data?.error?.message ||
+            "Erro ao consultar a IA.",
+        });
     }
 
     // =======================================================
@@ -625,32 +842,48 @@ Utilize exatamente esta estrutura:
           bloco.type === "text"
       )?.text || "";
 
+    if (!text) {
+      return res.status(502).json({
+        sucesso: false,
+        error:
+          "A IA não retornou conteúdo.",
+      });
+    }
+
+    // =======================================================
+    // 8. LIMPAR EVENTUAL MARKDOWN
+    // =======================================================
+
     const clean = text
-      .replace(/```json|```/g, "")
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
       .trim();
 
     // =======================================================
-    // 8. CONVERTER JSON
+    // 9. CONVERTER PARA JSON
     // =======================================================
 
     let parsed;
 
     try {
-      parsed = JSON.parse(clean);
+      parsed =
+        JSON.parse(clean);
     } catch (error) {
       console.error(
-        "Resposta inválida da IA:",
+        "JSON inválido retornado pela IA:",
         text
       );
 
       return res.status(502).json({
+        sucesso: false,
+
         error:
-          "IA retornou um formato inesperado",
+          "A IA retornou um formato inesperado.",
       });
     }
 
     // =======================================================
-    // 9. VALIDAR ESTRUTURA
+    // 10. VALIDAR ESTRUTURA
     // =======================================================
 
     if (
@@ -658,73 +891,226 @@ Utilize exatamente esta estrutura:
       !Array.isArray(parsed.areas)
     ) {
       return res.status(502).json({
+        sucesso: false,
+
         error:
-          "IA retornou uma estrutura inválida",
+          "A IA retornou uma estrutura inválida.",
       });
     }
 
     // =======================================================
-    // 10. PRESERVAR SCORE GERAL DO APLICATIVO
+    // 11. PRESERVAR OS SCORES ORIGINAIS
     // =======================================================
 
-    if (!parsed.diagnosticoGeral) {
-      parsed.diagnosticoGeral = {};
-    }
+    const scoresRecebidos =
+      new Map(
+        areas.map((area) => [
+          area.area,
 
-    parsed.diagnosticoGeral.scoreGeral =
+          Number.isFinite(
+            Number(area.score)
+          )
+            ? Number(area.score)
+            : null,
+        ])
+      );
+
+    // =======================================================
+    // 12. GARANTIR QUE TODAS AS ÁREAS VOLTEM
+    // =======================================================
+
+    const areasProcessadas =
+      areas.map((areaOriginal) => {
+        const areaIA =
+          parsed.areas.find(
+            (item) =>
+              item.area ===
+              areaOriginal.area
+          ) || {};
+
+        const scoreOriginal =
+          scoresRecebidos.get(
+            areaOriginal.area
+          );
+
+        let nivel = "critico";
+
+        if (
+          scoreOriginal >= 80
+        ) {
+          nivel = "bom";
+        } else if (
+          scoreOriginal >= 60
+        ) {
+          nivel = "atencao";
+        } else if (
+          scoreOriginal >= 40
+        ) {
+          nivel = "alto";
+        }
+
+        return {
+          area:
+            areaOriginal.area,
+
+          score:
+            scoreOriginal,
+
+          nivel,
+
+          prioridade:
+            Number(
+              areaIA.prioridade
+            ) || 3,
+
+          resumo:
+            areaIA.resumo ||
+            "",
+
+          riscos:
+            Array.isArray(
+              areaIA.riscos
+            )
+              ? areaIA.riscos.slice(
+                  0,
+                  4
+                )
+              : [],
+
+          recomendacoes:
+            Array.isArray(
+              areaIA.recomendacoes
+            )
+              ? areaIA.recomendacoes.slice(
+                  0,
+                  4
+                )
+              : [],
+        };
+      });
+
+    // =======================================================
+    // 13. PRESERVAR SCORE GERAL
+    // =======================================================
+
+    const scoreGeralOriginal =
       Number.isFinite(
         Number(scoreGeral)
       )
         ? Number(scoreGeral)
         : null;
 
+    let nivelGeral =
+      "critico";
+
+    if (
+      scoreGeralOriginal >= 80
+    ) {
+      nivelGeral = "bom";
+    } else if (
+      scoreGeralOriginal >= 60
+    ) {
+      nivelGeral =
+        "atencao";
+    } else if (
+      scoreGeralOriginal >= 40
+    ) {
+      nivelGeral = "alto";
+    }
+
     // =======================================================
-    // 11. PRESERVAR SCORES POR ÁREA
+    // 14. NORMALIZAR DIAGNÓSTICO GERAL
     // =======================================================
 
-    const scoresRecebidos = new Map(
-      areas.map((area) => [
-        area.area,
+    const geral =
+      parsed.diagnosticoGeral ||
+      {};
 
-        Number.isFinite(
-          Number(area.score)
+    const diagnosticoGeral = {
+      scoreGeral:
+        scoreGeralOriginal,
+
+      nivelGeral,
+
+      principaisDores:
+        Array.isArray(
+          geral.principaisDores
         )
-          ? Number(area.score)
-          : null,
-      ])
-    );
+          ? geral.principaisDores.slice(
+              0,
+              5
+            )
+          : [],
 
-    parsed.areas =
-      parsed.areas.map((area) => ({
-        ...area,
+      pontosFortes:
+        Array.isArray(
+          geral.pontosFortes
+        )
+          ? geral.pontosFortes.slice(
+              0,
+              5
+            )
+          : [],
 
-        score:
-          scoresRecebidos.get(
-            area.area
-          ) ?? null,
-      }));
+      prioridadesImediatas:
+        Array.isArray(
+          geral.prioridadesImediatas
+        )
+          ? geral.prioridadesImediatas.slice(
+              0,
+              5
+            )
+          : [],
+
+      oportunidades:
+        Array.isArray(
+          geral.oportunidades
+        )
+          ? geral.oportunidades.slice(
+              0,
+              5
+            )
+          : [],
+
+      resumoExecutivo:
+        String(
+          geral.resumoExecutivo ||
+          ""
+        ),
+    };
 
     // =======================================================
-    // 12. RETORNAR DIAGNÓSTICO
+    // 15. RETORNO FINAL PARA O APP
     // =======================================================
 
     return res
       .status(200)
-      .json(parsed);
+      .json({
+        sucesso: true,
+
+        areas:
+          areasProcessadas,
+
+        diagnosticoGeral,
+      });
 
   } catch (error) {
     // =======================================================
-    // 13. ERRO INTERNO
+    // 16. ERRO INTERNO
     // =======================================================
 
     console.error(
-      "Erro diagnóstico:",
+      "Erro no diagnóstico:",
       error
     );
 
-    return res.status(500).json({
-      error:
-        "Erro ao chamar a IA",
-    });
+    return res
+      .status(500)
+      .json({
+        sucesso: false,
+
+        error:
+          "Erro interno ao gerar o diagnóstico.",
+      });
   }
 }
