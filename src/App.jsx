@@ -455,16 +455,20 @@ const gruposSelecionados = areasDoDiagnostico.map((id) => ({
         subtemas: g.subtemas.map((s) => ({
           tema: s.tema,
           perguntas: s.perguntas.map((q) => ({
-            textoDe(
-  q,
-  segmentoPredominante,
-  empresaPrincipal?.categoria
-),
-            resposta: respostas[q.id],
-          })),
-        })),
-      })),
-    };
+            areas: gruposSelecionados.map((g) => ({
+  area: g.label,
+  subtemas: g.subtemas.map((s) => ({
+    tema: s.tema,
+    perguntas: s.perguntas.map((q) => ({
+      texto: textoDe(
+        q,
+        segmentoPredominante,
+        empresaPrincipal?.categoria
+      ),
+      resposta: respostas[q.id],
+    })),
+  })),
+})),
 
     const minDelay = new Promise((resolve) => setTimeout(resolve, 1800));
     const chamadaIA = fetch("/api/diagnostico", {
