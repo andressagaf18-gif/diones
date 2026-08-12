@@ -285,11 +285,42 @@ function pickCompany(cnpjDigits) {
   return COMPANIES[idx];
 }
 
+function normalizarSegmentoTributario(segmento) {
+  if (!segmento) return "Serviço";
+
+  const valor = String(segmento).toLowerCase();
+
+  if (
+    valor.includes("indústria") ||
+    valor.includes("industria")
+  ) {
+    return "Indústria";
+  }
+
+  if (
+    valor.includes("comércio") ||
+    valor.includes("comercio")
+  ) {
+    return "Comércio";
+  }
+
+  return "Serviço";
+}
+
 function segmentoPredominanteDe(empresas) {
   if (!empresas.length) return null;
+
   const contagem = {};
-  empresas.forEach((e) => { contagem[e.segmento] = (contagem[e.segmento] || 0) + 1; });
-  return Object.entries(contagem).sort((a, b) => b[1] - a[1])[0][0];
+
+  empresas.forEach((e) => {
+    const segmento = normalizarSegmentoTributario(e.segmento);
+
+    contagem[segmento] =
+      (contagem[segmento] || 0) + 1;
+  });
+
+  return Object.entries(contagem)
+    .sort((a, b) => b[1] - a[1])[0][0];
 }
 
 function StepDots({ step }) {
