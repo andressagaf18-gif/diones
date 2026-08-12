@@ -423,9 +423,12 @@ export default function DiagnosticoPrototipo() {
     .map((nome) => mapaAreaApiParaId[nome])
     .filter(Boolean);
 
-  const areasDoDiagnostico = dores.length > 0
-    ? dores
-    : areasSugeridas.slice(0, MAX_DORES);
+ const areasDoDiagnostico = [
+  ...new Set([
+    ...dores,
+    ...areasSugeridas.slice(0, 2)
+  ])
+].slice(0, MAX_DORES);
 
   const gruposSelecionados = areasDoDiagnostico
     .filter((id) => CHECKLISTS[id])
