@@ -311,6 +311,31 @@ function checklistEnxuto(subtemas) {
 }
 
 // Cada área tem 3 subtemas, cada um com 3 perguntas.
+
+const DORES_EVENTO = [
+  "Vendas abaixo do esperado",
+  "Margem ou lucro baixo",
+  "Falta de dinheiro em caixa",
+  "Impostos elevados",
+  "Processos desorganizados",
+  "Dependência excessiva do proprietário",
+  "Dificuldade com equipe",
+  "Falta de informações para decidir",
+  "Sistemas ou tecnologia insuficientes",
+  "Outro",
+];
+
+const IMPACTOS_DOR = [
+  "Perda de vendas",
+  "Redução da margem",
+  "Falta de caixa",
+  "Retrabalho",
+  "Atrasos",
+  "Risco fiscal ou jurídico",
+  "Sobrecarga dos sócios",
+  "Dificuldade de crescimento",
+];
+
 const CHECKLISTS = {
   marketing: [
     { tema: "Aquisição e conversão", dica: "Mapear o funil completo e acompanhar CAC e ROI mês a mês", perguntas: [
@@ -598,6 +623,9 @@ export default function DiagnosticoPrototipo() {
   const [regime, setRegime] = useState(null);
   const [observacao, setObservacao] = useState("");
   const [dores, setDores] = useState([]);
+  const [dorPrincipal, setDorPrincipal] = useState("");
+  const [dor90Dias, setDor90Dias] = useState("");
+  const [impactosDor, setImpactosDor] = useState([]);
   const [respostas, setRespostas] = useState({});
   const [msgIdx, setMsgIdx] = useState(0);
   const [toast, setToast] = useState("");
@@ -693,6 +721,9 @@ export default function DiagnosticoPrototipo() {
       colaboradores,
       regime,
       observacao,
+      dorPrincipal,
+      dor90Dias,
+      impactosDor,
       areas: gruposSelecionados.map((g) => ({
         area: g.label,
         score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
@@ -856,6 +887,9 @@ export default function DiagnosticoPrototipo() {
         colaboradores: colaboradores || "",
         regime: regime || "",
         observacao: observacao || "",
+        dorPrincipal,
+        dor90Dias,
+        impactosDor,
         areasSelecionadas: gruposSelecionados.map((g) => g.label),
       },
       resultado: {
@@ -913,6 +947,9 @@ export default function DiagnosticoPrototipo() {
     setRegime(null);
     setObservacao("");
     setDores([]);
+    setDorPrincipal("");
+    setDor90Dias("");
+    setImpactosDor([]);
     setRespostas({});
     setIaResultado(null);
   }
@@ -1360,129 +1397,27 @@ export default function DiagnosticoPrototipo() {
 
           <div style={{ flex: 1, padding: "18px 22px 22px", display: "flex", flexDirection: "column" }}>
 
-           {step === "intro" && (
-  <div
-    style={{
-      flex: 1,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      textAlign: "center",
-      gap: 16,
-      padding: "24px 16px",
-    }}
-  >
-    {/* Logo Finder */}
-    <img
-      src="/finder-logo.png"
-      alt="Finder of Solutions"
-      style={{
-        width: 210,
-        maxWidth: "88%",
-        height: "auto",
-        objectFit: "contain",
-        marginBottom: 4,
-      }}
-    />
-
-    {/* Título */}
-    <div>
-      <h1
-        style={{
-          fontFamily: DISPLAY_FONT,
-          fontSize: 30,
-          fontWeight: 800,
-          color: NAVY,
-          margin: "4px 0 8px",
-        }}
-      >
-        Diagnóstico Empresarial
-      </h1>
-
-      <p
-        style={{
-          fontSize: 15,
-          color: MUTED,
-          lineHeight: 1.5,
-          maxWidth: 460,
-          margin: "0 auto",
-        }}
-      >
-        Descubra em poucos minutos os principais gargalos e oportunidades da sua empresa.
-      </p>
-    </div>
-
-    {/* QR Code real */}
-    <div
-      style={{
-        background: "#FFFFFF",
-        padding: 12,
-        borderRadius: 20,
-        border: "1px solid #E5E7EB",
-        boxShadow: "0 8px 30px rgba(23,35,61,0.10)",
-      }}
-    >
-      <img
-        src="/qrcode-diagnostico.png"
-        alt="QR Code do Diagnóstico Empresarial"
-        style={{
-          width: 220,
-          height: 220,
-          display: "block",
-          objectFit: "contain",
-        }}
-      />
-    </div>
-
-    {/* Chamada */}
-    <div>
-      <p
-        style={{
-          fontFamily: DISPLAY_FONT,
-          fontSize: 20,
-          fontWeight: 700,
-          color: NAVY,
-          margin: "0 0 6px",
-        }}
-      >
-        Escaneie para começar
-      </p>
-
-      <p
-        style={{
-          fontSize: 13,
-          color: MUTED,
-          lineHeight: 1.5,
-          maxWidth: 390,
-          margin: 0,
-        }}
-      >
-        Faça seu diagnóstico gratuito e descubra onde sua empresa pode melhorar.
-      </p>
-    </div>
-
-    {/* Alternativa para quem já está no celular */}
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 390,
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        margin: "2px 0",
-      }}
-    >
-      <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
-      <span style={{ fontSize: 12, color: MUTED }}>ou</span>
-      <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
-    </div>
-
-    <PrimaryButton onClick={() => setStep("cadastro")}>
-      Iniciar diagnóstico <ArrowRight size={16} />
-    </PrimaryButton>
-  </div>
-)}
+            {step === "intro" && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+                <img
+                  src="/finder-logo.png"
+                  alt="Finder of Solutions"
+                  style={{ width: 210, maxWidth: "88%", height: "auto", objectFit: "contain", marginBottom: 2 }}
+                />
+                <div style={{ width: 72, height: 72, borderRadius: "50%", background: ICE, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <QrCode size={32} color={NAVY} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "0 0 8px" }}>Escaneie para começar</p>
+                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: 0 }}>
+                    Simulação da tela que o participante vê ao ler o QR code no evento.
+                  </p>
+                </div>
+                <PrimaryButton onClick={() => setStep("cadastro")}>
+                  Simular leitura do QR code <ArrowRight size={16} />
+                </PrimaryButton>
+              </div>
+            )}
 
             {step === "cadastro" && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -1626,46 +1561,163 @@ export default function DiagnosticoPrototipo() {
             )}
 
             {step === "dor" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: NAVY, margin: "6px 0 4px" }}>Quais suas maiores dores hoje?</p>
-                <p style={{ fontSize: 12.5, color: MUTED, margin: "0 0 4px" }}>Escolha até {MAX_DORES} áreas que mais preocupam agora.</p>
-                <p style={{ fontSize: 11, color: dores.length === MAX_DORES ? CORAL : "#9AA3B5", margin: "0 0 8px", fontWeight: 600 }}>
-                  {dores.length} de {MAX_DORES} selecionadas
-                </p>
-                {areasSugeridas.length > 0 && (
-                  <div style={{ background: ICE, borderRadius: 10, padding: "8px 10px", marginBottom: 12 }}>
-                    <p style={{ fontSize: 10.5, color: MUTED, margin: 0, lineHeight: 1.4 }}>
-                      Pelo CNAE <strong>{categoriaPrincipal}</strong>, as áreas mais relevantes tendem a ser: {areasSugeridas.slice(0, 3).map(areaLabel).join(", ")}.
-                    </p>
-                  </div>
-                )}
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, overflowY: "auto", maxHeight: 390, paddingRight: 2 }}>
-                  {AREAS.map(({ id, label, Icon }) => {
-                    const selecionada = dores.includes(id);
-                    const bloqueada = !selecionada && dores.length >= MAX_DORES;
-                    return (
-                      <button key={id} onClick={() => toggleDor(id)} disabled={bloqueada} style={{
-                        ...chipStyle(selecionada), display: "flex", flexDirection: "column",
-                        alignItems: "flex-start", gap: 6, padding: "12px 10px", height: 66,
-                        opacity: bloqueada ? 0.4 : 1, position: "relative",
-                      }}>
-                        <Icon size={17} color={selecionada ? WHITE : NAVY} />
-                        <span style={{ fontSize: 11.5 }}>{label}</span>
-                        {selecionada && (
-                          <CheckCircle2 size={14} color={WHITE} style={{ position: "absolute", top: 8, right: 8 }} />
-                        )}
-                      </button>
-                    );
-                  })}
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "6px 0 5px" }}>
+                    Vamos entender sua principal dor
+                  </p>
+                  <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5, margin: 0 }}>
+                    Essas respostas serão cruzadas com o CNAE e com o checklist para tornar o relatório mais específico.
+                  </p>
                 </div>
 
-                <div style={{ flex: 1, minHeight: 10 }} />
-                <PrimaryButton disabled={dores.length === 0} onClick={() => setStep("checklist")}>
-                  Continuar <ArrowRight size={16} />
+                <div>
+                  <p style={{ ...labelStyle, fontSize: 12, marginBottom: 8 }}>
+                    Qual destes problemas mais incomoda sua empresa hoje?
+                  </p>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {DORES_EVENTO.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setDorPrincipal(item)}
+                        style={{
+                          border: dorPrincipal === item ? `2px solid ${CORAL}` : "1px solid #D8DEEA",
+                          background: dorPrincipal === item ? "#FFF3EF" : "#FFFFFF",
+                          color: NAVY,
+                          borderRadius: 10,
+                          padding: "10px 9px",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: 11.3,
+                          fontWeight: dorPrincipal === item ? 700 : 500,
+                        }}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?
+                  </label>
+
+                  <textarea
+                    value={dor90Dias}
+                    onChange={(e) => setDor90Dias(e.target.value)}
+                    placeholder="Ex.: aumentar vendas; descobrir por que o caixa não sobra; reduzir retrabalho..."
+                    rows={3}
+                    style={{
+                      width: "100%",
+                      border: "1px solid #D8DEEA",
+                      borderRadius: 10,
+                      padding: "11px 12px",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      fontSize: 12,
+                      color: NAVY,
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <p style={{ ...labelStyle, marginBottom: 8 }}>
+                    Qual impacto esse problema está causando?
+                  </p>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                    {IMPACTOS_DOR.map((impacto) => {
+                      const ativo = impactosDor.includes(impacto);
+
+                      return (
+                        <button
+                          key={impacto}
+                          type="button"
+                          onClick={() =>
+                            setImpactosDor((prev) =>
+                              ativo ? prev.filter((x) => x !== impacto) : [...prev, impacto]
+                            )
+                          }
+                          style={{
+                            border: ativo ? `1px solid ${CORAL}` : "1px solid #D8DEEA",
+                            background: ativo ? "#FFF3EF" : "#FFFFFF",
+                            color: NAVY,
+                            borderRadius: 999,
+                            padding: "7px 10px",
+                            fontSize: 10.7,
+                            fontWeight: ativo ? 700 : 500,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {impacto}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: "1px solid #E6E9EF", paddingTop: 14 }}>
+                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: "0 0 4px" }}>
+                    Quais áreas merecem mais atenção?
+                  </p>
+
+                  <p style={{ fontSize: 11, color: dores.length === MAX_DORES ? CORAL : "#9AA3B5", margin: "0 0 8px", fontWeight: 600 }}>
+                    Escolha até {MAX_DORES} áreas · {dores.length} selecionada(s)
+                  </p>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {AREAS.map(({ id, label, Icon }) => {
+                      const selecionada = dores.includes(id);
+                      const bloqueada = !selecionada && dores.length >= MAX_DORES;
+
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          disabled={bloqueada}
+                          onClick={() =>
+                            setDores((prev) =>
+                              selecionada
+                                ? prev.filter((x) => x !== id)
+                                : [...prev, id]
+                            )
+                          }
+                          style={{
+                            border: selecionada ? `2px solid ${CORAL}` : "1px solid #D8DEEA",
+                            background: selecionada ? "#FFF3EF" : "#FFFFFF",
+                            color: bloqueada ? "#B5BCC8" : NAVY,
+                            borderRadius: 10,
+                            padding: "10px 9px",
+                            display: "flex",
+                            gap: 7,
+                            alignItems: "center",
+                            cursor: bloqueada ? "not-allowed" : "pointer",
+                            fontSize: 11.2,
+                            fontWeight: selecionada ? 700 : 500,
+                          }}
+                        >
+                          <Icon size={15} />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <PrimaryButton
+                  disabled={!dorPrincipal || !dor90Dias.trim() || dores.length === 0}
+                  onClick={() => setStep("checklist")}
+                >
+                  Continuar para o diagnóstico <ArrowRight size={16} />
                 </PrimaryButton>
               </div>
             )}
+
+            
 
             {step === "checklist" && gruposSelecionados.length > 0 && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
