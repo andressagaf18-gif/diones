@@ -868,102 +868,580 @@ export default function DiagnosticoPrototipo() {
   const valorAnualImposto = aliquota != null && faturamento ? faturamento.anual * (aliquota / 100) : null;
 
   function gerarPdf() {
-    if (!empresaPrincipal) return;
+  if (!empresaPrincipal) {
+    showToast("Nenhuma empresa disponível para gerar o relatório.");
+    return;
+  }
 
-    const riscosHtml = pontosAtencaoFinal.length
-      ? pontosAtencaoFinal.map((r) => `<li>${r}</li>`).join("")
-      : "<li>Nenhum risco relevante foi identificado nas respostas selecionadas.</li>";
+  const escaparHtml = (valor) =>
+    String(valor ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
 
-    const recomendacoesHtml = recomendacoesFinal.length
-      ? recomendacoesFinal.map((r) => `<li><strong>${r.area || "Prioridade"}:</strong> ${r.dica}</li>`).join("")
-      : "<li>Manter os controles atuais e revisar periodicamente os indicadores.</li>";
+  const riscosHtml = pontosAtencaoFinal.length
+    ? pontosAtencaoFinal
+        .map((r) => `<li>${escaparHtml(r)}</li>`)
+        .join("")
+    : `
+      <li>
+        Nenhum risco relevante foi identificado nas respostas selecionadas.
+      </li>
+    `;
 
-    const areasHtml = areasComScore
-      .map((a) => `<tr><td>${a.label}</td><td>${a.score}/100</td><td>${tierDe(a.score).label}</td></tr>`)
-      .join("");
+  const recomendacoesHtml = recomendacoesFinal.length
+    ? recomendacoesFinal
+        .map(
+          (r) => `
+            <li>
+              <strong>${escaparHtml(r.area || "Prioridade")}:</strong>
+              ${escaparHtml(r.dica)}
+            </li>
+          `
+        )
+        .join("")
+    : `
+      <li>
+        Manter os controles atuais e revisar periodicamente os indicadores.
+      </li>
+    `;
 
-    const html = `<!doctype html>
+  const areasHtml = areasComScore
+    .map(
+      (a) => `
+        <tr>
+          <td>${escaparHtml(a.label)}</td>
+          <td>${a.score}/100</td>
+          <td>${escaparHtml(tierDe(a.score).label)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const resumoIa =
+    iaResultado?.diagnosticoGeral?.resumoExecutivo ||
+    "";
+
+  const doresHtml =
+    iaResultado?.diagnosticoGeral?.principaisDores?.length
+      ? iaResultado.diagnosticoGeral.principaisDores
+          .map((d) => `<li>${escaparHtml(d)}</li>`)
+          .join("")
+      : "";
+
+  const html = `
+<!DOCTYPE html>
+
 <html lang="pt-BR">
+
 <head>
-<meta charset="utf-8" />
-<title>Diagnóstico Finder - ${empresaPrincipal.razao}</title>
+
+<meta charset="UTF-8" />
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+/>
+
+<title>
+Diagnóstico Finder - ${escaparHtml(empresaPrincipal.razao)}
+</title>
+
 <style>
-  @page { size: A4; margin: 14mm; }
-  * { box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; color: #17233D; margin: 0; font-size: 12px; line-height: 1.45; }
-  .header { background: #17233D; color: white; padding: 22px; margin: -14mm -14mm 18px; }
-  .header h1 { margin: 0 0 5px; font-size: 22px; }
-  .header p { margin: 0; opacity: .8; }
-  h2 { font-size: 15px; margin: 20px 0 8px; border-bottom: 2px solid #FF6B4A; padding-bottom: 5px; }
-  .score { font-size: 28px; font-weight: 700; color: #FF6B4A; }
-  .muted { color: #5B667A; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { border-bottom: 1px solid #D8DEEA; padding: 7px 5px; text-align: left; }
-  th { background: #E9EDF5; }
-  li { margin-bottom: 6px; }
-  .aviso { margin-top: 24px; font-size: 10px; color: #5B667A; font-style: italic; }
-  .footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #D8DEEA; font-size: 10px; color: #5B667A; }
+
+@page {
+  size: A4;
+  margin: 15mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: #ffffff;
+}
+
+body {
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  color: #17233D;
+
+  margin: 0;
+
+  font-size: 12px;
+
+  line-height: 1.5;
+}
+
+.header {
+  background: #17233D;
+
+  color: white;
+
+  padding: 24px;
+
+  margin-bottom: 22px;
+
+  border-radius: 8px;
+}
+
+.header h1 {
+  margin: 0 0 6px;
+
+  font-size: 24px;
+}
+
+.header p {
+  margin: 0;
+
+  opacity: 0.85;
+
+  font-size: 12px;
+}
+
+h2 {
+  font-size: 15px;
+
+  color: #17233D;
+
+  margin-top: 22px;
+
+  margin-bottom: 9px;
+
+  padding-bottom: 5px;
+
+  border-bottom: 2px solid #FF6B4A;
+}
+
+.grid {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 8px 24px;
+}
+
+.card {
+  background: #F5F7FA;
+
+  border: 1px solid #E2E6ED;
+
+  border-radius: 8px;
+
+  padding: 12px;
+}
+
+.score-box {
+  display: flex;
+
+  align-items: center;
+
+  gap: 18px;
+
+  background: #F5F7FA;
+
+  padding: 16px;
+
+  border-radius: 8px;
+}
+
+.score {
+  font-size: 36px;
+
+  font-weight: 700;
+
+  color: #FF6B4A;
+}
+
+.score-label {
+  font-size: 15px;
+
+  font-weight: 700;
+}
+
+.muted {
+  color: #5B667A;
+}
+
+table {
+  width: 100%;
+
+  border-collapse: collapse;
+
+  margin-top: 8px;
+}
+
+th {
+  background: #E9EDF5;
+
+  font-weight: 700;
+}
+
+th,
+td {
+  border-bottom: 1px solid #D8DEEA;
+
+  padding: 8px 6px;
+
+  text-align: left;
+}
+
+ol,
+ul {
+  padding-left: 20px;
+}
+
+li {
+  margin-bottom: 7px;
+}
+
+.resumo {
+  background: #FFF4F0;
+
+  border-left: 4px solid #FF6B4A;
+
+  padding: 12px;
+
+  border-radius: 4px;
+}
+
+.aviso {
+  margin-top: 28px;
+
+  font-size: 10px;
+
+  color: #5B667A;
+
+  font-style: italic;
+}
+
+.footer {
+  margin-top: 20px;
+
+  padding-top: 10px;
+
+  border-top: 1px solid #D8DEEA;
+
+  font-size: 10px;
+
+  color: #5B667A;
+
+  text-align: center;
+}
+
+@media print {
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .header,
+  .card,
+  .score-box,
+  .resumo {
+    break-inside: avoid;
+  }
+
+  table {
+    break-inside: avoid;
+  }
+}
+
 </style>
+
 </head>
+
 <body>
-  <div class="header">
-    <h1>Diagnóstico Empresarial Finder</h1>
-    <p>Diagnóstico preliminar realizado em evento</p>
-  </div>
 
-  <h2>Empresa</h2>
-  <div class="grid">
-    <div><strong>Razão social:</strong> ${empresaPrincipal.razao}</div>
-    <div><strong>CNPJ:</strong> ${empresaPrincipal.cnpjDigits || "-"}</div>
-    <div><strong>Categoria:</strong> ${categoriaPrincipal}</div>
-    <div><strong>Porte:</strong> ${empresaPrincipal.porte || "-"}</div>
-    <div style="grid-column: 1 / -1"><strong>CNAE:</strong> ${empresaPrincipal.cnae || "-"}</div>
-  </div>
+<div class="header">
 
-  <h2>Responsável</h2>
-  <div class="grid">
-    <div><strong>Nome:</strong> ${nome}</div>
-    <div><strong>Cargo:</strong> ${cargo}</div>
-    <div><strong>WhatsApp:</strong> ${telefone || "-"}</div>
-    <div><strong>E-mail:</strong> ${email || "-"}</div>
-  </div>
+<h1>Diagnóstico Empresarial Finder</h1>
 
-  <h2>Resultado geral</h2>
-  <div class="score">${score}/100</div>
-  <div><strong>${tierGeral.label}</strong></div>
-  <p class="muted">${faturamento?.label || "Faturamento não informado"} · ${colaboradores || "-"} colaboradores · ${regime || "-"}</p>
+<p>
+Diagnóstico preliminar realizado em evento
+</p>
 
-  <h2>Maturidade por área</h2>
-  <table>
-    <thead><tr><th>Área</th><th>Score</th><th>Nível</th></tr></thead>
-    <tbody>${areasHtml}</tbody>
-  </table>
+</div>
 
-  <h2>Principais riscos identificados</h2>
-  <ol>${riscosHtml}</ol>
+<h2>Empresa</h2>
 
-  <h2>Ações prioritárias</h2>
-  <ol>${recomendacoesHtml}</ol>
+<div class="card">
 
-  ${observacao.trim() ? `<h2>Observação do participante</h2><p>${observacao.trim()}</p>` : ""}
+<div class="grid">
 
-  <p class="aviso">Diagnóstico preliminar e educativo. As estimativas e recomendações não substituem análise profissional individualizada.</p>
-  <div class="footer">Finder of Solutions · Diagnóstico Empresarial</div>
+<div>
+<strong>Razão social:</strong><br>
+${escaparHtml(empresaPrincipal.razao)}
+</div>
 
-  <script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
+<div>
+<strong>CNPJ:</strong><br>
+${escaparHtml(empresaPrincipal.cnpjDigits || "-")}
+</div>
+
+<div>
+<strong>Categoria:</strong><br>
+${escaparHtml(categoriaPrincipal)}
+</div>
+
+<div>
+<strong>Porte:</strong><br>
+${escaparHtml(empresaPrincipal.porte || "-")}
+</div>
+
+<div style="grid-column: 1 / -1">
+
+<strong>CNAE:</strong><br>
+
+${escaparHtml(empresaPrincipal.cnae || "-")}
+
+</div>
+
+</div>
+
+</div>
+
+<h2>Responsável</h2>
+
+<div class="card">
+
+<div class="grid">
+
+<div>
+<strong>Nome:</strong><br>
+${escaparHtml(nome)}
+</div>
+
+<div>
+<strong>Cargo:</strong><br>
+${escaparHtml(cargo)}
+</div>
+
+<div>
+<strong>WhatsApp:</strong><br>
+${escaparHtml(telefone || "-")}
+</div>
+
+<div>
+<strong>E-mail:</strong><br>
+${escaparHtml(email || "-")}
+</div>
+
+</div>
+
+</div>
+
+<h2>Resultado geral</h2>
+
+<div class="score-box">
+
+<div>
+
+<div class="score">
+${score}/100
+</div>
+
+<div class="score-label">
+${escaparHtml(tierGeral.label)}
+</div>
+
+</div>
+
+<div class="muted">
+
+${escaparHtml(faturamento?.label || "Faturamento não informado")}
+
+<br>
+
+${escaparHtml(colaboradores || "-")} colaboradores
+
+<br>
+
+${escaparHtml(regime || "-")}
+
+</div>
+
+</div>
+
+${
+  resumoIa
+    ? `
+      <h2>Resumo executivo</h2>
+
+      <div class="resumo">
+
+        ${escaparHtml(resumoIa)}
+
+      </div>
+    `
+    : ""
+}
+
+<h2>Maturidade por área</h2>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>Área</th>
+
+<th>Score</th>
+
+<th>Nível</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+${areasHtml}
+
+</tbody>
+
+</table>
+
+${
+  doresHtml
+    ? `
+      <h2>Principais dores</h2>
+
+      <ol>
+
+        ${doresHtml}
+
+      </ol>
+    `
+    : ""
+}
+
+<h2>Principais riscos identificados</h2>
+
+<ol>
+
+${riscosHtml}
+
+</ol>
+
+<h2>Ações prioritárias</h2>
+
+<ol>
+
+${recomendacoesHtml}
+
+</ol>
+
+${
+  observacao.trim()
+    ? `
+      <h2>Observação do participante</h2>
+
+      <div class="card">
+
+        ${escaparHtml(observacao.trim())}
+
+      </div>
+    `
+    : ""
+}
+
+<p class="aviso">
+
+Este diagnóstico é preliminar e educativo.
+
+As estimativas e recomendações não substituem
+análise profissional individualizada.
+
+</p>
+
+<div class="footer">
+
+Finder of Solutions · Diagnóstico Empresarial
+
+</div>
+
 </body>
-</html>`;
 
-    const janela = window.open("", "_blank", "noopener,noreferrer");
+</html>
+`;
+
+  try {
+    const blob = new Blob(
+      [html],
+      {
+        type: "text/html;charset=utf-8",
+      }
+    );
+
+    const url = URL.createObjectURL(blob);
+
+    const janela = window.open(
+      url,
+      "_blank"
+    );
+
     if (!janela) {
-      showToast("Permita pop-ups para gerar o PDF.");
+      URL.revokeObjectURL(url);
+
+      showToast(
+        "Permita pop-ups no navegador para gerar o PDF."
+      );
+
       return;
     }
-    janela.document.open();
-    janela.document.write(html);
-    janela.document.close();
+
+    const imprimir = () => {
+      try {
+        janela.focus();
+
+        janela.print();
+
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 10000);
+
+      } catch (erro) {
+        console.error(
+          "Erro ao imprimir relatório:",
+          erro
+        );
+      }
+    };
+
+    janela.addEventListener(
+      "load",
+      () => {
+        setTimeout(
+          imprimir,
+          700
+        );
+      },
+      {
+        once: true,
+      }
+    );
+
+  } catch (erro) {
+    console.error(
+      "Erro ao gerar relatório:",
+      erro
+    );
+
+    showToast(
+      "Não foi possível gerar o relatório."
+    );
   }
+}
 
   return (
     <div style={{ background: "#EEF0F5", minHeight: 760, display: "flex", justifyContent: "center", padding: "32px 16px", fontFamily: BODY_FONT }}>
