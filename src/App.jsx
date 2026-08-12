@@ -83,8 +83,20 @@ function tierDe(score) {
   return { label: "Emergencial", color: "#791F1F", bg: "#FCEBEB" };
 }
 // Perguntas com variação de texto por segmento usam porSegmento; as demais valem para todos.
-function textoDe(q, segmento) { return q.porSegmento?.[segmento]?.text || q.text; }
-function riscoDe(q, segmento) { return q.porSegmento?.[segmento]?.risco || q.risco; }
+function textoDe(q, segmento, categoria) {
+  return (
+    q.porCategoria?.[categoria]?.text ||
+    q.porSegmento?.[segmento]?.text ||
+    q.text
+  );
+}
+function riscoDe(q, segmento, categoria) {
+  return (
+    q.porCategoria?.[categoria]?.risco ||
+    q.porSegmento?.[segmento]?.risco ||
+    q.risco
+  );
+}
 
 // Cada área tem 3 subtemas, cada um com 3 perguntas.
 const CHECKLISTS = {
@@ -377,8 +389,43 @@ export default function DiagnosticoPrototipo() {
 
   const segmentoPredominante = segmentoPredominanteDe(empresas);
   const empresaPrincipal = empresas[0] || null;
+  const codigoQuestionario =
+  empresaPrincipal?.codigoQuestionario || null;
 
-  const gruposSelecionados = dores.map((id) => ({ id, label: areaLabel(id), subtemas: CHECKLISTS[id] }));
+const areasPrioritarias =
+  empresaPrincipal?.areasPrioritarias || [];
+
+const mapaAreaApiParaId = {
+  "Marketing": "marketing",
+  "Jurídico": "juridico",
+  "Contábil / Fiscal": "contabilidade",
+  "Contabilidade": "contabilidade",
+  "Financeiro": "financeiro",
+  "Administrativo": "administrativo",
+  "Gestão": "gestao",
+  "Operacional": "operacional",
+  "Pessoas": "rh",
+  "Recursos Humanos": "rh",
+  "Comercial": "comercial",
+  "Tecnologia": "tecnologia",
+  "Processos": "administrativo",
+  "Atendimento": "comercial",
+};
+
+const areasSugeridas = areasPrioritarias
+  .map((nome) => mapaAreaApiParaId[nome])
+  .filter(Boolean);
+
+  const areasDoDiagnostico =
+  dores.length > 0
+    ? dores
+    : areasSugeridas.slice(0, MAX_DORES);
+
+const gruposSelecionados = areasDoDiagnostico.map((id) => ({
+  id,
+  label: areaLabel(id),
+  subtemas: CHECKLISTS[id]
+}));
   const todasPerguntas = gruposSelecionados.flatMap((g) => g.subtemas.flatMap((s) => s.perguntas));
   const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
 
@@ -408,7 +455,11 @@ export default function DiagnosticoPrototipo() {
         subtemas: g.subtemas.map((s) => ({
           tema: s.tema,
           perguntas: s.perguntas.map((q) => ({
-            texto: textoDe(q, segmentoPredominante),
+            textoDe(
+  q,
+  segmentoPredominante,
+  empresaPrincipal?.categoria
+),
             resposta: respostas[q.id],
           })),
         })),
@@ -538,7 +589,11 @@ export default function DiagnosticoPrototipo() {
   const subOrdenados = [...subScoresAll].sort((a, b) => a.score - b.score);
 
   const perguntasComPeso = todasPerguntas.map((q) => ({
-    ...q, peso: pesoResposta(q, respostas[q.id]), riscoTexto: riscoDe(q, segmentoPredominante),
+    ...q, peso: pesoResposta(q, respostas[q.id]), riscoTexto: riscoDe(
+  q,
+  segmentoPredominante,
+  empresaPrincipal?.categoria
+),
   }));
   const pontosAtencao = [...perguntasComPeso]
     .filter((q) => q.peso < 5)
