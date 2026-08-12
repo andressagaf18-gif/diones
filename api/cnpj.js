@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   // =========================================================
-  // 3. CLASSIFICAÇÃO DA EMPRESA PELO CNAE
+  // 3. CLASSIFICAR EMPRESA PELO CNAE
   // =========================================================
 
   function classificarEmpresa(cnae, descricao = "") {
@@ -36,13 +36,6 @@ export default async function handler(req, res) {
     const desc = String(descricao || "").toLowerCase();
 
     const divisao = parseInt(codigo.slice(0, 2), 10);
-
-    /*
-     * A ordem importa.
-     *
-     * Primeiro classificamos atividades específicas.
-     * Depois usamos classificações mais genéricas.
-     */
 
     // =======================================================
     // CONTABILIDADE
@@ -154,7 +147,7 @@ export default async function handler(req, res) {
 
     // =======================================================
     // TECNOLOGIA
-    // CNAE divisões 62 e 63
+    // CNAE 62 e 63
     // =======================================================
 
     if (
@@ -196,7 +189,10 @@ export default async function handler(req, res) {
     // CNAE 41, 42 e 43
     // =======================================================
 
-    if (divisao >= 41 && divisao <= 43) {
+    if (
+      divisao >= 41 &&
+      divisao <= 43
+    ) {
       return {
         segmento: "Construção",
 
@@ -262,7 +258,10 @@ export default async function handler(req, res) {
     // CNAE 45, 46 e 47
     // =======================================================
 
-    if (divisao >= 45 && divisao <= 47) {
+    if (
+      divisao >= 45 &&
+      divisao <= 47
+    ) {
       return {
         segmento: "Comércio",
 
@@ -293,7 +292,10 @@ export default async function handler(req, res) {
     // CNAE 10 até 33
     // =======================================================
 
-    if (divisao >= 10 && divisao <= 33) {
+    if (
+      divisao >= 10 &&
+      divisao <= 33
+    ) {
       return {
         segmento: "Indústria",
 
@@ -324,7 +326,10 @@ export default async function handler(req, res) {
     // CNAE 49 até 53
     // =======================================================
 
-    if (divisao >= 49 && divisao <= 53) {
+    if (
+      divisao >= 49 &&
+      divisao <= 53
+    ) {
       return {
         segmento: "Serviços",
 
@@ -388,7 +393,7 @@ export default async function handler(req, res) {
 
     // =======================================================
     // IMOBILIÁRIO
-    // CNAE divisão 68
+    // CNAE 68
     // =======================================================
 
     if (
@@ -399,9 +404,11 @@ export default async function handler(req, res) {
       return {
         segmento: "Serviços",
 
-        categoria: "Imobiliária / Atividades Imobiliárias",
+        categoria:
+          "Imobiliária / Atividades Imobiliárias",
 
-        codigoQuestionario: "imobiliario",
+        codigoQuestionario:
+          "imobiliario",
 
         diagnostico: {
           areasPrioritarias: [
@@ -426,13 +433,19 @@ export default async function handler(req, res) {
     // CNAE 69 até 75
     // =======================================================
 
-    if (divisao >= 69 && divisao <= 75) {
+    if (
+      divisao >= 69 &&
+      divisao <= 75
+    ) {
       return {
-        segmento: "Serviços Profissionais",
+        segmento:
+          "Serviços Profissionais",
 
-        categoria: "Serviços Profissionais",
+        categoria:
+          "Serviços Profissionais",
 
-        codigoQuestionario: "servicos_profissionais",
+        codigoQuestionario:
+          "servicos_profissionais",
 
         diagnostico: {
           areasPrioritarias: [
@@ -454,14 +467,17 @@ export default async function handler(req, res) {
 
     // =======================================================
     // FALLBACK
+    // Quando nenhuma categoria específica for encontrada
     // =======================================================
 
     return {
       segmento: "Serviços",
 
-      categoria: "Serviços Profissionais",
+      categoria:
+        "Serviços Profissionais",
 
-      codigoQuestionario: "servicos",
+      codigoQuestionario:
+        "servicos",
 
       diagnostico: {
         areasPrioritarias: [
@@ -492,53 +508,84 @@ export default async function handler(req, res) {
         method: "GET",
 
         headers: {
-          "User-Agent": "finder-diagnostico-empresarial/1.0",
-          Accept: "application/json",
+          "User-Agent":
+            "finder-diagnostico-empresarial/1.0",
+
+          Accept:
+            "application/json",
         },
       }
     );
 
     // =======================================================
-    // 5. TRATAMENTO DE ERROS
+    // 5. TRATAR ERROS DA BRASIL API
     // =======================================================
 
     if (!response.ok) {
-      const detalhe = await response.text();
+      const detalhe =
+        await response.text();
 
-      console.error("Erro BrasilAPI:", {
-        status: response.status,
-        statusText: response.statusText,
-        detalhe,
-      });
+      console.error(
+        "Erro BrasilAPI:",
+        {
+          status:
+            response.status,
 
-      if (response.status === 404) {
-        return res.status(404).json({
-          sucesso: false,
-          error: "CNPJ não encontrado.",
-        });
+          statusText:
+            response.statusText,
+
+          detalhe,
+        }
+      );
+
+      if (
+        response.status === 404
+      ) {
+        return res
+          .status(404)
+          .json({
+            sucesso: false,
+
+            error:
+              "CNPJ não encontrado.",
+          });
       }
 
-      if (response.status === 403) {
-        return res.status(503).json({
+      if (
+        response.status === 403
+      ) {
+        return res
+          .status(503)
+          .json({
+            sucesso: false,
+
+            error:
+              "O serviço de consulta de CNPJ está temporariamente indisponível.",
+
+            statusBrasilAPI:
+              403,
+          });
+      }
+
+      return res
+        .status(502)
+        .json({
           sucesso: false,
+
           error:
-            "O serviço de consulta de CNPJ está temporariamente indisponível.",
-          statusBrasilAPI: 403,
-        });
-      }
+            "Não foi possível consultar o CNPJ.",
 
-      return res.status(502).json({
-        sucesso: false,
-        error: "Não foi possível consultar o CNPJ.",
-        statusBrasilAPI: response.status,
-      });
+          statusBrasilAPI:
+            response.status,
+        });
     }
 
     // =======================================================
-    // 6. LER DADOS
+    // 6. LER RETORNO DA BRASIL API
     // =======================================================
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
     const cnaeCodigo =
       data.cnae_fiscal ||
@@ -551,96 +598,103 @@ export default async function handler(req, res) {
       "";
 
     // =======================================================
-    // 7. CLASSIFICAR PELO CNAE
+    // 7. CLASSIFICAR EMPRESA
     // =======================================================
 
-    const classificacao = classificarEmpresa(
-      cnaeCodigo,
-      cnaeDescricao
-    );
+    const classificacao =
+      classificarEmpresa(
+        cnaeCodigo,
+        cnaeDescricao
+      );
 
     // =======================================================
-    // 8. RETORNAR PARA O APP
+    // 8. RETORNAR DADOS PARA O APLICATIVO
     // =======================================================
 
-    return res.status(200).json({
-      sucesso: true,
+    return res
+      .status(200)
+      .json({
+        sucesso: true,
 
-      empresa: {
-        cnpj: digits,
+        empresa: {
+          cnpj:
+            digits,
 
-        razaoSocial:
-          data.razao_social ||
-          "",
+          razaoSocial:
+            data.razao_social ||
+            "",
 
-        nomeFantasia:
-          data.nome_fantasia ||
-          "",
+          nomeFantasia:
+            data.nome_fantasia ||
+            "",
 
-        porte:
-          data.porte ||
-          "Não informado",
+          porte:
+            data.porte ||
+            "Não informado",
 
-        naturezaJuridica:
-          data.natureza_juridica ||
-          "",
+          naturezaJuridica:
+            data.natureza_juridica ||
+            "",
 
-        situacao:
-          data.descricao_situacao_cadastral ||
-          data.situacao_cadastral ||
-          "",
+          situacao:
+            data.descricao_situacao_cadastral ||
+            data.situacao_cadastral ||
+            "",
 
-        abertura:
-          data.data_inicio_atividade ||
-          "",
+          abertura:
+            data.data_inicio_atividade ||
+            "",
 
-        telefone:
-          data.ddd_telefone_1 ||
-          data.ddd_telefone_2 ||
-          "",
+          telefone:
+            data.ddd_telefone_1 ||
+            data.ddd_telefone_2 ||
+            "",
 
-        email:
-          data.email ||
-          "",
-      },
+          email:
+            data.email ||
+            "",
+        },
 
-      cnae: {
-        codigo: cnaeCodigo,
-        descricao: cnaeDescricao,
-      },
+        cnae: {
+          codigo:
+            cnaeCodigo,
 
-      classificacao,
+          descricao:
+            cnaeDescricao,
+        },
 
-      endereco: {
-        logradouro:
-          data.logradouro ||
-          "",
+        classificacao,
 
-        numero:
-          data.numero ||
-          "",
+        endereco: {
+          logradouro:
+            data.logradouro ||
+            "",
 
-        complemento:
-          data.complemento ||
-          "",
+          numero:
+            data.numero ||
+            "",
 
-        bairro:
-          data.bairro ||
-          "",
+          complemento:
+            data.complemento ||
+            "",
 
-        municipio:
-          data.municipio ||
-          "",
+          bairro:
+            data.bairro ||
+            "",
 
-        uf:
-          data.uf ||
-          "",
+          municipio:
+            data.municipio ||
+            "",
 
-        cep:
-          data.cep ||
-          "",
-      },
-    });
+          uf:
+            data.uf ||
+            "",
+
+          cep:
+            data.cep ||
+            "",
+        },
+      });
   } catch (error) {
     // =======================================================
     // 9. ERRO INTERNO
@@ -651,10 +705,13 @@ export default async function handler(req, res) {
       error
     );
 
-    return res.status(500).json({
-      sucesso: false,
-      error:
-        "Erro interno ao consultar o CNPJ.",
-    });
+    return res
+      .status(500)
+      .json({
+        sucesso: false,
+
+        error:
+          "Erro interno ao consultar o CNPJ.",
+      });
   }
 }
