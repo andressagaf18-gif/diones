@@ -21,15 +21,22 @@ export default async function handler(req, res) {
       `https://brasilapi.com.br/api/cnpj/v1/${digits}`
     );
 
-    if (!response.ok) {
-      return res.status(response.status === 404 ? 404 : 502).json({
-        sucesso: false,
-        error:
-          response.status === 404
-            ? "CNPJ não encontrado."
-            : "Não foi possível consultar o CNPJ.",
-      });
-    }
+   if (!response.ok) {
+  const detalhe = await response.text();
+
+  console.error("Erro BrasilAPI:", {
+    status: response.status,
+    statusText: response.statusText,
+    detalhe
+  });
+
+  return res.status(502).json({
+    sucesso: false,
+    error: "Erro retornado pela BrasilAPI.",
+    statusBrasilAPI: response.status,
+    detalhe: detalhe || response.statusText
+  });
+}
 
     const data = await response.json();
 
