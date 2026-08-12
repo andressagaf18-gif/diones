@@ -1360,27 +1360,129 @@ export default function DiagnosticoPrototipo() {
 
           <div style={{ flex: 1, padding: "18px 22px 22px", display: "flex", flexDirection: "column" }}>
 
-            {step === "intro" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
-                <img
-                  src="/finder-logo.png"
-                  alt="Finder of Solutions"
-                  style={{ width: 210, maxWidth: "88%", height: "auto", objectFit: "contain", marginBottom: 2 }}
-                />
-                <div style={{ width: 72, height: 72, borderRadius: "50%", background: ICE, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <QrCode size={32} color={NAVY} />
-                </div>
-                <div>
-                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "0 0 8px" }}>Escaneie para começar</p>
-                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: 0 }}>
-                    Simulação da tela que o participante vê ao ler o QR code no evento.
-                  </p>
-                </div>
-                <PrimaryButton onClick={() => setStep("cadastro")}>
-                  Simular leitura do QR code <ArrowRight size={16} />
-                </PrimaryButton>
-              </div>
-            )}
+           {step === "intro" && (
+  <div
+    style={{
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      textAlign: "center",
+      gap: 16,
+      padding: "24px 16px",
+    }}
+  >
+    {/* Logo Finder */}
+    <img
+      src="/finder-logo.png"
+      alt="Finder of Solutions"
+      style={{
+        width: 210,
+        maxWidth: "88%",
+        height: "auto",
+        objectFit: "contain",
+        marginBottom: 4,
+      }}
+    />
+
+    {/* Título */}
+    <div>
+      <h1
+        style={{
+          fontFamily: DISPLAY_FONT,
+          fontSize: 30,
+          fontWeight: 800,
+          color: NAVY,
+          margin: "4px 0 8px",
+        }}
+      >
+        Diagnóstico Empresarial
+      </h1>
+
+      <p
+        style={{
+          fontSize: 15,
+          color: MUTED,
+          lineHeight: 1.5,
+          maxWidth: 460,
+          margin: "0 auto",
+        }}
+      >
+        Descubra em poucos minutos os principais gargalos e oportunidades da sua empresa.
+      </p>
+    </div>
+
+    {/* QR Code real */}
+    <div
+      style={{
+        background: "#FFFFFF",
+        padding: 12,
+        borderRadius: 20,
+        border: "1px solid #E5E7EB",
+        boxShadow: "0 8px 30px rgba(23,35,61,0.10)",
+      }}
+    >
+      <img
+        src="/qrcode-diagnostico.png"
+        alt="QR Code do Diagnóstico Empresarial"
+        style={{
+          width: 220,
+          height: 220,
+          display: "block",
+          objectFit: "contain",
+        }}
+      />
+    </div>
+
+    {/* Chamada */}
+    <div>
+      <p
+        style={{
+          fontFamily: DISPLAY_FONT,
+          fontSize: 20,
+          fontWeight: 700,
+          color: NAVY,
+          margin: "0 0 6px",
+        }}
+      >
+        Escaneie para começar
+      </p>
+
+      <p
+        style={{
+          fontSize: 13,
+          color: MUTED,
+          lineHeight: 1.5,
+          maxWidth: 390,
+          margin: 0,
+        }}
+      >
+        Faça seu diagnóstico gratuito e descubra onde sua empresa pode melhorar.
+      </p>
+    </div>
+
+    {/* Alternativa para quem já está no celular */}
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 390,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        margin: "2px 0",
+      }}
+    >
+      <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
+      <span style={{ fontSize: 12, color: MUTED }}>ou</span>
+      <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
+    </div>
+
+    <PrimaryButton onClick={() => setStep("cadastro")}>
+      Iniciar diagnóstico <ArrowRight size={16} />
+    </PrimaryButton>
+  </div>
+)}
 
             {step === "cadastro" && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
