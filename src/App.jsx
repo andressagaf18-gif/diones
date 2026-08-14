@@ -618,6 +618,9 @@ export default function DiagnosticoPrototipo() {
   const [cnpjInput, setCnpjInput] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [empresas, setEmpresas] = useState([]);
+  const [cnaesEmpresa, setCnaesEmpresa] = useState([]);
+  const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([]);
+  const [atividadePredominante, setAtividadePredominante] = useState(null);
   const [faturamento, setFaturamento] = useState(null);
   const [colaboradores, setColaboradores] = useState(null);
   const [regime, setRegime] = useState(null);
@@ -632,10 +635,25 @@ export default function DiagnosticoPrototipo() {
   const [iaResultado, setIaResultado] = useState(null);
   const toastTimer = useRef(null);
 
-  const segmentoPredominante = segmentoPredominanteDe(empresas);
   const empresaPrincipal = empresas[0] || null;
-  const categoriaPrincipal = empresaPrincipal?.categoria || "Serviços Profissionais";
-  const codigoQuestionario = empresaPrincipal?.codigoQuestionario || null;
+
+  const atividadesSelecionadasObjetos = cnaesEmpresa.filter((atividade) =>
+    atividadesSelecionadas.includes(String(atividade.codigo))
+  );
+
+  const segmentoPredominante =
+    atividadePredominante?.classificacao?.segmento ||
+    segmentoPredominanteDe(empresas);
+
+  const categoriaPrincipal =
+    atividadePredominante?.classificacao?.categoria ||
+    empresaPrincipal?.categoria ||
+    "Serviços Profissionais";
+
+  const codigoQuestionario =
+    atividadePredominante?.classificacao?.codigoQuestionario ||
+    empresaPrincipal?.codigoQuestionario ||
+    null;
 
   const mapaAreaApiParaId = {
     "Marketing": "marketing",
@@ -665,7 +683,10 @@ export default function DiagnosticoPrototipo() {
     "Segurança da Informação": "tecnologia",
   };
 
-  const areasPrioritariasApi = empresaPrincipal?.areasPrioritarias || [];
+  const areasPrioritariasApi =
+    atividadePredominante?.classificacao?.diagnostico?.areasPrioritarias ||
+    empresaPrincipal?.areasPrioritarias ||
+    [];
   const areasSugeridasApi = areasPrioritariasApi
     .map((nome) => mapaAreaApiParaId[nome])
     .filter(Boolean);
@@ -711,6 +732,10 @@ export default function DiagnosticoPrototipo() {
       segmento: segmentoPredominante,
       categoria: categoriaPrincipal,
       codigoQuestionario,
+      cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
+      cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
+      atividadesSelecionadas: atividadesSelecionadasObjetos,
+      atividadePredominante,
       empresas: empresas.map((e) => ({
         razao: e.razao,
         categoria: e.categoria,
@@ -801,6 +826,28 @@ export default function DiagnosticoPrototipo() {
         throw new Error(data?.error || "Erro ao consultar CNPJ");
       }
 
+      const cnaePrincipal =
+        data.cnaePrincipal ||
+        data.cnae?.principal || {
+          codigo: String(data.cnae?.codigo || ""),
+          descricao: data.cnae?.descricao || "",
+          principal: true,
+          classificacao: data.classificacao || null,
+        };
+
+      const cnaesSecundarios = Array.isArray(data.cnaesSecundarios)
+        ? data.cnaesSecundarios
+        : Array.isArray(data.cnae?.secundarios)
+          ? data.cnae.secundarios
+          : [];
+
+      const todosCnaes =
+        Array.isArray(data.todosCnaes) && data.todosCnaes.length
+          ? data.todosCnaes
+          : Array.isArray(data.cnae?.todos) && data.cnae.todos.length
+            ? data.cnae.todos
+            : [cnaePrincipal, ...cnaesSecundarios];
+
       const empresa = {
         cnpjDigits: data.empresa?.cnpj || digits,
         razao: data.empresa?.razaoSocial || "Razão social não informada",
@@ -808,16 +855,42 @@ export default function DiagnosticoPrototipo() {
         porte: data.empresa?.porte || "Não informado",
         segmento: data.classificacao?.segmento || "Serviços Profissionais",
         categoria: data.classificacao?.categoria || "Serviços Profissionais",
-        codigoQuestionario: data.classificacao?.codigoQuestionario || "servicos",
-        cnae: `${data.cnae?.codigo || ""} — ${data.cnae?.descricao || ""}`,
-        areasPrioritarias: data.classificacao?.diagnostico?.areasPrioritarias || [],
-        areasComplementares: data.classificacao?.diagnostico?.areasComplementares || [],
+        codigoQuestionario:
+          data.classificacao?.codigoQuestionario || "servicos",
+        cnae:
+          `${cnaePrincipal?.codigo || ""} — ${cnaePrincipal?.descricao || ""}`,
+        cnaePrincipal,
+        cnaesSecundarios,
+        todosCnaes,
+        areasPrioritarias:
+          data.classificacao?.diagnostico?.areasPrioritarias || [],
+        areasComplementares:
+          data.classificacao?.diagnostico?.areasComplementares || [],
         endereco: data.endereco || {},
       };
 
       setEmpresas((prev) => [...prev, empresa]);
+      setCnaesEmpresa(todosCnaes);
+
+      const codigoPrincipal = String(cnaePrincipal?.codigo || "");
+
+      setAtividadesSelecionadas(
+        codigoPrincipal ? [codigoPrincipal] : []
+      );
+
+      setAtividadePredominante(
+        cnaePrincipal?.codigo || cnaePrincipal?.descricao
+          ? cnaePrincipal
+          : null
+      );
+
       setCnpjInput("");
-      showToast(`Empresa identificada como ${empresa.categoria}.`);
+
+      showToast(
+        todosCnaes.length > 1
+          ? `${todosCnaes.length} atividades encontradas. Confirme quais a empresa realmente exerce.`
+          : "Empresa encontrada com sucesso."
+      );
     } catch (err) {
       console.error("Erro CNPJ:", err);
       showToast(err.message || "Erro ao consultar CNPJ");
@@ -877,6 +950,10 @@ export default function DiagnosticoPrototipo() {
         nomeFantasia: empresaPrincipal.nomeFantasia || "",
         cnpj: empresaPrincipal.cnpjDigits || "",
         cnae: empresaPrincipal.cnae || "",
+        cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
+        cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
+        atividadesSelecionadas: atividadesSelecionadasObjetos,
+        atividadePredominante,
         categoria: categoriaPrincipal,
         segmento: segmentoPredominante,
         porte: empresaPrincipal.porte || "",
@@ -942,6 +1019,9 @@ export default function DiagnosticoPrototipo() {
     relatorioEnviadoRef.current = false;
     setCnpjInput("");
     setEmpresas([]);
+    setCnaesEmpresa([]);
+    setAtividadesSelecionadas([]);
+    setAtividadePredominante(null);
     setFaturamento(null);
     setColaboradores(null);
     setRegime(null);
@@ -1398,28 +1478,125 @@ export default function DiagnosticoPrototipo() {
           <div style={{ flex: 1, padding: "18px 22px 22px", display: "flex", flexDirection: "column" }}>
 
             {step === "intro" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  gap: 14,
+                  padding: "20px 14px",
+                }}
+              >
                 <img
                   src="/finder-logo.png"
                   alt="Finder of Solutions"
-                  style={{ width: 210, maxWidth: "88%", height: "auto", objectFit: "contain", marginBottom: 2 }}
+                  style={{
+                    width: 210,
+                    maxWidth: "88%",
+                    height: "auto",
+                    objectFit: "contain",
+                    marginBottom: 2,
+                  }}
                 />
-                <img
-  src="/qrcode-diagnostico.png"
-  alt="QR Code — Escanear aqui — evento-diagnostico-3.vercel.app"
-  style={{ width: 190, maxWidth: "70%", height: "auto", objectFit: "contain" }}
-/>
+
                 <div>
-                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "0 0 8px" }}>Escaneie para começar</p>
-                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, margin: 0 }}>
-                    Simulação da tela que o participante vê ao ler o QR code no evento.
+                  <h1
+                    style={{
+                      fontFamily: DISPLAY_FONT,
+                      fontSize: 28,
+                      fontWeight: 800,
+                      color: NAVY,
+                      margin: "2px 0 7px",
+                    }}
+                  >
+                    Diagnóstico Empresarial
+                  </h1>
+
+                  <p
+                    style={{
+                      fontSize: 13.5,
+                      color: MUTED,
+                      lineHeight: 1.5,
+                      maxWidth: 360,
+                      margin: "0 auto",
+                    }}
+                  >
+                    Descubra em poucos minutos os principais gargalos e oportunidades da sua empresa.
                   </p>
                 </div>
+
+                <div
+                  style={{
+                    background: "#FFFFFF",
+                    padding: 10,
+                    borderRadius: 18,
+                    border: "1px solid #E5E7EB",
+                    boxShadow: "0 8px 26px rgba(23,35,61,0.10)",
+                  }}
+                >
+                  <img
+                    src="/qrcode-diagnostico.png"
+                    alt="QR Code do Diagnóstico Empresarial"
+                    style={{
+                      width: 190,
+                      height: 190,
+                      display: "block",
+                      objectFit: "contain",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <p
+                    style={{
+                      fontFamily: DISPLAY_FONT,
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: NAVY,
+                      margin: "0 0 5px",
+                    }}
+                  >
+                    Escaneie para começar
+                  </p>
+
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: MUTED,
+                      lineHeight: 1.45,
+                      maxWidth: 340,
+                      margin: 0,
+                    }}
+                  >
+                    Faça seu diagnóstico gratuito e descubra onde sua empresa pode melhorar.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: 330,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 9,
+                    margin: "1px 0",
+                  }}
+                >
+                  <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
+                  <span style={{ fontSize: 11.5, color: MUTED }}>ou</span>
+                  <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
+                </div>
+
                 <PrimaryButton onClick={() => setStep("cadastro")}>
-                  Simular leitura do QR code <ArrowRight size={16} />
+                  Iniciar diagnóstico <ArrowRight size={16} />
                 </PrimaryButton>
               </div>
             )}
+
+            
 
             {step === "cadastro" && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -1464,7 +1641,156 @@ export default function DiagnosticoPrototipo() {
                 </label>
 
                 <div style={{ flex: 1 }} />
-                <PrimaryButton disabled={!nome || !cargo || telefone.replace(/\D/g, "").length < 10 || !email.includes("@")} onClick={() => setStep("cnpj")}>
+                
+                {empresaPrincipal && cnaesEmpresa.length > 0 && (
+                  <div
+                    style={{
+                      background: "#F7F8FB",
+                      border: "1px solid #E1E5EC",
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontFamily: DISPLAY_FONT,
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: NAVY,
+                        margin: "0 0 5px",
+                      }}
+                    >
+                      Atividades encontradas no CNPJ
+                    </p>
+
+                    <p
+                      style={{
+                        fontSize: 11.5,
+                        color: MUTED,
+                        lineHeight: 1.45,
+                        margin: "0 0 10px",
+                      }}
+                    >
+                      Marque as atividades que a empresa realmente exerce. Depois indique qual representa a maior parte da operação ou receita atualmente.
+                    </p>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {cnaesEmpresa.map((atividade) => {
+                        const codigo = String(atividade.codigo || "");
+                        const selecionada = atividadesSelecionadas.includes(codigo);
+
+                        return (
+                          <label
+                            key={`${codigo}-${atividade.descricao}`}
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "flex-start",
+                              background: selecionada ? "#FFF3EF" : "#FFFFFF",
+                              border: selecionada ? `1px solid ${CORAL}` : "1px solid #E1E5EC",
+                              borderRadius: 9,
+                              padding: 9,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selecionada}
+                              onChange={() => {
+                                setAtividadesSelecionadas((prev) => {
+                                  if (selecionada) {
+                                    const novo = prev.filter((item) => item !== codigo);
+
+                                    if (
+                                      String(atividadePredominante?.codigo || "") === codigo
+                                    ) {
+                                      const proxima = cnaesEmpresa.find((item) =>
+                                        novo.includes(String(item.codigo))
+                                      );
+                                      setAtividadePredominante(proxima || null);
+                                    }
+
+                                    return novo;
+                                  }
+
+                                  return [...prev, codigo];
+                                });
+                              }}
+                              style={{ marginTop: 2 }}
+                            />
+
+                            <span style={{ fontSize: 11.3, color: NAVY, lineHeight: 1.4 }}>
+                              <strong>{codigo || "Sem código"}</strong>
+                              {" — "}
+                              {atividade.descricao || "Descrição não informada"}
+
+                              {atividade.principal && (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    marginLeft: 6,
+                                    fontSize: 9.5,
+                                    fontWeight: 700,
+                                    color: CORAL,
+                                  }}
+                                >
+                                  CNAE principal
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {atividadesSelecionadasObjetos.length > 0 && (
+                      <div style={{ marginTop: 12 }}>
+                        <p style={{ ...labelStyle, marginBottom: 7 }}>
+                          Qual atividade representa a maior parte da operação ou receita hoje?
+                        </p>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {atividadesSelecionadasObjetos.map((atividade) => {
+                            const codigo = String(atividade.codigo || "");
+
+                            return (
+                              <label
+                                key={`pred-${codigo}-${atividade.descricao}`}
+                                style={{
+                                  display: "flex",
+                                  gap: 8,
+                                  alignItems: "flex-start",
+                                  cursor: "pointer",
+                                  fontSize: 11.3,
+                                  color: NAVY,
+                                }}
+                              >
+                                <input
+                                  type="radio"
+                                  name="atividadePredominante"
+                                  checked={
+                                    String(atividadePredominante?.codigo || "") === codigo
+                                  }
+                                  onChange={() => setAtividadePredominante(atividade)}
+                                  style={{ marginTop: 2 }}
+                                />
+
+                                <span>
+                                  <strong>{codigo}</strong>
+                                  {" — "}
+                                  {atividade.descricao}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+<PrimaryButton disabled={!nome || !cargo || telefone.replace(/\D/g, "").length < 10 || !email.includes("@")} onClick={() => setStep("cnpj")}>
                   Continuar <ArrowRight size={16} />
                 </PrimaryButton>
               </div>
