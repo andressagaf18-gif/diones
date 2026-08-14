@@ -1,10 +1,6 @@
 // api/cnpj.js
 
 export default async function handler(req, res) {
-  // =========================================================
-  // 1. PERMITIR APENAS GET
-  // =========================================================
-
   if (req.method !== "GET") {
     return res.status(405).json({
       sucesso: false,
@@ -12,12 +8,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // =========================================================
-  // 2. LIMPAR E VALIDAR CNPJ
-  // =========================================================
-
   const { cnpj } = req.query;
-
   const digits = String(cnpj || "").replace(/\D/g, "");
 
   if (digits.length !== 14) {
@@ -27,30 +18,19 @@ export default async function handler(req, res) {
     });
   }
 
-  // =========================================================
-  // 3. CLASSIFICAR EMPRESA PELO CNAE
-  // =========================================================
-
   function classificarEmpresa(cnae, descricao = "") {
     const codigo = String(cnae || "").replace(/\D/g, "");
     const desc = String(descricao || "").toLowerCase();
-
     const divisao = parseInt(codigo.slice(0, 2), 10);
 
-    // =======================================================
     // CONTABILIDADE
-    // CNAE 6920-6/01
-    // =======================================================
-
     if (
       codigo.startsWith("6920601") ||
       desc.includes("contabilidade")
     ) {
       return {
         segmento: "Serviços Profissionais",
-
         categoria: "Contabilidade",
-
         codigoQuestionario: "contabilidade",
 
         diagnostico: {
@@ -71,21 +51,14 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
-    // ADVOCACIA / SERVIÇOS JURÍDICOS
-    // =======================================================
-
+    // ADVOCACIA
     if (
       codigo.startsWith("69117") ||
-      desc.includes("advocacia") ||
-      desc.includes("serviços advocatícios") ||
-      desc.includes("servicos advocaticios")
+      desc.includes("advocacia")
     ) {
       return {
         segmento: "Serviços Profissionais",
-
         categoria: "Advocacia",
-
         codigoQuestionario: "advocacia",
 
         diagnostico: {
@@ -106,25 +79,18 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
-    // SAÚDE / CLÍNICAS
-    // =======================================================
-
+    // SAÚDE
     if (
       divisao === 86 ||
-      desc.includes("médic") ||
-      desc.includes("medic") ||
-      desc.includes("odontolog") ||
       desc.includes("clínica") ||
       desc.includes("clinica") ||
+      desc.includes("odontolog") ||
       desc.includes("psicolog") ||
       desc.includes("fisioterapia")
     ) {
       return {
         segmento: "Serviços",
-
         categoria: "Saúde / Clínica",
-
         codigoQuestionario: "saude",
 
         diagnostico: {
@@ -145,25 +111,17 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // TECNOLOGIA
-    // CNAE 62 e 63
-    // =======================================================
-
     if (
       divisao === 62 ||
       divisao === 63 ||
       desc.includes("software") ||
-      desc.includes("tecnologia da informação") ||
-      desc.includes("tecnologia da informacao") ||
       desc.includes("programação") ||
       desc.includes("programacao")
     ) {
       return {
         segmento: "Serviços",
-
         categoria: "Tecnologia",
-
         codigoQuestionario: "tecnologia",
 
         diagnostico: {
@@ -184,20 +142,14 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // CONSTRUÇÃO CIVIL
-    // CNAE 41, 42 e 43
-    // =======================================================
-
     if (
       divisao >= 41 &&
       divisao <= 43
     ) {
       return {
         segmento: "Construção",
-
         categoria: "Construção Civil",
-
         codigoQuestionario: "construcao",
 
         diagnostico: {
@@ -218,21 +170,16 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // E-COMMERCE
-    // =======================================================
-
     if (
       desc.includes("internet") ||
+      desc.includes("e-commerce") ||
       desc.includes("comércio eletrônico") ||
-      desc.includes("comercio eletronico") ||
-      desc.includes("e-commerce")
+      desc.includes("comercio eletronico")
     ) {
       return {
         segmento: "Comércio",
-
         categoria: "E-commerce",
-
         codigoQuestionario: "ecommerce",
 
         diagnostico: {
@@ -253,20 +200,14 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // COMÉRCIO
-    // CNAE 45, 46 e 47
-    // =======================================================
-
     if (
       divisao >= 45 &&
       divisao <= 47
     ) {
       return {
         segmento: "Comércio",
-
         categoria: "Comércio",
-
         codigoQuestionario: "comercio",
 
         diagnostico: {
@@ -287,20 +228,14 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // INDÚSTRIA
-    // CNAE 10 até 33
-    // =======================================================
-
     if (
       divisao >= 10 &&
       divisao <= 33
     ) {
       return {
         segmento: "Indústria",
-
         categoria: "Indústria",
-
         codigoQuestionario: "industria",
 
         diagnostico: {
@@ -321,20 +256,14 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // TRANSPORTE / LOGÍSTICA
-    // CNAE 49 até 53
-    // =======================================================
-
     if (
       divisao >= 49 &&
       divisao <= 53
     ) {
       return {
         segmento: "Serviços",
-
         categoria: "Transporte / Logística",
-
         codigoQuestionario: "logistica",
 
         diagnostico: {
@@ -355,10 +284,7 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // ALIMENTAÇÃO
-    // =======================================================
-
     if (
       divisao === 56 ||
       desc.includes("restaurante") ||
@@ -368,9 +294,7 @@ export default async function handler(req, res) {
     ) {
       return {
         segmento: "Comércio / Serviços",
-
         categoria: "Alimentação",
-
         codigoQuestionario: "alimentacao",
 
         diagnostico: {
@@ -391,11 +315,7 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // IMOBILIÁRIO
-    // CNAE 68
-    // =======================================================
-
     if (
       divisao === 68 ||
       desc.includes("imobiliár") ||
@@ -403,12 +323,8 @@ export default async function handler(req, res) {
     ) {
       return {
         segmento: "Serviços",
-
-        categoria:
-          "Imobiliária / Atividades Imobiliárias",
-
-        codigoQuestionario:
-          "imobiliario",
+        categoria: "Imobiliária / Atividades Imobiliárias",
+        codigoQuestionario: "imobiliario",
 
         diagnostico: {
           areasPrioritarias: [
@@ -428,24 +344,15 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
     // SERVIÇOS PROFISSIONAIS
-    // CNAE 69 até 75
-    // =======================================================
-
     if (
       divisao >= 69 &&
       divisao <= 75
     ) {
       return {
-        segmento:
-          "Serviços Profissionais",
-
-        categoria:
-          "Serviços Profissionais",
-
-        codigoQuestionario:
-          "servicos_profissionais",
+        segmento: "Serviços Profissionais",
+        categoria: "Serviços Profissionais",
+        codigoQuestionario: "servicos_profissionais",
 
         diagnostico: {
           areasPrioritarias: [
@@ -465,19 +372,11 @@ export default async function handler(req, res) {
       };
     }
 
-    // =======================================================
-    // FALLBACK
-    // Quando nenhuma categoria específica for encontrada
-    // =======================================================
-
+    // PADRÃO
     return {
       segmento: "Serviços",
-
-      categoria:
-        "Serviços Profissionais",
-
-      codigoQuestionario:
-        "servicos",
+      categoria: "Serviços Profissionais",
+      codigoQuestionario: "servicos",
 
       diagnostico: {
         areasPrioritarias: [
@@ -497,10 +396,6 @@ export default async function handler(req, res) {
     };
   }
 
-  // =========================================================
-  // 4. CONSULTAR CNPJ
-  // =========================================================
-
   try {
     const response = await fetch(
       `https://brasilapi.com.br/api/cnpj/v1/${digits}`,
@@ -517,99 +412,98 @@ export default async function handler(req, res) {
       }
     );
 
-    // =======================================================
-    // 5. TRATAR ERROS DA BRASIL API
-    // =======================================================
-
     if (!response.ok) {
       const detalhe =
         await response.text();
 
       console.error(
         "Erro BrasilAPI:",
-        {
-          status:
-            response.status,
-
-          statusText:
-            response.statusText,
-
-          detalhe,
-        }
+        response.status,
+        detalhe
       );
 
-      if (
-        response.status === 404
-      ) {
-        return res
-          .status(404)
-          .json({
-            sucesso: false,
-
-            error:
-              "CNPJ não encontrado.",
-          });
-      }
-
-      if (
-        response.status === 403
-      ) {
-        return res
-          .status(503)
-          .json({
-            sucesso: false,
-
-            error:
-              "O serviço de consulta de CNPJ está temporariamente indisponível.",
-
-            statusBrasilAPI:
-              403,
-          });
-      }
-
       return res
-        .status(502)
+        .status(
+          response.status === 404
+            ? 404
+            : 502
+        )
         .json({
           sucesso: false,
 
           error:
-            "Não foi possível consultar o CNPJ.",
+            response.status === 404
+              ? "CNPJ não encontrado."
+              : "Não foi possível consultar o CNPJ.",
 
           statusBrasilAPI:
             response.status,
         });
     }
 
-    // =======================================================
-    // 6. LER RETORNO DA BRASIL API
-    // =======================================================
-
     const data =
       await response.json();
 
+    // CNAE PRINCIPAL
     const cnaeCodigo =
-      data.cnae_fiscal ||
-      data.cnaeFiscal ||
-      "";
+      data.cnae_fiscal || "";
 
     const cnaeDescricao =
-      data.cnae_fiscal_descricao ||
-      data.cnaeFiscalDescricao ||
-      "";
+      data.cnae_fiscal_descricao || "";
 
-    // =======================================================
-    // 7. CLASSIFICAR EMPRESA
-    // =======================================================
+    const cnaePrincipal = {
+      codigo:
+        String(cnaeCodigo || ""),
 
-    const classificacao =
-      classificarEmpresa(
-        cnaeCodigo,
-        cnaeDescricao
-      );
+      descricao:
+        cnaeDescricao || "",
 
-    // =======================================================
-    // 8. RETORNAR DADOS PARA O APLICATIVO
-    // =======================================================
+      principal:
+        true,
+
+      classificacao:
+        classificarEmpresa(
+          cnaeCodigo,
+          cnaeDescricao
+        ),
+    };
+
+    // CNAES SECUNDÁRIOS
+    const cnaesSecundarios =
+      Array.isArray(
+        data.cnaes_secundarios
+      )
+        ? data.cnaes_secundarios
+            .map((item) => ({
+              codigo:
+                String(
+                  item?.codigo || ""
+                ),
+
+              descricao:
+                item?.descricao || "",
+
+              principal:
+                false,
+
+              classificacao:
+                classificarEmpresa(
+                  item?.codigo,
+                  item?.descricao
+                ),
+            }))
+            .filter(
+              (item) =>
+                item.codigo ||
+                item.descricao
+            )
+        : [];
+
+    // TODOS OS CNAES
+    const todosCnaes = [
+      cnaePrincipal,
+      ...cnaesSecundarios,
+    ];
 
     return res
       .status(200)
@@ -621,12 +515,10 @@ export default async function handler(req, res) {
             digits,
 
           razaoSocial:
-            data.razao_social ||
-            "",
+            data.razao_social || "",
 
           nomeFantasia:
-            data.nome_fantasia ||
-            "",
+            data.nome_fantasia || "",
 
           porte:
             data.porte ||
@@ -651,55 +543,62 @@ export default async function handler(req, res) {
             "",
 
           email:
-            data.email ||
-            "",
+            data.email || "",
         },
 
+        // COMPATIBILIDADE COM VERSÃO ANTIGA
         cnae: {
           codigo:
             cnaeCodigo,
 
           descricao:
             cnaeDescricao,
+
+          principal:
+            cnaePrincipal,
+
+          secundarios:
+            cnaesSecundarios,
+
+          todos:
+            todosCnaes,
         },
 
-        classificacao,
+        // NOVA ESTRUTURA
+        cnaePrincipal,
+
+        cnaesSecundarios,
+
+        todosCnaes,
+
+        classificacao:
+          cnaePrincipal.classificacao,
 
         endereco: {
           logradouro:
-            data.logradouro ||
-            "",
+            data.logradouro || "",
 
           numero:
-            data.numero ||
-            "",
+            data.numero || "",
 
           complemento:
-            data.complemento ||
-            "",
+            data.complemento || "",
 
           bairro:
-            data.bairro ||
-            "",
+            data.bairro || "",
 
           municipio:
-            data.municipio ||
-            "",
+            data.municipio || "",
 
           uf:
-            data.uf ||
-            "",
+            data.uf || "",
 
           cep:
-            data.cep ||
-            "",
+            data.cep || "",
         },
       });
-  } catch (error) {
-    // =======================================================
-    // 9. ERRO INTERNO
-    // =======================================================
 
+  } catch (error) {
     console.error(
       "Erro ao consultar CNPJ:",
       error
