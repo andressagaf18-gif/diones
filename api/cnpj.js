@@ -445,11 +445,143 @@ export default async function handler(req, res) {
       await response.json();
 
     // CNAE PRINCIPAL
-    const cnaeCodigo =
-      data.cnae_fiscal || "";
+   // =========================================================
+// CNAE PRINCIPAL
+// =========================================================
 
-    const cnaeDescricao =
-      data.cnae_fiscal_descricao || "";
+const cnaeCodigo =
+  data.cnae_fiscal ||
+  data.cnaeFiscal ||
+  data.cnae_principal ||
+  data.cnaePrincipal ||
+  "";
+
+const cnaeDescricao =
+  data.cnae_fiscal_descricao ||
+  data.cnaeFiscalDescricao ||
+  data.cnae_principal_descricao ||
+  data.cnaePrincipalDescricao ||
+  "";
+
+// =========================================================
+// NORMALIZAR CNAE
+// =========================================================
+
+function normalizarCnae(item, principal = false) {
+  if (!item) return null;
+
+  const codigo =
+    item.codigo ||
+    item.code ||
+    item.cnae ||
+    item.cnae_fiscal ||
+    item.id ||
+    "";
+
+  const descricao =
+    item.descricao ||
+    item.description ||
+    item.texto ||
+    item.cnae_fiscal_descricao ||
+    item.nome ||
+    "";
+
+  if (!codigo && !descricao) {
+    return null;
+  }
+
+  return {
+    codigo: String(codigo || ""),
+    descricao: String(descricao || ""),
+    principal,
+
+    classificacao: classificarEmpresa(
+      codigo,
+      descricao
+    ),
+  };
+}
+
+// =========================================================
+// MONTAR CNAE PRINCIPAL
+// =========================================================
+
+const cnaePrincipal = {
+  codigo: String(cnaeCodigo || ""),
+
+  descricao:
+    String(cnaeDescricao || ""),
+
+  principal: true,
+
+  classificacao:
+    classificarEmpresa(
+      cnaeCodigo,
+      cnaeDescricao
+    ),
+};
+
+// =========================================================
+// PROCURAR CNAES SECUNDÁRIOS EM DIFERENTES CAMPOS
+// =========================================================
+
+const secundariosBrutos =
+  data.cnaes_secundarios ||
+  data.cnaesSecundarios ||
+  data.atividades_secundarias ||
+  data.atividadesSecundarias ||
+  data.secondary_activities ||
+  [];
+
+// =========================================================
+// NORMALIZAR SECUNDÁRIOS
+// =========================================================
+
+const cnaesSecundarios =
+  Array.isArray(secundariosBrutos)
+    ? secundariosBrutos
+        .map((item) =>
+          normalizarCnae(
+            item,
+            false
+          )
+        )
+        .filter(Boolean)
+    : [];
+
+// =========================================================
+// REMOVER DUPLICIDADES
+// =========================================================
+
+const mapaCnaes =
+  new Map();
+
+[
+  cnaePrincipal,
+  ...cnaesSecundarios,
+].forEach((item) => {
+  if (!item) return;
+
+  const chave =
+    String(item.codigo || "")
+      .replace(/\D/g, "") ||
+    String(item.descricao || "")
+      .toLowerCase();
+
+  if (!chave) return;
+
+  if (!mapaCnaes.has(chave)) {
+    mapaCnaes.set(
+      chave,
+      item
+    );
+  }
+});
+
+const todosCnaes =
+  Array.from(
+    mapaCnaes.values()
+  );
 
     const cnaePrincipal = {
       codigo:
