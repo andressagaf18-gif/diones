@@ -714,7 +714,7 @@ export default function DiagnosticoPrototipo() {
     let cancelado = false;
     const labels = gruposSelecionados.map((g) => g.label);
     const msgs = [
-      `CNAE classificado como: ${categoriaPrincipal}`,
+      `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
       `Analisando as áreas: ${labels.join(", ")}`,
       "Cruzando respostas com o contexto do segmento",
       "Estimando carga tributária de referência",
@@ -807,23 +807,45 @@ export default function DiagnosticoPrototipo() {
     };
   }, [step]);
   async function adicionarCnpj() {
-    const digits = cnpjInput.replace(/\D/g, "");
+    const digits = String(cnpjInput || "").replace(/\D/g, "");
 
     if (digits.length !== 14) {
       showToast("Digite um CNPJ válido com 14 dígitos.");
       return;
     }
 
-    if (empresas.length >= MAX_EMPRESAS) return;
+    if (empresas.length >= MAX_EMPRESAS) {
+      showToast(`Limite de ${MAX_EMPRESAS} CNPJs atingido.`);
+      return;
+    }
 
     setBuscando(true);
 
     try {
-      const r = await fetch(`/api/cnpj?cnpj=${digits}`);
-      const data = await r.json();
+      const r = await fetch(`/api/cnpj?cnpj=${encodeURIComponent(digits)}`);
+
+      const contentType = r.headers.get("content-type") || "";
+      let data;
+
+      if (contentType.includes("application/json")) {
+        data = await r.json();
+      } else {
+        const texto = await r.text();
+
+        console.error("Resposta não JSON de /api/cnpj:", {
+          status: r.status,
+          texto,
+        });
+
+        throw new Error(
+          `Erro no servidor ao consultar CNPJ. Status: ${r.status}`
+        );
+      }
 
       if (!r.ok || !data?.sucesso) {
-        throw new Error(data?.error || "Erro ao consultar CNPJ");
+        throw new Error(
+          data?.error || "Erro ao consultar CNPJ"
+        );
       }
 
       const cnaePrincipal =
@@ -835,72 +857,284 @@ export default function DiagnosticoPrototipo() {
           classificacao: data.classificacao || null,
         };
 
-      const cnaesSecundarios = Array.isArray(data.cnaesSecundarios)
-        ? data.cnaesSecundarios
-        : Array.isArray(data.cnae?.secundarios)
-          ? data.cnae.secundarios
-          : [];
+      const cnaesSecundarios =
+        Array.isArray(data.cnaesSecundarios)
+          ? data.cnaesSecundarios
+          : Array.isArray(data.cnae?.secundarios)
+            ? data.cnae.secundarios
+            : [];
 
-      const todosCnaes =
+      const todosBrutos =
         Array.isArray(data.todosCnaes) && data.todosCnaes.length
           ? data.todosCnaes
           : Array.isArray(data.cnae?.todos) && data.cnae.todos.length
             ? data.cnae.todos
             : [cnaePrincipal, ...cnaesSecundarios];
 
+      const mapaCnaes = new Map();
+
+      todosBrutos.forEach((atividade) => {
+        if (!atividade) return;
+
+        const codigo = String(atividade.codigo || "");
+        const descricao = String(atividade.descricao || "");
+
+        const chave =
+          codigo.replace(/\D/g, "") ||
+          descricao.toLowerCase().trim();
+
+        if (!chave) return;
+
+        if (!mapaCnaes.has(chave)) {
+          mapaCnaes.set(chave, {
+            ...atividade,
+            codigo,
+            descricao,
+            principal: Boolean(atividade.principal),
+            classificacao:
+              atividade.classificacao ||
+              (atividade.principal
+                ? data.classificacao || null
+                : null),
+          });
+        }
+      });
+
+      let todosCnaes = Array.from(mapaCnaes.values());
+
+      const codigoPrincipalLimpo =
+        String(cnaePrincipal?.codigo || "").replace(/\D/g, "");
+
+      const principalJaExiste =
+        todosCnaes.some(
+          (atividade) =>
+            String(atividade.codigo || "").replace(/\D/g, "") ===
+            codigoPrincipalLimpo
+        );
+
+      if (codigoPrincipalLimpo && !principalJaExiste) {
+        todosCnaes = [
+          {
+            ...cnaePrincipal,
+            principal: true,
+            classificacao:
+              cnaePrincipal?.classificacao ||
+              data.classificacao ||
+              null,
+          },
+          ...todosCnaes,
+        ];
+      } else {
+        todosCnaes =
+          todosCnaes.map((atividade) => {
+            const ehPrincipal =
+              String(atividade.codigo || "").replace(/\D/g, "") ===
+              codigoPrincipalLimpo;
+
+            return {
+              ...atividade,
+              principal:
+                ehPrincipal
+                  ? true
+                  : Boolean(atividade.principal),
+
+              classificacao:
+                atividade.classificacao ||
+                (ehPrincipal
+                  ? data.classificacao || null
+                  : null),
+            };
+          });
+      }
+
       const empresa = {
-        cnpjDigits: data.empresa?.cnpj || digits,
-        razao: data.empresa?.razaoSocial || "Razão social não informada",
-        nomeFantasia: data.empresa?.nomeFantasia || "",
-        porte: data.empresa?.porte || "Não informado",
-        segmento: data.classificacao?.segmento || "Serviços Profissionais",
-        categoria: data.classificacao?.categoria || "Serviços Profissionais",
+        cnpjDigits:
+          data.empresa?.cnpj || digits,
+
+        razao:
+          data.empresa?.razaoSocial ||
+          "Razão social não informada",
+
+        nomeFantasia:
+          data.empresa?.nomeFantasia || "",
+
+        porte:
+          data.empresa?.porte ||
+          "Não informado",
+
+        segmento:
+          data.classificacao?.segmento ||
+          "Serviços Profissionais",
+
+        categoria:
+          data.classificacao?.categoria ||
+          "Serviços Profissionais",
+
         codigoQuestionario:
-          data.classificacao?.codigoQuestionario || "servicos",
+          data.classificacao?.codigoQuestionario ||
+          "servicos",
+
         cnae:
           `${cnaePrincipal?.codigo || ""} — ${cnaePrincipal?.descricao || ""}`,
+
         cnaePrincipal,
         cnaesSecundarios,
         todosCnaes,
+
         areasPrioritarias:
-          data.classificacao?.diagnostico?.areasPrioritarias || [],
+          data.classificacao
+            ?.diagnostico
+            ?.areasPrioritarias ||
+          [],
+
         areasComplementares:
-          data.classificacao?.diagnostico?.areasComplementares || [],
-        endereco: data.endereco || {},
+          data.classificacao
+            ?.diagnostico
+            ?.areasComplementares ||
+          [],
+
+        endereco:
+          data.endereco || {},
       };
 
-      setEmpresas((prev) => [...prev, empresa]);
-      setCnaesEmpresa(todosCnaes);
+      const primeiraEmpresa =
+        empresas.length === 0;
 
-      const codigoPrincipal = String(cnaePrincipal?.codigo || "");
+      setEmpresas((prev) => [
+        ...prev,
+        empresa,
+      ]);
 
-      setAtividadesSelecionadas(
-        codigoPrincipal ? [codigoPrincipal] : []
-      );
+      // A primeira empresa adicionada será a empresa-base do diagnóstico.
+      if (primeiraEmpresa) {
+        setCnaesEmpresa(
+          todosCnaes
+        );
 
-      setAtividadePredominante(
-        cnaePrincipal?.codigo || cnaePrincipal?.descricao
-          ? cnaePrincipal
-          : null
-      );
+        const codigoPrincipal =
+          String(cnaePrincipal?.codigo || "");
+
+        setAtividadesSelecionadas(
+          codigoPrincipal
+            ? [codigoPrincipal]
+            : []
+        );
+
+        setAtividadePredominante(
+          cnaePrincipal?.codigo ||
+          cnaePrincipal?.descricao
+            ? {
+                ...cnaePrincipal,
+
+                principal: true,
+
+                classificacao:
+                  cnaePrincipal?.classificacao ||
+                  data.classificacao ||
+                  null,
+              }
+            : null
+        );
+      }
 
       setCnpjInput("");
 
       showToast(
+        primeiraEmpresa &&
         todosCnaes.length > 1
           ? `${todosCnaes.length} atividades encontradas. Confirme quais a empresa realmente exerce.`
           : "Empresa encontrada com sucesso."
       );
+
     } catch (err) {
-      console.error("Erro CNPJ:", err);
-      showToast(err.message || "Erro ao consultar CNPJ");
+      console.error(
+        "Erro CNPJ:",
+        err
+      );
+
+      showToast(
+        err?.message ||
+        "Erro ao consultar CNPJ"
+      );
+
     } finally {
       setBuscando(false);
     }
   }
 
   function removerEmpresa(idx) {
-    setEmpresas((prev) => prev.filter((_, i) => i !== idx));
+    setEmpresas((prev) => {
+      const novas =
+        prev.filter(
+          (_, i) => i !== idx
+        );
+
+      if (idx === 0) {
+        const novaPrincipal =
+          novas[0] || null;
+
+        const novosCnaes =
+          novaPrincipal?.todosCnaes || [];
+
+        setCnaesEmpresa(
+          novosCnaes
+        );
+
+        const cnaePrincipal =
+          novaPrincipal?.cnaePrincipal ||
+          null;
+
+        const codigoPrincipal =
+          String(
+            cnaePrincipal?.codigo || ""
+          );
+
+        setAtividadesSelecionadas(
+          codigoPrincipal
+            ? [codigoPrincipal]
+            : []
+        );
+
+        setAtividadePredominante(
+          cnaePrincipal
+            ? {
+                ...cnaePrincipal,
+
+                principal: true,
+
+                classificacao:
+                  cnaePrincipal?.classificacao ||
+                  (
+                    novaPrincipal
+                      ? {
+                          segmento:
+                            novaPrincipal.segmento,
+
+                          categoria:
+                            novaPrincipal.categoria,
+
+                          codigoQuestionario:
+                            novaPrincipal.codigoQuestionario,
+
+                          diagnostico: {
+                            areasPrioritarias:
+                              novaPrincipal.areasPrioritarias ||
+                              [],
+
+                            areasComplementares:
+                              novaPrincipal.areasComplementares ||
+                              [],
+                          },
+                        }
+                      : null
+                  ),
+              }
+            : null
+        );
+      }
+
+      return novas;
+    });
   }
 
   function toggleDor(id) {
@@ -1333,7 +1567,9 @@ export default function DiagnosticoPrototipo() {
     <div class="marca">Finder of Solutions</div>
     <h1>Diagnóstico Empresarial Preliminar</h1>
     <p class="empresa">${escaparHtml(empresaPrincipal.razao)}</p>
-    <p class="meta">${escaparHtml(categoriaPrincipal)} · ${escaparHtml(empresaPrincipal.cnae || "")}</p>
+    <p class="meta">${escaparHtml(categoriaPrincipal)} · ${escaparHtml(
+      atividadePredominante?.descricao || empresaPrincipal.cnae || ""
+    )}</p>
   </section>
 
   <h2>1. Identificação</h2>
@@ -1346,6 +1582,18 @@ export default function DiagnosticoPrototipo() {
     <div><strong>Porte:</strong><br>${escaparHtml(empresaPrincipal.porte || "-")}</div>
     <div><strong>Regime informado:</strong><br>${escaparHtml(regime || "-")}</div>
     <div><strong>Faturamento informado:</strong><br>${escaparHtml(faturamento?.label || "-")}</div>
+    <div style="grid-column:1/-1"><strong>Atividade predominante informada:</strong><br>${escaparHtml(
+      atividadePredominante
+        ? `${atividadePredominante.codigo || ""} — ${atividadePredominante.descricao || ""}`
+        : "-"
+    )}</div>
+    <div style="grid-column:1/-1"><strong>Atividades efetivamente exercidas informadas:</strong><br>${escaparHtml(
+      atividadesSelecionadasObjetos.length
+        ? atividadesSelecionadasObjetos
+            .map((atividade) => `${atividade.codigo || ""} — ${atividade.descricao || ""}`)
+            .join(" | ")
+        : "-"
+    )}</div>
     <div style="grid-column:1/-1"><strong>Endereço:</strong><br>${escaparHtml(enderecoTexto || "-")}</div>
   </div>
 
@@ -1642,155 +1890,7 @@ export default function DiagnosticoPrototipo() {
 
                 <div style={{ flex: 1 }} />
                 
-                {empresaPrincipal && cnaesEmpresa.length > 0 && (
-                  <div
-                    style={{
-                      background: "#F7F8FB",
-                      border: "1px solid #E1E5EC",
-                      borderRadius: 12,
-                      padding: 12,
-                      marginBottom: 14,
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontFamily: DISPLAY_FONT,
-                        fontSize: 16,
-                        fontWeight: 700,
-                        color: NAVY,
-                        margin: "0 0 5px",
-                      }}
-                    >
-                      Atividades encontradas no CNPJ
-                    </p>
-
-                    <p
-                      style={{
-                        fontSize: 11.5,
-                        color: MUTED,
-                        lineHeight: 1.45,
-                        margin: "0 0 10px",
-                      }}
-                    >
-                      Marque as atividades que a empresa realmente exerce. Depois indique qual representa a maior parte da operação ou receita atualmente.
-                    </p>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {cnaesEmpresa.map((atividade) => {
-                        const codigo = String(atividade.codigo || "");
-                        const selecionada = atividadesSelecionadas.includes(codigo);
-
-                        return (
-                          <label
-                            key={`${codigo}-${atividade.descricao}`}
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              alignItems: "flex-start",
-                              background: selecionada ? "#FFF3EF" : "#FFFFFF",
-                              border: selecionada ? `1px solid ${CORAL}` : "1px solid #E1E5EC",
-                              borderRadius: 9,
-                              padding: 9,
-                              cursor: "pointer",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selecionada}
-                              onChange={() => {
-                                setAtividadesSelecionadas((prev) => {
-                                  if (selecionada) {
-                                    const novo = prev.filter((item) => item !== codigo);
-
-                                    if (
-                                      String(atividadePredominante?.codigo || "") === codigo
-                                    ) {
-                                      const proxima = cnaesEmpresa.find((item) =>
-                                        novo.includes(String(item.codigo))
-                                      );
-                                      setAtividadePredominante(proxima || null);
-                                    }
-
-                                    return novo;
-                                  }
-
-                                  return [...prev, codigo];
-                                });
-                              }}
-                              style={{ marginTop: 2 }}
-                            />
-
-                            <span style={{ fontSize: 11.3, color: NAVY, lineHeight: 1.4 }}>
-                              <strong>{codigo || "Sem código"}</strong>
-                              {" — "}
-                              {atividade.descricao || "Descrição não informada"}
-
-                              {atividade.principal && (
-                                <span
-                                  style={{
-                                    display: "inline-block",
-                                    marginLeft: 6,
-                                    fontSize: 9.5,
-                                    fontWeight: 700,
-                                    color: CORAL,
-                                  }}
-                                >
-                                  CNAE principal
-                                </span>
-                              )}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    {atividadesSelecionadasObjetos.length > 0 && (
-                      <div style={{ marginTop: 12 }}>
-                        <p style={{ ...labelStyle, marginBottom: 7 }}>
-                          Qual atividade representa a maior parte da operação ou receita hoje?
-                        </p>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {atividadesSelecionadasObjetos.map((atividade) => {
-                            const codigo = String(atividade.codigo || "");
-
-                            return (
-                              <label
-                                key={`pred-${codigo}-${atividade.descricao}`}
-                                style={{
-                                  display: "flex",
-                                  gap: 8,
-                                  alignItems: "flex-start",
-                                  cursor: "pointer",
-                                  fontSize: 11.3,
-                                  color: NAVY,
-                                }}
-                              >
-                                <input
-                                  type="radio"
-                                  name="atividadePredominante"
-                                  checked={
-                                    String(atividadePredominante?.codigo || "") === codigo
-                                  }
-                                  onChange={() => setAtividadePredominante(atividade)}
-                                  style={{ marginTop: 2 }}
-                                />
-
-                                <span>
-                                  <strong>{codigo}</strong>
-                                  {" — "}
-                                  {atividade.descricao}
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-<PrimaryButton disabled={!nome || !cargo || telefone.replace(/\D/g, "").length < 10 || !email.includes("@")} onClick={() => setStep("cnpj")}>
+                <PrimaryButton disabled={!nome || !cargo || telefone.replace(/\D/g, "").length < 10 || !email.includes("@")} onClick={() => setStep("cnpj")}>
                   Continuar <ArrowRight size={16} />
                 </PrimaryButton>
               </div>
@@ -1800,7 +1900,7 @@ export default function DiagnosticoPrototipo() {
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                 <p style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: NAVY, margin: "6px 0 4px" }}>CNPJ da empresa</p>
                 <p style={{ fontSize: 12.5, color: MUTED, margin: "0 0 14px" }}>
-                  Tem mais de uma empresa? Adicione até {MAX_EMPRESAS} CNPJs — vamos considerar o segmento predominante do grupo.
+                  Adicione o CNPJ da empresa que será a base do diagnóstico. Se houver outras empresas no grupo, você pode adicionar até {MAX_EMPRESAS} CNPJs.
                 </p>
 
                 <label style={labelStyle}>CNPJ</label>
@@ -1833,6 +1933,352 @@ export default function DiagnosticoPrototipo() {
                   ))}
                 </div>
 
+
+                {empresaPrincipal && cnaesEmpresa.length > 0 && (
+                  <div
+                    style={{
+                      background: "#F7F8FB",
+                      border: "1px solid #E1E5EC",
+                      borderRadius: 12,
+                      padding: 12,
+                      marginTop: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontFamily: DISPLAY_FONT,
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: NAVY,
+                        margin: "0 0 5px",
+                      }}
+                    >
+                      Atividades da empresa-base
+                    </p>
+
+                    <p
+                      style={{
+                        fontSize: 11.5,
+                        color: MUTED,
+                        lineHeight: 1.45,
+                        margin: "0 0 10px",
+                      }}
+                    >
+                      Marque as atividades que a empresa realmente exerce. Depois escolha qual delas representa hoje a maior parte da operação, faturamento ou esforço da empresa.
+                    </p>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 7,
+                      }}
+                    >
+                      {cnaesEmpresa.map((atividade) => {
+                        const codigo =
+                          String(atividade.codigo || "");
+
+                        const selecionada =
+                          atividadesSelecionadas.includes(
+                            codigo
+                          );
+
+                        return (
+                          <label
+                            key={`${codigo}-${atividade.descricao}`}
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "flex-start",
+
+                              background:
+                                selecionada
+                                  ? "#FFF3EF"
+                                  : "#FFFFFF",
+
+                              border:
+                                selecionada
+                                  ? `1px solid ${CORAL}`
+                                  : "1px solid #E1E5EC",
+
+                              borderRadius: 9,
+                              padding: 9,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+
+                              checked={
+                                selecionada
+                              }
+
+                              onChange={() => {
+                                setAtividadesSelecionadas(
+                                  (prev) => {
+                                    if (selecionada) {
+                                      const novas =
+                                        prev.filter(
+                                          (item) =>
+                                            item !== codigo
+                                        );
+
+                                      if (
+                                        String(
+                                          atividadePredominante
+                                            ?.codigo ||
+                                          ""
+                                        ) ===
+                                        codigo
+                                      ) {
+                                        const proxima =
+                                          cnaesEmpresa.find(
+                                            (item) =>
+                                              novas.includes(
+                                                String(
+                                                  item.codigo
+                                                )
+                                              )
+                                          );
+
+                                        setAtividadePredominante(
+                                          proxima ||
+                                          null
+                                        );
+                                      }
+
+                                      return novas;
+                                    }
+
+                                    const novas = [
+                                      ...prev,
+                                      codigo,
+                                    ];
+
+                                    if (!atividadePredominante) {
+                                      setAtividadePredominante(
+                                        atividade
+                                      );
+                                    }
+
+                                    return novas;
+                                  }
+                                );
+                              }}
+
+                              style={{
+                                marginTop: 2,
+                              }}
+                            />
+
+                            <span
+                              style={{
+                                fontSize: 11.3,
+                                color: NAVY,
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              <strong>
+                                {codigo || "Sem código"}
+                              </strong>
+
+                              {" — "}
+
+                              {
+                                atividade.descricao ||
+                                "Descrição não informada"
+                              }
+
+                              {atividade.principal && (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    marginLeft: 6,
+                                    padding: "2px 5px",
+                                    borderRadius: 5,
+                                    background: "#FFE8DF",
+                                    color: CORAL,
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  CNAE principal cadastrado
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {atividadesSelecionadasObjetos.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          paddingTop: 12,
+                          borderTop: "1px solid #D8DEEA",
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontFamily: DISPLAY_FONT,
+                            fontSize: 14.5,
+                            fontWeight: 700,
+                            color: NAVY,
+                            margin: "0 0 4px",
+                          }}
+                        >
+                          Qual atividade é predominante na prática?
+                        </p>
+
+                        <p
+                          style={{
+                            fontSize: 10.8,
+                            color: MUTED,
+                            lineHeight: 1.4,
+                            margin: "0 0 8px",
+                          }}
+                        >
+                          Essa escolha definirá o segmento, a categoria e a base das perguntas do diagnóstico.
+                        </p>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
+                          {atividadesSelecionadasObjetos.map(
+                            (atividade) => {
+                              const codigo =
+                                String(
+                                  atividade.codigo ||
+                                  ""
+                                );
+
+                              const predominante =
+                                String(
+                                  atividadePredominante
+                                    ?.codigo ||
+                                  ""
+                                ) ===
+                                codigo;
+
+                              return (
+                                <label
+                                  key={`pred-${codigo}-${atividade.descricao}`}
+                                  style={{
+                                    display: "flex",
+                                    gap: 8,
+                                    alignItems: "flex-start",
+                                    cursor: "pointer",
+                                    fontSize: 11.3,
+                                    color: NAVY,
+                                    padding: 8,
+                                    borderRadius: 8,
+
+                                    background:
+                                      predominante
+                                        ? "#EEF3FF"
+                                        : "#FFFFFF",
+
+                                    border:
+                                      predominante
+                                        ? "1px solid #6783C4"
+                                        : "1px solid #E1E5EC",
+                                  }}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="atividadePredominante"
+
+                                    checked={
+                                      predominante
+                                    }
+
+                                    onChange={() =>
+                                      setAtividadePredominante(
+                                        atividade
+                                      )
+                                    }
+
+                                    style={{
+                                      marginTop: 2,
+                                    }}
+                                  />
+
+                                  <span>
+                                    <strong>
+                                      {codigo}
+                                    </strong>
+
+                                    {" — "}
+
+                                    {
+                                      atividade.descricao
+                                    }
+                                  </span>
+                                </label>
+                              );
+                            }
+                          )}
+                        </div>
+
+                        {atividadePredominante && (
+                          <div
+                            style={{
+                              marginTop: 10,
+                              padding: 9,
+                              borderRadius: 8,
+                              background: "#EEF8F3",
+                              border: "1px solid #C9E8D8",
+                            }}
+                          >
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 10.8,
+                                lineHeight: 1.5,
+                                color: NAVY,
+                              }}
+                            >
+                              <strong>
+                                Base do diagnóstico:
+                              </strong>{" "}
+                              {
+                                atividadePredominante
+                                  .descricao
+                              }
+
+                              <br />
+
+                              <strong>
+                                Segmento:
+                              </strong>{" "}
+                              {
+                                segmentoPredominante ||
+                                "-"
+                              }
+
+                              <br />
+
+                              <strong>
+                                Categoria:
+                              </strong>{" "}
+                              {
+                                categoriaPrincipal ||
+                                "-"
+                              }
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {empresas.length > 1 && (
                   <p style={{ fontSize: 11, color: CORAL, fontWeight: 600, margin: "10px 0 0" }}>
                     Segmento predominante do grupo: {segmentoPredominante}
@@ -1840,7 +2286,14 @@ export default function DiagnosticoPrototipo() {
                 )}
 
                 <div style={{ flex: 1, minHeight: 10 }} />
-                <PrimaryButton disabled={empresas.length === 0} onClick={() => setStep("porte")}>
+                <PrimaryButton
+                  disabled={
+                    empresas.length === 0 ||
+                    atividadesSelecionadas.length === 0 ||
+                    !atividadePredominante
+                  }
+                  onClick={() => setStep("porte")}
+                >
                   Continuar <ArrowRight size={16} />
                 </PrimaryButton>
               </div>
@@ -2054,8 +2507,12 @@ export default function DiagnosticoPrototipo() {
                 </p>
                 <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
                   {todasPerguntas.length} perguntas · adaptado para {categoriaPrincipal}
-                  {empresaPrincipal?.cnae ? ` · CNAE ${empresaPrincipal.cnae.split("—")[0].trim()}` : ""}
-                  {empresas.length > 1 ? " (empresa principal do grupo)" : ""}
+                  {atividadePredominante?.descricao
+                    ? ` · atividade-base: ${atividadePredominante.descricao}`
+                    : empresaPrincipal?.cnae
+                      ? ` · CNAE ${empresaPrincipal.cnae.split("—")[0].trim()}`
+                      : ""}
+                  {empresas.length > 1 ? " (empresa-base do grupo)" : ""}
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 22, overflowY: "auto", maxHeight: 440, paddingRight: 2 }}>
@@ -2105,7 +2562,7 @@ export default function DiagnosticoPrototipo() {
                 <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: 0 }}>A IA está analisando</p>
                 <p style={{ fontSize: 12.5, color: MUTED, minHeight: 18, margin: 0, padding: "0 10px" }}>
                   {[
-                    `CNAE classificado como: ${categoriaPrincipal}`,
+                    `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
                     `Analisando as áreas: ${gruposSelecionados.map((g) => g.label).join(", ")}`,
                     "Cruzando respostas com o contexto do segmento",
                     "Estimando carga tributária de referência",
