@@ -1,6 +1,10 @@
 // api/cnpj.js
 
 export default async function handler(req, res) {
+  // =========================================================
+  // 1. VALIDAR MÉTODO
+  // =========================================================
+
   if (req.method !== "GET") {
     return res.status(405).json({
       sucesso: false,
@@ -8,8 +12,13 @@ export default async function handler(req, res) {
     });
   }
 
-  const { cnpj } = req.query;
-  const digits = String(cnpj || "").replace(/\D/g, "");
+  // =========================================================
+  // 2. VALIDAR CNPJ
+  // =========================================================
+
+  const cnpjRecebido = req.query?.cnpj;
+
+  const digits = String(cnpjRecebido || "").replace(/\D/g, "");
 
   if (digits.length !== 14) {
     return res.status(400).json({
@@ -18,12 +27,24 @@ export default async function handler(req, res) {
     });
   }
 
+  // =========================================================
+  // 3. CLASSIFICAR CNAE PARA O DIAGNÓSTICO
+  // =========================================================
+
   function classificarEmpresa(cnae, descricao = "") {
     const codigo = String(cnae || "").replace(/\D/g, "");
-    const desc = String(descricao || "").toLowerCase();
-    const divisao = parseInt(codigo.slice(0, 2), 10);
 
+    const desc = String(descricao || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+    const divisao = Number.parseInt(codigo.slice(0, 2), 10);
+
+    // ---------------------------------------------------------
     // CONTABILIDADE
+    // ---------------------------------------------------------
+
     if (
       codigo.startsWith("6920601") ||
       desc.includes("contabilidade")
@@ -51,10 +72,14 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // ADVOCACIA
+    // ---------------------------------------------------------
+
     if (
       codigo.startsWith("69117") ||
-      desc.includes("advocacia")
+      desc.includes("advocacia") ||
+      desc.includes("advocatic")
     ) {
       return {
         segmento: "Serviços Profissionais",
@@ -79,14 +104,19 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // SAÚDE
+    // ---------------------------------------------------------
+
     if (
       divisao === 86 ||
-      desc.includes("clínica") ||
-      desc.includes("clinica") ||
+      desc.includes("medic") ||
       desc.includes("odontolog") ||
+      desc.includes("clinic") ||
       desc.includes("psicolog") ||
-      desc.includes("fisioterapia")
+      desc.includes("fisioterap") ||
+      desc.includes("fonoaudiolog") ||
+      desc.includes("nutricao")
     ) {
       return {
         segmento: "Serviços",
@@ -111,13 +141,17 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // TECNOLOGIA
+    // ---------------------------------------------------------
+
     if (
       divisao === 62 ||
       divisao === 63 ||
       desc.includes("software") ||
-      desc.includes("programação") ||
-      desc.includes("programacao")
+      desc.includes("programacao") ||
+      desc.includes("tecnologia da informacao") ||
+      desc.includes("desenvolvimento de sistemas")
     ) {
       return {
         segmento: "Serviços",
@@ -142,8 +176,12 @@ export default async function handler(req, res) {
       };
     }
 
-    // CONSTRUÇÃO CIVIL
+    // ---------------------------------------------------------
+    // CONSTRUÇÃO
+    // ---------------------------------------------------------
+
     if (
+      Number.isFinite(divisao) &&
       divisao >= 41 &&
       divisao <= 43
     ) {
@@ -170,11 +208,13 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // E-COMMERCE
+    // ---------------------------------------------------------
+
     if (
       desc.includes("internet") ||
       desc.includes("e-commerce") ||
-      desc.includes("comércio eletrônico") ||
       desc.includes("comercio eletronico")
     ) {
       return {
@@ -200,8 +240,12 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // COMÉRCIO
+    // ---------------------------------------------------------
+
     if (
+      Number.isFinite(divisao) &&
       divisao >= 45 &&
       divisao <= 47
     ) {
@@ -228,8 +272,12 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // INDÚSTRIA
+    // ---------------------------------------------------------
+
     if (
+      Number.isFinite(divisao) &&
       divisao >= 10 &&
       divisao <= 33
     ) {
@@ -256,8 +304,12 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // TRANSPORTE / LOGÍSTICA
+    // ---------------------------------------------------------
+
     if (
+      Number.isFinite(divisao) &&
       divisao >= 49 &&
       divisao <= 53
     ) {
@@ -284,12 +336,14 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // ALIMENTAÇÃO
+    // ---------------------------------------------------------
+
     if (
       divisao === 56 ||
       desc.includes("restaurante") ||
       desc.includes("lanchonete") ||
-      desc.includes("alimentação") ||
       desc.includes("alimentacao")
     ) {
       return {
@@ -315,10 +369,12 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // IMOBILIÁRIO
+    // ---------------------------------------------------------
+
     if (
       divisao === 68 ||
-      desc.includes("imobiliár") ||
       desc.includes("imobiliar")
     ) {
       return {
@@ -344,8 +400,12 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // SERVIÇOS PROFISSIONAIS
+    // ---------------------------------------------------------
+
     if (
+      Number.isFinite(divisao) &&
       divisao >= 69 &&
       divisao <= 75
     ) {
@@ -372,10 +432,13 @@ export default async function handler(req, res) {
       };
     }
 
+    // ---------------------------------------------------------
     // PADRÃO
+    // ---------------------------------------------------------
+
     return {
       segmento: "Serviços",
-      categoria: "Serviços Profissionais",
+      categoria: "Serviços",
       codigoQuestionario: "servicos",
 
       diagnostico: {
@@ -396,202 +459,163 @@ export default async function handler(req, res) {
     };
   }
 
+  // =========================================================
+  // 4. FUNÇÃO PARA NORMALIZAR CNAES SECUNDÁRIOS
+  // =========================================================
+
+  function normalizarCnae(item, principal = false) {
+    if (!item) {
+      return null;
+    }
+
+    const codigo =
+      item.codigo ??
+      item.code ??
+      item.cnae ??
+      item.cnae_fiscal ??
+      item.id ??
+      "";
+
+    const descricao =
+      item.descricao ??
+      item.description ??
+      item.texto ??
+      item.cnae_fiscal_descricao ??
+      item.nome ??
+      "";
+
+    if (!codigo && !descricao) {
+      return null;
+    }
+
+    return {
+      codigo: String(codigo || ""),
+
+      descricao: String(descricao || ""),
+
+      principal,
+
+      classificacao: classificarEmpresa(
+        codigo,
+        descricao
+      ),
+    };
+  }
+
+  // =========================================================
+  // 5. CONSULTAR BRASIL API
+  // =========================================================
+
   try {
-    const response = await fetch(
-      `https://brasilapi.com.br/api/cnpj/v1/${digits}`,
-      {
-        method: "GET",
-
-        headers: {
-          "User-Agent":
-            "finder-diagnostico-empresarial/1.0",
-
-          Accept:
-            "application/json",
-        },
-      }
+    console.log(
+      "[CNPJ] Consultando:",
+      digits
     );
 
-    if (!response.ok) {
-      const detalhe =
-        await response.text();
+    const url =
+      `https://brasilapi.com.br/api/cnpj/v1/${digits}`;
 
+    const response = await fetch(url, {
+      method: "GET",
+
+      headers: {
+        Accept: "application/json",
+
+        "User-Agent":
+          "Finder-of-Solutions-Diagnostico/1.0",
+      },
+    });
+
+    // =======================================================
+    // 6. LER RESPOSTA COMO TEXTO PRIMEIRO
+    // Evita erro de JSON inválido
+    // =======================================================
+
+    const textoResposta =
+      await response.text();
+
+    if (!response.ok) {
       console.error(
-        "Erro BrasilAPI:",
+        "[CNPJ] Erro BrasilAPI:",
         response.status,
-        detalhe
+        textoResposta
       );
 
-      return res
-        .status(
-          response.status === 404
-            ? 404
-            : 502
-        )
-        .json({
+      if (response.status === 404) {
+        return res.status(404).json({
+          sucesso: false,
+          error: "CNPJ não encontrado.",
+          statusBrasilAPI: 404,
+        });
+      }
+
+      if (response.status === 403) {
+        return res.status(503).json({
           sucesso: false,
 
           error:
-            response.status === 404
-              ? "CNPJ não encontrado."
-              : "Não foi possível consultar o CNPJ.",
+            "O serviço de consulta de CNPJ recusou temporariamente a consulta.",
 
-          statusBrasilAPI:
-            response.status,
+          statusBrasilAPI: 403,
         });
+      }
+
+      return res.status(502).json({
+        sucesso: false,
+
+        error:
+          "Não foi possível consultar os dados do CNPJ.",
+
+        statusBrasilAPI:
+          response.status,
+      });
     }
 
-    const data =
-      await response.json();
+    // =======================================================
+    // 7. CONVERTER PARA JSON COM SEGURANÇA
+    // =======================================================
 
-    // CNAE PRINCIPAL
-   // =========================================================
-// CNAE PRINCIPAL
-// =========================================================
+    let data;
 
-const cnaeCodigo =
-  data.cnae_fiscal ||
-  data.cnaeFiscal ||
-  data.cnae_principal ||
-  data.cnaePrincipal ||
-  "";
+    try {
+      data =
+        JSON.parse(textoResposta);
+    } catch (parseError) {
+      console.error(
+        "[CNPJ] BrasilAPI retornou conteúdo que não é JSON:",
+        textoResposta
+      );
 
-const cnaeDescricao =
-  data.cnae_fiscal_descricao ||
-  data.cnaeFiscalDescricao ||
-  data.cnae_principal_descricao ||
-  data.cnaePrincipalDescricao ||
-  "";
+      return res.status(502).json({
+        sucesso: false,
 
-// =========================================================
-// NORMALIZAR CNAE
-// =========================================================
+        error:
+          "O serviço de consulta retornou uma resposta inválida.",
+      });
+    }
 
-function normalizarCnae(item, principal = false) {
-  if (!item) return null;
+    // =========================================================
+    // 8. CNAE PRINCIPAL
+    // =========================================================
 
-  const codigo =
-    item.codigo ||
-    item.code ||
-    item.cnae ||
-    item.cnae_fiscal ||
-    item.id ||
-    "";
+    const cnaeCodigo =
+      data.cnae_fiscal ??
+      data.cnaeFiscal ??
+      "";
 
-  const descricao =
-    item.descricao ||
-    item.description ||
-    item.texto ||
-    item.cnae_fiscal_descricao ||
-    item.nome ||
-    "";
-
-  if (!codigo && !descricao) {
-    return null;
-  }
-
-  return {
-    codigo: String(codigo || ""),
-    descricao: String(descricao || ""),
-    principal,
-
-    classificacao: classificarEmpresa(
-      codigo,
-      descricao
-    ),
-  };
-}
-
-// =========================================================
-// MONTAR CNAE PRINCIPAL
-// =========================================================
-
-const cnaePrincipal = {
-  codigo: String(cnaeCodigo || ""),
-
-  descricao:
-    String(cnaeDescricao || ""),
-
-  principal: true,
-
-  classificacao:
-    classificarEmpresa(
-      cnaeCodigo,
-      cnaeDescricao
-    ),
-};
-
-// =========================================================
-// PROCURAR CNAES SECUNDÁRIOS EM DIFERENTES CAMPOS
-// =========================================================
-
-const secundariosBrutos =
-  data.cnaes_secundarios ||
-  data.cnaesSecundarios ||
-  data.atividades_secundarias ||
-  data.atividadesSecundarias ||
-  data.secondary_activities ||
-  [];
-
-// =========================================================
-// NORMALIZAR SECUNDÁRIOS
-// =========================================================
-
-const cnaesSecundarios =
-  Array.isArray(secundariosBrutos)
-    ? secundariosBrutos
-        .map((item) =>
-          normalizarCnae(
-            item,
-            false
-          )
-        )
-        .filter(Boolean)
-    : [];
-
-// =========================================================
-// REMOVER DUPLICIDADES
-// =========================================================
-
-const mapaCnaes =
-  new Map();
-
-[
-  cnaePrincipal,
-  ...cnaesSecundarios,
-].forEach((item) => {
-  if (!item) return;
-
-  const chave =
-    String(item.codigo || "")
-      .replace(/\D/g, "") ||
-    String(item.descricao || "")
-      .toLowerCase();
-
-  if (!chave) return;
-
-  if (!mapaCnaes.has(chave)) {
-    mapaCnaes.set(
-      chave,
-      item
-    );
-  }
-});
-
-const todosCnaes =
-  Array.from(
-    mapaCnaes.values()
-  );
+    const cnaeDescricao =
+      data.cnae_fiscal_descricao ??
+      data.cnaeFiscalDescricao ??
+      "";
 
     const cnaePrincipal = {
       codigo:
         String(cnaeCodigo || ""),
 
       descricao:
-        cnaeDescricao || "",
+        String(cnaeDescricao || ""),
 
-      principal:
-        true,
+      principal: true,
 
       classificacao:
         classificarEmpresa(
@@ -600,149 +624,293 @@ const todosCnaes =
         ),
     };
 
-    // CNAES SECUNDÁRIOS
-    const cnaesSecundarios =
+    // =========================================================
+    // 9. PEGAR TODOS OS CNAES SECUNDÁRIOS
+    // =========================================================
+
+    let secundariosBrutos = [];
+
+    if (
       Array.isArray(
         data.cnaes_secundarios
       )
-        ? data.cnaes_secundarios
-            .map((item) => ({
-              codigo:
-                String(
-                  item?.codigo || ""
-                ),
+    ) {
+      secundariosBrutos =
+        data.cnaes_secundarios;
+    } else if (
+      Array.isArray(
+        data.cnaesSecundarios
+      )
+    ) {
+      secundariosBrutos =
+        data.cnaesSecundarios;
+    } else if (
+      Array.isArray(
+        data.atividades_secundarias
+      )
+    ) {
+      secundariosBrutos =
+        data.atividades_secundarias;
+    } else if (
+      Array.isArray(
+        data.atividadesSecundarias
+      )
+    ) {
+      secundariosBrutos =
+        data.atividadesSecundarias;
+    } else if (
+      Array.isArray(
+        data.secondary_activities
+      )
+    ) {
+      secundariosBrutos =
+        data.secondary_activities;
+    }
 
-              descricao:
-                item?.descricao || "",
+    console.log(
+      "[CNPJ] CNAE principal:",
+      cnaePrincipal
+    );
 
-              principal:
-                false,
+    console.log(
+      "[CNPJ] CNAEs secundários recebidos:",
+      secundariosBrutos
+    );
 
-              classificacao:
-                classificarEmpresa(
-                  item?.codigo,
-                  item?.descricao
-                ),
-            }))
-            .filter(
-              (item) =>
-                item.codigo ||
-                item.descricao
-            )
-        : [];
+    // =========================================================
+    // 10. NORMALIZAR CNAES SECUNDÁRIOS
+    // =========================================================
 
-    // TODOS OS CNAES
-    const todosCnaes = [
+    const cnaesSecundarios =
+      secundariosBrutos
+        .map((item) =>
+          normalizarCnae(
+            item,
+            false
+          )
+        )
+        .filter(Boolean);
+
+    // =========================================================
+    // 11. JUNTAR PRINCIPAL + SECUNDÁRIOS
+    // =========================================================
+
+    const todosAntesDuplicidade = [
       cnaePrincipal,
       ...cnaesSecundarios,
     ];
 
-    return res
-      .status(200)
-      .json({
-        sucesso: true,
+    // =========================================================
+    // 12. REMOVER DUPLICIDADES
+    // =========================================================
 
-        empresa: {
-          cnpj:
-            digits,
+    const mapaCnaes =
+      new Map();
 
-          razaoSocial:
-            data.razao_social || "",
+    todosAntesDuplicidade.forEach(
+      (item) => {
+        if (!item) return;
 
-          nomeFantasia:
-            data.nome_fantasia || "",
+        const codigoLimpo =
+          String(
+            item.codigo || ""
+          ).replace(/\D/g, "");
 
-          porte:
-            data.porte ||
-            "Não informado",
+        const descricaoLimpa =
+          String(
+            item.descricao || ""
+          )
+            .trim()
+            .toLowerCase();
 
-          naturezaJuridica:
-            data.natureza_juridica ||
-            "",
+        const chave =
+          codigoLimpo ||
+          descricaoLimpa;
 
-          situacao:
-            data.descricao_situacao_cadastral ||
-            data.situacao_cadastral ||
-            "",
+        if (!chave) {
+          return;
+        }
 
-          abertura:
-            data.data_inicio_atividade ||
-            "",
+        if (
+          !mapaCnaes.has(chave)
+        ) {
+          mapaCnaes.set(
+            chave,
+            item
+          );
+        }
+      }
+    );
 
-          telefone:
-            data.ddd_telefone_1 ||
-            data.ddd_telefone_2 ||
-            "",
+    const todosCnaes =
+      Array.from(
+        mapaCnaes.values()
+      );
 
-          email:
-            data.email || "",
-        },
+    console.log(
+      "[CNPJ] Todos CNAEs normalizados:",
+      todosCnaes
+    );
 
-        // COMPATIBILIDADE COM VERSÃO ANTIGA
-        cnae: {
-          codigo:
-            cnaeCodigo,
+    // =========================================================
+    // 13. EMPRESA
+    // =========================================================
 
-          descricao:
-            cnaeDescricao,
+    const empresa = {
+      cnpj: digits,
 
-          principal:
-            cnaePrincipal,
+      razaoSocial:
+        data.razao_social ??
+        data.razaoSocial ??
+        "",
 
-          secundarios:
-            cnaesSecundarios,
+      nomeFantasia:
+        data.nome_fantasia ??
+        data.nomeFantasia ??
+        "",
 
-          todos:
-            todosCnaes,
-        },
+      porte:
+        data.porte ??
+        "Não informado",
 
-        // NOVA ESTRUTURA
-        cnaePrincipal,
+      naturezaJuridica:
+        data.natureza_juridica ??
+        data.naturezaJuridica ??
+        "",
 
-        cnaesSecundarios,
+      situacao:
+        data.descricao_situacao_cadastral ??
+        data.situacao_cadastral ??
+        data.situacao ??
+        "",
 
-        todosCnaes,
+      abertura:
+        data.data_inicio_atividade ??
+        data.data_abertura ??
+        "",
 
-        classificacao:
-          cnaePrincipal.classificacao,
+      telefone:
+        data.ddd_telefone_1 ??
+        data.ddd_telefone_2 ??
+        data.telefone ??
+        "",
 
-        endereco: {
-          logradouro:
-            data.logradouro || "",
+      email:
+        data.email ??
+        "",
+    };
 
-          numero:
-            data.numero || "",
+    // =========================================================
+    // 14. ENDEREÇO
+    // =========================================================
 
-          complemento:
-            data.complemento || "",
+    const endereco = {
+      logradouro:
+        data.logradouro ??
+        "",
 
-          bairro:
-            data.bairro || "",
+      numero:
+        data.numero ??
+        "",
 
-          municipio:
-            data.municipio || "",
+      complemento:
+        data.complemento ??
+        "",
 
-          uf:
-            data.uf || "",
+      bairro:
+        data.bairro ??
+        "",
 
-          cep:
-            data.cep || "",
-        },
-      });
+      municipio:
+        data.municipio ??
+        "",
+
+      uf:
+        data.uf ??
+        "",
+
+      cep:
+        data.cep ??
+        "",
+    };
+
+    // =========================================================
+    // 15. RETORNO FINAL
+    // =========================================================
+
+    return res.status(200).json({
+      sucesso: true,
+
+      empresa,
+
+      // -------------------------------------------------------
+      // FORMATO ANTIGO
+      // Mantido para não quebrar o App.jsx existente
+      // -------------------------------------------------------
+
+      cnae: {
+        codigo:
+          cnaePrincipal.codigo,
+
+        descricao:
+          cnaePrincipal.descricao,
+
+        principal:
+          cnaePrincipal,
+
+        secundarios:
+          cnaesSecundarios,
+
+        todos:
+          todosCnaes,
+      },
+
+      // -------------------------------------------------------
+      // NOVO FORMATO
+      // -------------------------------------------------------
+
+      cnaePrincipal,
+
+      cnaesSecundarios,
+
+      todosCnaes,
+
+      totalCnaes:
+        todosCnaes.length,
+
+      totalCnaesSecundarios:
+        cnaesSecundarios.length,
+
+      classificacao:
+        cnaePrincipal.classificacao,
+
+      endereco,
+    });
 
   } catch (error) {
+    // =========================================================
+    // 16. QUALQUER ERRO DA FUNCTION CONTINUA RETORNANDO JSON
+    // =========================================================
+
     console.error(
-      "Erro ao consultar CNPJ:",
+      "[CNPJ] Erro interno:",
       error
     );
 
-    return res
-      .status(500)
-      .json({
-        sucesso: false,
+    return res.status(500).json({
+      sucesso: false,
 
-        error:
-          "Erro interno ao consultar o CNPJ.",
-      });
+      error:
+        "Erro interno ao consultar o CNPJ.",
+
+      detalhe:
+        process.env.NODE_ENV ===
+        "development"
+          ? String(
+              error?.message ||
+              error
+            )
+          : undefined,
+    });
   }
 }
