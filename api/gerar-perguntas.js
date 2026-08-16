@@ -2,7 +2,7 @@
 
 export default async function handler(req, res) {
   // =========================================================
-  // 1. MÉTODO
+  // 1. VALIDAR MÉTODO
   // =========================================================
 
   if (req.method !== "POST") {
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   // =========================================================
-  // 2. CHAVE OPENAI
+  // 2. VALIDAR OPENAI
   // =========================================================
 
   if (!process.env.OPENAI_API_KEY) {
@@ -24,37 +24,41 @@ export default async function handler(req, res) {
   }
 
   // =========================================================
-  // 3. RECEBER DADOS DO APP
+  // 3. RECEBER EXATAMENTE O PAYLOAD DO APP.JSX
   // =========================================================
 
   const payload = req.body || {};
 
   const {
+    segmentoAtual,
+    categoriaAtual,
+
     cnaePrincipal,
     cnaesSecundarios,
     atividadesSelecionadas,
     atividadePredominante,
+
     descricaoNegocio,
-    segmento,
-    categoria,
-    faturamento,
-    colaboradores,
-    regime,
-    dorPrincipal,
-    dor90Dias,
-    impactosDor,
-    areasSelecionadas,
+
     empresas,
+
+    perfil = {},
+
+    dor = {},
+
+    areasSelecionadas,
   } = payload;
 
   // =========================================================
-  // 4. VALIDAÇÕES
+  // 4. VALIDAR DESCRIÇÃO DO NEGÓCIO
   // =========================================================
 
-  if (
-    !descricaoNegocio ||
-    String(descricaoNegocio).trim().length < 10
-  ) {
+  const descricao =
+    String(
+      descricaoNegocio || ""
+    ).trim();
+
+  if (descricao.length < 20) {
     return res.status(400).json({
       sucesso: false,
       error:
@@ -62,8 +66,14 @@ export default async function handler(req, res) {
     });
   }
 
+  // =========================================================
+  // 5. VALIDAR ÁREAS
+  // =========================================================
+
   if (
-    !Array.isArray(areasSelecionadas) ||
+    !Array.isArray(
+      areasSelecionadas
+    ) ||
     areasSelecionadas.length === 0
   ) {
     return res.status(400).json({
@@ -74,832 +84,962 @@ export default async function handler(req, res) {
   }
 
   // =========================================================
-  // 5. PROMPT
+  // 6. NORMALIZAR ÁREAS RECEBIDAS DO APP
+  // =========================================================
+  //
+  // O App envia:
+  //
+  // [
+  //   {
+  //     id: "financeiro",
+  //     label: "Financeiro PF/PJ"
+  //   },
+  //   {
+  //     id: "operacional",
+  //     label: "Operacional"
+  //   }
+  // ]
+  //
+  // O retorno PRECISA preservar esse id.
+  // =========================================================
+
+  const AREAS_VALIDAS = {
+    marketing: "Marketing",
+
+    juridico: "Jurídico",
+
+    contabilidade:
+      "Contábil / Fiscal",
+
+    financeiro:
+      "Financeiro PF/PJ",
+
+    administrativo:
+      "Administrativo",
+
+    gestao:
+      "Gestão",
+
+    operacional:
+      "Operacional",
+
+    rh:
+      "Pessoas / RH",
+
+    comercial:
+      "Comercial / Vendas",
+
+    tecnologia:
+      "Tecnologia",
+  };
+
+  const areasNormalizadas =
+    areasSelecionadas
+      .map((area) => {
+        if (!area) {
+          return null;
+        }
+
+        // Caso venha objeto
+        if (
+          typeof area ===
+          "object"
+        ) {
+          const id =
+            String(
+              area.id || ""
+            ).trim();
+
+          if (
+            id &&
+            AREAS_VALIDAS[id]
+          ) {
+            return {
+              id,
+
+              label:
+                area.label ||
+                AREAS_VALIDAS[id],
+            };
+          }
+
+          return null;
+        }
+
+        // Compatibilidade caso venha string
+        const texto =
+          String(area).trim();
+
+        if (
+          AREAS_VALIDAS[
+            texto
+          ]
+        ) {
+          return {
+            id: texto,
+
+            label:
+              AREAS_VALIDAS[
+                texto
+              ],
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+  if (
+    areasNormalizadas.length === 0
+  ) {
+    return res.status(400).json({
+      sucesso: false,
+      error:
+        "As áreas selecionadas não puderam ser reconhecidas.",
+    });
+  }
+
+  // =========================================================
+  // 7. PROMPT PRINCIPAL
   // =========================================================
 
   const systemPrompt = `
-Você é um CONSULTOR EMPRESARIAL SÊNIOR responsável por construir um diagnóstico empresarial personalizado.
+Você é um CONSULTOR EMPRESARIAL SÊNIOR.
 
-Sua tarefa neste momento NÃO é diagnosticar a empresa.
+Sua tarefa é construir um QUESTIONÁRIO EMPRESARIAL PERSONALIZADO.
 
-Sua tarefa é:
+Você NÃO está fazendo o diagnóstico final ainda.
 
-1. interpretar corretamente o negócio;
-2. identificar o modelo operacional real;
-3. identificar os riscos naturais dessa atividade;
-4. considerar as áreas/departamentos selecionados;
-5. construir perguntas inteligentes e específicas;
-6. preparar informações que posteriormente serão utilizadas por outro diagnóstico.
+Você deve:
+
+1. entender o que a empresa realmente faz;
+2. confrontar essa descrição com CNAEs e atividades cadastradas;
+3. interpretar o modelo real do negócio;
+4. identificar riscos naturais daquela atividade;
+5. considerar somente os departamentos selecionados;
+6. gerar perguntas específicas;
+7. produzir perguntas capazes de revelar problemas reais;
+8. evitar perguntas genéricas.
 
 =========================================================
-REGRA MAIS IMPORTANTE
+REGRA PRINCIPAL
 =========================================================
 
-NÃO assuma que o CNAE principal representa corretamente o negócio real.
+NÃO assuma que o CNAE principal representa corretamente
+a operação real da empresa.
 
-Empresas frequentemente possuem:
-
-- CNAEs genéricos;
-- CNAEs antigos;
-- CNAEs secundários relevantes;
-- atividades diferentes da atividade principal cadastrada;
-- várias linhas de negócio;
-- atividade operacional mais específica do que a descrição oficial do CNAE.
-
-Por isso, utilize esta ordem de relevância:
+Utilize esta ordem de relevância:
 
 1. descrição livre fornecida pelo participante;
-2. atividade predominante escolhida pelo participante;
-3. atividades efetivamente exercidas selecionadas;
+2. atividade predominante indicada pelo participante;
+3. atividades que o participante informou exercer;
 4. CNAE principal;
 5. CNAEs secundários;
-6. classificação preliminar de segmento.
+6. segmento/classificação automática.
+
+A DESCRIÇÃO REAL DO NEGÓCIO deve possuir peso elevado.
 
 =========================================================
-DESCRIÇÃO DO NEGÓCIO
+EXEMPLO IMPORTANTE
 =========================================================
-
-A descrição do participante deve ter peso elevado.
-
-Exemplo:
 
 CNAE:
 
 "Serviços combinados de escritório e apoio administrativo"
 
-Descrição:
+Descrição informada:
 
-"Fabricamos churrasqueiras metálicas, vendemos modelos prontos e também fabricamos projetos sob medida."
+"Indústria de churrasqueiras para consumidor final e construtoras."
 
-NÃO trate essa empresa como simples empresa de apoio administrativo.
+A empresa NÃO deve ser diagnosticada como
+empresa de apoio administrativo.
 
-A operação descrita indica características de:
+O contexto operacional predominante é:
 
-INDÚSTRIA / FABRICAÇÃO.
+INDÚSTRIA / FABRICAÇÃO DE CHURRASQUEIRAS.
 
-Portanto, as perguntas devem investigar os riscos e controles de uma operação industrial.
+As perguntas precisam investigar coisas como:
+
+- custo por produto;
+- matéria-prima;
+- ficha técnica;
+- perdas;
+- estoque;
+- capacidade produtiva;
+- formação de preço;
+- margem;
+- PCP;
+- produtividade;
+- retrabalho;
+- prazo de produção.
 
 =========================================================
-CONFRONTO DAS INFORMAÇÕES
+CONFRONTO CADASTRAL
 =========================================================
 
 Compare:
 
-- descrição do negócio;
 - CNAE principal;
 - CNAEs secundários;
+- atividades selecionadas;
 - atividade predominante;
-- atividades selecionadas.
+- descrição real.
 
-Identifique:
+Se houver divergência:
 
-- convergências;
-- divergências;
-- ambiguidades;
-- atividades complementares;
-- atividades potencialmente relevantes.
+NÃO diga automaticamente que existe irregularidade.
 
-Se houver divergência entre CNAE e operação descrita:
+Utilize uma leitura como:
 
-NÃO conclua automaticamente que existe irregularidade.
-
-Informe apenas que:
-
-"Existe divergência aparente entre a atividade operacional descrita e algumas atividades cadastrais, recomendando validação posterior."
+"Há aparente diferença entre parte das atividades cadastrais
+e a operação descrita pelo participante, recomendando validação cadastral posterior."
 
 =========================================================
-INTERPRETAÇÃO DO NEGÓCIO
+INTERPRETAR O NEGÓCIO
 =========================================================
 
-Determine:
+Antes de gerar perguntas, determine:
 
-- segmento real provável;
+- segmento real;
 - subsegmento;
-- modelo de negócio;
-- como a empresa gera receita;
-- características operacionais;
-- principais processos;
-- principais riscos gerenciais;
-- informações que ainda precisam ser descobertas.
+- modelo operacional;
+- modelo de receita;
+- características da operação;
+- riscos naturais;
+- divergências cadastrais;
+- confiança da interpretação.
 
-Exemplos de modelo:
+=========================================================
+EMPRESAS COM MAIS DE UM CNPJ
+=========================================================
 
-- indústria;
-- comércio;
-- serviços;
-- indústria + comércio;
-- fabricação sob encomenda;
-- fabricação seriada;
-- prestação recorrente;
-- prestação por projeto;
-- varejo;
-- atacado;
-- distribuição;
-- e-commerce;
-- locação;
-- construção;
-- clínica;
-- escritório profissional;
-- SaaS;
-- logística;
-- alimentação.
+Se houver várias empresas:
+
+- considere a primeira como empresa-base;
+- use as demais como contexto;
+- não presuma que todas têm a mesma atividade;
+- identifique complementaridades;
+- não misture perguntas sem necessidade.
+
+O questionário deve continuar orientado
+à EMPRESA-BASE e às áreas selecionadas.
 
 =========================================================
 ÁREAS SELECIONADAS
 =========================================================
 
-Você receberá as áreas que o participante deseja analisar.
+Você receberá as áreas no formato:
 
-Gere perguntas SOMENTE para as áreas selecionadas.
+{
+  "id": "financeiro",
+  "label": "Financeiro PF/PJ"
+}
 
-As perguntas devem relacionar:
+IMPORTANTE:
 
-ATIVIDADE REAL
-+
-RISCO DO NEGÓCIO
-+
-DEPARTAMENTO
-+
-CONTROLE NECESSÁRIO
+O campo areaId de CADA pergunta deve ser
+EXATAMENTE um dos IDs enviados.
 
-=========================================================
-EXEMPLO
-=========================================================
+NUNCA invente areaId.
 
-Empresa:
+Exemplos válidos:
 
-"Fabricamos churrasqueiras metálicas."
-
-Área selecionada:
-
-Financeiro
-
-Pergunta RUIM:
-
-"Você controla seus custos?"
-
-Pergunta BOA:
-
-"A empresa conhece o custo completo de fabricação de cada modelo de churrasqueira, considerando matéria-prima, mão de obra direta e custos indiretos?"
-
----------------------------------------------------------
-
-Pergunta RUIM:
-
-"Você controla o estoque?"
-
-Pergunta BOA:
-
-"O estoque físico de aço, componentes e produtos acabados é conciliado periodicamente com as quantidades registradas no sistema?"
-
----------------------------------------------------------
-
-Pergunta RUIM:
-
-"Você sabe sua margem?"
-
-Pergunta BOA:
-
-"A empresa acompanha a margem por modelo de churrasqueira e consegue identificar produtos que vendem bem, mas apresentam baixa rentabilidade?"
-
-=========================================================
-FINANCEIRO
-=========================================================
-
-Quando Financeiro estiver selecionado, avalie quando pertinente:
-
-- fluxo de caixa;
-- projeção financeira;
-- contas a pagar;
-- contas a receber;
-- inadimplência;
-- conciliação bancária;
-- DRE;
-- margem;
-- rentabilidade;
-- ponto de equilíbrio;
-- capital de giro;
-- necessidade de caixa;
-- prazo médio de recebimento;
-- prazo médio de pagamento;
-- endividamento;
-- retiradas dos sócios;
-- orçamento;
-- indicadores.
-
-Adapte as perguntas ao negócio.
-
-Exemplo indústria:
-
-"A empresa consegue projetar a necessidade de caixa considerando compra de matéria-prima, prazo de produção e prazo de recebimento dos clientes?"
-
-Exemplo serviço:
-
-"A empresa conhece a margem gerada por cliente ou contrato depois de considerar as horas da equipe utilizadas na prestação?"
-
-=========================================================
-INDÚSTRIA / PRODUÇÃO
-=========================================================
-
-Se identificar atividade industrial, investigue quando pertinente:
-
-CUSTO INDUSTRIAL
-
-- ficha técnica;
-- custo por produto;
-- matéria-prima;
-- mão de obra direta;
-- custos indiretos;
-- custo padrão;
-- custo realizado;
-- margem por produto;
-- formação de preço.
-
-ESTOQUE
-
-- matéria-prima;
-- produto em processo;
-- produto acabado;
-- inventário;
-- estoque físico x sistema;
-- giro;
-- cobertura;
-- estoque parado;
-- obsolescência.
-
-PRODUÇÃO
-
-- PCP;
-- ordens de produção;
-- capacidade produtiva;
-- utilização de máquinas;
-- produtividade;
-- gargalos;
-- lead time;
-- prazo de produção;
-- paradas.
-
-PERDAS
-
-- desperdício;
-- sucata;
-- refugo;
-- retrabalho;
-- consumo previsto x realizado.
-
-QUALIDADE
-
-- devoluções;
-- não conformidades;
-- retrabalho;
-- inspeção;
-- indicadores.
-
-=========================================================
-COMÉRCIO
-=========================================================
-
-Se identificar comércio, investigue:
-
-- margem por produto;
-- margem por categoria;
-- markup;
-- preço;
-- estoque;
-- curva ABC;
-- giro;
-- cobertura;
-- ruptura;
-- excesso;
-- estoque parado;
-- compras;
-- fornecedores;
-- ticket médio;
-- canais;
-- conversão;
-- rentabilidade por canal;
-- devoluções;
-- descontos.
-
-=========================================================
-SERVIÇOS
-=========================================================
-
-Se identificar prestação de serviços, investigue:
-
-- margem por cliente;
-- margem por contrato;
-- custo/hora;
-- horas utilizadas;
-- capacidade;
-- produtividade;
-- precificação;
-- contratos;
-- recorrência;
-- concentração de clientes;
-- inadimplência;
-- retrabalho;
-- dependência dos sócios;
-- padronização;
-- SLA;
-- retenção.
-
-=========================================================
-COMERCIAL
-=========================================================
-
-Quando Comercial estiver selecionado, considere:
-
-- geração de leads;
-- CRM;
-- funil;
-- taxa de conversão;
-- follow-up;
-- propostas;
-- motivos de perda;
-- ticket médio;
-- recorrência;
-- concentração;
-- margem nas negociações;
-- desconto;
-- forecast;
-- carteira.
-
-Adapte ao modelo real.
-
-=========================================================
-MARKETING
-=========================================================
-
-Quando Marketing estiver selecionado, considere:
-
-- origem dos leads;
-- custo de aquisição;
-- canais;
-- posicionamento;
-- público;
-- mensuração;
-- conversão;
-- campanhas;
-- retorno;
-- integração marketing/comercial;
-- recorrência.
-
-Não presuma que o problema é falta de investimento.
+marketing
+juridico
+contabilidade
+financeiro
+administrativo
+gestao
+operacional
+rh
+comercial
+tecnologia
 
 =========================================================
 OPERACIONAL
 =========================================================
 
-Quando Operacional estiver selecionado, investigue:
+Se "operacional" estiver selecionado,
+investigue os principais riscos operacionais
+do negócio real.
 
+Para indústria:
+
+- ficha técnica;
+- matéria-prima;
+- consumo previsto x real;
+- produto em processo;
+- produto acabado;
+- PCP;
+- ordem de produção;
 - capacidade;
+- gargalo;
 - produtividade;
-- gargalos;
-- padronização;
-- retrabalho;
-- prazo;
-- qualidade;
 - perdas;
-- indicadores;
+- refugo;
+- retrabalho;
+- sucata;
+- manutenção;
+- qualidade;
+- prazo.
+
+Exemplos:
+
+"A empresa possui ficha técnica atualizada por modelo,
+com quantidade prevista dos principais materiais?"
+
+"A empresa compara o consumo real de matéria-prima
+com o consumo previsto para cada produto?"
+
+"Refugo, desperdício e retrabalho são medidos
+e acompanhados periodicamente?"
+
+"A empresa conhece a capacidade produtiva
+das principais etapas de fabricação?"
+
+"Existe programação da produção considerando
+pedidos, capacidade e prazo prometido ao cliente?"
+
+=========================================================
+FINANCEIRO
+=========================================================
+
+Se "financeiro" estiver selecionado,
+investigue:
+
+- fluxo de caixa;
+- projeção;
+- contas a pagar;
+- contas a receber;
+- conciliação;
+- inadimplência;
+- margem;
+- ponto de equilíbrio;
+- capital de giro;
+- custo;
+- rentabilidade;
+- necessidade de caixa;
+- prazo médio.
+
+Para indústria, adapte:
+
+"A empresa conhece o custo completo
+de fabricação de cada produto?"
+
+"O custo utilizado para formar o preço inclui
+matéria-prima, mão de obra e custos indiretos?"
+
+"A empresa acompanha margem por modelo
+ou família de produto?"
+
+"A projeção financeira considera
+compras de matéria-prima, prazo de produção
+e recebimento das vendas?"
+
+"A empresa conhece seu ponto de equilíbrio?"
+
+=========================================================
+COMERCIAL
+=========================================================
+
+Se "comercial" estiver selecionado,
+investigue:
+
+- CRM;
+- propostas;
+- follow-up;
+- conversão;
+- ticket;
+- carteira;
+- recorrência;
+- descontos;
+- margem;
+- concentração;
+- forecast;
+- motivos de perda.
+
+Para indústria:
+
+"A equipe comercial conhece a margem mínima
+aceitável antes de conceder descontos?"
+
+"A empresa conhece quais produtos apresentam
+maior margem e utiliza essa informação
+na estratégia comercial?"
+
+"Pedidos personalizados possuem orçamento
+considerando custo e complexidade específicos?"
+
+"O prazo prometido pelo comercial considera
+a capacidade real da produção?"
+
+=========================================================
+MARKETING
+=========================================================
+
+Se "marketing" estiver selecionado:
+
+- origem dos leads;
+- canais;
+- posicionamento;
+- público;
+- conversão;
+- CAC;
+- mensuração;
+- integração marketing/comercial.
+
+Não conclua que mais investimento resolve o problema.
+
+=========================================================
+ADMINISTRATIVO
+=========================================================
+
+Se "administrativo" estiver selecionado:
+
+- processos;
+- procedimentos;
+- documentação;
+- retrabalho;
+- aprovações;
 - responsabilidades;
-- planejamento;
+- rotina;
 - dependência de pessoas.
 
-Adapte completamente ao negócio.
-
 =========================================================
-PROCESSOS E GESTÃO
+GESTÃO
 =========================================================
 
-Considere:
+Se "gestao" estiver selecionado:
 
-- processos documentados;
-- responsabilidades;
 - indicadores;
 - metas;
 - reuniões;
 - acompanhamento;
-- retrabalho;
-- gargalos;
-- aprovação;
-- dependência de pessoas;
-- tomada de decisão;
-- qualidade das informações.
+- planejamento;
+- decisões;
+- responsabilidades;
+- visão de resultado.
 
 =========================================================
 PESSOAS / RH
 =========================================================
 
-Considere:
+Se "rh" estiver selecionado:
 
 - funções;
-- responsabilidades;
-- capacidade;
 - produtividade;
 - treinamento;
+- capacidade;
 - rotatividade;
 - liderança;
-- dependência de pessoas-chave;
-- dimensionamento da equipe;
-- acompanhamento de desempenho.
+- dependência de pessoas-chave.
 
 Não faça diagnóstico psicológico.
 
 =========================================================
-CONTÁBIL
+CONTÁBIL / FISCAL
 =========================================================
 
-Considere:
+Se "contabilidade" estiver selecionado:
 
-- fechamento;
-- conciliação;
 - DRE;
 - balancete;
-- qualidade dos dados;
-- classificação;
-- integração;
+- conciliações;
 - estoque;
-- imobilizado;
+- custo;
 - centros de custo;
-- resultado gerencial;
-- informação para decisão.
-
-=========================================================
-FISCAL / TRIBUTÁRIO
-=========================================================
-
-Considere:
-
-- regime tributário;
-- enquadramento das operações;
-- emissão fiscal;
-- classificação;
+- fechamento;
 - cadastros;
-- produtos;
-- serviços;
-- créditos;
-- retenções;
-- integração sistema/fiscal;
-- planejamento tributário.
+- emissão fiscal;
+- qualidade de informação;
+- integração;
+- regime tributário.
 
-IMPORTANTE:
+Não conclua automaticamente
+que existe imposto pago a maior.
 
-Não conclua que existe imposto pago a maior.
+=========================================================
+JURÍDICO
+=========================================================
 
-Não conclua que existe irregularidade.
+Se "juridico" estiver selecionado:
 
-As perguntas devem descobrir se existem oportunidades ou riscos.
+- contratos;
+- formalização;
+- responsabilidade;
+- documentação;
+- riscos contratuais;
+- proteção empresarial;
+- obrigações.
+
+Não conclua que existe passivo sem evidência.
 
 =========================================================
 TECNOLOGIA
 =========================================================
 
-Considere:
+Se "tecnologia" estiver selecionado:
 
 - ERP;
 - CRM;
 - BI;
+- automação;
 - integrações;
-- automações;
 - planilhas;
-- retrabalho;
-- qualidade de dados;
+- dados;
 - backups;
 - acessos;
-- segurança;
-- dependência de sistemas.
+- segurança.
 
 =========================================================
-RISCO ESPECÍFICO DA ATIVIDADE
+INDÚSTRIA
 =========================================================
 
-Não fique limitado às listas anteriores.
+Quando identificar indústria,
+considere de forma transversal:
 
-Analise a descrição do negócio.
+CUSTO:
+- ficha técnica;
+- custo unitário;
+- matéria-prima;
+- mão de obra;
+- custos indiretos;
+- custo padrão;
+- custo realizado.
 
-Pergunte:
+ESTOQUE:
+- matéria-prima;
+- produto em processo;
+- produto acabado;
+- inventário;
+- divergência sistema x físico;
+- giro;
+- estoque parado.
 
-"Quais riscos gerenciais são naturalmente relevantes para esse tipo específico de operação?"
-
-Exemplo:
-
-Fabricante sob encomenda:
-
-- orçamento incorreto;
-- alteração de projeto;
-- consumo superior ao previsto;
-- retrabalho;
-- atraso;
-- margem por pedido;
+PRODUÇÃO:
+- PCP;
 - capacidade;
+- gargalo;
+- produtividade;
+- utilização;
 - prazo;
-- compras específicas.
+- manutenção.
 
-E-commerce:
+PERDAS:
+- refugo;
+- sucata;
+- desperdício;
+- retrabalho.
 
-- margem por canal;
-- mídia;
-- frete;
-- devolução;
-- marketplace;
-- comissão;
+MARGEM:
+- produto;
+- família;
+- cliente;
+- pedido.
+
+=========================================================
+FABRICAÇÃO SOB ENCOMENDA
+=========================================================
+
+Se houver produtos personalizados,
+considere:
+
+- orçamento por pedido;
+- projeto;
+- alteração de escopo;
+- custo previsto;
+- custo realizado;
+- material por pedido;
+- mão de obra por pedido;
+- margem por pedido;
+- prazo;
+- retrabalho.
+
+=========================================================
+COMÉRCIO
+=========================================================
+
+Quando houver comércio:
+
+- margem por produto;
+- markup;
 - estoque;
+- curva ABC;
+- giro;
 - ruptura;
-- CAC.
+- estoque parado;
+- compras;
+- descontos;
+- ticket;
+- canal;
+- rentabilidade.
 
-Clínica:
+=========================================================
+SERVIÇOS
+=========================================================
 
-- ocupação;
-- agenda;
-- faltas;
-- repasse;
-- procedimento;
+Quando houver serviços:
+
+- margem por cliente;
+- custo/hora;
+- horas utilizadas;
 - capacidade;
-- recorrência.
+- produtividade;
+- preço;
+- contratos;
+- recorrência;
+- concentração;
+- retrabalho.
 
 =========================================================
 DOR DECLARADA
 =========================================================
 
-Você receberá a principal dor informada pelo empresário.
+Considere a dor informada pelo participante.
 
-Use essa informação para aprofundar as perguntas.
-
-Porém:
-
-NÃO aceite automaticamente a dor como causa.
+Mas NÃO trate automaticamente
+a dor como causa.
 
 Exemplo:
 
 Dor:
-
 "Preciso vender mais."
 
-Se a empresa não conhece:
-
-- margem;
-- conversão;
-- capacidade;
-- rentabilidade;
-
-gere perguntas para descobrir se aumentar vendas realmente é a prioridade correta.
+Se a empresa não conhece custo,
+margem ou capacidade,
+faça perguntas para testar
+se aumentar venda é realmente
+o principal problema.
 
 =========================================================
 OBJETIVO DE 90 DIAS
 =========================================================
 
-Considere também:
-
-"Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?"
-
-Gere algumas perguntas capazes de verificar se essa prioridade percebida está alinhada aos dados operacionais.
+Utilize também o objetivo dos próximos 90 dias
+para escolher perguntas de maior poder diagnóstico.
 
 =========================================================
-QUANTIDADE DE PERGUNTAS
+FORMATO DAS PERGUNTAS
+=========================================================
+
+As perguntas precisam permitir resposta:
+
+SIM
+PARCIALMENTE
+NÃO
+
+Não faça perguntas abertas.
+
+ERRADO:
+
+"Qual o custo do seu produto?"
+
+CERTO:
+
+"A empresa conhece o custo completo
+de fabricação de cada produto?"
+
+=========================================================
+QUANTIDADE
 =========================================================
 
 Gere normalmente:
 
 5 a 7 perguntas por área.
 
-Pode gerar até 8 quando a complexidade justificar.
+Se houver 3 áreas,
+o questionário deve ter aproximadamente
+15 a 21 perguntas.
 
-Evite questionários excessivamente longos.
+Evite excesso.
 
-Priorize perguntas de alto poder diagnóstico.
-
-=========================================================
-FORMATO DAS PERGUNTAS
-=========================================================
-
-As perguntas devem permitir resposta:
-
-SIM
-PARCIALMENTE
-NÃO
-
-Portanto, não faça perguntas abertas no checklist.
-
-Exemplo correto:
-
-"A empresa conhece a margem por produto?"
-
-Exemplo inadequado:
-
-"Qual é a margem por produto?"
+Priorize poder diagnóstico.
 
 =========================================================
-PESO
+IMPORTÂNCIA
 =========================================================
 
-Cada pergunta deve receber peso:
+Cada pergunta deve possuir:
+
+importancia:
 
 1 = complementar
-
 2 = importante
+3 = crítica
 
-3 = crítico
+Use 3 somente para pontos realmente críticos.
 
-Use peso 3 somente para controles realmente relevantes ao modelo de negócio.
+Também devolva:
 
-=========================================================
-MOTIVO
-=========================================================
+peso
 
-Para cada pergunta explique internamente o motivo.
-
-O motivo será utilizado posteriormente pelo diagnóstico.
-
-Exemplo:
-
-Pergunta:
-
-"A empresa conhece o custo completo por produto?"
-
-Motivo:
-
-"Verificar se a formação de preço e a análise de margem utilizam custo industrial confiável."
+com o MESMO valor de importancia.
 
 =========================================================
 RISCO AVALIADO
 =========================================================
 
-Informe também o risco que a pergunta procura avaliar.
+Cada pergunta deve conter
+o risco que ela pretende investigar.
 
 Exemplo:
 
-"Venda de produtos com margem insuficiente por desconhecimento do custo completo."
+Pergunta:
+
+"A empresa conhece o custo completo
+de fabricação por produto?"
+
+Risco:
+
+"Formação de preço com base de custo incompleta,
+comprometendo a análise da margem."
+
+=========================================================
+MOTIVO
+=========================================================
+
+Explique por que a pergunta é importante.
+
+Essa informação será usada
+no diagnóstico final.
 
 =========================================================
 EVITAR DUPLICIDADE
 =========================================================
 
-Não faça várias perguntas medindo exatamente o mesmo controle.
-
-Cada pergunta deve adicionar informação nova.
+Não faça várias perguntas
+avaliando exatamente a mesma coisa.
 
 =========================================================
-LINGUAGEM
+QUALIDADE DAS PERGUNTAS
 =========================================================
 
-Use linguagem empresarial simples.
+Pergunta genérica:
 
-O empresário deve entender a pergunta sem precisar de conhecimento contábil ou técnico avançado.
+"Controla estoque?"
 
-Quando utilizar um termo técnico, deixe o significado evidente na própria pergunta.
+Pergunta adequada:
+
+"O estoque físico de matéria-prima
+e produtos acabados é comparado periodicamente
+com as quantidades registradas no sistema?"
+
+Pergunta genérica:
+
+"Controla custos?"
+
+Pergunta adequada:
+
+"A empresa conhece o custo completo
+de fabricação de cada modelo,
+incluindo materiais, mão de obra
+e custos indiretos?"
 
 =========================================================
 NÃO INVENTAR
 =========================================================
 
-Não afirme:
+Não afirme que a empresa:
 
-- que a empresa tem problema;
-- que possui dívida;
-- que tem prejuízo;
-- que possui estoque errado;
-- que possui passivo;
-- que está pagando imposto errado;
-- que possui irregularidade.
+- tem prejuízo;
+- tem margem baixa;
+- tem estoque errado;
+- tem dívida;
+- possui irregularidade;
+- paga imposto errado.
 
-Neste momento você está fazendo PERGUNTAS para descobrir essas informações.
+Você está construindo perguntas
+para descobrir essas informações.
 
 =========================================================
-RESULTADO DA INTERPRETAÇÃO
+RETORNO
 =========================================================
 
-Antes das perguntas, produza uma interpretação do negócio contendo:
+Produza:
+
+negocioInterpretado
+
+com:
 
 segmentoReal
-
+segmento
 subsegmento
-
 modeloNegocio
-
+modeloOperacional
 resumoNegocio
-
+justificativa
 comoGeraReceita
-
 caracteristicasOperacionais
-
 riscosNaturais
-
 divergenciasCadastrais
-
 nivelConfianca
 
+E produza:
+
+perguntas
+
+Cada pergunta deve possuir:
+
+id
+areaId
+area
+tema
+pergunta
+motivo
+riscoAvaliado
+peso
+importancia
+
 =========================================================
-NÍVEL DE CONFIANÇA
+REGRA CRÍTICA DE areaId
 =========================================================
 
-nivelConfianca deve ser:
+O areaId DEVE ser exatamente o mesmo id
+de uma das áreas recebidas.
 
-alto
-medio
-baixo
+Exemplo:
 
-Use "baixo" quando as informações fornecidas forem insuficientes ou contraditórias.
+Entrada:
+
+[
+  {
+    "id": "operacional",
+    "label": "Operacional"
+  },
+  {
+    "id": "financeiro",
+    "label": "Financeiro PF/PJ"
+  },
+  {
+    "id": "comercial",
+    "label": "Comercial / Vendas"
+  }
+]
+
+Saída permitida:
+
+"areaId": "operacional"
+
+ou
+
+"areaId": "financeiro"
+
+ou
+
+"areaId": "comercial"
+
+NÃO produza:
+
+"areaId": "producao"
+
+NÃO produza:
+
+"areaId": "custos"
+
+NÃO produza:
+
+"areaId": "estoque"
+
+Esses assuntos devem aparecer em "tema",
+não em areaId.
 
 =========================================================
 VALIDAÇÃO FINAL
 =========================================================
 
-Antes de responder, valide:
+Antes de responder:
 
-1. Entendi o que a empresa realmente faz?
-
-2. Dei mais peso à descrição real do que ao CNAE?
-
-3. Cruzei CNAE, atividade predominante e descrição?
-
-4. Considerei somente as áreas selecionadas?
-
-5. As perguntas são específicas para esse negócio?
-
-6. As perguntas descobrem riscos reais?
-
+1. Entendi o negócio real?
+2. Dei mais peso à descrição do participante?
+3. Cruzei CNAEs e operação?
+4. Usei apenas áreas recebidas?
+5. Todo areaId existe na entrada?
+6. As perguntas são específicas?
 7. Evitei perguntas genéricas?
-
 8. Evitei duplicidades?
-
-9. Cada pergunta pode ser respondida com Sim, Parcialmente ou Não?
-
+9. Todas podem ser respondidas Sim/Parcialmente/Não?
 10. Estou perguntando em vez de presumir?
-
-O objetivo final é criar um questionário que pareça ter sido elaborado por um consultor que estudou aquela empresa antes da reunião.
 `;
 
   // =========================================================
-  // 6. CONTEXTO ENVIADO PARA IA
+  // 8. CONTEXTO PARA OPENAI
   // =========================================================
 
   const contexto = {
-    cadastro: {
+    empresaBase: {
+      segmentoAtual:
+        segmentoAtual || "",
+
+      categoriaAtual:
+        categoriaAtual || "",
+
       cnaePrincipal:
         cnaePrincipal || null,
 
       cnaesSecundarios:
-        Array.isArray(cnaesSecundarios)
+        Array.isArray(
+          cnaesSecundarios
+        )
           ? cnaesSecundarios
           : [],
 
       atividadesSelecionadas:
-        Array.isArray(atividadesSelecionadas)
+        Array.isArray(
+          atividadesSelecionadas
+        )
           ? atividadesSelecionadas
           : [],
 
       atividadePredominante:
-        atividadePredominante || null,
+        atividadePredominante ||
+        null,
 
-      segmentoPreClassificado:
-        segmento || "",
-
-      categoria:
-        categoria || "",
+      descricaoNegocio:
+        descricao,
     },
-
-    negocioReal: {
-      descricao:
-        String(
-          descricaoNegocio || ""
-        ).trim(),
-    },
-
-    perfil: {
-      faturamento:
-        faturamento || "",
-
-      colaboradores:
-        colaboradores || "",
-
-      regime:
-        regime || "",
-    },
-
-    dores: {
-      principal:
-        dorPrincipal || "",
-
-      objetivo90Dias:
-        dor90Dias || "",
-
-      impactos:
-        Array.isArray(impactosDor)
-          ? impactosDor
-          : [],
-    },
-
-    areasSelecionadas,
 
     grupoEmpresarial:
       Array.isArray(empresas)
         ? empresas
         : [],
+
+    perfil: {
+      faturamento:
+        perfil?.faturamento ||
+        "",
+
+      colaboradores:
+        perfil?.colaboradores ||
+        "",
+
+      regime:
+        perfil?.regime ||
+        "",
+    },
+
+    dor: {
+      principal:
+        dor?.principal ||
+        "",
+
+      objetivo90Dias:
+        dor?.objetivo90Dias ||
+        "",
+
+      impactos:
+        Array.isArray(
+          dor?.impactos
+        )
+          ? dor.impactos
+          : [],
+    },
+
+    areasSelecionadas:
+      areasNormalizadas,
   };
 
   // =========================================================
-  // 7. SCHEMA
+  // 9. SCHEMA
   // =========================================================
 
   const schema = {
@@ -918,6 +1058,10 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
             type: "string",
           },
 
+          segmento: {
+            type: "string",
+          },
+
           subsegmento: {
             type: "string",
           },
@@ -926,7 +1070,15 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
             type: "string",
           },
 
+          modeloOperacional: {
+            type: "string",
+          },
+
           resumoNegocio: {
+            type: "string",
+          },
+
+          justificativa: {
             type: "string",
           },
 
@@ -971,9 +1123,12 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
 
         required: [
           "segmentoReal",
+          "segmento",
           "subsegmento",
           "modeloNegocio",
+          "modeloOperacional",
           "resumoNegocio",
+          "justificativa",
           "comoGeraReceita",
           "caracteristicasOperacionais",
           "riscosNaturais",
@@ -993,6 +1148,16 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
           properties: {
             id: {
               type: "string",
+            },
+
+            areaId: {
+              type: "string",
+
+              enum:
+                areasNormalizadas.map(
+                  (area) =>
+                    area.id
+                ),
             },
 
             area: {
@@ -1021,16 +1186,25 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
               minimum: 1,
               maximum: 3,
             },
+
+            importancia: {
+              type: "integer",
+
+              minimum: 1,
+              maximum: 3,
+            },
           },
 
           required: [
             "id",
+            "areaId",
             "area",
             "tema",
             "pergunta",
             "motivo",
             "riscoAvaliado",
             "peso",
+            "importancia",
           ],
         },
       },
@@ -1052,7 +1226,7 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
   };
 
   // =========================================================
-  // 8. CHAMADA OPENAI
+  // 10. CHAMAR OPENAI
   // =========================================================
 
   try {
@@ -1113,7 +1287,7 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
                     "json_schema",
 
                   name:
-                    "questionario_empresarial",
+                    "questionario_empresarial_personalizado",
 
                   strict:
                     true,
@@ -1126,7 +1300,7 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
       );
 
     // =========================================================
-    // 9. LER RESPOSTA
+    // 11. RESPOSTA OPENAI
     // =========================================================
 
     const data =
@@ -1143,18 +1317,20 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
       );
 
       return res
-        .status(response.status)
+        .status(
+          response.status
+        )
         .json({
           sucesso: false,
 
           error:
             data?.error?.message ||
-            "Erro ao gerar perguntas.",
+            "Erro ao gerar perguntas personalizadas.",
         });
     }
 
     // =========================================================
-    // 10. EXTRAIR TEXTO
+    // 12. EXTRAIR TEXTO
     // =========================================================
 
     let texto =
@@ -1162,7 +1338,9 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
 
     if (
       !texto &&
-      Array.isArray(data.output)
+      Array.isArray(
+        data.output
+      )
     ) {
       for (
         const item
@@ -1212,22 +1390,24 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
           sucesso: false,
 
           error:
-            "A IA não retornou perguntas.",
+            "A OpenAI não retornou perguntas.",
         });
     }
 
     // =========================================================
-    // 11. CONVERTER JSON
+    // 13. CONVERTER JSON
     // =========================================================
 
     let parsed;
 
     try {
       parsed =
-        JSON.parse(texto);
+        JSON.parse(
+          texto
+        );
     } catch (error) {
       console.error(
-        "Erro JSON gerar perguntas:",
+        "Resposta inválida gerar-perguntas:",
         texto
       );
 
@@ -1237,12 +1417,26 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
           sucesso: false,
 
           error:
-            "A IA retornou um formato inválido.",
+            "A OpenAI retornou um formato inválido.",
         });
     }
 
     // =========================================================
-    // 12. VALIDAR / LIMPAR PERGUNTAS
+    // 14. MAPA DE ÁREAS
+    // =========================================================
+
+    const mapaAreas =
+      new Map(
+        areasNormalizadas.map(
+          (area) => [
+            area.id,
+            area,
+          ]
+        )
+      );
+
+    // =========================================================
+    // 15. NORMALIZAR PERGUNTAS
     // =========================================================
 
     const perguntas =
@@ -1250,64 +1444,152 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
         parsed.perguntas
       )
         ? parsed.perguntas
-            .filter(
-              (item) =>
-                item &&
-                item.pergunta &&
-                item.area
-            )
             .map(
               (
-                item,
+                pergunta,
                 index
-              ) => ({
-                id:
-                  String(
-                    item.id ||
-                    `ia_${index + 1}`
-                  ),
+              ) => {
+                if (
+                  !pergunta
+                ) {
+                  return null;
+                }
 
-                area:
+                const areaId =
                   String(
-                    item.area
-                  ),
-
-                tema:
-                  String(
-                    item.tema ||
-                    "Diagnóstico"
-                  ),
-
-                pergunta:
-                  String(
-                    item.pergunta
-                  ),
-
-                motivo:
-                  String(
-                    item.motivo ||
+                    pergunta.areaId ||
                     ""
-                  ),
+                  ).trim();
 
-                riscoAvaliado:
-                  String(
-                    item.riscoAvaliado ||
-                    ""
-                  ),
+                // CRÍTICO:
+                // Só aceita área que veio do App.
+                const areaOriginal =
+                  mapaAreas.get(
+                    areaId
+                  );
 
-                peso:
+                if (
+                  !areaOriginal
+                ) {
+                  console.warn(
+                    "Pergunta descartada por areaId inválido:",
+                    pergunta
+                  );
+
+                  return null;
+                }
+
+                const importancia =
                   [1, 2, 3].includes(
                     Number(
-                      item.peso
+                      pergunta.importancia
                     )
                   )
                     ? Number(
-                        item.peso
+                        pergunta.importancia
                       )
-                    : 2,
-              })
+                    : [1, 2, 3].includes(
+                        Number(
+                          pergunta.peso
+                        )
+                      )
+                      ? Number(
+                          pergunta.peso
+                        )
+                      : 2;
+
+                return {
+                  id:
+                    String(
+                      pergunta.id ||
+                      `ia_${index + 1}`
+                    ),
+
+                  // Este é o campo que o App.jsx usa
+                  areaId:
+                    areaOriginal.id,
+
+                  area:
+                    areaOriginal.label,
+
+                  tema:
+                    String(
+                      pergunta.tema ||
+                      "Diagnóstico específico"
+                    ),
+
+                  pergunta:
+                    String(
+                      pergunta.pergunta ||
+                      ""
+                    ),
+
+                  motivo:
+                    String(
+                      pergunta.motivo ||
+                      ""
+                    ),
+
+                  riscoAvaliado:
+                    String(
+                      pergunta.riscoAvaliado ||
+                      ""
+                    ),
+
+                  peso:
+                    importancia,
+
+                  // Este é o campo que o App.jsx atual lê
+                  importancia:
+                    importancia,
+                };
+              }
+            )
+            .filter(
+              (pergunta) =>
+                pergunta &&
+                pergunta.areaId &&
+                pergunta.pergunta
             )
         : [];
+
+    // =========================================================
+    // 16. GARANTIR PERGUNTAS POR TODAS AS ÁREAS
+    // =========================================================
+
+    const areasSemPerguntas =
+      areasNormalizadas.filter(
+        (area) =>
+          !perguntas.some(
+            (pergunta) =>
+              pergunta.areaId ===
+              area.id
+          )
+      );
+
+    if (
+      areasSemPerguntas.length >
+      0
+    ) {
+      console.error(
+        "Áreas sem perguntas:",
+        areasSemPerguntas
+      );
+
+      return res
+        .status(502)
+        .json({
+          sucesso: false,
+
+          error:
+            `Não foram geradas perguntas para: ${areasSemPerguntas
+              .map(
+                (area) =>
+                  area.label
+              )
+              .join(", ")}. Tente gerar novamente.`,
+        });
+    }
 
     if (
       perguntas.length === 0
@@ -1323,7 +1605,142 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
     }
 
     // =========================================================
-    // 13. RETORNO PARA APP
+    // 17. NORMALIZAR INTERPRETAÇÃO
+    // =========================================================
+
+    const negocioBruto =
+      parsed.negocioInterpretado ||
+      {};
+
+    const segmentoReal =
+      String(
+        negocioBruto.segmentoReal ||
+        negocioBruto.segmento ||
+        segmentoAtual ||
+        ""
+      );
+
+    const modeloNegocio =
+      String(
+        negocioBruto.modeloNegocio ||
+        negocioBruto.modeloOperacional ||
+        ""
+      );
+
+    const resumoNegocio =
+      String(
+        negocioBruto.resumoNegocio ||
+        negocioBruto.justificativa ||
+        ""
+      );
+
+    const negocioInterpretadoFinal = {
+      // CAMPOS NOVOS
+      segmentoReal,
+
+      subsegmento:
+        String(
+          negocioBruto.subsegmento ||
+          ""
+        ),
+
+      modeloNegocio,
+
+      resumoNegocio,
+
+      comoGeraReceita:
+        String(
+          negocioBruto.comoGeraReceita ||
+          ""
+        ),
+
+      caracteristicasOperacionais:
+        Array.isArray(
+          negocioBruto
+            .caracteristicasOperacionais
+        )
+          ? negocioBruto
+              .caracteristicasOperacionais
+              .slice(0, 8)
+          : [],
+
+      riscosNaturais:
+        Array.isArray(
+          negocioBruto.riscosNaturais
+        )
+          ? negocioBruto
+              .riscosNaturais
+              .slice(0, 8)
+          : [],
+
+      divergenciasCadastrais:
+        Array.isArray(
+          negocioBruto
+            .divergenciasCadastrais
+        )
+          ? negocioBruto
+              .divergenciasCadastrais
+              .slice(0, 5)
+          : [],
+
+      nivelConfianca:
+        String(
+          negocioBruto.nivelConfianca ||
+          "medio"
+        ),
+
+      // =====================================================
+      // CAMPOS DE COMPATIBILIDADE COM APP.JSX ATUAL
+      // =====================================================
+
+      segmento:
+        segmentoReal,
+
+      modeloOperacional:
+        modeloNegocio,
+
+      justificativa:
+        resumoNegocio,
+    };
+
+    // =========================================================
+    // 18. LOG DE TESTE
+    // =========================================================
+
+    console.log(
+      "Questionário personalizado gerado:",
+      {
+        modelo,
+
+        negocio:
+          negocioInterpretadoFinal
+            .subsegmento,
+
+        areas:
+          areasNormalizadas,
+
+        totalPerguntas:
+          perguntas.length,
+
+        perguntasPorArea:
+          areasNormalizadas.map(
+            (area) => ({
+              area:
+                area.label,
+
+              quantidade:
+                perguntas.filter(
+                  (pergunta) =>
+                    pergunta.areaId ===
+                    area.id
+                ).length,
+            })
+          ),
+      }
+    );
+
+    // =========================================================
+    // 19. RETORNO FINAL PARA APP.JSX
     // =========================================================
 
     return res
@@ -1334,7 +1751,7 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
         modelo,
 
         negocioInterpretado:
-          parsed.negocioInterpretado,
+          negocioInterpretadoFinal,
 
         perguntas,
 
@@ -1346,15 +1763,38 @@ O objetivo final é criar um questionário que pareça ter sido elaborado por um
                 .alertasInterpretacao
                 .slice(0, 5)
             : [],
+
+        resumoGeracao: {
+          totalPerguntas:
+            perguntas.length,
+
+          areas:
+            areasNormalizadas.map(
+              (area) => ({
+                id:
+                  area.id,
+
+                label:
+                  area.label,
+
+                quantidadePerguntas:
+                  perguntas.filter(
+                    (pergunta) =>
+                      pergunta.areaId ===
+                      area.id
+                  ).length,
+              })
+            ),
+        },
       });
 
   } catch (error) {
     // =========================================================
-    // 14. ERRO GERAL
+    // 20. ERRO GERAL
     // =========================================================
 
     console.error(
-      "Erro geral gerar perguntas:",
+      "Erro geral em gerar-perguntas:",
       error
     );
 
