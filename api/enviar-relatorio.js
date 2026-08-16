@@ -1,7 +1,7 @@
 // api/enviar-relatorio.js
 
 function escaparHtml(valor = "") {
-  return String(valor)
+  return String(valor ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -15,6 +15,7 @@ function listaHtml(lista = [], vazio = "Nenhuma informação registrada.") {
   }
 
   return lista
+    .filter(Boolean)
     .map((item) => `<li>${escaparHtml(item)}</li>`)
     .join("");
 }
@@ -26,12 +27,22 @@ function formatarCnae(cnae) {
     return escaparHtml(cnae);
   }
 
-  const codigo = cnae.codigo || "";
-  const descricao = cnae.descricao || "";
+  const codigo =
+    cnae.codigo ||
+    cnae.code ||
+    "";
 
-  return escaparHtml(
-    [codigo, descricao].filter(Boolean).join(" — ") || "-"
-  );
+  const descricao =
+    cnae.descricao ||
+    cnae.text ||
+    cnae.nome ||
+    "";
+
+  const texto = [codigo, descricao]
+    .filter(Boolean)
+    .join(" — ");
+
+  return escaparHtml(texto || "-");
 }
 
 function formatarAtividades(lista = []) {
@@ -45,16 +56,67 @@ function formatarAtividades(lista = []) {
         return escaparHtml(atividade);
       }
 
+      const codigo =
+        atividade?.codigo ||
+        atividade?.code ||
+        "";
+
+      const descricao =
+        atividade?.descricao ||
+        atividade?.text ||
+        atividade?.nome ||
+        "";
+
       return escaparHtml(
-        [
-          atividade?.codigo || "",
-          atividade?.descricao || "",
-        ]
+        [codigo, descricao]
           .filter(Boolean)
           .join(" — ")
       );
     })
     .join("<br>");
+}
+
+function valorResposta(valor) {
+  const texto = String(valor ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (texto === "sim") return "Sim";
+
+  if (
+    texto === "nao" ||
+    texto === "não"
+  ) {
+    return "Não";
+  }
+
+  if (texto === "parcialmente") {
+    return "Parcialmente";
+  }
+
+  return String(valor ?? "-");
+}
+
+function nivelTexto(nivel) {
+  const mapa = {
+    bom: "Bom",
+    atencao: "Atenção",
+    alto: "Risco alto",
+    critico: "Crítico",
+  };
+
+  return mapa[nivel] || nivel || "-";
+}
+
+function prioridadeTexto(prioridade) {
+  const mapa = {
+    imediata: "Imediata",
+    alta: "Alta",
+    media: "Média",
+    baixa: "Baixa",
+  };
+
+  return mapa[prioridade] || prioridade || "-";
 }
 
 export default async function handler(req, res) {
@@ -76,7 +138,8 @@ export default async function handler(req, res) {
   if (!process.env.RESEND_API_KEY) {
     return res.status(500).json({
       sucesso: false,
-      error: "RESEND_API_KEY não configurada.",
+      error:
+        "RESEND_API_KEY não configurada na Vercel.",
     });
   }
 
@@ -100,8 +163,29 @@ export default async function handler(req, res) {
     empresas = [],
     perfil = {},
     dores = {},
+    descricaoNegocio = "",
+    negocioInterpretado = {},
     resultado = {},
+    respostas = [],
+    perguntas = [],
   } = body;
+
+  // Compatibilidade caso respostas/perguntas estejam
+  // dentro de resultado.
+
+  const respostasFinais =
+    Array.isArray(respostas) && respostas.length
+      ? respostas
+      : Array.isArray(resultado.respostas)
+        ? resultado.respostas
+        : [];
+
+  const perguntasFinais =
+    Array.isArray(perguntas) && perguntas.length
+      ? perguntas
+      : Array.isArray(resultado.perguntas)
+        ? resultado.perguntas
+        : [];
 
   const diagnostico =
     resultado.diagnosticoGeral || {};
@@ -110,32 +194,34 @@ export default async function handler(req, res) {
     resultado.visaoGrupo || {};
 
   const lacunasDiagnostico =
-    resultado.lacunasDiagnostico || [];
+    Array.isArray(resultado.lacunasDiagnostico)
+      ? resultado.lacunasDiagnostico
+      : [];
 
   const oportunidadesConsultoria =
-    resultado.oportunidadesConsultoria || [];
+    Array.isArray(resultado.oportunidadesConsultoria)
+      ? resultado.oportunidadesConsultoria
+      : [];
 
   const areas =
-    resultado.areas || [];
-
-  const respostas =
-    resultado.respostas || [];
+    Array.isArray(resultado.areas)
+      ? resultado.areas
+      : [];
 
   // =========================================================
-  // 4. VALIDAÇÃO
+  // 4. DADOS PRINCIPAIS
   // =========================================================
-
-  if (!empresa?.razao && !empresa?.razaoSocial) {
-    return res.status(400).json({
-      sucesso: false,
-      error: "Empresa não informada.",
-    });
-  }
 
   const razaoSocial =
     empresa.razao ||
     empresa.razaoSocial ||
+    empresa.nome ||
     "Empresa";
+
+  const cnpj =
+    empresa.cnpjDigits ||
+    empresa.cnpj ||
+    "-";
 
   const nomeResponsavel =
     responsavel.nome ||
@@ -145,6 +231,11 @@ export default async function handler(req, res) {
     String(
       responsavel.email || ""
     ).trim();
+
+  const telefoneLead =
+    responsavel.telefone ||
+    responsavel.whatsapp ||
+    "-";
 
   // =========================================================
   // 5. EMPRESAS DO GRUPO
@@ -163,6 +254,7 @@ export default async function handler(req, res) {
                   ${escaparHtml(
                     item.razao ||
                     item.razaoSocial ||
+                    item.nome ||
                     "-"
                   )}
                 </td>
@@ -192,59 +284,162 @@ export default async function handler(req, res) {
             `
           )
           .join("")
-      : `
-          <tr>
-            <td>1</td>
-
-            <td>
-              ${escaparHtml(razaoSocial)}
-            </td>
-
-            <td>
-              ${escaparHtml(
-                empresa.cnpjDigits ||
-                empresa.cnpj ||
-                "-"
-              )}
-            </td>
-
-            <td>
-              ${escaparHtml(
-                empresa.segmento ||
-                "-"
-              )}
-            </td>
-
-            <td>
-              ${formatarCnae(
-                empresa.cnaePrincipal ||
-                empresa.cnae
-              )}
-            </td>
-          </tr>
-        `;
+      : "";
 
   // =========================================================
-  // 6. ÁREAS ANALISADAS
+  // 6. INTERPRETAÇÃO DO NEGÓCIO
+  // =========================================================
+
+  const interpretacaoHtml = `
+    <div class="grid">
+
+      <div class="box">
+        <strong>Segmento interpretado</strong>
+        <p>
+          ${escaparHtml(
+            negocioInterpretado.segmentoReal ||
+            empresa.segmento ||
+            "-"
+          )}
+        </p>
+      </div>
+
+      <div class="box">
+        <strong>Subsegmento</strong>
+        <p>
+          ${escaparHtml(
+            negocioInterpretado.subsegmento ||
+            "-"
+          )}
+        </p>
+      </div>
+
+      <div class="box">
+        <strong>Modelo de negócio</strong>
+        <p>
+          ${escaparHtml(
+            negocioInterpretado.modeloNegocio ||
+            "-"
+          )}
+        </p>
+      </div>
+
+      <div class="box">
+        <strong>Confiança da interpretação</strong>
+        <p>
+          ${escaparHtml(
+            negocioInterpretado.nivelConfianca ||
+            "-"
+          )}
+        </p>
+      </div>
+
+    </div>
+
+    ${
+      negocioInterpretado.resumoNegocio
+        ? `
+          <div class="box">
+            <strong>Como entendemos o negócio</strong>
+
+            <p>
+              ${escaparHtml(
+                negocioInterpretado.resumoNegocio
+              )}
+            </p>
+          </div>
+        `
+        : ""
+    }
+
+    ${
+      negocioInterpretado.comoGeraReceita
+        ? `
+          <div class="box">
+            <strong>Como gera receita</strong>
+
+            <p>
+              ${escaparHtml(
+                negocioInterpretado.comoGeraReceita
+              )}
+            </p>
+          </div>
+        `
+        : ""
+    }
+
+    ${
+      Array.isArray(
+        negocioInterpretado.caracteristicasOperacionais
+      ) &&
+      negocioInterpretado.caracteristicasOperacionais.length
+        ? `
+          <div class="box">
+            <strong>
+              Características operacionais consideradas
+            </strong>
+
+            <ul>
+              ${listaHtml(
+                negocioInterpretado.caracteristicasOperacionais
+              )}
+            </ul>
+          </div>
+        `
+        : ""
+    }
+
+    ${
+      Array.isArray(
+        negocioInterpretado.riscosNaturais
+      ) &&
+      negocioInterpretado.riscosNaturais.length
+        ? `
+          <div class="box">
+            <strong>
+              Riscos naturais considerados na elaboração das perguntas
+            </strong>
+
+            <ul>
+              ${listaHtml(
+                negocioInterpretado.riscosNaturais
+              )}
+            </ul>
+          </div>
+        `
+        : ""
+    }
+
+    ${
+      Array.isArray(
+        negocioInterpretado.divergenciasCadastrais
+      ) &&
+      negocioInterpretado.divergenciasCadastrais.length
+        ? `
+          <div class="box alerta-suave">
+            <strong>
+              Pontos cadastrais para validação
+            </strong>
+
+            <ul>
+              ${listaHtml(
+                negocioInterpretado.divergenciasCadastrais
+              )}
+            </ul>
+          </div>
+        `
+        : ""
+    }
+  `;
+
+  // =========================================================
+  // 7. ÁREAS DO DIAGNÓSTICO
   // =========================================================
 
   const areasHtml =
-    Array.isArray(areas) &&
     areas.length > 0
       ? areas
           .map((area) => {
-            const achados =
-              area.achados || [];
-
-            const causas =
-              area.causasProvaveis || [];
-
-            const riscos =
-              area.riscos || [];
-
-            const recomendacoes =
-              area.recomendacoes || [];
-
             return `
               <div class="area">
 
@@ -257,17 +452,11 @@ export default async function handler(req, res) {
                       )}
                     </h3>
 
-                    ${
-                      area.resumo
-                        ? `
-                          <p class="area-resumo">
-                            ${escaparHtml(
-                              area.resumo
-                            )}
-                          </p>
-                        `
-                        : ""
-                    }
+                    <span class="nivel">
+                      ${escaparHtml(
+                        nivelTexto(area.nivel)
+                      )}
+                    </span>
                   </div>
 
                   <div class="score-area">
@@ -279,6 +468,18 @@ export default async function handler(req, res) {
 
                 </div>
 
+                ${
+                  area.resumo
+                    ? `
+                      <p class="area-resumo">
+                        ${escaparHtml(
+                          area.resumo
+                        )}
+                      </p>
+                    `
+                    : ""
+                }
+
                 <div class="grid">
 
                   <div class="box">
@@ -286,20 +487,20 @@ export default async function handler(req, res) {
 
                     <ul>
                       ${listaHtml(
-                        achados,
-                        "Nenhum achado adicional registrado."
+                        area.achados,
+                        "Nenhum achado relevante registrado."
                       )}
                     </ul>
                   </div>
 
                   <div class="box">
                     <strong>
-                      Causas prováveis
+                      Possíveis causas
                     </strong>
 
                     <ul>
                       ${listaHtml(
-                        causas,
+                        area.causasProvaveis,
                         "Não foi possível determinar causas com segurança."
                       )}
                     </ul>
@@ -307,12 +508,12 @@ export default async function handler(req, res) {
 
                   <div class="box">
                     <strong>
-                      Principais riscos
+                      Riscos
                     </strong>
 
                     <ul>
                       ${listaHtml(
-                        riscos,
+                        area.riscos,
                         "Nenhum risco relevante identificado."
                       )}
                     </ul>
@@ -325,8 +526,8 @@ export default async function handler(req, res) {
 
                     <ol>
                       ${listaHtml(
-                        recomendacoes,
-                        "Manter os controles atuais e revisar periodicamente."
+                        area.recomendacoes,
+                        "Nenhuma recomendação adicional registrada."
                       )}
                     </ol>
                   </div>
@@ -338,21 +539,194 @@ export default async function handler(req, res) {
           })
           .join("")
       : `
-          <p>
-            Não foram recebidas análises detalhadas
-            por área.
-          </p>
+        <div class="box">
+          Não foram recebidas análises detalhadas por área.
+        </div>
+      `;
+
+  // =========================================================
+  // 8. PERGUNTAS E RESPOSTAS COMPLETAS
+  // =========================================================
+
+  const mapaPerguntas =
+    new Map();
+
+  perguntasFinais.forEach((pergunta) => {
+    if (pergunta?.id) {
+      mapaPerguntas.set(
+        String(pergunta.id),
+        pergunta
+      );
+    }
+  });
+
+  let respostasNormalizadas = [];
+
+  if (respostasFinais.length > 0) {
+    respostasNormalizadas =
+      respostasFinais.map((item, index) => {
+        const perguntaOriginal =
+          item?.id
+            ? mapaPerguntas.get(String(item.id))
+            : null;
+
+        return {
+          id:
+            item?.id ||
+            perguntaOriginal?.id ||
+            index + 1,
+
+          area:
+            item?.area ||
+            perguntaOriginal?.area ||
+            "-",
+
+          tema:
+            item?.tema ||
+            perguntaOriginal?.tema ||
+            "-",
+
+          pergunta:
+            item?.pergunta ||
+            item?.texto ||
+            perguntaOriginal?.pergunta ||
+            "-",
+
+          resposta:
+            item?.resposta ??
+            item?.valor ??
+            "-",
+
+          peso:
+            item?.peso ||
+            perguntaOriginal?.peso ||
+            "-",
+
+          motivo:
+            item?.motivo ||
+            perguntaOriginal?.motivo ||
+            "",
+
+          riscoAvaliado:
+            item?.riscoAvaliado ||
+            perguntaOriginal?.riscoAvaliado ||
+            "",
+        };
+      });
+  } else if (perguntasFinais.length > 0) {
+    respostasNormalizadas =
+      perguntasFinais.map((item, index) => ({
+        id:
+          item?.id ||
+          index + 1,
+
+        area:
+          item?.area ||
+          "-",
+
+        tema:
+          item?.tema ||
+          "-",
+
+        pergunta:
+          item?.pergunta ||
+          "-",
+
+        resposta:
+          item?.resposta ||
+          "-",
+
+        peso:
+          item?.peso ||
+          "-",
+
+        motivo:
+          item?.motivo ||
+          "",
+
+        riscoAvaliado:
+          item?.riscoAvaliado ||
+          "",
+      }));
+  }
+
+  const respostasHtml =
+    respostasNormalizadas.length > 0
+      ? respostasNormalizadas
+          .map(
+            (item, index) => `
+              <tr>
+
+                <td>
+                  ${index + 1}
+                </td>
+
+                <td>
+                  ${escaparHtml(
+                    item.area
+                  )}
+                </td>
+
+                <td>
+                  ${escaparHtml(
+                    item.tema
+                  )}
+                </td>
+
+                <td>
+                  ${escaparHtml(
+                    item.pergunta
+                  )}
+
+                  ${
+                    item.riscoAvaliado
+                      ? `
+                        <div class="detalhe">
+                          <strong>Risco avaliado:</strong>
+                          ${escaparHtml(
+                            item.riscoAvaliado
+                          )}
+                        </div>
+                      `
+                      : ""
+                  }
+                </td>
+
+                <td>
+                  <strong>
+                    ${escaparHtml(
+                      valorResposta(
+                        item.resposta
+                      )
+                    )}
+                  </strong>
+                </td>
+
+                <td>
+                  ${escaparHtml(
+                    item.peso
+                  )}
+                </td>
+
+              </tr>
+            `
+          )
+          .join("")
+      : `
+          <tr>
+            <td colspan="6">
+              As respostas detalhadas não foram recebidas
+              nesta solicitação.
+            </td>
+          </tr>
         `;
 
   // =========================================================
-  // 7. LACUNAS DO DIAGNÓSTICO
+  // 9. LACUNAS
   // =========================================================
 
   const lacunasHtml =
-    Array.isArray(
-      lacunasDiagnostico
-    ) &&
-    lacunasDiagnostico.length
+    lacunasDiagnostico.length > 0
       ? lacunasDiagnostico
           .map(
             (lacuna) => `
@@ -376,15 +750,11 @@ export default async function handler(req, res) {
                   Array.isArray(
                     lacuna.perguntasSugeridas
                   ) &&
-                  lacuna
-                    .perguntasSugeridas
-                    .length
+                  lacuna.perguntasSugeridas.length
                     ? `
-                      <p>
-                        <strong>
-                          Perguntas recomendadas:
-                        </strong>
-                      </p>
+                      <strong>
+                        Perguntas para aprofundamento
+                      </strong>
 
                       <ul>
                         ${listaHtml(
@@ -400,33 +770,52 @@ export default async function handler(req, res) {
           )
           .join("")
       : `
-          <p>
-            Nenhuma lacuna relevante foi
-            apontada.
-          </p>
+          <div class="box">
+            Nenhuma lacuna adicional relevante foi apontada.
+          </div>
         `;
 
   // =========================================================
-  // 8. OPORTUNIDADES DE CONSULTORIA
+  // 10. OPORTUNIDADES DE CONSULTORIA
   // =========================================================
 
   const oportunidadesConsultoriaHtml =
-    Array.isArray(
-      oportunidadesConsultoria
-    ) &&
-    oportunidadesConsultoria.length
+    oportunidadesConsultoria.length > 0
       ? oportunidadesConsultoria
           .map(
             (item) => `
               <div class="box">
 
-                <strong>
-                  ${escaparHtml(
-                    item.oportunidade ||
-                    item.area ||
-                    "Oportunidade"
-                  )}
-                </strong>
+                <div class="linha-titulo">
+                  <strong>
+                    ${escaparHtml(
+                      item.oportunidade ||
+                      item.area ||
+                      "Oportunidade"
+                    )}
+                  </strong>
+
+                  <span class="badge">
+                    ${escaparHtml(
+                      prioridadeTexto(
+                        item.prioridade
+                      )
+                    )}
+                  </span>
+                </div>
+
+                ${
+                  item.area
+                    ? `
+                      <p>
+                        <strong>Área:</strong>
+                        ${escaparHtml(
+                          item.area
+                        )}
+                      </p>
+                    `
+                    : ""
+                }
 
                 <p>
                   ${escaparHtml(
@@ -435,77 +824,19 @@ export default async function handler(req, res) {
                   )}
                 </p>
 
-                <span class="badge">
-                  Prioridade:
-                  ${escaparHtml(
-                    item.prioridade ||
-                    "média"
-                  )}
-                </span>
-
               </div>
             `
           )
           .join("")
       : `
-          <p>
-            Nenhuma oportunidade adicional
-            registrada.
-          </p>
+          <div class="box">
+            Nenhuma oportunidade específica de consultoria
+            foi indicada.
+          </div>
         `;
 
   // =========================================================
-  // 9. RESPOSTAS COMPLETAS
-  // =========================================================
-
-  const respostasHtml =
-    Array.isArray(respostas) &&
-    respostas.length > 0
-      ? respostas
-          .map(
-            (item, index) => `
-              <tr>
-
-                <td>
-                  ${index + 1}
-                </td>
-
-                <td>
-                  ${escaparHtml(
-                    item.area ||
-                    "-"
-                  )}
-                </td>
-
-                <td>
-                  ${escaparHtml(
-                    item.pergunta ||
-                    item.texto ||
-                    "-"
-                  )}
-                </td>
-
-                <td>
-                  ${escaparHtml(
-                    item.resposta ||
-                    "-"
-                  )}
-                </td>
-
-              </tr>
-            `
-          )
-          .join("")
-      : `
-          <tr>
-            <td colspan="4">
-              Respostas detalhadas não recebidas.
-            </td>
-          </tr>
-        `;
-
-  // =========================================================
-  // 10. HTML INTERNO FINDER
+  // 11. HTML COMPLETO PARA FINDER
   // =========================================================
 
   const htmlFinder = `
@@ -535,7 +866,7 @@ body {
 }
 
 .container {
-  max-width: 820px;
+  max-width: 900px;
   margin: 0 auto;
   background: #FFFFFF;
 }
@@ -543,38 +874,45 @@ body {
 .header {
   background: #17233D;
   color: #FFFFFF;
-  padding: 30px;
+  padding: 32px;
+}
+
+.logo {
+  max-width: 180px;
+  max-height: 70px;
+  margin-bottom: 18px;
 }
 
 .header h1 {
   margin: 0 0 6px;
-  font-size: 25px;
+  font-size: 26px;
 }
 
 .header p {
   margin: 0;
-  opacity: .8;
+  opacity: .82;
 }
 
 .content {
-  padding: 28px;
+  padding: 30px;
 }
 
 h2 {
   color: #17233D;
-  margin-top: 30px;
+  margin-top: 34px;
+  margin-bottom: 14px;
   padding-bottom: 7px;
   border-bottom: 2px solid #FF6B4A;
   font-size: 18px;
 }
 
 h3 {
+  margin: 0;
   color: #17233D;
-  margin-top: 0;
 }
 
 p {
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 ul,
@@ -584,42 +922,48 @@ ol {
 }
 
 li {
-  margin-bottom: 5px;
+  margin-bottom: 6px;
 }
 
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 .box {
   background: #F7F8FB;
-  padding: 14px;
-  border-radius: 9px;
-  margin-bottom: 10px;
+  border: 1px solid #E9EDF4;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 12px;
 }
 
 .destaque {
-  background: #FFF3EF;
+  background: #FFF7F4;
+  border-left: 4px solid #FF6B4A;
 }
 
 .alerta {
   background: #FAEEDA;
-  color: #854F0B;
-  padding: 16px;
+  color: #70410A;
+  padding: 18px;
   border-radius: 10px;
-  font-weight: 600;
+  line-height: 1.55;
+}
+
+.alerta-suave {
+  background: #FFF8E8;
 }
 
 .score {
+  color: #FF6B4A;
   font-size: 34px;
   font-weight: 700;
-  color: #FF6B4A;
 }
 
 .area {
-  margin-bottom: 24px;
+  margin-bottom: 30px;
 }
 
 .area-header {
@@ -627,57 +971,81 @@ li {
   justify-content: space-between;
   gap: 20px;
   align-items: flex-start;
+  margin-bottom: 10px;
 }
 
 .area-resumo {
   color: #5B667A;
-  font-size: 14px;
+  line-height: 1.55;
 }
 
 .score-area {
-  font-size: 20px;
-  font-weight: 700;
   color: #FF6B4A;
+  font-size: 22px;
+  font-weight: 700;
   white-space: nowrap;
+}
+
+.nivel {
+  display: inline-block;
+  margin-top: 5px;
+  color: #5B667A;
+  font-size: 12px;
 }
 
 .badge {
   display: inline-block;
   background: #17233D;
   color: #FFFFFF;
-  padding: 4px 8px;
   border-radius: 5px;
+  padding: 5px 8px;
   font-size: 11px;
+}
+
+.linha-titulo {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.detalhe {
+  margin-top: 6px;
+  color: #6A7485;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 th {
   background: #E9EDF5;
+  color: #17233D;
   text-align: left;
-  padding: 8px;
+  padding: 9px 7px;
+  font-size: 12px;
 }
 
 td {
   border-bottom: 1px solid #E1E5EC;
-  padding: 8px;
+  padding: 9px 7px;
   vertical-align: top;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .footer {
   background: #17233D;
   color: #FFFFFF;
-  padding: 20px 28px;
-  font-size: 12px;
+  padding: 22px 30px;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
-@media (max-width: 600px) {
-
+@media (max-width: 650px) {
   .grid {
     grid-template-columns: 1fr;
   }
@@ -685,7 +1053,6 @@ td {
   .area-header {
     display: block;
   }
-
 }
 
 </style>
@@ -698,12 +1065,18 @@ td {
 
   <div class="header">
 
+    <img
+      src="https://${req.headers.host}/finder-logo.png"
+      alt="Finder of Solutions"
+      class="logo"
+    >
+
     <h1>
       Diagnóstico Empresarial Finder
     </h1>
 
     <p>
-      Relatório completo do lead
+      Relatório completo do diagnóstico
     </p>
 
   </div>
@@ -711,119 +1084,75 @@ td {
   <div class="content">
 
     <h2>
-      Responsável
+      Participante
     </h2>
 
     <div class="grid">
 
       <div class="box">
-        <strong>Nome</strong><br>
-        ${escaparHtml(
-          nomeResponsavel
-        )}
+        <strong>Nome</strong>
+        <p>${escaparHtml(nomeResponsavel)}</p>
       </div>
 
       <div class="box">
-        <strong>Cargo</strong><br>
-        ${escaparHtml(
-          responsavel.cargo ||
-          "-"
-        )}
+        <strong>Cargo</strong>
+        <p>
+          ${escaparHtml(
+            responsavel.cargo || "-"
+          )}
+        </p>
       </div>
 
       <div class="box">
-        <strong>WhatsApp</strong><br>
-        ${escaparHtml(
-          responsavel.telefone ||
-          "-"
-        )}
+        <strong>WhatsApp</strong>
+        <p>${escaparHtml(telefoneLead)}</p>
       </div>
 
       <div class="box">
-        <strong>E-mail</strong><br>
-        ${escaparHtml(
-          emailLead ||
-          "-"
-        )}
+        <strong>E-mail</strong>
+        <p>${escaparHtml(emailLead || "-")}</p>
       </div>
 
     </div>
-
 
     <h2>
-      Empresa-base
+      Empresa
     </h2>
 
     <div class="grid">
 
       <div class="box">
-
-        <strong>
-          Razão social
-        </strong>
-
-        <br>
-
-        ${escaparHtml(
-          razaoSocial
-        )}
-
+        <strong>Razão social</strong>
+        <p>${escaparHtml(razaoSocial)}</p>
       </div>
 
       <div class="box">
-
-        <strong>
-          CNPJ
-        </strong>
-
-        <br>
-
-        ${escaparHtml(
-          empresa.cnpjDigits ||
-          empresa.cnpj ||
-          "-"
-        )}
-
+        <strong>CNPJ</strong>
+        <p>${escaparHtml(cnpj)}</p>
       </div>
 
       <div class="box">
-
-        <strong>
-          Segmento
-        </strong>
-
-        <br>
-
-        ${escaparHtml(
-          empresa.segmento ||
-          "-"
-        )}
-
+        <strong>Segmento cadastrado</strong>
+        <p>
+          ${escaparHtml(
+            empresa.segmento || "-"
+          )}
+        </p>
       </div>
 
       <div class="box">
-
-        <strong>
-          Categoria
-        </strong>
-
-        <br>
-
-        ${escaparHtml(
-          empresa.categoria ||
-          "-"
-        )}
-
+        <strong>Categoria</strong>
+        <p>
+          ${escaparHtml(
+            empresa.categoria || "-"
+          )}
+        </p>
       </div>
 
     </div>
 
-
     <div class="box">
-
-      <strong>
-        CNAE principal cadastrado
-      </strong>
+      <strong>CNAE principal</strong>
 
       <p>
         ${formatarCnae(
@@ -831,12 +1160,19 @@ td {
           empresa.cnae
         )}
       </p>
-
     </div>
 
+    <div class="box">
+      <strong>CNAEs secundários</strong>
+
+      <p>
+        ${formatarAtividades(
+          empresa.cnaesSecundarios
+        )}
+      </p>
+    </div>
 
     <div class="box">
-
       <strong>
         Atividade predominante informada
       </strong>
@@ -846,12 +1182,9 @@ td {
           empresa.atividadePredominante
         )}
       </p>
-
     </div>
 
-
     <div class="box">
-
       <strong>
         Atividades efetivamente exercidas
       </strong>
@@ -861,92 +1194,84 @@ td {
           empresa.atividadesSelecionadas
         )}
       </p>
+    </div>
+
+    <h2>
+      O que a empresa realmente faz
+    </h2>
+
+    <div class="box">
+
+      <p>
+        ${escaparHtml(
+          descricaoNegocio ||
+          empresa.descricaoNegocio ||
+          "Não informado."
+        )}
+      </p>
 
     </div>
 
+    <h2>
+      Interpretação do negócio
+    </h2>
+
+    ${interpretacaoHtml}
 
     <h2>
-      Perfil informado
+      Perfil empresarial
     </h2>
 
     <div class="grid">
 
       <div class="box">
-
-        <strong>
-          Faturamento
-        </strong>
-
-        <br>
-
-        ${escaparHtml(
-          perfil.faturamento ||
-          "-"
-        )}
-
+        <strong>Faturamento</strong>
+        <p>
+          ${escaparHtml(
+            perfil.faturamento || "-"
+          )}
+        </p>
       </div>
 
       <div class="box">
-
-        <strong>
-          Colaboradores
-        </strong>
-
-        <br>
-
-        ${escaparHtml(
-          perfil.colaboradores ||
-          "-"
-        )}
-
+        <strong>Colaboradores</strong>
+        <p>
+          ${escaparHtml(
+            perfil.colaboradores || "-"
+          )}
+        </p>
       </div>
 
       <div class="box">
-
-        <strong>
-          Regime tributário
-        </strong>
-
-        <br>
-
-        ${escaparHtml(
-          perfil.regime ||
-          "-"
-        )}
-
+        <strong>Regime tributário</strong>
+        <p>
+          ${escaparHtml(
+            perfil.regime || "-"
+          )}
+        </p>
       </div>
 
       <div class="box">
+        <strong>Score geral</strong>
 
-        <strong>
-          Score geral
-        </strong>
-
-        <br>
-
-        <span class="score">
-          ${
-            diagnostico.scoreGeral ??
-            "-"
-          }
-        </span>
-
-        /100
-
+        <p>
+          <span class="score">
+            ${
+              diagnostico.scoreGeral ??
+              "-"
+            }
+          </span>/100
+        </p>
       </div>
 
     </div>
 
-
     <h2>
-      Dor declarada
+      Dor declarada pelo empresário
     </h2>
 
     <div class="box">
-
-      <strong>
-        Principal dor
-      </strong>
+      <strong>Principal dor</strong>
 
       <p>
         ${escaparHtml(
@@ -955,14 +1280,12 @@ td {
           "-"
         )}
       </p>
-
     </div>
 
-
     <div class="box">
-
       <strong>
-        Prioridade dos próximos 90 dias
+        Problema que gostaria de resolver
+        nos próximos 90 dias
       </strong>
 
       <p>
@@ -971,65 +1294,54 @@ td {
           "-"
         )}
       </p>
-
     </div>
-
 
     ${
       diagnostico.leituraDaDor
         ? `
           <h2>
-            Leitura da dor
+            Leitura consultiva da dor
           </h2>
 
           <div class="box">
-
             <p>
               ${escaparHtml(
                 diagnostico.leituraDaDor
               )}
             </p>
-
           </div>
         `
         : ""
     }
-
 
     ${
       diagnostico.alertaEstrategico
         ? `
           <h2>
-            Alerta estratégico
+            Principal alerta estratégico
           </h2>
 
           <div class="alerta">
-
             ${escaparHtml(
               diagnostico.alertaEstrategico
             )}
-
           </div>
         `
         : ""
     }
-
 
     <h2>
       Resumo executivo
     </h2>
 
     <div class="box">
-
       <p>
         ${escaparHtml(
           diagnostico.resumoExecutivo ||
           "Resumo executivo não disponível."
         )}
       </p>
-
     </div>
-
 
     <h2>
       Principais dores identificadas
@@ -1040,7 +1352,6 @@ td {
         diagnostico.principaisDores
       )}
     </ul>
-
 
     <h2>
       Possíveis causas
@@ -1053,7 +1364,6 @@ td {
       )}
     </ul>
 
-
     <h2>
       Impactos possíveis
     </h2>
@@ -1063,7 +1373,6 @@ td {
         diagnostico.impactos
       )}
     </ul>
-
 
     <h2>
       Pontos fortes
@@ -1075,7 +1384,6 @@ td {
       )}
     </ul>
 
-
     <h2>
       Prioridades imediatas
     </h2>
@@ -1086,9 +1394,8 @@ td {
       )}
     </ol>
 
-
     <h2>
-      Oportunidades
+      Oportunidades identificadas
     </h2>
 
     <ul>
@@ -1096,7 +1403,6 @@ td {
         diagnostico.oportunidades
       )}
     </ul>
-
 
     <h2>
       Próximos passos
@@ -1108,19 +1414,17 @@ td {
       )}
     </ol>
 
-
     ${
       Array.isArray(empresas) &&
       empresas.length > 1
         ? `
           <h2>
-            Empresas cadastradas
+            Empresas informadas
           </h2>
 
           <table>
 
             <thead>
-
               <tr>
                 <th>#</th>
                 <th>Empresa</th>
@@ -1128,7 +1432,6 @@ td {
                 <th>Segmento</th>
                 <th>CNAE</th>
               </tr>
-
             </thead>
 
             <tbody>
@@ -1140,9 +1443,8 @@ td {
         : ""
     }
 
-
     ${
-      visaoGrupo?.aplicavel
+      visaoGrupo.aplicavel
         ? `
           <h2>
             Visão do grupo empresarial
@@ -1159,8 +1461,7 @@ td {
 
             <ul>
               ${listaHtml(
-                visaoGrupo.pontosAtencao ||
-                []
+                visaoGrupo.pontosAtencao
               )}
             </ul>
 
@@ -1169,13 +1470,40 @@ td {
         : ""
     }
 
-
     <h2>
       Diagnóstico por área
     </h2>
 
     ${areasHtml}
 
+    <h2>
+      Formulário personalizado completo
+    </h2>
+
+    <p>
+      Abaixo estão as perguntas utilizadas
+      no diagnóstico e as respostas fornecidas
+      pelo participante.
+    </p>
+
+    <table>
+
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Área</th>
+          <th>Tema</th>
+          <th>Pergunta</th>
+          <th>Resposta</th>
+          <th>Peso</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        ${respostasHtml}
+      </tbody>
+
+    </table>
 
     <h2>
       Pontos que precisam ser aprofundados
@@ -1183,13 +1511,11 @@ td {
 
     ${lacunasHtml}
 
-
     <h2>
       Oportunidades de aprofundamento profissional
     </h2>
 
     ${oportunidadesConsultoriaHtml}
-
 
     <h2>
       Observação do participante
@@ -1206,41 +1532,21 @@ td {
 
     </div>
 
-
-    <h2>
-      Formulário completo
-    </h2>
-
-    <table>
-
-      <thead>
-
-        <tr>
-          <th>#</th>
-          <th>Área</th>
-          <th>Pergunta</th>
-          <th>Resposta</th>
-        </tr>
-
-      </thead>
-
-      <tbody>
-        ${respostasHtml}
-      </tbody>
-
-    </table>
-
   </div>
-
 
   <div class="footer">
 
-    Finder of Solutions<br>
+    <strong>
+      Finder of Solutions
+    </strong>
+
+    <br><br>
 
     Diagnóstico empresarial preliminar.
 
-    As informações devem ser validadas
-    antes da tomada de decisões
+    As informações apresentadas foram elaboradas
+    com base nas respostas fornecidas pelo participante
+    e devem ser validadas antes da tomada de decisões
     contábeis, tributárias, financeiras,
     trabalhistas ou jurídicas.
 
@@ -1249,12 +1555,11 @@ td {
 </div>
 
 </body>
-
 </html>
 `;
 
   // =========================================================
-  // 11. HTML PARA O LEAD
+  // 12. E-MAIL PARA O LEAD
   // =========================================================
 
   const htmlLead = `
@@ -1263,16 +1568,9 @@ td {
 <html lang="pt-BR">
 
 <head>
-
 <meta charset="utf-8">
-
 <meta name="viewport"
       content="width=device-width, initial-scale=1">
-
-<title>
-Seu Diagnóstico Empresarial
-</title>
-
 </head>
 
 <body
@@ -1296,44 +1594,52 @@ Seu Diagnóstico Empresarial
   <div
     style="
       background:#17233D;
-      color:white;
-      padding:28px;
+      color:#FFFFFF;
+      padding:30px;
+      text-align:center;
     "
   >
 
+    <img
+      src="https://${req.headers.host}/finder-logo.png"
+      alt="Finder of Solutions"
+      style="
+        max-width:170px;
+        max-height:65px;
+        margin-bottom:18px;
+      "
+    >
+
     <h1
       style="
-        margin:0 0 6px;
+        margin:0 0 7px;
         font-size:24px;
       "
     >
-      Diagnóstico Empresarial Finder
+      Diagnóstico Empresarial
     </h1>
 
     <p
       style="
         margin:0;
-        opacity:.8;
+        opacity:.82;
       "
     >
-      Resultado preliminar da sua empresa
+      Finder of Solutions
     </p>
 
   </div>
 
-
   <div
     style="
-      padding:28px;
+      padding:30px;
     "
   >
 
     <p>
       Olá,
       <strong>
-        ${escaparHtml(
-          nomeResponsavel
-        )}
+        ${escaparHtml(nomeResponsavel)}
       </strong>.
     </p>
 
@@ -1342,61 +1648,117 @@ Seu Diagnóstico Empresarial
       Diagnóstico Empresarial Finder.
     </p>
 
+    <p>
+      Analisamos as informações fornecidas
+      sobre
+      <strong>
+        ${escaparHtml(razaoSocial)}
+      </strong>
+      considerando não apenas as atividades
+      cadastrais, mas também a descrição da
+      operação e as respostas fornecidas.
+    </p>
 
     <div
       style="
         background:#F7F8FB;
-        padding:16px;
+        border:1px solid #E9EDF4;
+        padding:18px;
         border-radius:10px;
-        margin:20px 0;
+        margin:22px 0;
       "
     >
 
-      <strong>
-        ${escaparHtml(
-          razaoSocial
-        )}
-      </strong>
-
-      <br>
-
-      Score geral:
-
-      <span
+      <div
         style="
-          color:#FF6B4A;
-          font-size:24px;
-          font-weight:700;
+          font-size:13px;
+          color:#6A7485;
         "
       >
+        Resultado geral
+      </div>
 
+      <div
+        style="
+          color:#FF6B4A;
+          font-size:34px;
+          font-weight:700;
+          margin-top:5px;
+        "
+      >
         ${
           diagnostico.scoreGeral ??
           "-"
         }/100
+      </div>
 
-      </span>
+      <div
+        style="
+          margin-top:4px;
+          font-weight:bold;
+        "
+      >
+        ${escaparHtml(
+          nivelTexto(
+            diagnostico.nivelGeral
+          )
+        )}
+      </div>
 
     </div>
 
+    ${
+      descricaoNegocio ||
+      negocioInterpretado.resumoNegocio
+        ? `
+          <h2
+            style="
+              font-size:18px;
+              color:#17233D;
+            "
+          >
+            Como entendemos seu negócio
+          </h2>
 
-    <h2>
+          <div
+            style="
+              background:#F7F8FB;
+              padding:16px;
+              border-radius:9px;
+              line-height:1.6;
+            "
+          >
+
+            ${escaparHtml(
+              negocioInterpretado.resumoNegocio ||
+              descricaoNegocio
+            )}
+
+          </div>
+        `
+        : ""
+    }
+
+    <h2
+      style="
+        font-size:18px;
+        color:#17233D;
+        margin-top:26px;
+      "
+    >
       Resumo executivo
     </h2>
 
     <p
       style="
-        line-height:1.6;
+        line-height:1.65;
       "
     >
-
       ${escaparHtml(
         diagnostico.resumoExecutivo ||
         "Resumo executivo não disponível."
       )}
-
     </p>
-
 
     ${
       diagnostico.alertaEstrategico
@@ -1404,10 +1766,11 @@ Seu Diagnóstico Empresarial
           <div
             style="
               background:#FAEEDA;
-              color:#854F0B;
-              padding:14px;
+              color:#70410A;
+              padding:16px;
               border-radius:9px;
-              margin:18px 0;
+              margin:22px 0;
+              line-height:1.55;
             "
           >
 
@@ -1417,15 +1780,12 @@ Seu Diagnóstico Empresarial
 
             <p
               style="
-                margin:7px 0 0;
-                line-height:1.5;
+                margin:8px 0 0;
               "
             >
-
               ${escaparHtml(
                 diagnostico.alertaEstrategico
               )}
-
             </p>
 
           </div>
@@ -1433,14 +1793,34 @@ Seu Diagnóstico Empresarial
         : ""
     }
 
+    ${
+      Array.isArray(
+        diagnostico.pontosFortes
+      ) &&
+      diagnostico.pontosFortes.length
+        ? `
+          <h3>
+            Pontos fortes
+          </h3>
+
+          <ul
+            style="
+              line-height:1.6;
+            "
+          >
+            ${listaHtml(
+              diagnostico.pontosFortes
+            )}
+          </ul>
+        `
+        : ""
+    }
 
     ${
       Array.isArray(
         diagnostico.prioridadesImediatas
       ) &&
-      diagnostico
-        .prioridadesImediatas
-        .length
+      diagnostico.prioridadesImediatas.length
         ? `
           <h3>
             Prioridades identificadas
@@ -1451,24 +1831,19 @@ Seu Diagnóstico Empresarial
               line-height:1.6;
             "
           >
-
             ${listaHtml(
               diagnostico.prioridadesImediatas
             )}
-
           </ol>
         `
         : ""
     }
 
-
     ${
       Array.isArray(
         diagnostico.proximosPassos
       ) &&
-      diagnostico
-        .proximosPassos
-        .length
+      diagnostico.proximosPassos.length
         ? `
           <h3>
             Próximos passos recomendados
@@ -1479,79 +1854,75 @@ Seu Diagnóstico Empresarial
               line-height:1.6;
             "
           >
-
             ${listaHtml(
               diagnostico.proximosPassos
             )}
-
           </ol>
         `
         : ""
     }
 
-
     <div
       style="
         background:#17233D;
-        color:white;
-        padding:18px;
+        color:#FFFFFF;
+        padding:22px;
         border-radius:10px;
-        margin-top:24px;
+        margin-top:28px;
         text-align:center;
       "
     >
 
-      <strong>
-        Quer aprofundar o diagnóstico?
+      <strong
+        style="
+          font-size:17px;
+        "
+      >
+        Quer entender melhor esses números?
       </strong>
 
       <p
         style="
-          margin:8px 0 15px;
+          margin:9px 0 17px;
+          line-height:1.5;
         "
       >
-
-        Converse com um especialista
-        da Finder of Solutions.
-
+        Converse com um especialista da
+        Finder of Solutions para aprofundar
+        os pontos identificados.
       </p>
 
       <a
-        href="https://wa.me/5541989049616"
+        href="https://wa.me/5541989049616?text=Ol%C3%A1%2C%20fiz%20o%20Diagn%C3%B3stico%20Empresarial%20Finder%20e%20gostaria%20de%20conversar%20com%20um%20especialista."
         style="
           display:inline-block;
           background:#FF6B4A;
           color:#FFFFFF;
           text-decoration:none;
-          padding:11px 18px;
+          padding:13px 20px;
           border-radius:7px;
           font-weight:bold;
         "
       >
-
-        Falar com especialista
-
+        Falar com um especialista
       </a>
 
     </div>
-
 
     <p
       style="
         color:#7B8495;
         font-size:11px;
-        margin-top:25px;
+        margin-top:26px;
         line-height:1.5;
       "
     >
+      Este diagnóstico é preliminar e foi
+      elaborado a partir das informações
+      fornecidas no formulário.
 
-      Este diagnóstico é preliminar
-      e educativo.
-
-      As informações apresentadas não
-      substituem análise profissional
-      individualizada.
-
+      As recomendações não substituem análise
+      profissional individualizada.
     </p>
 
   </div>
@@ -1559,12 +1930,11 @@ Seu Diagnóstico Empresarial
 </div>
 
 </body>
-
 </html>
 `;
 
   // =========================================================
-  // 12. FUNÇÃO DE ENVIO
+  // 13. FUNÇÃO PARA ENVIAR
   // =========================================================
 
   async function enviarEmail({
@@ -1609,6 +1979,7 @@ Seu Diagnóstico Empresarial
     if (!resposta.ok) {
       throw new Error(
         data?.message ||
+        data?.error?.message ||
         data?.error ||
         "Erro ao enviar e-mail."
       );
@@ -1618,12 +1989,11 @@ Seu Diagnóstico Empresarial
   }
 
   // =========================================================
-  // 13. ENVIO PARA FINDER
+  // 14. ENVIAR
   // =========================================================
 
   try {
-    const assuntoFinder =
-      `Novo diagnóstico — ${razaoSocial}`;
+    // Finder recebe sempre o relatório completo.
 
     const envioFinder =
       await enviarEmail({
@@ -1631,23 +2001,24 @@ Seu Diagnóstico Empresarial
           emailFinder,
 
         assunto:
-          assuntoFinder,
+          `Novo diagnóstico empresarial — ${razaoSocial}`,
 
         html:
           htmlFinder,
       });
 
-    // =======================================================
-    // 14. ENVIO PARA O LEAD
-    // =======================================================
+    // Lead recebe automaticamente se informou e-mail.
 
     let envioLead = null;
     let erroLead = null;
 
-    if (
+    const emailLeadValido =
       emailLead &&
-      emailLead.includes("@")
-    ) {
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        emailLead
+      );
+
+    if (emailLeadValido) {
       try {
         envioLead =
           await enviarEmail({
@@ -1663,7 +2034,7 @@ Seu Diagnóstico Empresarial
       } catch (error) {
         erroLead =
           error?.message ||
-          "Erro ao enviar relatório ao lead.";
+          "Erro ao enviar relatório ao participante.";
 
         console.error(
           "Erro envio lead:",
@@ -1695,6 +2066,9 @@ Seu Diagnóstico Empresarial
         lead: {
           solicitado:
             Boolean(emailLead),
+
+          emailValido:
+            Boolean(emailLeadValido),
 
           enviado:
             Boolean(envioLead),
