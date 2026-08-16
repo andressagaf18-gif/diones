@@ -1,20 +1,58 @@
 // api/gerar-perguntas.js
 
-export default async function handler(req, res) {
-  // =========================================================
-  // 1. VALIDAR MÉTODO
-  // =========================================================
+const AREAS_VALIDAS = [
+  "marketing",
+  "juridico",
+  "contabilidade",
+  "financeiro",
+  "administrativo",
+  "gestao",
+  "operacional",
+  "rh",
+  "comercial",
+  "tecnologia",
+];
 
+function extrairOutputText(data) {
+  if (
+    typeof data?.output_text === "string" &&
+    data.output_text.trim()
+  ) {
+    return data.output_text.trim();
+  }
+
+  if (!Array.isArray(data?.output)) {
+    return "";
+  }
+
+  for (const item of data.output) {
+    if (
+      item?.type !== "message" ||
+      !Array.isArray(item.content)
+    ) {
+      continue;
+    }
+
+    for (const content of item.content) {
+      if (
+        content?.type === "output_text" &&
+        content.text
+      ) {
+        return String(content.text).trim();
+      }
+    }
+  }
+
+  return "";
+}
+
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
       sucesso: false,
       error: "Método não permitido.",
     });
   }
-
-  // =========================================================
-  // 2. VALIDAR OPENAI
-  // =========================================================
 
   if (!process.env.OPENAI_API_KEY) {
     return res.status(500).json({
@@ -23,221 +61,113 @@ export default async function handler(req, res) {
     });
   }
 
-  // =========================================================
-  // 3. RECEBER EXATAMENTE O PAYLOAD DO APP.JSX
-  // =========================================================
+  const body = req.body || {};
 
-  const payload = req.body || {};
-
-  const {
-    segmentoAtual,
-    categoriaAtual,
-
-    cnaePrincipal,
-    cnaesSecundarios,
-    atividadesSelecionadas,
-    atividadePredominante,
-
-    descricaoNegocio,
-
-    empresas,
-
-    perfil = {},
-
-    dor = {},
-
-    areasSelecionadas,
-  } = payload;
-
-  // =========================================================
-  // 4. VALIDAR DESCRIÇÃO DO NEGÓCIO
-  // =========================================================
-
-  const descricao =
+  const descricaoNegocio =
     String(
-      descricaoNegocio || ""
+      body.descricaoNegocio || ""
     ).trim();
 
-  if (descricao.length < 20) {
+  const areasSelecionadas =
+    Array.isArray(
+      body.areasSelecionadas
+    )
+      ? body.areasSelecionadas.filter(
+          (area) =>
+            area &&
+            AREAS_VALIDAS.includes(
+              area.id
+            )
+        )
+      : [];
+
+  if (descricaoNegocio.length < 20) {
     return res.status(400).json({
       sucesso: false,
       error:
-        "Descreva brevemente o que a empresa realmente faz.",
+        "Descrição do negócio insuficiente.",
+    });
+  }
+
+  if (!areasSelecionadas.length) {
+    return res.status(400).json({
+      sucesso: false,
+      error:
+        "Nenhuma área selecionada.",
     });
   }
 
   // =========================================================
-  // 5. VALIDAR ÁREAS
+  // VALIDAR / NORMALIZAR DORES
   // =========================================================
 
-  if (
-    !Array.isArray(
-      areasSelecionadas
-    ) ||
-    areasSelecionadas.length === 0
-  ) {
-    return res.status(400).json({
-      sucesso: false,
-      error:
-        "Selecione pelo menos uma área para o diagnóstico.",
-    });
-  }
+  const doresSelecionadas =
+    Array.isArray(
+      body?.dor?.selecionadas
+    )
+      ? body.dor.selecionadas
+      : Array.isArray(
+          body.doresSelecionadas
+        )
+        ? body.doresSelecionadas
+        : [];
+
+  const dorPrincipal =
+    body?.dor?.principal ||
+    body.dorPrincipal ||
+    doresSelecionadas[0] ||
+    "";
+
+  const objetivo90Dias =
+    body?.dor?.objetivo90Dias ||
+    body.dor90Dias ||
+    "";
+
+  const impactosDor =
+    Array.isArray(
+      body?.dor?.impactos
+    )
+      ? body.dor.impactos
+      : Array.isArray(
+          body.impactosDor
+        )
+        ? body.impactosDor
+        : [];
 
   // =========================================================
-  // 6. NORMALIZAR ÁREAS RECEBIDAS DO APP
-  // =========================================================
-  //
-  // O App envia:
-  //
-  // [
-  //   {
-  //     id: "financeiro",
-  //     label: "Financeiro PF/PJ"
-  //   },
-  //   {
-  //     id: "operacional",
-  //     label: "Operacional"
-  //   }
-  // ]
-  //
-  // O retorno PRECISA preservar esse id.
+  // PROMPT
   // =========================================================
 
-  const AREAS_VALIDAS = {
-    marketing: "Marketing",
+  const prompt = `
+Você é um CONSULTOR EMPRESARIAL SÊNIOR responsável por construir um CHECKLIST PERSONALIZADO antes de um diagnóstico empresarial.
 
-    juridico: "Jurídico",
+Sua missão possui duas etapas:
 
-    contabilidade:
-      "Contábil / Fiscal",
-
-    financeiro:
-      "Financeiro PF/PJ",
-
-    administrativo:
-      "Administrativo",
-
-    gestao:
-      "Gestão",
-
-    operacional:
-      "Operacional",
-
-    rh:
-      "Pessoas / RH",
-
-    comercial:
-      "Comercial / Vendas",
-
-    tecnologia:
-      "Tecnologia",
-  };
-
-  const areasNormalizadas =
-    areasSelecionadas
-      .map((area) => {
-        if (!area) {
-          return null;
-        }
-
-        // Caso venha objeto
-        if (
-          typeof area ===
-          "object"
-        ) {
-          const id =
-            String(
-              area.id || ""
-            ).trim();
-
-          if (
-            id &&
-            AREAS_VALIDAS[id]
-          ) {
-            return {
-              id,
-
-              label:
-                area.label ||
-                AREAS_VALIDAS[id],
-            };
-          }
-
-          return null;
-        }
-
-        // Compatibilidade caso venha string
-        const texto =
-          String(area).trim();
-
-        if (
-          AREAS_VALIDAS[
-            texto
-          ]
-        ) {
-          return {
-            id: texto,
-
-            label:
-              AREAS_VALIDAS[
-                texto
-              ],
-          };
-        }
-
-        return null;
-      })
-      .filter(Boolean);
-
-  if (
-    areasNormalizadas.length === 0
-  ) {
-    return res.status(400).json({
-      sucesso: false,
-      error:
-        "As áreas selecionadas não puderam ser reconhecidas.",
-    });
-  }
-
-  // =========================================================
-  // 7. PROMPT PRINCIPAL
-  // =========================================================
-
-  const systemPrompt = `
-Você é um CONSULTOR EMPRESARIAL SÊNIOR.
-
-Sua tarefa é construir um QUESTIONÁRIO EMPRESARIAL PERSONALIZADO.
-
-Você NÃO está fazendo o diagnóstico final ainda.
-
-Você deve:
-
-1. entender o que a empresa realmente faz;
-2. confrontar essa descrição com CNAEs e atividades cadastradas;
-3. interpretar o modelo real do negócio;
-4. identificar riscos naturais daquela atividade;
-5. considerar somente os departamentos selecionados;
-6. gerar perguntas específicas;
-7. produzir perguntas capazes de revelar problemas reais;
-8. evitar perguntas genéricas.
+1. INTERPRETAR O NEGÓCIO REAL.
+2. GERAR PERGUNTAS ESPECÍFICAS para os departamentos escolhidos.
 
 =========================================================
-REGRA PRINCIPAL
+REGRA MAIS IMPORTANTE
 =========================================================
 
-NÃO assuma que o CNAE principal representa corretamente
-a operação real da empresa.
+O CNAE é apenas uma evidência cadastral.
 
-Utilize esta ordem de relevância:
+NÃO presuma que o CNAE principal descreve sozinho o negócio real.
+
+Use esta ordem de relevância:
 
 1. descrição livre fornecida pelo participante;
-2. atividade predominante indicada pelo participante;
-3. atividades que o participante informou exercer;
+2. atividade predominante escolhida pelo participante;
+3. atividades que o participante declarou realmente exercer;
 4. CNAE principal;
 5. CNAEs secundários;
-6. segmento/classificação automática.
+6. classificação automática previamente existente.
 
-A DESCRIÇÃO REAL DO NEGÓCIO deve possuir peso elevado.
+Se houver divergência entre CNAE e descrição do participante, priorize a realidade operacional descrita.
+
+Porém NÃO afirme automaticamente que existe irregularidade.
+
+Você pode indicar que existe divergência cadastral/operacional que merece validação posterior.
 
 =========================================================
 EXEMPLO IMPORTANTE
@@ -247,102 +177,64 @@ CNAE:
 
 "Serviços combinados de escritório e apoio administrativo"
 
-Descrição informada:
+Descrição:
 
-"Indústria de churrasqueiras para consumidor final e construtoras."
+"Fabricamos churrasqueiras metálicas e vendemos para consumidores finais, lojistas e construtoras."
 
-A empresa NÃO deve ser diagnosticada como
-empresa de apoio administrativo.
+A interpretação NÃO deve ser:
 
-O contexto operacional predominante é:
+"empresa de apoio administrativo".
 
-INDÚSTRIA / FABRICAÇÃO DE CHURRASQUEIRAS.
+A interpretação deve considerar:
 
-As perguntas precisam investigar coisas como:
+INDÚSTRIA / FABRICAÇÃO / COMERCIALIZAÇÃO DE CHURRASQUEIRAS.
+
+Portanto, as perguntas devem investigar, quando pertinente:
 
 - custo por produto;
 - matéria-prima;
 - ficha técnica;
-- perdas;
 - estoque;
+- perdas;
+- retrabalho;
 - capacidade produtiva;
+- PCP;
 - formação de preço;
 - margem;
-- PCP;
-- produtividade;
-- retrabalho;
-- prazo de produção.
+- prazo;
+- comercialização.
 
 =========================================================
-CONFRONTO CADASTRAL
+INTERPRETAÇÃO DO NEGÓCIO
 =========================================================
 
-Compare:
-
-- CNAE principal;
-- CNAEs secundários;
-- atividades selecionadas;
-- atividade predominante;
-- descrição real.
-
-Se houver divergência:
-
-NÃO diga automaticamente que existe irregularidade.
-
-Utilize uma leitura como:
-
-"Há aparente diferença entre parte das atividades cadastrais
-e a operação descrita pelo participante, recomendando validação cadastral posterior."
-
-=========================================================
-INTERPRETAR O NEGÓCIO
-=========================================================
-
-Antes de gerar perguntas, determine:
+Antes de gerar as perguntas, determine:
 
 - segmento real;
 - subsegmento;
 - modelo operacional;
-- modelo de receita;
-- características da operação;
+- como a empresa provavelmente gera receita;
+- principais características operacionais;
 - riscos naturais;
-- divergências cadastrais;
-- confiança da interpretação.
-
-=========================================================
-EMPRESAS COM MAIS DE UM CNPJ
-=========================================================
-
-Se houver várias empresas:
-
-- considere a primeira como empresa-base;
-- use as demais como contexto;
-- não presuma que todas têm a mesma atividade;
-- identifique complementaridades;
-- não misture perguntas sem necessidade.
-
-O questionário deve continuar orientado
-à EMPRESA-BASE e às áreas selecionadas.
+- pontos cadastrais que merecem validação;
+- nível de confiança da interpretação.
 
 =========================================================
 ÁREAS SELECIONADAS
 =========================================================
 
-Você receberá as áreas no formato:
+Você receberá áreas no formato:
 
 {
   "id": "financeiro",
   "label": "Financeiro PF/PJ"
 }
 
-IMPORTANTE:
+O campo areaId de cada pergunta DEVE ser exatamente um dos IDs recebidos.
 
-O campo areaId de CADA pergunta deve ser
-EXATAMENTE um dos IDs enviados.
+NUNCA invente novos IDs.
 
-NUNCA invente areaId.
-
-Exemplos válidos:
+Exemplos possíveis:
 
 marketing
 juridico
@@ -355,146 +247,402 @@ rh
 comercial
 tecnologia
 
+Temas como:
+
+custos
+estoque
+produção
+PCP
+margem
+qualidade
+
+devem aparecer em "tema", e NÃO em areaId.
+
 =========================================================
-OPERACIONAL
+MÚLTIPLAS DORES
 =========================================================
 
-Se "operacional" estiver selecionado,
-investigue os principais riscos operacionais
-do negócio real.
+O participante pode selecionar MAIS DE UMA dor.
 
-Para indústria:
+Considere TODAS.
+
+Não trate as dores como causas confirmadas.
+
+Considere cada dor como:
+
+- percepção;
+- possível sintoma;
+- possível consequência;
+- possível problema real.
+
+As perguntas devem ajudar a descobrir como essas dores podem estar relacionadas.
+
+Exemplo:
+
+Dores:
+
+- falta de caixa;
+- margem baixa;
+- vendas abaixo do esperado;
+- estoque alto.
+
+Não gere simplesmente perguntas separadas sobre cada dor.
+
+Procure relações entre:
+
+VENDAS
+→
+PREÇO
+→
+CUSTO
+→
+MARGEM
+→
+ESTOQUE
+→
+CAPITAL DE GIRO
+→
+CAIXA
+
+O questionário deve ajudar a descobrir:
+
+1. quais dores parecem sintomas;
+2. quais podem estar relacionadas;
+3. quais controles podem explicar mais de uma dor;
+4. qual problema estrutural merece maior investigação.
+
+Não concentre o questionário somente na primeira dor selecionada.
+
+=========================================================
+OBJETIVO DOS PRÓXIMOS 90 DIAS
+=========================================================
+
+Considere também o problema que o empresário gostaria de resolver nos próximos 90 dias.
+
+Use essa informação para escolher perguntas mais relevantes.
+
+Porém não aceite automaticamente essa prioridade como correta.
+
+Exemplo:
+
+O empresário diz:
+
+"preciso vender mais".
+
+Mas existem indícios de que ele não conhece:
+
+- margem;
+- custo;
+- capacidade;
+- estoque.
+
+Gere perguntas para testar se crescer vendas realmente deve ser a prioridade.
+
+=========================================================
+QUANTIDADE
+=========================================================
+
+Gere normalmente entre 5 e 7 perguntas por área selecionada.
+
+Se houver 3 áreas:
+
+aproximadamente 15 a 21 perguntas.
+
+Priorize qualidade e poder diagnóstico.
+
+Evite excesso.
+
+=========================================================
+FORMATO
+=========================================================
+
+TODAS as perguntas devem ser respondíveis com:
+
+SIM
+PARCIALMENTE
+NÃO
+
+Formule as perguntas de modo que:
+
+SIM = controle existente / boa prática
+
+PARCIALMENTE = controle incompleto ou inconsistente
+
+NÃO = ausência ou fragilidade
+
+=========================================================
+PERGUNTAS RUINS X BOAS
+=========================================================
+
+Pergunta ruim:
+
+"Controla custos?"
+
+Pergunta adequada:
+
+"A empresa conhece o custo completo de fabricação de cada produto, considerando matéria-prima, mão de obra e custos indiretos?"
+
+Pergunta ruim:
+
+"Controla estoque?"
+
+Pergunta adequada:
+
+"O estoque físico de matéria-prima e produtos acabados é comparado periodicamente com as quantidades registradas no sistema?"
+
+=========================================================
+INDÚSTRIA
+=========================================================
+
+Quando identificar atividade industrial, considere:
+
+CUSTO INDUSTRIAL
 
 - ficha técnica;
+- custo real por produto;
 - matéria-prima;
-- consumo previsto x real;
+- mão de obra direta;
+- custos indiretos;
+- custo padrão;
+- custo realizado;
+- margem por produto;
+- margem por família;
+- formação de preço.
+
+ESTOQUE
+
+- matéria-prima;
 - produto em processo;
 - produto acabado;
+- inventário;
+- estoque físico x sistema;
+- giro;
+- cobertura;
+- estoque parado;
+- obsolescência.
+
+PRODUÇÃO
+
 - PCP;
-- ordem de produção;
+- ordens de produção;
 - capacidade;
-- gargalo;
+- máquinas;
 - produtividade;
-- perdas;
+- gargalos;
+- lead time;
+- prazo;
+- paradas;
+- manutenção.
+
+PERDAS
+
+- desperdício;
+- sucata;
 - refugo;
 - retrabalho;
-- sucata;
-- manutenção;
-- qualidade;
-- prazo.
+- consumo real x padrão.
 
-Exemplos:
+QUALIDADE
 
-"A empresa possui ficha técnica atualizada por modelo,
-com quantidade prevista dos principais materiais?"
+- inspeção;
+- devolução;
+- não conformidade;
+- retrabalho;
+- indicador.
 
-"A empresa compara o consumo real de matéria-prima
-com o consumo previsto para cada produto?"
+MARGEM
 
-"Refugo, desperdício e retrabalho são medidos
-e acompanhados periodicamente?"
+- margem por produto;
+- margem por família;
+- margem por pedido;
+- margem por cliente.
 
-"A empresa conhece a capacidade produtiva
-das principais etapas de fabricação?"
+=========================================================
+FABRICAÇÃO SOB ENCOMENDA
+=========================================================
 
-"Existe programação da produção considerando
-pedidos, capacidade e prazo prometido ao cliente?"
+Se existir fabricação personalizada ou sob encomenda, considere:
+
+- orçamento por pedido;
+- consumo de material;
+- mão de obra;
+- custo previsto;
+- custo realizado;
+- alteração de escopo;
+- prazo;
+- retrabalho;
+- compras específicas;
+- margem por pedido.
+
+=========================================================
+COMÉRCIO
+=========================================================
+
+Quando houver comércio, considere:
+
+- margem por SKU;
+- margem por categoria;
+- markup;
+- preço;
+- estoque;
+- curva ABC;
+- giro;
+- cobertura;
+- ruptura;
+- estoque parado;
+- compras;
+- fornecedores;
+- descontos;
+- ticket;
+- canais;
+- conversão;
+- rentabilidade por canal.
+
+=========================================================
+SERVIÇOS
+=========================================================
+
+Quando houver serviços, considere:
+
+- margem por cliente;
+- margem por contrato;
+- horas consumidas;
+- custo/hora;
+- capacidade;
+- produtividade;
+- precificação;
+- contratos;
+- recorrência;
+- concentração;
+- inadimplência;
+- retrabalho;
+- dependência dos sócios.
 
 =========================================================
 FINANCEIRO
 =========================================================
 
-Se "financeiro" estiver selecionado,
-investigue:
+Quando areaId for "financeiro", considere:
 
-- fluxo de caixa;
+- caixa;
 - projeção;
 - contas a pagar;
 - contas a receber;
 - conciliação;
 - inadimplência;
 - margem;
+- rentabilidade;
+- custos;
 - ponto de equilíbrio;
 - capital de giro;
-- custo;
-- rentabilidade;
 - necessidade de caixa;
-- prazo médio.
+- prazo de pagamento;
+- prazo de recebimento;
+- orçamento.
 
-Para indústria, adapte:
+Sempre adapte ao negócio real.
 
-"A empresa conhece o custo completo
-de fabricação de cada produto?"
+Exemplo indústria:
 
-"O custo utilizado para formar o preço inclui
-matéria-prima, mão de obra e custos indiretos?"
+"A empresa projeta a necessidade de caixa considerando compra de matéria-prima, prazo de fabricação e prazo de recebimento dos clientes?"
 
-"A empresa acompanha margem por modelo
-ou família de produto?"
+=========================================================
+OPERACIONAL
+=========================================================
 
-"A projeção financeira considera
-compras de matéria-prima, prazo de produção
-e recebimento das vendas?"
+Quando areaId for "operacional", considere:
 
-"A empresa conhece seu ponto de equilíbrio?"
+- produção;
+- entrega;
+- capacidade;
+- gargalos;
+- qualidade;
+- estoque;
+- perdas;
+- produtividade;
+- prazo;
+- retrabalho;
+- planejamento.
+
+Sempre adapte ao negócio.
 
 =========================================================
 COMERCIAL
 =========================================================
 
-Se "comercial" estiver selecionado,
-investigue:
+Quando areaId for "comercial", considere:
 
 - CRM;
+- funil;
 - propostas;
 - follow-up;
 - conversão;
 - ticket;
-- carteira;
 - recorrência;
-- descontos;
 - margem;
+- descontos;
+- mix;
 - concentração;
 - forecast;
-- motivos de perda.
-
-Para indústria:
-
-"A equipe comercial conhece a margem mínima
-aceitável antes de conceder descontos?"
-
-"A empresa conhece quais produtos apresentam
-maior margem e utiliza essa informação
-na estratégia comercial?"
-
-"Pedidos personalizados possuem orçamento
-considerando custo e complexidade específicos?"
-
-"O prazo prometido pelo comercial considera
-a capacidade real da produção?"
+- capacidade de entrega.
 
 =========================================================
 MARKETING
 =========================================================
 
-Se "marketing" estiver selecionado:
+Quando areaId for "marketing", considere:
 
 - origem dos leads;
-- canais;
 - posicionamento;
+- canais;
 - público;
-- conversão;
-- CAC;
 - mensuração;
-- integração marketing/comercial.
+- conversão;
+- aquisição;
+- integração com comercial.
 
-Não conclua que mais investimento resolve o problema.
+Não presuma que aumentar investimento é a solução.
+
+=========================================================
+CONTÁBIL / FISCAL
+=========================================================
+
+Quando areaId for "contabilidade", considere:
+
+- DRE;
+- balancete;
+- conciliação;
+- estoque;
+- centros de custo;
+- fechamento;
+- cadastros;
+- emissão fiscal;
+- integração;
+- regime tributário;
+- qualidade das informações.
+
+Não conclua que existe imposto pago a maior.
+
+=========================================================
+GESTÃO
+=========================================================
+
+Quando areaId for "gestao", considere:
+
+- indicadores;
+- metas;
+- reuniões;
+- decisões;
+- planejamento;
+- acompanhamento;
+- responsabilidades;
+- visão de resultado.
 
 =========================================================
 ADMINISTRATIVO
 =========================================================
 
-Se "administrativo" estiver selecionado:
+Quando areaId for "administrativo", considere:
 
 - processos;
 - procedimentos;
@@ -502,354 +650,108 @@ Se "administrativo" estiver selecionado:
 - retrabalho;
 - aprovações;
 - responsabilidades;
-- rotina;
-- dependência de pessoas.
+- compras;
+- organização.
 
 =========================================================
-GESTÃO
+RH
 =========================================================
 
-Se "gestao" estiver selecionado:
+Quando areaId for "rh", considere:
 
-- indicadores;
-- metas;
-- reuniões;
-- acompanhamento;
-- planejamento;
-- decisões;
 - responsabilidades;
-- visão de resultado.
-
-=========================================================
-PESSOAS / RH
-=========================================================
-
-Se "rh" estiver selecionado:
-
-- funções;
+- capacidade;
 - produtividade;
 - treinamento;
-- capacidade;
 - rotatividade;
-- liderança;
-- dependência de pessoas-chave.
+- dependência de pessoas-chave;
+- liderança.
 
 Não faça diagnóstico psicológico.
-
-=========================================================
-CONTÁBIL / FISCAL
-=========================================================
-
-Se "contabilidade" estiver selecionado:
-
-- DRE;
-- balancete;
-- conciliações;
-- estoque;
-- custo;
-- centros de custo;
-- fechamento;
-- cadastros;
-- emissão fiscal;
-- qualidade de informação;
-- integração;
-- regime tributário.
-
-Não conclua automaticamente
-que existe imposto pago a maior.
-
-=========================================================
-JURÍDICO
-=========================================================
-
-Se "juridico" estiver selecionado:
-
-- contratos;
-- formalização;
-- responsabilidade;
-- documentação;
-- riscos contratuais;
-- proteção empresarial;
-- obrigações.
-
-Não conclua que existe passivo sem evidência.
 
 =========================================================
 TECNOLOGIA
 =========================================================
 
-Se "tecnologia" estiver selecionado:
+Quando areaId for "tecnologia", considere:
 
 - ERP;
 - CRM;
 - BI;
+- integração;
 - automação;
-- integrações;
 - planilhas;
 - dados;
-- backups;
-- acessos;
-- segurança.
+- backup;
+- acesso;
+- segurança;
+- retrabalho manual.
 
 =========================================================
-INDÚSTRIA
+JURÍDICO
 =========================================================
 
-Quando identificar indústria,
-considere de forma transversal:
+Quando areaId for "juridico", considere:
 
-CUSTO:
-- ficha técnica;
-- custo unitário;
-- matéria-prima;
-- mão de obra;
-- custos indiretos;
-- custo padrão;
-- custo realizado.
-
-ESTOQUE:
-- matéria-prima;
-- produto em processo;
-- produto acabado;
-- inventário;
-- divergência sistema x físico;
-- giro;
-- estoque parado.
-
-PRODUÇÃO:
-- PCP;
-- capacidade;
-- gargalo;
-- produtividade;
-- utilização;
-- prazo;
-- manutenção.
-
-PERDAS:
-- refugo;
-- sucata;
-- desperdício;
-- retrabalho.
-
-MARGEM:
-- produto;
-- família;
-- cliente;
-- pedido.
-
-=========================================================
-FABRICAÇÃO SOB ENCOMENDA
-=========================================================
-
-Se houver produtos personalizados,
-considere:
-
-- orçamento por pedido;
-- projeto;
-- alteração de escopo;
-- custo previsto;
-- custo realizado;
-- material por pedido;
-- mão de obra por pedido;
-- margem por pedido;
-- prazo;
-- retrabalho.
-
-=========================================================
-COMÉRCIO
-=========================================================
-
-Quando houver comércio:
-
-- margem por produto;
-- markup;
-- estoque;
-- curva ABC;
-- giro;
-- ruptura;
-- estoque parado;
-- compras;
-- descontos;
-- ticket;
-- canal;
-- rentabilidade.
-
-=========================================================
-SERVIÇOS
-=========================================================
-
-Quando houver serviços:
-
-- margem por cliente;
-- custo/hora;
-- horas utilizadas;
-- capacidade;
-- produtividade;
-- preço;
 - contratos;
-- recorrência;
-- concentração;
-- retrabalho.
+- responsabilidades;
+- formalização;
+- documentação;
+- riscos contratuais;
+- proteção de dados.
 
-=========================================================
-DOR DECLARADA
-=========================================================
-
-Considere a dor informada pelo participante.
-
-Mas NÃO trate automaticamente
-a dor como causa.
-
-Exemplo:
-
-Dor:
-"Preciso vender mais."
-
-Se a empresa não conhece custo,
-margem ou capacidade,
-faça perguntas para testar
-se aumentar venda é realmente
-o principal problema.
-
-=========================================================
-OBJETIVO DE 90 DIAS
-=========================================================
-
-Utilize também o objetivo dos próximos 90 dias
-para escolher perguntas de maior poder diagnóstico.
-
-=========================================================
-FORMATO DAS PERGUNTAS
-=========================================================
-
-As perguntas precisam permitir resposta:
-
-SIM
-PARCIALMENTE
-NÃO
-
-Não faça perguntas abertas.
-
-ERRADO:
-
-"Qual o custo do seu produto?"
-
-CERTO:
-
-"A empresa conhece o custo completo
-de fabricação de cada produto?"
-
-=========================================================
-QUANTIDADE
-=========================================================
-
-Gere normalmente:
-
-5 a 7 perguntas por área.
-
-Se houver 3 áreas,
-o questionário deve ter aproximadamente
-15 a 21 perguntas.
-
-Evite excesso.
-
-Priorize poder diagnóstico.
-
-=========================================================
-IMPORTÂNCIA
-=========================================================
-
-Cada pergunta deve possuir:
-
-importancia:
-
-1 = complementar
-2 = importante
-3 = crítica
-
-Use 3 somente para pontos realmente críticos.
-
-Também devolva:
-
-peso
-
-com o MESMO valor de importancia.
-
-=========================================================
-RISCO AVALIADO
-=========================================================
-
-Cada pergunta deve conter
-o risco que ela pretende investigar.
-
-Exemplo:
-
-Pergunta:
-
-"A empresa conhece o custo completo
-de fabricação por produto?"
-
-Risco:
-
-"Formação de preço com base de custo incompleta,
-comprometendo a análise da margem."
+Não dê parecer jurídico conclusivo.
 
 =========================================================
 MOTIVO
 =========================================================
 
-Explique por que a pergunta é importante.
+Cada pergunta deve trazer um motivo.
 
-Essa informação será usada
-no diagnóstico final.
-
-=========================================================
-EVITAR DUPLICIDADE
-=========================================================
-
-Não faça várias perguntas
-avaliando exatamente a mesma coisa.
+Explique por que aquela pergunta é relevante para o negócio.
 
 =========================================================
-QUALIDADE DAS PERGUNTAS
+RISCO AVALIADO
 =========================================================
 
-Pergunta genérica:
+Cada pergunta deve informar qual risco empresarial está sendo investigado.
 
-"Controla estoque?"
+Exemplo:
 
-Pergunta adequada:
+Pergunta:
 
-"O estoque físico de matéria-prima
-e produtos acabados é comparado periodicamente
-com as quantidades registradas no sistema?"
+"A empresa conhece o custo completo de fabricação por produto?"
 
-Pergunta genérica:
+Risco avaliado:
 
-"Controla custos?"
-
-Pergunta adequada:
-
-"A empresa conhece o custo completo
-de fabricação de cada modelo,
-incluindo materiais, mão de obra
-e custos indiretos?"
+"Formação de preço baseada em custo incompleto e baixa visibilidade da margem."
 
 =========================================================
-NÃO INVENTAR
+IMPORTÂNCIA
+=========================================================
+
+Use:
+
+1 = complementar
+2 = importante
+3 = crítico
+
+Use 3 somente quando aquele controle for realmente crítico ao modelo de negócio.
+
+=========================================================
+NÃO INVENTE
 =========================================================
 
 Não afirme que a empresa:
 
 - tem prejuízo;
-- tem margem baixa;
 - tem estoque errado;
-- tem dívida;
+- possui dívida;
+- tem margem baixa;
 - possui irregularidade;
 - paga imposto errado.
 
-Você está construindo perguntas
-para descobrir essas informações.
+Você está construindo perguntas para DESCOBRIR.
 
 =========================================================
 RETORNO
@@ -857,49 +759,33 @@ RETORNO
 
 Produza:
 
-negocioInterpretado
+negocioInterpretado:
+- segmento;
+- subsegmento;
+- modeloOperacional;
+- justificativa;
+- riscosNaturais.
 
-com:
-
-segmentoReal
-segmento
-subsegmento
-modeloNegocio
-modeloOperacional
-resumoNegocio
-justificativa
-comoGeraReceita
-caracteristicasOperacionais
-riscosNaturais
-divergenciasCadastrais
-nivelConfianca
-
-E produza:
-
-perguntas
+E perguntas.
 
 Cada pergunta deve possuir:
 
-id
-areaId
-area
-tema
-pergunta
-motivo
-riscoAvaliado
-peso
-importancia
+- id;
+- areaId;
+- area;
+- tema;
+- pergunta;
+- motivo;
+- riscoAvaliado;
+- importancia.
 
 =========================================================
-REGRA CRÍTICA DE areaId
+REGRA CRÍTICA DO areaId
 =========================================================
 
-O areaId DEVE ser exatamente o mesmo id
-de uma das áreas recebidas.
+O areaId deve ser EXATAMENTE um dos IDs enviados em areasSelecionadas.
 
-Exemplo:
-
-Entrada:
+Exemplo entrada:
 
 [
   {
@@ -916,130 +802,70 @@ Entrada:
   }
 ]
 
-Saída permitida:
+Saídas permitidas:
 
-"areaId": "operacional"
+areaId = "operacional"
 
-ou
+areaId = "financeiro"
 
-"areaId": "financeiro"
+areaId = "comercial"
 
-ou
+NÃO use:
 
-"areaId": "comercial"
+areaId = "producao"
 
-NÃO produza:
+areaId = "estoque"
 
-"areaId": "producao"
+areaId = "custos"
 
-NÃO produza:
-
-"areaId": "custos"
-
-NÃO produza:
-
-"areaId": "estoque"
-
-Esses assuntos devem aparecer em "tema",
-não em areaId.
+Esses termos pertencem ao campo tema.
 
 =========================================================
 VALIDAÇÃO FINAL
 =========================================================
 
-Antes de responder:
+Antes de responder, confirme:
 
-1. Entendi o negócio real?
-2. Dei mais peso à descrição do participante?
-3. Cruzei CNAEs e operação?
-4. Usei apenas áreas recebidas?
-5. Todo areaId existe na entrada?
-6. As perguntas são específicas?
-7. Evitei perguntas genéricas?
-8. Evitei duplicidades?
-9. Todas podem ser respondidas Sim/Parcialmente/Não?
-10. Estou perguntando em vez de presumir?
+- entendi o negócio real?
+- considerei a descrição do participante?
+- considerei todos os CNAEs sem deixar que eles dominem a análise?
+- considerei TODAS as dores?
+- considerei o objetivo de 90 dias?
+- usei apenas as áreas selecionadas?
+- todo areaId existe na entrada?
+- as perguntas são específicas?
+- cada pergunta pode ser respondida Sim / Parcialmente / Não?
+- evitei duplicidade?
+- estou perguntando em vez de presumir?
 `;
 
   // =========================================================
-  // 8. CONTEXTO PARA OPENAI
+  // CONTEXTO
   // =========================================================
 
   const contexto = {
-    empresaBase: {
-      segmentoAtual:
-        segmentoAtual || "",
+    ...body,
 
-      categoriaAtual:
-        categoriaAtual || "",
+    descricaoNegocio,
 
-      cnaePrincipal:
-        cnaePrincipal || null,
-
-      cnaesSecundarios:
-        Array.isArray(
-          cnaesSecundarios
-        )
-          ? cnaesSecundarios
-          : [],
-
-      atividadesSelecionadas:
-        Array.isArray(
-          atividadesSelecionadas
-        )
-          ? atividadesSelecionadas
-          : [],
-
-      atividadePredominante:
-        atividadePredominante ||
-        null,
-
-      descricaoNegocio:
-        descricao,
-    },
-
-    grupoEmpresarial:
-      Array.isArray(empresas)
-        ? empresas
-        : [],
-
-    perfil: {
-      faturamento:
-        perfil?.faturamento ||
-        "",
-
-      colaboradores:
-        perfil?.colaboradores ||
-        "",
-
-      regime:
-        perfil?.regime ||
-        "",
-    },
+    areasSelecionadas,
 
     dor: {
-      principal:
-        dor?.principal ||
-        "",
+      selecionadas:
+        doresSelecionadas,
 
-      objetivo90Dias:
-        dor?.objetivo90Dias ||
-        "",
+      principal:
+        dorPrincipal,
+
+      objetivo90Dias,
 
       impactos:
-        Array.isArray(
-          dor?.impactos
-        )
-          ? dor.impactos
-          : [],
+        impactosDor,
     },
-
-    areasSelecionadas:
-      areasNormalizadas,
   };
 
   // =========================================================
-  // 9. SCHEMA
+  // SCHEMA
   // =========================================================
 
   const schema = {
@@ -1054,10 +880,6 @@ Antes de responder:
         additionalProperties: false,
 
         properties: {
-          segmentoReal: {
-            type: "string",
-          },
-
           segmento: {
             type: "string",
           },
@@ -1066,32 +888,12 @@ Antes de responder:
             type: "string",
           },
 
-          modeloNegocio: {
-            type: "string",
-          },
-
           modeloOperacional: {
-            type: "string",
-          },
-
-          resumoNegocio: {
             type: "string",
           },
 
           justificativa: {
             type: "string",
-          },
-
-          comoGeraReceita: {
-            type: "string",
-          },
-
-          caracteristicasOperacionais: {
-            type: "array",
-
-            items: {
-              type: "string",
-            },
           },
 
           riscosNaturais: {
@@ -1101,39 +903,14 @@ Antes de responder:
               type: "string",
             },
           },
-
-          divergenciasCadastrais: {
-            type: "array",
-
-            items: {
-              type: "string",
-            },
-          },
-
-          nivelConfianca: {
-            type: "string",
-
-            enum: [
-              "alto",
-              "medio",
-              "baixo",
-            ],
-          },
         },
 
         required: [
-          "segmentoReal",
           "segmento",
           "subsegmento",
-          "modeloNegocio",
           "modeloOperacional",
-          "resumoNegocio",
           "justificativa",
-          "comoGeraReceita",
-          "caracteristicasOperacionais",
           "riscosNaturais",
-          "divergenciasCadastrais",
-          "nivelConfianca",
         ],
       },
 
@@ -1154,7 +931,7 @@ Antes de responder:
               type: "string",
 
               enum:
-                areasNormalizadas.map(
+                areasSelecionadas.map(
                   (area) =>
                     area.id
                 ),
@@ -1180,13 +957,6 @@ Antes de responder:
               type: "string",
             },
 
-            peso: {
-              type: "integer",
-
-              minimum: 1,
-              maximum: 3,
-            },
-
             importancia: {
               type: "integer",
 
@@ -1203,17 +973,8 @@ Antes de responder:
             "pergunta",
             "motivo",
             "riscoAvaliado",
-            "peso",
             "importancia",
           ],
-        },
-      },
-
-      alertasInterpretacao: {
-        type: "array",
-
-        items: {
-          type: "string",
         },
       },
     },
@@ -1221,16 +982,16 @@ Antes de responder:
     required: [
       "negocioInterpretado",
       "perguntas",
-      "alertasInterpretacao",
     ],
   };
 
   // =========================================================
-  // 10. CHAMAR OPENAI
+  // OPENAI
   // =========================================================
 
   try {
     const modelo =
+      process.env.OPENAI_QUESTION_MODEL ||
       process.env.OPENAI_MODEL ||
       "gpt-5.6";
 
@@ -1267,7 +1028,7 @@ Antes de responder:
                     "system",
 
                   content:
-                    systemPrompt,
+                    prompt,
                 },
 
                 {
@@ -1287,7 +1048,7 @@ Antes de responder:
                     "json_schema",
 
                   name:
-                    "questionario_empresarial_personalizado",
+                    "checklist_personalizado",
 
                   strict:
                     true,
@@ -1299,16 +1060,12 @@ Antes de responder:
         }
       );
 
-    // =========================================================
-    // 11. RESPOSTA OPENAI
-    // =========================================================
-
     const data =
       await response.json();
 
     if (!response.ok) {
       console.error(
-        "Erro OpenAI gerar perguntas:",
+        "Erro OpenAI gerar-perguntas:",
         JSON.stringify(
           data,
           null,
@@ -1329,86 +1086,33 @@ Antes de responder:
         });
     }
 
-    // =========================================================
-    // 12. EXTRAIR TEXTO
-    // =========================================================
+    const text =
+      extrairOutputText(
+        data
+      );
 
-    let texto =
-      data.output_text || "";
-
-    if (
-      !texto &&
-      Array.isArray(
-        data.output
-      )
-    ) {
-      for (
-        const item
-        of data.output
-      ) {
-        if (
-          item?.type !==
-          "message"
-        ) {
-          continue;
-        }
-
-        if (
-          !Array.isArray(
-            item.content
-          )
-        ) {
-          continue;
-        }
-
-        for (
-          const content
-          of item.content
-        ) {
-          if (
-            content?.type ===
-            "output_text"
-          ) {
-            texto =
-              content.text ||
-              "";
-
-            break;
-          }
-        }
-
-        if (texto) {
-          break;
-        }
-      }
-    }
-
-    if (!texto) {
+    if (!text) {
       return res
         .status(502)
         .json({
           sucesso: false,
 
           error:
-            "A OpenAI não retornou perguntas.",
+            "A IA não retornou perguntas.",
         });
     }
-
-    // =========================================================
-    // 13. CONVERTER JSON
-    // =========================================================
 
     let parsed;
 
     try {
       parsed =
         JSON.parse(
-          texto
+          text
         );
     } catch (error) {
       console.error(
-        "Resposta inválida gerar-perguntas:",
-        texto
+        "JSON inválido em gerar-perguntas:",
+        text
       );
 
       return res
@@ -1417,178 +1121,141 @@ Antes de responder:
           sucesso: false,
 
           error:
-            "A OpenAI retornou um formato inválido.",
+            "A IA retornou um formato inválido.",
         });
     }
 
     // =========================================================
-    // 14. MAPA DE ÁREAS
+    // GARANTIR QUE areaId CONTINUE COMPATÍVEL COM O APP
     // =========================================================
 
-    const mapaAreas =
+    const idsPermitidos =
+      new Set(
+        areasSelecionadas.map(
+          (area) =>
+            area.id
+        )
+      );
+
+    const labels =
       new Map(
-        areasNormalizadas.map(
+        areasSelecionadas.map(
           (area) => [
             area.id,
-            area,
+            area.label,
           ]
         )
       );
 
-    // =========================================================
-    // 15. NORMALIZAR PERGUNTAS
-    // =========================================================
-
     const perguntas =
-      Array.isArray(
-        parsed.perguntas
+      (
+        Array.isArray(
+          parsed.perguntas
+        )
+          ? parsed.perguntas
+          : []
       )
-        ? parsed.perguntas
-            .map(
-              (
-                pergunta,
-                index
-              ) => {
-                if (
-                  !pergunta
-                ) {
-                  return null;
-                }
-
-                const areaId =
-                  String(
-                    pergunta.areaId ||
-                    ""
-                  ).trim();
-
-                // CRÍTICO:
-                // Só aceita área que veio do App.
-                const areaOriginal =
-                  mapaAreas.get(
-                    areaId
-                  );
-
-                if (
-                  !areaOriginal
-                ) {
-                  console.warn(
-                    "Pergunta descartada por areaId inválido:",
-                    pergunta
-                  );
-
-                  return null;
-                }
-
-                const importancia =
-                  [1, 2, 3].includes(
-                    Number(
-                      pergunta.importancia
-                    )
-                  )
-                    ? Number(
-                        pergunta.importancia
-                      )
-                    : [1, 2, 3].includes(
-                        Number(
-                          pergunta.peso
-                        )
-                      )
-                      ? Number(
-                          pergunta.peso
-                        )
-                      : 2;
-
-                return {
-                  id:
-                    String(
-                      pergunta.id ||
-                      `ia_${index + 1}`
-                    ),
-
-                  // Este é o campo que o App.jsx usa
-                  areaId:
-                    areaOriginal.id,
-
-                  area:
-                    areaOriginal.label,
-
-                  tema:
-                    String(
-                      pergunta.tema ||
-                      "Diagnóstico específico"
-                    ),
-
-                  pergunta:
-                    String(
-                      pergunta.pergunta ||
-                      ""
-                    ),
-
-                  motivo:
-                    String(
-                      pergunta.motivo ||
-                      ""
-                    ),
-
-                  riscoAvaliado:
-                    String(
-                      pergunta.riscoAvaliado ||
-                      ""
-                    ),
-
-                  peso:
-                    importancia,
-
-                  // Este é o campo que o App.jsx atual lê
-                  importancia:
-                    importancia,
-                };
-              }
+        .filter(
+          (pergunta) =>
+            idsPermitidos.has(
+              pergunta.areaId
             )
-            .filter(
-              (pergunta) =>
-                pergunta &&
-                pergunta.areaId &&
-                pergunta.pergunta
-            )
-        : [];
+        )
+        .map(
+          (
+            pergunta,
+            index
+          ) => ({
+            id:
+              String(
+                pergunta.id ||
+                `ia_${index + 1}`
+              )
+                .replace(
+                  /[^a-zA-Z0-9_-]/g,
+                  "_"
+                )
+                .slice(
+                  0,
+                  80
+                ),
+
+            areaId:
+              pergunta.areaId,
+
+            area:
+              labels.get(
+                pergunta.areaId
+              ) ||
+              pergunta.area ||
+              pergunta.areaId,
+
+            tema:
+              String(
+                pergunta.tema ||
+                "Diagnóstico"
+              ),
+
+            pergunta:
+              String(
+                pergunta.pergunta ||
+                ""
+              ),
+
+            motivo:
+              String(
+                pergunta.motivo ||
+                ""
+              ),
+
+            riscoAvaliado:
+              String(
+                pergunta.riscoAvaliado ||
+                ""
+              ),
+
+            importancia:
+              Math.max(
+                1,
+                Math.min(
+                  3,
+                  Number(
+                    pergunta.importancia
+                  ) ||
+                  1
+                )
+              ),
+          })
+        )
+        .filter(
+          (pergunta) =>
+            pergunta.pergunta
+        );
 
     // =========================================================
-    // 16. GARANTIR PERGUNTAS POR TODAS AS ÁREAS
+    // GARANTIR QUE CADA ÁREA TENHA PERGUNTAS
     // =========================================================
 
     const areasSemPerguntas =
-      areasNormalizadas.filter(
+      areasSelecionadas.filter(
         (area) =>
-          !perguntas.some(
+          perguntas.filter(
             (pergunta) =>
               pergunta.areaId ===
               area.id
-          )
+          ).length < 4
       );
 
     if (
-      areasSemPerguntas.length >
-      0
+      areasSemPerguntas.length
     ) {
-      console.error(
-        "Áreas sem perguntas:",
-        areasSemPerguntas
+      console.warn(
+        "Áreas com poucas perguntas geradas:",
+        areasSemPerguntas.map(
+          (area) =>
+            area.id
+        )
       );
-
-      return res
-        .status(502)
-        .json({
-          sucesso: false,
-
-          error:
-            `Não foram geradas perguntas para: ${areasSemPerguntas
-              .map(
-                (area) =>
-                  area.label
-              )
-              .join(", ")}. Tente gerar novamente.`,
-        });
     }
 
     if (
@@ -1604,145 +1271,6 @@ Antes de responder:
         });
     }
 
-    // =========================================================
-    // 17. NORMALIZAR INTERPRETAÇÃO
-    // =========================================================
-
-    const negocioBruto =
-      parsed.negocioInterpretado ||
-      {};
-
-    const segmentoReal =
-      String(
-        negocioBruto.segmentoReal ||
-        negocioBruto.segmento ||
-        segmentoAtual ||
-        ""
-      );
-
-    const modeloNegocio =
-      String(
-        negocioBruto.modeloNegocio ||
-        negocioBruto.modeloOperacional ||
-        ""
-      );
-
-    const resumoNegocio =
-      String(
-        negocioBruto.resumoNegocio ||
-        negocioBruto.justificativa ||
-        ""
-      );
-
-    const negocioInterpretadoFinal = {
-      // CAMPOS NOVOS
-      segmentoReal,
-
-      subsegmento:
-        String(
-          negocioBruto.subsegmento ||
-          ""
-        ),
-
-      modeloNegocio,
-
-      resumoNegocio,
-
-      comoGeraReceita:
-        String(
-          negocioBruto.comoGeraReceita ||
-          ""
-        ),
-
-      caracteristicasOperacionais:
-        Array.isArray(
-          negocioBruto
-            .caracteristicasOperacionais
-        )
-          ? negocioBruto
-              .caracteristicasOperacionais
-              .slice(0, 8)
-          : [],
-
-      riscosNaturais:
-        Array.isArray(
-          negocioBruto.riscosNaturais
-        )
-          ? negocioBruto
-              .riscosNaturais
-              .slice(0, 8)
-          : [],
-
-      divergenciasCadastrais:
-        Array.isArray(
-          negocioBruto
-            .divergenciasCadastrais
-        )
-          ? negocioBruto
-              .divergenciasCadastrais
-              .slice(0, 5)
-          : [],
-
-      nivelConfianca:
-        String(
-          negocioBruto.nivelConfianca ||
-          "medio"
-        ),
-
-      // =====================================================
-      // CAMPOS DE COMPATIBILIDADE COM APP.JSX ATUAL
-      // =====================================================
-
-      segmento:
-        segmentoReal,
-
-      modeloOperacional:
-        modeloNegocio,
-
-      justificativa:
-        resumoNegocio,
-    };
-
-    // =========================================================
-    // 18. LOG DE TESTE
-    // =========================================================
-
-    console.log(
-      "Questionário personalizado gerado:",
-      {
-        modelo,
-
-        negocio:
-          negocioInterpretadoFinal
-            .subsegmento,
-
-        areas:
-          areasNormalizadas,
-
-        totalPerguntas:
-          perguntas.length,
-
-        perguntasPorArea:
-          areasNormalizadas.map(
-            (area) => ({
-              area:
-                area.label,
-
-              quantidade:
-                perguntas.filter(
-                  (pergunta) =>
-                    pergunta.areaId ===
-                    area.id
-                ).length,
-            })
-          ),
-      }
-    );
-
-    // =========================================================
-    // 19. RETORNO FINAL PARA APP.JSX
-    // =========================================================
-
     return res
       .status(200)
       .json({
@@ -1751,25 +1279,19 @@ Antes de responder:
         modelo,
 
         negocioInterpretado:
-          negocioInterpretadoFinal,
+          parsed.negocioInterpretado,
 
         perguntas,
-
-        alertasInterpretacao:
-          Array.isArray(
-            parsed.alertasInterpretacao
-          )
-            ? parsed
-                .alertasInterpretacao
-                .slice(0, 5)
-            : [],
 
         resumoGeracao: {
           totalPerguntas:
             perguntas.length,
 
+          doresConsideradas:
+            doresSelecionadas,
+
           areas:
-            areasNormalizadas.map(
+            areasSelecionadas.map(
               (area) => ({
                 id:
                   area.id,
@@ -1789,12 +1311,8 @@ Antes de responder:
       });
 
   } catch (error) {
-    // =========================================================
-    // 20. ERRO GERAL
-    // =========================================================
-
     console.error(
-      "Erro geral em gerar-perguntas:",
+      "Erro gerar-perguntas:",
       error
     );
 
@@ -1804,7 +1322,7 @@ Antes de responder:
         sucesso: false,
 
         error:
-          "Erro interno ao gerar o questionário personalizado.",
+          "Erro interno ao gerar perguntas personalizadas.",
       });
   }
 }
