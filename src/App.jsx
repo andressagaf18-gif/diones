@@ -631,7 +631,7 @@ export default function DiagnosticoPrototipo() {
   const [regime, setRegime] = useState(null);
   const [observacao, setObservacao] = useState("");
   const [dores, setDores] = useState([]);
-  const [dorPrincipal, setDorPrincipal] = useState("");
+  const [doresSelecionadas, setDoresSelecionadas] = useState([]);
   const [dor90Dias, setDor90Dias] = useState("");
   const [impactosDor, setImpactosDor] = useState([]);
   const [respostas, setRespostas] = useState({});
@@ -777,7 +777,8 @@ export default function DiagnosticoPrototipo() {
       observacao,
       descricaoNegocio,
       negocioInterpretado,
-      dorPrincipal,
+      doresSelecionadas,
+      dorPrincipal: doresSelecionadas[0] || "",
       dor90Dias,
       impactosDor,
       areas: gruposSelecionados.map((g) => ({
@@ -845,6 +846,14 @@ export default function DiagnosticoPrototipo() {
       clearInterval(interval);
     };
   }, [step]);
+  function toggleDorSelecionada(valor) {
+    setDoresSelecionadas((prev) =>
+      prev.includes(valor)
+        ? prev.filter((item) => item !== valor)
+        : [...prev, valor]
+    );
+  }
+
   async function gerarPerguntasPersonalizadas() {
     if (!empresaPrincipal) {
       showToast("Adicione pelo menos um CNPJ.");
@@ -892,7 +901,8 @@ export default function DiagnosticoPrototipo() {
         regime: regime || "",
       },
       dor: {
-        principal: dorPrincipal,
+        selecionadas: doresSelecionadas,
+        principal: doresSelecionadas[0] || "",
         objetivo90Dias: dor90Dias,
         impactos: impactosDor,
       },
@@ -1333,7 +1343,8 @@ export default function DiagnosticoPrototipo() {
         observacao: observacao || "",
         descricaoNegocio: descricaoNegocio || "",
         negocioInterpretado: negocioInterpretado || null,
-        dorPrincipal,
+        doresSelecionadas,
+        dorPrincipal: doresSelecionadas[0] || "",
         dor90Dias,
         impactosDor,
         areasSelecionadas: gruposSelecionados.map((g) => g.label),
@@ -1404,7 +1415,7 @@ export default function DiagnosticoPrototipo() {
     setRegime(null);
     setObservacao("");
     setDores([]);
-    setDorPrincipal("");
+    setDoresSelecionadas([]);
     setDor90Dias("");
     setImpactosDor([]);
     setRespostas({});
@@ -2610,32 +2621,46 @@ export default function DiagnosticoPrototipo() {
                 </div>
 
                 <div>
-                  <p style={{ ...labelStyle, fontSize: 12, marginBottom: 8 }}>
-                    Qual destes problemas mais incomoda sua empresa hoje?
+                  <p style={{ ...labelStyle, fontSize: 12, marginBottom: 5 }}>
+                    Quais problemas mais incomodam sua empresa hoje?
+                  </p>
+
+                  <p style={{ fontSize: 10.8, color: MUTED, lineHeight: 1.4, margin: "0 0 9px" }}>
+                    Você pode selecionar mais de uma opção. A análise vai cruzar essas dores com as respostas do diagnóstico.
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {DORES_EVENTO.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => setDorPrincipal(item)}
-                        style={{
-                          border: dorPrincipal === item ? `2px solid ${CORAL}` : "1px solid #D8DEEA",
-                          background: dorPrincipal === item ? "#FFF3EF" : "#FFFFFF",
-                          color: NAVY,
-                          borderRadius: 10,
-                          padding: "10px 9px",
-                          textAlign: "left",
-                          cursor: "pointer",
-                          fontSize: 11.3,
-                          fontWeight: dorPrincipal === item ? 700 : 500,
-                        }}
-                      >
-                        {item}
-                      </button>
-                    ))}
+                    {DORES_EVENTO.map((item) => {
+                      const selecionada = doresSelecionadas.includes(item);
+
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => toggleDorSelecionada(item)}
+                          style={{
+                            border: selecionada ? `2px solid ${CORAL}` : "1px solid #D8DEEA",
+                            background: selecionada ? "#FFF3EF" : "#FFFFFF",
+                            color: NAVY,
+                            borderRadius: 10,
+                            padding: "10px 9px",
+                            textAlign: "left",
+                            cursor: "pointer",
+                            fontSize: 11.3,
+                            fontWeight: selecionada ? 700 : 500,
+                          }}
+                        >
+                          {selecionada ? "✓ " : ""}{item}
+                        </button>
+                      );
+                    })}
                   </div>
+
+                  {doresSelecionadas.length > 0 && (
+                    <p style={{ fontSize: 10.5, color: CORAL, fontWeight: 700, margin: "8px 0 0" }}>
+                      {doresSelecionadas.length} problema(s) selecionado(s)
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -2747,7 +2772,7 @@ export default function DiagnosticoPrototipo() {
                 </div>
 
                 <PrimaryButton
-                  disabled={!dorPrincipal || !dor90Dias.trim() || dores.length === 0 || gerandoPerguntas}
+                  disabled={doresSelecionadas.length === 0 || !dor90Dias.trim() || dores.length === 0 || gerandoPerguntas}
                   onClick={gerarPerguntasPersonalizadas}
                 >
                   <Sparkles size={16} /> Gerar perguntas personalizadas
