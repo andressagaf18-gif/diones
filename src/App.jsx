@@ -621,6 +621,11 @@ export default function DiagnosticoPrototipo() {
   const [cnaesEmpresa, setCnaesEmpresa] = useState([]);
   const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([]);
   const [atividadePredominante, setAtividadePredominante] = useState(null);
+  const [descricaoNegocio, setDescricaoNegocio] = useState("");
+  const [perguntasDinamicas, setPerguntasDinamicas] = useState([]);
+  const [negocioInterpretado, setNegocioInterpretado] = useState(null);
+  const [gerandoPerguntas, setGerandoPerguntas] = useState(false);
+  const [erroPerguntas, setErroPerguntas] = useState("");
   const [faturamento, setFaturamento] = useState(null);
   const [colaboradores, setColaboradores] = useState(null);
   const [regime, setRegime] = useState(null);
@@ -698,13 +703,37 @@ export default function DiagnosticoPrototipo() {
     ? dores
     : areasSugeridas.slice(0, MAX_DORES);
 
-  const gruposSelecionados = areasDoDiagnostico
+  const gruposEstaticos = areasDoDiagnostico
     .filter((id) => CHECKLISTS[id])
     .map((id) => ({
       id,
       label: areaLabel(id),
       subtemas: checklistEnxuto(CHECKLISTS[id]),
     }));
+
+  const gruposDinamicos = areasDoDiagnostico
+    .map((id) => {
+      const perguntasArea = perguntasDinamicas.filter((q) => q.areaId === id);
+      if (!perguntasArea.length) return null;
+
+      const temas = [...new Set(perguntasArea.map((q) => q.tema || "Diagnóstico específico"))];
+
+      return {
+        id,
+        label: areaLabel(id),
+        subtemas: temas.map((tema) => ({
+          tema,
+          dica: `Aprofundar ${tema.toLowerCase()} considerando o modelo real do negócio.`,
+          perguntas: perguntasArea.filter((q) => (q.tema || "Diagnóstico específico") === tema),
+        })),
+      };
+    })
+    .filter(Boolean);
+
+  const gruposSelecionados = perguntasDinamicas.length > 0
+    ? gruposDinamicos
+    : gruposEstaticos;
+
   const todasPerguntas = gruposSelecionados.flatMap((g) => g.subtemas.flatMap((s) => s.perguntas));
   const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
 
@@ -746,6 +775,8 @@ export default function DiagnosticoPrototipo() {
       colaboradores,
       regime,
       observacao,
+      descricaoNegocio,
+      negocioInterpretado,
       dorPrincipal,
       dor90Dias,
       impactosDor,
@@ -757,6 +788,10 @@ export default function DiagnosticoPrototipo() {
           perguntas: s.perguntas.map((q) => ({
             id: q.id,
             texto: textoDe(q, segmentoPredominante, categoriaPrincipal),
+            tema: q.tema || "",
+            motivo: q.motivo || "",
+            riscoAvaliado: q.risco || "",
+            importancia: q.importancia || 1,
             resposta: respostas[q.id],
           })),
         })),
@@ -810,6 +845,100 @@ export default function DiagnosticoPrototipo() {
       clearInterval(interval);
     };
   }, [step]);
+  async function gerarPerguntasPersonalizadas() {
+    if (!empresaPrincipal) {
+      showToast("Adicione pelo menos um CNPJ.");
+      return;
+    }
+
+    if (descricaoNegocio.trim().length < 20) {
+      showToast("Descreva brevemente o que o negócio realmente faz.");
+      return;
+    }
+
+    if (!atividadePredominante) {
+      showToast("Selecione a atividade predominante.");
+      return;
+    }
+
+    if (dores.length === 0) {
+      showToast("Selecione pelo menos uma área para analisar.");
+      return;
+    }
+
+    setGerandoPerguntas(true);
+    setErroPerguntas("");
+    setStep("gerandoPerguntas");
+
+    const payload = {
+      segmentoAtual: segmentoPredominante,
+      categoriaAtual: categoriaPrincipal,
+      cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
+      cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
+      atividadesSelecionadas: atividadesSelecionadasObjetos,
+      atividadePredominante,
+      descricaoNegocio: descricaoNegocio.trim(),
+      empresas: empresas.map((e) => ({
+        razao: e.razao,
+        cnpj: e.cnpjDigits,
+        segmento: e.segmento,
+        categoria: e.categoria,
+        cnaePrincipal: e.cnaePrincipal || null,
+        cnaesSecundarios: e.cnaesSecundarios || [],
+      })),
+      perfil: {
+        faturamento: faturamento?.label || "",
+        colaboradores: colaboradores || "",
+        regime: regime || "",
+      },
+      dor: {
+        principal: dorPrincipal,
+        objetivo90Dias: dor90Dias,
+        impactos: impactosDor,
+      },
+      areasSelecionadas: dores.map((id) => ({ id, label: areaLabel(id) })),
+    };
+
+    try {
+      const r = await fetch("/api/gerar-perguntas", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await r.json().catch(() => null);
+
+      if (!r.ok || !data?.sucesso || !Array.isArray(data?.perguntas)) {
+        throw new Error(data?.error || "Não foi possível gerar as perguntas personalizadas.");
+      }
+
+      const perguntas = data.perguntas.map((q, idx) => ({
+        id: q.id || `ia_${idx + 1}`,
+        areaId: q.areaId,
+        area: q.area,
+        tema: q.tema || "Diagnóstico específico",
+        text: q.pergunta,
+        risco: q.riscoAvaliado || "Ponto relevante para aprofundamento",
+        motivo: q.motivo || "",
+        importancia: Number(q.importancia) || 1,
+        invert: false,
+      }));
+
+      setPerguntasDinamicas(perguntas);
+      setNegocioInterpretado(data.negocioInterpretado || null);
+      setRespostas({});
+      setStep("confirmarNegocio");
+    } catch (error) {
+      console.error("Erro ao gerar perguntas:", error);
+      setErroPerguntas(error?.message || "Não foi possível gerar perguntas personalizadas.");
+      setPerguntasDinamicas([]);
+      setNegocioInterpretado(null);
+      setStep("confirmarNegocio");
+    } finally {
+      setGerandoPerguntas(false);
+    }
+  }
+
   async function adicionarCnpj() {
     const digits = String(cnpjInput || "").replace(/\D/g, "");
 
@@ -1202,6 +1331,8 @@ export default function DiagnosticoPrototipo() {
         colaboradores: colaboradores || "",
         regime: regime || "",
         observacao: observacao || "",
+        descricaoNegocio: descricaoNegocio || "",
+        negocioInterpretado: negocioInterpretado || null,
         dorPrincipal,
         dor90Dias,
         impactosDor,
@@ -1263,6 +1394,11 @@ export default function DiagnosticoPrototipo() {
     setCnaesEmpresa([]);
     setAtividadesSelecionadas([]);
     setAtividadePredominante(null);
+    setDescricaoNegocio("");
+    setPerguntasDinamicas([]);
+    setNegocioInterpretado(null);
+    setGerandoPerguntas(false);
+    setErroPerguntas("");
     setFaturamento(null);
     setColaboradores(null);
     setRegime(null);
@@ -1277,8 +1413,18 @@ export default function DiagnosticoPrototipo() {
 
   function scoreDe(perguntas) {
     if (!perguntas.length) return 0;
-    const total = perguntas.reduce((acc, q) => acc + pesoResposta(q, respostas[q.id]), 0);
-    return Math.round((total / (perguntas.length * 5)) * 100);
+
+    const total = perguntas.reduce((acc, q) => {
+      const importancia = Math.max(1, Math.min(3, Number(q.importancia) || 1));
+      return acc + (pesoResposta(q, respostas[q.id]) * importancia);
+    }, 0);
+
+    const maximo = perguntas.reduce((acc, q) => {
+      const importancia = Math.max(1, Math.min(3, Number(q.importancia) || 1));
+      return acc + (5 * importancia);
+    }, 0);
+
+    return maximo ? Math.round((total / maximo) * 100) : 0;
   }
 
   const score = scoreDe(todasPerguntas);
@@ -1619,6 +1765,8 @@ export default function DiagnosticoPrototipo() {
             .join(" | ")
         : "-"
     )}</div>
+    <div style="grid-column:1/-1"><strong>Descrição real do negócio:</strong><br>${escaparHtml(descricaoNegocio || "-")}</div>
+    <div style="grid-column:1/-1"><strong>Negócio interpretado:</strong><br>${escaparHtml(negocioInterpretado?.subsegmento || negocioInterpretado?.segmento || "-")}</div>
     <div style="grid-column:1/-1"><strong>Endereço:</strong><br>${escaparHtml(enderecoTexto || "-")}</div>
   </div>
 
@@ -2365,6 +2513,28 @@ export default function DiagnosticoPrototipo() {
                   </div>
                 )}
 
+                {empresaPrincipal && (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={labelStyle}>
+                      Descreva brevemente o que seu negócio realmente faz
+                    </label>
+                    <textarea
+                      value={descricaoNegocio}
+                      onChange={(e) => setDescricaoNegocio(e.target.value)}
+                      placeholder={
+                        empresas.length > 1
+                          ? "Ex.: A empresa A fabrica churrasqueiras metálicas e a empresa B realiza a comercialização e instalação dos produtos."
+                          : "Ex.: Fabricamos churrasqueiras metálicas, com modelos de linha e projetos sob medida, vendendo para consumidor final, lojistas e construtoras."
+                      }
+                      rows={4}
+                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 6 }}
+                    />
+                    <p style={{ fontSize: 10.5, color: MUTED, margin: "0 0 8px", lineHeight: 1.4 }}>
+                      Não se limite ao CNAE. Explique o que vocês produzem, vendem ou entregam, para quem e como a operação funciona.
+                    </p>
+                  </div>
+                )}
+
                 {empresas.length > 1 && (
                   <p style={{ fontSize: 11, color: CORAL, fontWeight: 600, margin: "10px 0 0" }}>
                     Segmento predominante do grupo: {segmentoPredominante}
@@ -2376,7 +2546,8 @@ export default function DiagnosticoPrototipo() {
                   disabled={
                     empresas.length === 0 ||
                     atividadesSelecionadas.length === 0 ||
-                    !atividadePredominante
+                    !atividadePredominante ||
+                    descricaoNegocio.trim().length < 20
                   }
                   onClick={() => setStep("porte")}
                 >
@@ -2576,15 +2747,104 @@ export default function DiagnosticoPrototipo() {
                 </div>
 
                 <PrimaryButton
-                  disabled={!dorPrincipal || !dor90Dias.trim() || dores.length === 0}
-                  onClick={() => setStep("checklist")}
+                  disabled={!dorPrincipal || !dor90Dias.trim() || dores.length === 0 || gerandoPerguntas}
+                  onClick={gerarPerguntasPersonalizadas}
                 >
-                  Continuar para o diagnóstico <ArrowRight size={16} />
+                  <Sparkles size={16} /> Gerar perguntas personalizadas
                 </PrimaryButton>
               </div>
             )}
 
             
+
+            {step === "gerandoPerguntas" && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 14 }}>
+                <Loader2 size={34} color={CORAL} className="spin" />
+                <div>
+                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 700, color: NAVY, margin: "0 0 6px" }}>
+                    Entendendo o seu negócio
+                  </p>
+                  <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, maxWidth: 360, margin: 0 }}>
+                    Cruzando CNAEs, atividade informada, descrição do negócio, dores e departamentos selecionados para montar perguntas específicas.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {step === "confirmarNegocio" && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 700, color: NAVY, margin: "6px 0 5px" }}>
+                    Foi assim que entendemos seu negócio
+                  </p>
+                  <p style={{ fontSize: 12, color: MUTED, margin: 0, lineHeight: 1.5 }}>
+                    Confirme antes de responder. Se a interpretação estiver errada, ajuste a descrição e gere novamente.
+                  </p>
+                </div>
+
+                {negocioInterpretado ? (
+                  <div style={{ background: "#EEF8F3", border: "1px solid #C9E8D8", borderRadius: 12, padding: 13 }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 0 5px" }}>
+                      {negocioInterpretado.subsegmento || negocioInterpretado.segmento || "Negócio interpretado"}
+                    </p>
+                    <p style={{ fontSize: 11.5, color: NAVY, margin: "0 0 5px", lineHeight: 1.45 }}>
+                      <strong>Modelo:</strong> {negocioInterpretado.modeloOperacional || "-"}
+                    </p>
+                    <p style={{ fontSize: 11, color: MUTED, margin: 0, lineHeight: 1.45 }}>
+                      {negocioInterpretado.justificativa || ""}
+                    </p>
+                    {Array.isArray(negocioInterpretado.riscosNaturais) && negocioInterpretado.riscosNaturais.length > 0 && (
+                      <div style={{ marginTop: 9 }}>
+                        <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, margin: "0 0 4px" }}>Pontos naturais para investigar:</p>
+                        <p style={{ fontSize: 10.8, color: MUTED, margin: 0, lineHeight: 1.45 }}>
+                          {negocioInterpretado.riscosNaturais.slice(0, 6).join(" · ")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ background: "#FFF3EF", borderRadius: 10, padding: 12 }}>
+                    <p style={{ fontSize: 11.5, color: NAVY, margin: 0 }}>{erroPerguntas || "Não foi possível interpretar automaticamente o negócio."}</p>
+                  </div>
+                )}
+
+                <div>
+                  <label style={labelStyle}>Ajuste a descrição, se necessário</label>
+                  <textarea
+                    value={descricaoNegocio}
+                    onChange={(e) => setDescricaoNegocio(e.target.value)}
+                    rows={4}
+                    style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
+                  />
+                </div>
+
+                {perguntasDinamicas.length > 0 && (
+                  <div style={{ background: ICE, borderRadius: 10, padding: 10 }}>
+                    <p style={{ fontSize: 11.3, color: NAVY, margin: 0, lineHeight: 1.45 }}>
+                      <strong>{perguntasDinamicas.length} perguntas personalizadas</strong> foram montadas para {dores.map(areaLabel).join(", ")}.
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
+                  <button
+                    type="button"
+                    onClick={gerarPerguntasPersonalizadas}
+                    disabled={gerandoPerguntas || descricaoNegocio.trim().length < 20}
+                    style={{ ...chipStyle(false), flex: 1 }}
+                  >
+                    Reanalisar
+                  </button>
+                  <PrimaryButton
+                    disabled={perguntasDinamicas.length === 0}
+                    onClick={() => setStep("checklist")}
+                    style={{ flex: 1 }}
+                  >
+                    Está correto <ArrowRight size={16} />
+                  </PrimaryButton>
+                </div>
+              </div>
+            )}
 
             {step === "checklist" && gruposSelecionados.length > 0 && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -2592,7 +2852,7 @@ export default function DiagnosticoPrototipo() {
                   Checklist — {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
                 <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
-                  {todasPerguntas.length} perguntas · adaptado para {categoriaPrincipal}
+                  {todasPerguntas.length} perguntas · personalizadas para {negocioInterpretado?.subsegmento || categoriaPrincipal}
                   {atividadePredominante?.descricao
                     ? ` · atividade-base: ${atividadePredominante.descricao}`
                     : empresaPrincipal?.cnae
