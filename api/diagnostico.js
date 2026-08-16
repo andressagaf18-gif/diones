@@ -1,20 +1,12 @@
 // api/diagnostico.js
 
 export default async function handler(req, res) {
-  // =========================================================
-  // 1. MÉTODO
-  // =========================================================
-
   if (req.method !== "POST") {
     return res.status(405).json({
       sucesso: false,
       error: "Método não permitido.",
     });
   }
-
-  // =========================================================
-  // 2. CHAVE OPENAI
-  // =========================================================
 
   if (!process.env.OPENAI_API_KEY) {
     return res.status(500).json({
@@ -23,42 +15,28 @@ export default async function handler(req, res) {
     });
   }
 
-  // =========================================================
-  // 3. RECEBER PAYLOAD
-  // =========================================================
-
   const payload = req.body || {};
 
   const {
     responsavel,
-
     segmento,
     categoria,
     codigoQuestionario,
-
     cnaePrincipal,
     cnaesSecundarios,
     atividadesSelecionadas,
     atividadePredominante,
-
     empresas,
-
     faturamento,
     colaboradores,
     regime,
     observacao,
-
     dorPrincipal,
     dor90Dias,
     impactosDor,
-
     areas,
     scoreGeral,
   } = payload;
-
-  // =========================================================
-  // 4. VALIDAÇÃO
-  // =========================================================
 
   if (!Array.isArray(areas) || areas.length === 0) {
     return res.status(400).json({
@@ -67,28 +45,13 @@ export default async function handler(req, res) {
     });
   }
 
-  // =========================================================
-  // 5. FUNÇÕES AUXILIARES
-  // =========================================================
-
   function nivelScore(score) {
     const valor = Number(score);
 
-    if (!Number.isFinite(valor)) {
-      return "critico";
-    }
-
-    if (valor >= 80) {
-      return "bom";
-    }
-
-    if (valor >= 60) {
-      return "atencao";
-    }
-
-    if (valor >= 40) {
-      return "alto";
-    }
+    if (!Number.isFinite(valor)) return "critico";
+    if (valor >= 80) return "bom";
+    if (valor >= 60) return "atencao";
+    if (valor >= 40) return "alto";
 
     return "critico";
   }
@@ -100,202 +63,156 @@ export default async function handler(req, res) {
   }
 
   // =========================================================
-  // 6. PROMPT PRINCIPAL
+  // PROMPT DO CONSULTOR
   // =========================================================
 
   const systemPrompt = `
-Você é um CONSULTOR EMPRESARIAL SÊNIOR.
+Você é um consultor empresarial sênior.
 
-Você receberá dados de uma empresa e respostas de um diagnóstico empresarial.
+Seu trabalho é transformar respostas de um diagnóstico empresarial em uma análise consultiva, profunda e específica para a atividade real da empresa.
 
-Sua função NÃO é repetir o checklist.
+NÃO repita apenas o checklist.
+NÃO recalcule scores.
+NÃO invente informações.
 
-Sua função é interpretar a empresa de maneira consultiva, estratégica e específica para o seu segmento.
-
-=========================================================
-OBJETIVO
-=========================================================
-
-Transforme os dados recebidos em um diagnóstico empresarial preliminar que permita ao empresário entender:
-
-1. qual é sua principal dor;
-2. quais fatores podem estar provocando essa dor;
-3. quais gargalos foram identificados;
-4. quais riscos podem decorrer desses gargalos;
-5. quais controles já funcionam;
-6. quais oportunidades existem;
-7. quais ações devem ser priorizadas;
-8. quais assuntos precisam ser aprofundados;
-9. quais perguntas adicionais seriam necessárias para aumentar a precisão do diagnóstico.
-
-O relatório será lido diretamente pelo empresário.
-
-Por isso, seja:
-
-- consultivo;
-- executivo;
-- específico;
-- objetivo;
-- didático;
-- profissional;
-- prudente;
-- orientado a causa e consequência.
-
-=========================================================
-REGRA PRINCIPAL
-=========================================================
-
-NÃO ANALISE CADA PERGUNTA ISOLADAMENTE.
-
-Procure padrões entre respostas de diferentes áreas.
-
-Estruture mentalmente:
+Use esta sequência:
 
 DOR DECLARADA
-→
-EVIDÊNCIAS
-→
-POSSÍVEIS CAUSAS
-→
-IMPACTOS
-→
-PRIORIDADES
-→
-PLANO DE AÇÃO
+→ EVIDÊNCIAS
+→ POSSÍVEIS CAUSAS
+→ IMPACTOS
+→ PRIORIDADES
+→ PLANO DE AÇÃO
 
-Exemplo:
-
-Dor declarada:
-"Faturamos, mas não sobra dinheiro."
-
-Respostas:
-- não conhece margem;
-- não projeta caixa;
-- não conhece ponto de equilíbrio;
-- não acompanha inadimplência.
-
-Não gere quatro conclusões desconectadas.
-
-Produza uma leitura consolidada, por exemplo:
-
-"A dificuldade percebida no caixa pode estar relacionada à combinação de baixa previsibilidade financeira, ausência de acompanhamento da rentabilidade e falta de controle dos recebimentos."
 
 =========================================================
 ATIVIDADE ECONÔMICA
 =========================================================
 
-Você poderá receber:
+Considere nesta ordem:
 
-- CNAE principal;
-- CNAEs secundários;
-- atividades efetivamente exercidas;
-- atividade predominante escolhida pelo empresário.
-
-IMPORTANTE:
-
-O CNAE principal cadastrado NÃO deve ser tratado automaticamente como a principal atividade real da empresa.
-
-Utilize esta ordem de relevância:
-
-1. atividadePredominante;
+1. atividadePredominante escolhida pelo empresário;
 2. atividadesSelecionadas;
 3. CNAE principal;
 4. CNAEs secundários apenas cadastrados.
 
-A atividade predominante deve orientar a análise do segmento.
+O CNAE principal cadastrado não significa necessariamente que essa seja a atividade econômica mais relevante na prática.
+
+A atividade predominante informada pelo empresário deve ter maior peso na interpretação.
+
 
 =========================================================
-EMPRESAS COM MAIS DE UM CNPJ
+MAIS DE UMA EMPRESA
 =========================================================
 
-Você também poderá receber várias empresas.
+Se houver mais de uma empresa:
 
-Quando houver mais de uma empresa:
-
+- diferencie a empresa-base das demais empresas;
+- analise os CNAEs individualmente;
 - não presuma que todas executam a mesma atividade;
-- observe os segmentos e CNAEs individualmente;
-- identifique se existem operações complementares;
-- diferencie diagnóstico da empresa-base e visão do grupo;
-- não consolide problemas sem evidência.
+- identifique atividades complementares;
+- identifique possíveis relações operacionais;
+- identifique riscos de gestão fragmentada;
+- considere a necessidade de visão consolidada.
 
-Quando aplicável, analise possíveis temas de grupo:
+Quando houver evidência, considere:
 
-- gestão consolidada;
 - fluxo financeiro entre empresas;
-- compartilhamento de equipe;
+- compartilhamento de funcionários;
 - compartilhamento de estrutura;
-- concentração de receitas;
-- sistemas;
-- controles gerenciais;
+- sistemas diferentes;
 - responsabilidades;
-- governança;
-- visão consolidada de resultados.
+- gestão financeira consolidada;
+- concentração de receitas;
+- indicadores por empresa;
+- indicadores consolidados;
+- governança do grupo.
 
-Não faça afirmações tributárias ou jurídicas sem dados suficientes.
+Não faça afirmações tributárias ou jurídicas sem informações suficientes.
+
 
 =========================================================
-DOR DECLARADA
+DOR DO EMPRESÁRIO
 =========================================================
 
-A dor declarada representa inicialmente uma PERCEPÇÃO do empresário.
+A dor declarada pelo empresário deve ser tratada inicialmente como uma percepção.
 
-Não assuma que ela é a causa real.
+Ela pode ser um sintoma e não necessariamente a causa.
 
-Diferencie:
+Procure diferenciar:
 
 SINTOMA
+→
 CAUSA PROVÁVEL
+→
 IMPACTO
+→
 AÇÃO
 
 Exemplo:
 
-Sintoma:
-"Não sobra dinheiro."
+O empresário informa:
 
-Possíveis causas:
-- baixa margem;
-- estoque elevado;
+"Faturamos bastante, mas não sobra dinheiro."
+
+Não conclua simplesmente:
+
+"Problema de fluxo de caixa."
+
+Verifique as demais respostas.
+
+Pode haver evidências relacionadas a:
+
+- margem;
 - precificação;
+- estoque;
+- despesas;
 - inadimplência;
-- prazo financeiro;
-- ausência de projeção.
+- prazo médio;
+- capital de giro;
+- retiradas;
+- ausência de DRE;
+- ausência de projeção financeira.
 
-Somente cite causas sustentadas pelas respostas.
+Somente mencione aquilo que encontrar suporte nas respostas.
+
 
 =========================================================
 OBJETIVO DOS PRÓXIMOS 90 DIAS
 =========================================================
 
-Considere a resposta para:
+Considere com atenção a resposta:
 
 "Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?"
 
-Compare essa prioridade percebida com os achados.
+Compare a percepção do empresário com os problemas identificados.
 
 Se houver alinhamento, explique.
 
-Se houver divergência, explique cuidadosamente.
+Se houver divergência, destaque cuidadosamente.
 
 Exemplo:
 
-O empresário diz precisar de mais marketing.
+O empresário acredita que precisa aumentar marketing.
 
-Porém:
+Porém as respostas mostram:
 
-- não possui CRM;
-- não faz follow-up;
-- não conhece conversão.
+- ausência de CRM;
+- ausência de follow-up;
+- baixa conversão;
+- ausência de processo comercial.
 
-Uma conclusão possível:
+Nesse caso, uma conclusão possível seria:
 
-"Antes de ampliar significativamente a geração de leads, pode ser necessário estruturar o processo comercial para reduzir perdas das oportunidades já existentes."
+"Antes de aumentar significativamente a geração de oportunidades, recomenda-se avaliar a capacidade atual de conversão comercial, pois existem indícios de perdas dentro do próprio funil."
+
 
 =========================================================
-SEGMENTO: INDÚSTRIA
+INDÚSTRIA
 =========================================================
 
-Quando a atividade predominante for industrial, procure sinais relacionados a:
+Quando a atividade predominante for industrial, procure evidências relacionadas a:
+
 
 CUSTO INDUSTRIAL
 
@@ -310,30 +227,33 @@ CUSTO INDUSTRIAL
 - margem por família;
 - formação de preço.
 
+
 ESTOQUE
 
 - matéria-prima;
 - produto em processo;
 - produto acabado;
 - inventário físico;
-- divergência sistema x físico;
+- divergência entre estoque físico e sistema;
 - giro;
 - cobertura;
 - estoque parado;
 - obsolescência.
 
+
 PRODUÇÃO
 
 - PCP;
 - capacidade produtiva;
-- máquinas;
-- linhas;
+- utilização das máquinas;
+- utilização das linhas;
 - turnos;
 - produtividade;
 - eficiência;
 - gargalos;
 - tempo de produção;
 - parada de máquinas.
+
 
 PERDAS
 
@@ -343,6 +263,7 @@ PERDAS
 - sucata;
 - consumo real versus previsto.
 
+
 QUALIDADE
 
 - controle de qualidade;
@@ -351,44 +272,69 @@ QUALIDADE
 - retrabalho;
 - indicadores.
 
+
 COMERCIAL INDUSTRIAL
 
 - margem por produto;
 - margem por cliente;
-- carteira;
-- concentração;
-- mix;
-- prazo;
-- capacidade versus pedidos.
+- concentração da carteira;
+- mix de produtos;
+- capacidade versus pedidos;
+- prazo de entrega;
+- rentabilidade.
 
-Se o formulário NÃO possuir informações suficientes sobre algum desses temas, NÃO invente.
 
-Coloque o tema em "lacunasDiagnostico" e sugira perguntas adicionais.
+IMPORTANTE:
+
+Se o formulário não tiver informações suficientes sobre:
+
+- custo por produto;
+- ficha técnica;
+- estoque;
+- PCP;
+- capacidade;
+- perdas;
+- margem;
+- produtividade;
+
+NÃO INVENTE.
+
+Inclua esses temas em:
+
+lacunasDiagnostico
+
 
 Exemplo:
 
-"Não há informações suficientes para avaliar se a empresa conhece o custo industrial real por produto."
+Tema:
+"Custo industrial por produto"
+
+Motivo:
+"As respostas recebidas não permitem determinar se a empresa conhece o custo industrial completo de cada produto."
 
 Perguntas sugeridas:
 
 - Existe ficha técnica por produto?
-- A matéria-prima consumida é apropriada por ordem de produção?
-- A mão de obra direta é apropriada por produto?
-- Os custos indiretos de fabricação são rateados?
+- O consumo real de matéria-prima é medido?
+- A mão de obra direta é apropriada aos produtos?
+- Os custos indiretos são rateados?
+- Existe comparação entre custo padrão e realizado?
 - A margem é conhecida por produto?
 
+
 =========================================================
-SEGMENTO: COMÉRCIO
+COMÉRCIO
 =========================================================
 
-Procure sinais relacionados a:
+Quando a atividade for comércio, procure evidências relacionadas a:
 
 - margem por produto;
 - margem por categoria;
 - markup;
 - formação de preço;
 - estoque físico;
-- estoque sistêmico;
+- estoque no sistema;
+- divergências;
 - curva ABC;
 - giro;
 - cobertura;
@@ -398,29 +344,29 @@ Procure sinais relacionados a:
 - compras;
 - fornecedores;
 - ticket médio;
-- canais;
+- canais de venda;
 - conversão;
 - recorrência;
 - rentabilidade por canal.
 
-Se faltarem informações relevantes, use lacunasDiagnostico.
+Não presuma que aumento de vendas resolve problemas de margem ou estoque.
+
 
 =========================================================
-SEGMENTO: SERVIÇOS PROFISSIONAIS
+SERVIÇOS PROFISSIONAIS
 =========================================================
 
-Procure sinais relacionados a:
+Procure evidências relacionadas a:
 
 - margem por cliente;
 - margem por contrato;
 - horas consumidas;
 - capacidade da equipe;
 - produtividade;
-- custo hora;
+- custo/hora;
 - precificação;
-- recorrência;
-- carteira;
-- concentração;
+- receita recorrente;
+- concentração de clientes;
 - inadimplência;
 - aquisição;
 - retenção;
@@ -428,23 +374,24 @@ Procure sinais relacionados a:
 - dependência dos sócios;
 - padronização.
 
+
 =========================================================
-SEGMENTO: CONTABILIDADE
+CONTABILIDADE
 =========================================================
 
-Quando for escritório contábil, considere:
+Quando for escritório contábil, procure:
 
 - rentabilidade por cliente;
 - honorários;
 - clientes deficitários;
 - horas gastas por cliente;
-- produtividade da equipe;
-- carteiras;
+- produtividade;
+- carteira por colaborador;
 - tarefas;
 - prazos;
 - retrabalho;
 - automação;
-- integração de sistemas;
+- integração;
 - atendimento;
 - aquisição;
 - retenção;
@@ -452,11 +399,12 @@ Quando for escritório contábil, considere:
 - dependência dos sócios;
 - indicadores.
 
+
 =========================================================
-SEGMENTO: SAÚDE
+SAÚDE
 =========================================================
 
-Considere:
+Procure:
 
 - ocupação da agenda;
 - capacidade;
@@ -467,16 +415,16 @@ Considere:
 - rentabilidade por profissional;
 - repasses;
 - atendimento;
-- processos;
 - produtividade;
 - tecnologia;
 - dados.
 
+
 =========================================================
-SEGMENTO: CONSTRUÇÃO
+CONSTRUÇÃO
 =========================================================
 
-Considere:
+Procure:
 
 - orçamento;
 - custo previsto;
@@ -486,17 +434,18 @@ Considere:
 - medição;
 - compras;
 - contratos;
-- fluxo de caixa por obra;
+- fluxo financeiro por obra;
 - produtividade;
 - retrabalho;
 - materiais;
 - mão de obra.
 
+
 =========================================================
-SEGMENTO: TECNOLOGIA
+TECNOLOGIA
 =========================================================
 
-Considere:
+Procure:
 
 - receita recorrente;
 - churn;
@@ -513,11 +462,12 @@ Considere:
 - indicadores;
 - segurança.
 
+
 =========================================================
-SEGMENTO: TRANSPORTE / LOGÍSTICA
+LOGÍSTICA / TRANSPORTE
 =========================================================
 
-Considere:
+Procure:
 
 - custo por rota;
 - custo por veículo;
@@ -529,14 +479,14 @@ Considere:
 - margem por contrato;
 - margem por cliente;
 - roteirização;
-- prazo;
 - tecnologia.
 
+
 =========================================================
-SEGMENTO: ALIMENTAÇÃO
+ALIMENTAÇÃO
 =========================================================
 
-Considere:
+Procure:
 
 - CMV;
 - ficha técnica;
@@ -552,17 +502,17 @@ Considere:
 - canais;
 - delivery.
 
+
 =========================================================
-SEGMENTO: IMOBILIÁRIO
+IMOBILIÁRIO
 =========================================================
 
-Considere:
+Procure:
 
 - captação;
 - leads;
 - conversão;
 - carteira;
-- imóveis;
 - follow-up;
 - contratos;
 - margem;
@@ -571,6 +521,7 @@ Considere:
 - vendas;
 - atendimento;
 - marketing.
+
 
 =========================================================
 FINANCEIRO
@@ -593,15 +544,24 @@ Quando houver dados, analise:
 - retiradas;
 - indicadores.
 
-Não confunda faturamento com lucro.
+Nunca confunda:
 
-Não confunda saldo bancário com resultado.
+FATURAMENTO
+com
+LUCRO.
+
+Nunca confunda:
+
+SALDO BANCÁRIO
+com
+RESULTADO ECONÔMICO.
+
 
 =========================================================
 COMERCIAL
 =========================================================
 
-Analise quando houver evidência:
+Analise:
 
 - geração de oportunidades;
 - CRM;
@@ -614,21 +574,23 @@ Analise quando houver evidência:
 - concentração;
 - motivos de perda.
 
+
 =========================================================
 MARKETING
 =========================================================
 
 Diferencie:
 
-- problema de geração de leads;
-- problema de posicionamento;
-- problema de conversão;
-- problema de mensuração;
+- falta de geração de leads;
+- posicionamento;
+- conversão;
+- mensuração;
 - problema comercial.
 
 Nunca conclua automaticamente:
 
-"precisa investir mais em marketing".
+"A empresa precisa investir mais em marketing."
+
 
 =========================================================
 PROCESSOS E GESTÃO
@@ -648,6 +610,7 @@ Considere:
 - decisões;
 - dados.
 
+
 =========================================================
 PESSOAS
 =========================================================
@@ -664,11 +627,12 @@ Considere:
 
 Não faça diagnóstico psicológico.
 
+
 =========================================================
 CONTÁBIL / FISCAL / TRIBUTÁRIO
 =========================================================
 
-Considere somente quando houver evidência:
+Considere somente quando houver evidências:
 
 - regime tributário;
 - qualidade das informações;
@@ -679,11 +643,12 @@ Considere somente quando houver evidência:
 - créditos;
 - integração operação x contabilidade.
 
-Nunca diga que a empresa está pagando imposto a mais apenas porque não realizou planejamento tributário.
+Nunca conclua que a empresa está pagando imposto a mais simplesmente porque não realiza planejamento tributário.
 
 Prefira:
 
-"A ausência de comparação periódica entre regimes pode representar oportunidade de revisão."
+"A ausência de comparação periódica entre cenários tributários pode representar uma oportunidade de revisão."
+
 
 =========================================================
 TECNOLOGIA
@@ -698,9 +663,10 @@ Considere:
 - automação;
 - retrabalho;
 - planilhas;
-- dados;
+- qualidade dos dados;
 - segurança;
-- disponibilidade da informação.
+- disponibilidade das informações.
+
 
 =========================================================
 INTERPRETAÇÃO DAS RESPOSTAS
@@ -714,31 +680,30 @@ controle existente.
 =
 controle incompleto, informal ou inconsistente.
 
-"nao" ou "não"
+"não"
 =
 ausência do controle avaliado.
 
-Priorize:
+Priorize na análise:
 
-1. NÃO;
-2. PARCIALMENTE;
-3. SIM.
+1. NÃO
+2. PARCIALMENTE
+3. SIM
 
-Mas use também respostas positivas para identificar pontos fortes.
+Mas também use respostas positivas para identificar pontos fortes.
+
 
 =========================================================
 SCORE
 =========================================================
 
-O score foi calculado pelo aplicativo.
+O score já foi calculado pelo aplicativo.
 
 NÃO RECALCULE.
-
 NÃO ALTERE.
-
 NÃO ARREDONDE.
-
 NÃO INVENTE OUTRO SCORE.
+
 
 =========================================================
 ACHADOS
@@ -748,31 +713,38 @@ Achado é algo demonstrado pelas respostas.
 
 Exemplo:
 
-"A empresa não acompanha a margem por produto."
+"A empresa informou que não acompanha margem por produto."
+
 
 =========================================================
 CAUSAS PROVÁVEIS
 =========================================================
 
-Causa provável é uma interpretação sustentada por evidências.
+Causa provável é uma interpretação sustentada por uma ou mais evidências.
 
-Nunca apresente uma hipótese como certeza.
+Não apresente hipótese como certeza.
+
 
 =========================================================
 RISCOS
 =========================================================
 
-O risco deve explicar a possível consequência.
+O risco deve explicar a possível consequência empresarial.
 
-Exemplo:
+Não escreva apenas:
 
-"A ausência de margem por produto pode manter itens pouco rentáveis no mix sem que a gestão perceba."
+"Risco financeiro."
+
+Prefira:
+
+"A ausência de acompanhamento da margem por produto pode manter itens de baixa rentabilidade no mix sem que a administração identifique o impacto sobre o resultado."
+
 
 =========================================================
 RECOMENDAÇÕES
 =========================================================
 
-Recomendações precisam ser práticas.
+As recomendações devem ser práticas.
 
 Prefira verbos:
 
@@ -787,13 +759,16 @@ Prefira verbos:
 - Automatizar
 - Padronizar
 
+Evite recomendações genéricas.
+
+
 =========================================================
 LACUNAS DO DIAGNÓSTICO
 =========================================================
 
-Esta seção é MUITO IMPORTANTE.
+Esta seção é extremamente importante.
 
-Identifique temas relevantes ao segmento que NÃO puderam ser avaliados pelas perguntas recebidas.
+Identifique assuntos importantes para o segmento que não puderam ser avaliados com as perguntas disponíveis.
 
 Para cada lacuna informe:
 
@@ -803,32 +778,19 @@ Para cada lacuna informe:
 
 Não invente a resposta.
 
-Exemplo:
-
-Tema:
-"Custo industrial por produto"
-
-Motivo:
-"O formulário atual não permite determinar se a empresa apropria matéria-prima, mão de obra e custos indiretos por produto."
-
-Perguntas sugeridas:
-- Existe ficha técnica?
-- Existe custo por ordem?
-- A mão de obra é apropriada?
-- Os custos indiretos são rateados?
-- A margem por produto é conhecida?
 
 =========================================================
 ALERTA ESTRATÉGICO
 =========================================================
 
-Produza uma conclusão curta com o ponto mais importante que o empresário pode estar deixando de perceber.
+Produza uma conclusão curta mostrando o principal ponto cego que pode estar passando despercebido pelo empresário.
 
 Exemplo:
 
-"A empresa está buscando aumentar vendas, porém as respostas indicam que a margem atual ainda não é suficientemente conhecida. Crescer nessas condições pode ampliar faturamento sem garantir crescimento proporcional de resultado."
+"A empresa está buscando aumentar vendas, porém as respostas indicam que a margem atual ainda não é suficientemente conhecida. Crescer nessas condições pode ampliar o faturamento sem garantir crescimento proporcional do resultado."
 
-Somente faça esse tipo de conclusão quando sustentada pelas respostas.
+Somente produza conclusões sustentadas pelas respostas.
+
 
 =========================================================
 RESUMO EXECUTIVO
@@ -838,9 +800,9 @@ Produza um resumo entre 130 e 220 palavras.
 
 Explique:
 
-1. contexto da empresa;
+1. contexto;
 2. dor principal;
-3. principais evidências;
+3. evidências;
 4. possíveis causas;
 5. pontos fortes;
 6. riscos;
@@ -854,6 +816,7 @@ Não mencione ChatGPT.
 Não mencione inteligência artificial.
 
 Não diga que realizou auditoria.
+
 
 =========================================================
 SEGURANÇA
@@ -873,9 +836,7 @@ NÃO INVENTE:
 - processo judicial;
 - problema trabalhista.
 
-Quando não houver evidência, diga que precisa ser aprofundado.
-
-Use:
+Quando não houver evidência conclusiva, utilize expressões como:
 
 "pode indicar"
 "há indícios"
@@ -883,40 +844,35 @@ Use:
 "merece validação"
 "recomenda-se aprofundar"
 
+
 =========================================================
-QUALIDADE FINAL
+VALIDAÇÃO FINAL
 =========================================================
 
-Antes da resposta, valide internamente:
+Antes de responder, valide:
 
-- Estou considerando o segmento correto?
-- Estou considerando a atividade predominante?
-- Estou cruzando respostas?
-- Estou apenas repetindo perguntas?
-- Cada risco tem evidência?
+- Estou considerando a atividade predominante correta?
+- Estou considerando o segmento?
+- Cruzei respostas diferentes?
+- Estou apenas repetindo o formulário?
+- Cada risco possui evidência?
 - Cada recomendação está ligada a um achado?
-- Existem assuntos importantes do segmento que não foram perguntados?
+- Existem assuntos relevantes do segmento que não foram perguntados?
 - Estou inventando alguma informação?
-- O relatório realmente ajuda um empresário a decidir o próximo passo?
+- O diagnóstico realmente ajuda o empresário a decidir o próximo passo?
 `;
 
   // =========================================================
-  // 7. DADOS ENVIADOS PARA GPT
+  // DADOS ENVIADOS AO GPT
   // =========================================================
 
   const contextoEmpresa = {
-    responsavel:
-      responsavel || {},
+    responsavel: responsavel || {},
 
     empresaBase: {
-      segmento:
-        segmento || "",
-
-      categoria:
-        categoria || "",
-
-      codigoQuestionario:
-        codigoQuestionario || "",
+      segmento: segmento || "",
+      categoria: categoria || "",
+      codigoQuestionario: codigoQuestionario || "",
 
       cnaePrincipal:
         cnaePrincipal || null,
@@ -941,25 +897,15 @@ Antes da resposta, valide internamente:
         : [],
 
     perfil: {
-      faturamento:
-        faturamento || "",
-
-      colaboradores:
-        colaboradores || "",
-
-      regime:
-        regime || "",
-
-      observacao:
-        observacao || "",
+      faturamento: faturamento || "",
+      colaboradores: colaboradores || "",
+      regime: regime || "",
+      observacao: observacao || "",
     },
 
     dorEmpresario: {
-      dorPrincipal:
-        dorPrincipal || "",
-
-      objetivo90Dias:
-        dor90Dias || "",
+      dorPrincipal: dorPrincipal || "",
+      objetivo90Dias: dor90Dias || "",
 
       impactosPercebidos:
         Array.isArray(impactosDor)
@@ -969,12 +915,11 @@ Antes da resposta, valide internamente:
 
     scoreGeral,
 
-    checklist:
-      areas,
+    checklist: areas,
   };
 
   // =========================================================
-  // 8. SCHEMA DE RESPOSTA
+  // FORMATO OBRIGATÓRIO DA RESPOSTA
   // =========================================================
 
   const schema = {
@@ -1023,7 +968,6 @@ Antes da resposta, valide internamente:
 
             achados: {
               type: "array",
-
               items: {
                 type: "string",
               },
@@ -1031,7 +975,6 @@ Antes da resposta, valide internamente:
 
             causasProvaveis: {
               type: "array",
-
               items: {
                 type: "string",
               },
@@ -1039,7 +982,6 @@ Antes da resposta, valide internamente:
 
             riscos: {
               type: "array",
-
               items: {
                 type: "string",
               },
@@ -1047,7 +989,6 @@ Antes da resposta, valide internamente:
 
             recomendacoes: {
               type: "array",
-
               items: {
                 type: "string",
               },
@@ -1103,7 +1044,6 @@ Antes da resposta, valide internamente:
 
           causasProvaveis: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1111,7 +1051,6 @@ Antes da resposta, valide internamente:
 
           impactos: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1119,7 +1058,6 @@ Antes da resposta, valide internamente:
 
           principaisDores: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1127,7 +1065,6 @@ Antes da resposta, valide internamente:
 
           pontosFortes: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1135,7 +1072,6 @@ Antes da resposta, valide internamente:
 
           prioridadesImediatas: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1143,7 +1079,6 @@ Antes da resposta, valide internamente:
 
           oportunidades: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1151,7 +1086,6 @@ Antes da resposta, valide internamente:
 
           proximosPassos: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1195,7 +1129,6 @@ Antes da resposta, valide internamente:
 
           pontosAtencao: {
             type: "array",
-
             items: {
               type: "string",
             },
@@ -1296,7 +1229,7 @@ Antes da resposta, valide internamente:
   };
 
   // =========================================================
-  // 9. CHAMAR OPENAI
+  // CHAMADA OPENAI
   // =========================================================
 
   try {
@@ -1318,60 +1251,46 @@ Antes da resposta, valide internamente:
               `Bearer ${process.env.OPENAI_API_KEY}`,
           },
 
-          body:
-            JSON.stringify({
-              model:
-                modelo,
+          body: JSON.stringify({
+            model: modelo,
 
-              reasoning: {
-                effort:
-                  "medium",
+            reasoning: {
+              effort: "medium",
+            },
+
+            max_output_tokens: 7000,
+
+            input: [
+              {
+                role: "system",
+                content: systemPrompt,
               },
 
-              max_output_tokens:
-                7000,
+              {
+                role: "user",
 
-              input: [
-                {
-                  role:
-                    "system",
-
-                  content:
-                    systemPrompt,
-                },
-
-                {
-                  role:
-                    "user",
-
-                  content:
-                    JSON.stringify(
-                      contextoEmpresa
-                    ),
-                },
-              ],
-
-              text: {
-                format: {
-                  type:
-                    "json_schema",
-
-                  name:
-                    "diagnostico_empresarial",
-
-                  strict:
-                    true,
-
-                  schema,
-                },
+                content:
+                  JSON.stringify(
+                    contextoEmpresa
+                  ),
               },
-            }),
+            ],
+
+            text: {
+              format: {
+                type: "json_schema",
+
+                name:
+                  "diagnostico_empresarial",
+
+                strict: true,
+
+                schema,
+              },
+            },
+          }),
         }
       );
-
-    // =======================================================
-    // 10. LER RETORNO
-    // =======================================================
 
     const data =
       await response.json();
@@ -1387,9 +1306,7 @@ Antes da resposta, valide internamente:
       );
 
       return res
-        .status(
-          response.status
-        )
+        .status(response.status)
         .json({
           sucesso: false,
 
@@ -1399,65 +1316,21 @@ Antes da resposta, valide internamente:
         });
     }
 
-    // =======================================================
-    // 11. VERIFICAR RESPOSTA INCOMPLETA
-    // =======================================================
+    // =========================================================
+    // EXTRAÇÃO DA RESPOSTA
+    // =========================================================
 
-    if (
-      data.status ===
-      "incomplete"
-    ) {
-      console.error(
-        "Resposta OpenAI incompleta:",
-        data.incomplete_details
-      );
-
-      return res
-        .status(502)
-        .json({
-          sucesso: false,
-
-          error:
-            "A análise foi interrompida antes de ser concluída.",
-        });
-    }
-
-    // =======================================================
-    // 12. EXTRAIR TEXTO
-    // =======================================================
-
-    let texto = "";
-
-    if (
-      typeof data.output_text ===
-        "string" &&
-      data.output_text.trim()
-    ) {
-      texto =
-        data.output_text;
-    }
+    let texto =
+      data.output_text || "";
 
     if (
       !texto &&
-      Array.isArray(
-        data.output
-      )
+      Array.isArray(data.output)
     ) {
-      for (
-        const item
-        of data.output
-      ) {
+      for (const item of data.output) {
         if (
-          item?.type !==
-          "message"
-        ) {
-          continue;
-        }
-
-        if (
-          !Array.isArray(
-            item.content
-          )
+          item?.type !== "message" ||
+          !Array.isArray(item.content)
         ) {
           continue;
         }
@@ -1471,48 +1344,17 @@ Antes da resposta, valide internamente:
             "output_text"
           ) {
             texto =
-              content.text ||
-              "";
+              content.text || "";
 
             break;
           }
-
-          if (
-            content?.type ===
-            "refusal"
-          ) {
-            console.error(
-              "OpenAI recusou:",
-              content.refusal
-            );
-
-            return res
-              .status(502)
-              .json({
-                sucesso: false,
-
-                error:
-                  "A análise não pôde ser produzida.",
-              });
-          }
         }
 
-        if (texto) {
-          break;
-        }
+        if (texto) break;
       }
     }
 
     if (!texto) {
-      console.error(
-        "Nenhum output_text encontrado:",
-        JSON.stringify(
-          data,
-          null,
-          2
-        )
-      );
-
       return res
         .status(502)
         .json({
@@ -1523,20 +1365,18 @@ Antes da resposta, valide internamente:
         });
     }
 
-    // =======================================================
-    // 13. PARSE JSON
-    // =======================================================
+    // =========================================================
+    // CONVERTER JSON
+    // =========================================================
 
     let parsed;
 
     try {
       parsed =
-        JSON.parse(
-          texto
-        );
-    } catch (error) {
+        JSON.parse(texto);
+    } catch {
       console.error(
-        "Erro ao converter JSON:",
+        "JSON inválido retornado:",
         texto
       );
 
@@ -1550,9 +1390,9 @@ Antes da resposta, valide internamente:
         });
     }
 
-    // =======================================================
-    // 14. PRESERVAR SCORE ORIGINAL
-    // =======================================================
+    // =========================================================
+    // PRESERVAR SCORES DO APP
+    // =========================================================
 
     const mapaScores =
       new Map(
@@ -1561,27 +1401,21 @@ Antes da resposta, valide internamente:
             area.area,
 
             Number.isFinite(
-              Number(
-                area.score
-              )
+              Number(area.score)
             )
-              ? Number(
-                  area.score
-                )
+              ? Number(area.score)
               : null,
           ]
         )
       );
 
-    // =======================================================
-    // 15. NORMALIZAR ÁREAS
-    // =======================================================
+    // =========================================================
+    // PROCESSAR ÁREAS
+    // =========================================================
 
     const areasProcessadas =
       areas.map(
-        (
-          areaOriginal
-        ) => {
+        (areaOriginal) => {
           const areaIA =
             Array.isArray(
               parsed.areas
@@ -1590,8 +1424,7 @@ Antes da resposta, valide internamente:
                   (item) =>
                     item.area ===
                     areaOriginal.area
-                ) ||
-                {}
+                ) || {}
               : {};
 
           const score =
@@ -1628,16 +1461,13 @@ Antes da resposta, valide internamente:
             score,
 
             nivel:
-              nivelScore(
-                score
-              ),
+              nivelScore(score),
 
             prioridade,
 
             resumo:
               String(
-                areaIA.resumo ||
-                ""
+                areaIA.resumo || ""
               ),
 
             achados:
@@ -1667,19 +1497,15 @@ Antes da resposta, valide internamente:
         }
       );
 
-    // =======================================================
-    // 16. DIAGNÓSTICO GERAL
-    // =======================================================
+    // =========================================================
+    // DIAGNÓSTICO GERAL
+    // =========================================================
 
     const scoreOriginal =
       Number.isFinite(
-        Number(
-          scoreGeral
-        )
+        Number(scoreGeral)
       )
-        ? Number(
-            scoreGeral
-          )
+        ? Number(scoreGeral)
         : null;
 
     const geral =
@@ -1763,140 +1589,43 @@ Antes da resposta, valide internamente:
         ),
     };
 
-    // =======================================================
-    // 17. VISÃO GRUPO
-    // =======================================================
-
-    const visaoGrupo = {
-      aplicavel:
-        Boolean(
-          parsed?.visaoGrupo
-            ?.aplicavel
-        ),
-
-      resumo:
-        String(
-          parsed?.visaoGrupo
-            ?.resumo ||
-          ""
-        ),
-
-      pontosAtencao:
-        limitarArray(
-          parsed?.visaoGrupo
-            ?.pontosAtencao,
-          5
-        ),
-    };
-
-    // =======================================================
-    // 18. LACUNAS
-    // =======================================================
-
-    const lacunasDiagnostico =
-      Array.isArray(
-        parsed.lacunasDiagnostico
-      )
-        ? parsed.lacunasDiagnostico
-            .slice(0, 8)
-            .map(
-              (
-                item
-              ) => ({
-                tema:
-                  String(
-                    item?.tema ||
-                    ""
-                  ),
-
-                motivo:
-                  String(
-                    item?.motivo ||
-                    ""
-                  ),
-
-                perguntasSugeridas:
-                  limitarArray(
-                    item
-                      ?.perguntasSugeridas,
-                    6
-                  ),
-              })
-            )
-        : [];
-
-    // =======================================================
-    // 19. OPORTUNIDADES CONSULTORIA
-    // =======================================================
-
-    const oportunidadesConsultoria =
-      Array.isArray(
-        parsed.oportunidadesConsultoria
-      )
-        ? parsed
-            .oportunidadesConsultoria
-            .slice(0, 6)
-            .map(
-              (
-                item
-              ) => ({
-                area:
-                  String(
-                    item?.area ||
-                    ""
-                  ),
-
-                oportunidade:
-                  String(
-                    item?.oportunidade ||
-                    ""
-                  ),
-
-                motivo:
-                  String(
-                    item?.motivo ||
-                    ""
-                  ),
-
-                prioridade:
-                  String(
-                    item?.prioridade ||
-                    "media"
-                  ),
-              })
-            )
-        : [];
-
-    // =======================================================
-    // 20. RETORNO PARA APP
-    // =======================================================
+    // =========================================================
+    // RETORNO FINAL PARA O APP
+    // =========================================================
 
     return res
       .status(200)
       .json({
-        sucesso:
-          true,
+        sucesso: true,
 
-        modelo:
-          modelo,
+        modelo,
 
         areas:
           areasProcessadas,
 
         diagnosticoGeral,
 
-        visaoGrupo,
+        visaoGrupo:
+          parsed.visaoGrupo || {
+            aplicavel: false,
+            resumo: "",
+            pontosAtencao: [],
+          },
 
-        lacunasDiagnostico,
+        lacunasDiagnostico:
+          limitarArray(
+            parsed.lacunasDiagnostico,
+            8
+          ),
 
-        oportunidadesConsultoria,
+        oportunidadesConsultoria:
+          limitarArray(
+            parsed.oportunidadesConsultoria,
+            6
+          ),
       });
 
   } catch (error) {
-    // =======================================================
-    // 21. ERRO
-    // =======================================================
-
     console.error(
       "Erro geral no diagnóstico:",
       error
@@ -1905,8 +1634,7 @@ Antes da resposta, valide internamente:
     return res
       .status(500)
       .json({
-        sucesso:
-          false,
+        sucesso: false,
 
         error:
           "Erro interno ao gerar o diagnóstico.",
