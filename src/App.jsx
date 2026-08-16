@@ -795,6 +795,10 @@ export default function DiagnosticoPrototipo() {
         setIaResultado({
           areas: mapa,
           diagnosticoGeral: data.diagnosticoGeral || null,
+          visaoGrupo: data.visaoGrupo || null,
+          lacunasDiagnostico: data.lacunasDiagnostico || [],
+          oportunidadesConsultoria: data.oportunidadesConsultoria || [],
+          modelo: data.modelo || "",
         });
       }
 
@@ -1213,6 +1217,9 @@ export default function DiagnosticoPrototipo() {
           ...(iaResultado?.areas?.[a.label] || {}),
         })),
         diagnosticoGeral: iaResultado?.diagnosticoGeral || null,
+        visaoGrupo: iaResultado?.visaoGrupo || null,
+        lacunasDiagnostico: iaResultado?.lacunasDiagnostico || [],
+        oportunidadesConsultoria: iaResultado?.oportunidadesConsultoria || [],
         respostas: respostasDetalhadas,
       },
     };
@@ -1325,6 +1332,14 @@ export default function DiagnosticoPrototipo() {
   const pontosFortesIa = diagnosticoGeral?.pontosFortes || [];
   const prioridadesIa = diagnosticoGeral?.prioridadesImediatas || [];
   const oportunidadesIa = diagnosticoGeral?.oportunidades || [];
+  const causasProvaveisIa = diagnosticoGeral?.causasProvaveis || [];
+  const impactosIa = diagnosticoGeral?.impactos || [];
+  const proximosPassosIa = diagnosticoGeral?.proximosPassos || [];
+  const leituraDaDorIa = diagnosticoGeral?.leituraDaDor || "";
+  const alertaEstrategicoIa = diagnosticoGeral?.alertaEstrategico || "";
+  const visaoGrupoIa = iaResultado?.visaoGrupo || null;
+  const lacunasDiagnosticoIa = iaResultado?.lacunasDiagnostico || [];
+  const oportunidadesConsultoriaIa = iaResultado?.oportunidadesConsultoria || [];
 
 
   useEffect(() => {
@@ -1360,6 +1375,8 @@ export default function DiagnosticoPrototipo() {
     const areasDetalhadasHtml = areasComScore
       .map((a) => {
         const iaArea = iaResultado?.areas?.[a.label] || {};
+        const achados = iaArea.achados || [];
+        const causas = iaArea.causasProvaveis || [];
         const riscos = iaArea.riscos || [];
         const recomendacoes = iaArea.recomendacoes || [];
         const resumo = iaArea.resumo || "";
@@ -1378,6 +1395,14 @@ export default function DiagnosticoPrototipo() {
             ${resumo ? `<p class="area-resumo">${escaparHtml(resumo)}</p>` : ""}
 
             <div class="area-grid">
+              <div>
+                <h4>Achados</h4>
+                <ul>${listaHtml(achados, "Nenhum achado adicional registrado.")}</ul>
+              </div>
+              <div>
+                <h4>Causas prováveis</h4>
+                <ul>${listaHtml(causas, "Não foi possível determinar causas com segurança.")}</ul>
+              </div>
               <div>
                 <h4>Principais riscos</h4>
                 <ul>${listaHtml(riscos, "Nenhum risco relevante identificado nesta área.")}</ul>
@@ -1615,7 +1640,31 @@ export default function DiagnosticoPrototipo() {
     <div class="resumo">${escaparHtml(resumoExecutivo)}</div>
   ` : ""}
 
-  <h2>4. Visão executiva</h2>
+  ${leituraDaDorIa ? `
+    <h2>4. Leitura da dor declarada</h2>
+    <div class="resumo">${escaparHtml(leituraDaDorIa)}</div>
+  ` : ""}
+
+  ${alertaEstrategicoIa ? `
+    <h2>5. Alerta estratégico</h2>
+    <div class="box"><strong>${escaparHtml(alertaEstrategicoIa)}</strong></div>
+  ` : ""}
+
+  ${(causasProvaveisIa.length || impactosIa.length) ? `
+    <h2>6. Causas prováveis e impactos</h2>
+    <div class="area-grid">
+      <div class="box">
+        <h4>Causas prováveis</h4>
+        <ul>${listaHtml(causasProvaveisIa, "Não foi possível determinar causas com segurança.")}</ul>
+      </div>
+      <div class="box">
+        <h4>Impactos possíveis</h4>
+        <ul>${listaHtml(impactosIa, "Nenhum impacto adicional identificado.")}</ul>
+      </div>
+    </div>
+  ` : ""}
+
+  <h2>7. Visão executiva</h2>
   <div class="three-cols">
     <div class="mini">
       <strong>Principais dores</strong>
@@ -1631,28 +1680,28 @@ export default function DiagnosticoPrototipo() {
     </div>
   </div>
 
-  <h2>5. Índice de maturidade por área</h2>
+  <h2>8. Índice de maturidade por área</h2>
   <table>
     <thead><tr><th>Área</th><th>Score</th><th>Nível</th></tr></thead>
     <tbody>${areasResumoHtml}</tbody>
   </table>
 
-  <h2>6. Detalhamento por subtema</h2>
+  <h2>9. Detalhamento por subtema</h2>
   <table>
     <thead><tr><th>Área</th><th>Subtema</th><th>Score</th></tr></thead>
     <tbody>${subtemasHtml}</tbody>
   </table>
 
-  <h2>7. Diagnóstico detalhado</h2>
+  <h2>10. Diagnóstico detalhado</h2>
   ${areasDetalhadasHtml}
 
-  <h2>8. Oportunidades identificadas</h2>
+  <h2>11. Oportunidades identificadas</h2>
   <div class="box">
     <ul>${listaHtml(oportunidadesIa.length ? oportunidadesIa : recomendacoesFinal.map((r) => r.dica))}</ul>
   </div>
 
   ${regime !== "Não sei" && aliquota != null ? `
-    <h2>9. Referência tributária</h2>
+    <h2>12. Referência tributária</h2>
     <div class="box">
       <strong>Carga tributária estimada de referência:</strong> ${escaparHtml(String(aliquota))}%<br>
       <strong>Estimativa anual:</strong> ${escaparHtml(formatBRL(valorAnualImposto))}<br>
@@ -1661,8 +1710,45 @@ export default function DiagnosticoPrototipo() {
   ` : ""}
 
   ${observacao.trim() ? `
-    <h2>10. Observação do participante</h2>
+    <h2>13. Observação do participante</h2>
     <div class="box">${escaparHtml(observacao.trim())}</div>
+  ` : ""}
+
+  ${proximosPassosIa.length ? `
+    <h2>14. Próximos passos recomendados</h2>
+    <div class="box">
+      <ol>${listaHtml(proximosPassosIa)}</ol>
+    </div>
+  ` : ""}
+
+  ${visaoGrupoIa?.aplicavel ? `
+    <h2>15. Visão do grupo empresarial</h2>
+    <div class="box">
+      <p>${escaparHtml(visaoGrupoIa.resumo || "")}</p>
+      <ul>${listaHtml(visaoGrupoIa.pontosAtencao || [])}</ul>
+    </div>
+  ` : ""}
+
+  ${lacunasDiagnosticoIa.length ? `
+    <h2>16. Pontos que merecem aprofundamento</h2>
+    ${lacunasDiagnosticoIa.map((lacuna) => `
+      <div class="box" style="margin-bottom:8px;">
+        <strong>${escaparHtml(lacuna.tema || "Tema")}</strong>
+        <p>${escaparHtml(lacuna.motivo || "")}</p>
+        <ul>${listaHtml(lacuna.perguntasSugeridas || [])}</ul>
+      </div>
+    `).join("")}
+  ` : ""}
+
+  ${oportunidadesConsultoriaIa.length ? `
+    <h2>17. Oportunidades de aprofundamento profissional</h2>
+    ${oportunidadesConsultoriaIa.map((item) => `
+      <div class="box" style="margin-bottom:8px;">
+        <strong>${escaparHtml(item.oportunidade || item.area || "")}</strong><br>
+        <span>${escaparHtml(item.motivo || "")}</span><br>
+        <small>Prioridade: ${escaparHtml(item.prioridade || "")}</small>
+      </div>
+    `).join("")}
   ` : ""}
 
   <section class="cta">
@@ -2604,6 +2690,37 @@ export default function DiagnosticoPrototipo() {
                   </div>
                 )}
 
+                {leituraDaDorIa && (
+                  <div style={{ background: "#F7F8FB", borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 5px" }}>
+                      Leitura da principal dor
+                    </p>
+                    <p style={{ fontSize: 11.8, color: NAVY, margin: 0, lineHeight: 1.5 }}>{leituraDaDorIa}</p>
+                  </div>
+                )}
+
+                {alertaEstrategicoIa && (
+                  <div style={{ background: "#FAEEDA", borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 700, color: "#854F0B", textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 5px" }}>
+                      Alerta estratégico
+                    </p>
+                    <p style={{ fontSize: 11.8, color: "#854F0B", margin: 0, lineHeight: 1.5, fontWeight: 600 }}>{alertaEstrategicoIa}</p>
+                  </div>
+                )}
+
+                {causasProvaveisIa.length > 0 && (
+                  <div style={{ background: "#F7F8FB", borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 6px" }}>
+                      Possíveis causas
+                    </p>
+                    {causasProvaveisIa.slice(0, 4).map((item, i) => (
+                      <p key={i} style={{ fontSize: 11.5, color: NAVY, margin: i ? "5px 0 0" : 0, lineHeight: 1.4 }}>
+                        • {item}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 {pontosFortesIa.length > 0 && (
                   <div style={{ background: "#E1F5EE", borderRadius: 10, padding: 12, marginBottom: 14 }}>
                     <p style={{ fontSize: 10.5, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 6px" }}>
@@ -2734,6 +2851,46 @@ export default function DiagnosticoPrototipo() {
                     </div>
                   ))}
                 </div>
+
+                {proximosPassosIa.length > 0 && (
+                  <>
+                    <p style={sectionTitleStyle}>Próximos passos recomendados</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 16 }}>
+                      {proximosPassosIa.slice(0, 5).map((item, i) => (
+                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                          <CheckCircle2 size={14} color="#185FA5" style={{ marginTop: 2, flexShrink: 0 }} />
+                          <p style={{ fontSize: 11.8, color: NAVY, margin: 0, lineHeight: 1.4 }}>{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {visaoGrupoIa?.aplicavel && (
+                  <>
+                    <p style={sectionTitleStyle}>Visão do grupo empresarial</p>
+                    <div style={{ background: ICE, borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                      <p style={{ fontSize: 11.8, color: NAVY, margin: "0 0 6px", lineHeight: 1.45 }}>{visaoGrupoIa.resumo}</p>
+                      {(visaoGrupoIa.pontosAtencao || []).slice(0, 4).map((item, i) => (
+                        <p key={i} style={{ fontSize: 11.3, color: NAVY, margin: i ? "4px 0 0" : 0 }}>• {item}</p>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {lacunasDiagnosticoIa.length > 0 && (
+                  <>
+                    <p style={sectionTitleStyle}>O que ainda precisa ser aprofundado</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                      {lacunasDiagnosticoIa.slice(0, 4).map((lacuna, i) => (
+                        <div key={i} style={{ background: "#FFF3EF", borderRadius: 10, padding: 10 }}>
+                          <p style={{ fontSize: 11.3, color: NAVY, fontWeight: 700, margin: "0 0 3px" }}>{lacuna.tema}</p>
+                          <p style={{ fontSize: 10.8, color: MUTED, margin: 0, lineHeight: 1.4 }}>{lacuna.motivo}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 <p style={{ fontSize: 10.5, color: "#9AA3B5", fontStyle: "italic", margin: "0 0 16px", lineHeight: 1.4 }}>
                   Diagnóstico empresarial preliminar elaborado a partir das respostas fornecidas. Recomenda-se análise profissional individualizada para validação.
