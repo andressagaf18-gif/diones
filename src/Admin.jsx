@@ -12,6 +12,11 @@ import {
   ChevronRight,
   Target,
   Download,
+  Users,
+  Activity,
+  CheckCircle2,
+  Clock3,
+  Flame,
 } from "lucide-react";
 
 const NAVY = "#17233D";
@@ -2274,6 +2279,361 @@ function ListaDiagnosticos({
 }
 
 // =========================================================
+// LEADS / CRM
+// =========================================================
+
+function LeadsCRM({ token, onAbrirDiagnostico }) {
+  const [leads, setLeads] = useState([]);
+  const [resumo, setResumo] = useState({});
+  const [busca, setBusca] = useState("");
+  const [origem, setOrigem] = useState("");
+  const [statusDiagnostico, setStatusDiagnostico] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+
+  async function carregarLeads() {
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const params = new URLSearchParams();
+      params.set("limite", "200");
+
+      if (busca.trim()) params.set("busca", busca.trim());
+      if (origem) params.set("origem", origem);
+      if (statusDiagnostico) {
+        params.set("statusDiagnostico", statusDiagnostico);
+      }
+
+      const resposta = await fetch(
+        `/api/listar-leads?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await resposta.json().catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(
+          data?.error || "Não foi possível carregar os leads."
+        );
+      }
+
+      setLeads(Array.isArray(data.leads) ? data.leads : []);
+      setResumo(data.resumo || {});
+    } catch (error) {
+      setErro(error?.message || "Erro ao carregar leads.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregarLeads();
+  }, []);
+
+  const origensDisponiveis = useMemo(() => {
+    return [...new Set(leads.map((lead) => lead.origem).filter(Boolean))].sort();
+  }, [leads]);
+
+  function corStatus(status) {
+    if (status === "CONCLUIDO") return { bg: "#E1F5EE", color: "#0F6E56" };
+    if (status === "EM_PREENCHIMENTO") return { bg: "#FAEEDA", color: "#854F0B" };
+    if (status === "NAO_CONCLUIDO") return { bg: "#FCEBEB", color: "#791F1F" };
+    return { bg: "#EEF0F5", color: MUTED };
+  }
+
+  function labelStatus(status) {
+    const mapa = {
+      ACESSOU: "Acessou",
+      EM_PREENCHIMENTO: "Em preenchimento",
+      NAO_CONCLUIDO: "Não concluído",
+      CONCLUIDO: "Concluído",
+    };
+    return mapa[status] || status || "-";
+  }
+
+  function temperatura(lead) {
+    const mapa = {
+      MUITO_ALTA: "Muito alta",
+      ALTA: "Alta",
+      MEDIA: "Média",
+      BAIXA: "Baixa",
+    };
+    return mapa[lead.temperatura] || lead.temperatura || "-";
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))",
+          gap: 12,
+          marginBottom: 18,
+        }}
+      >
+        <Card>
+          <Users size={18} color={CORAL} />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>LEADS</div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>{resumo.total ?? 0}</div>
+        </Card>
+
+        <Card>
+          <Activity size={18} color="#854F0B" />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>
+            EM PREENCHIMENTO
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.emPreenchimento ?? 0}
+          </div>
+        </Card>
+
+        <Card>
+          <Clock3 size={18} color="#791F1F" />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>
+            NÃO CONCLUÍDOS
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.naoConcluidos ?? 0}
+          </div>
+        </Card>
+
+        <Card>
+          <CheckCircle2 size={18} color="#0F6E56" />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>CONCLUÍDOS</div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.concluidos ?? 0}
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ color: MUTED, fontSize: 10 }}>TAXA DE CONCLUSÃO</div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.taxaConclusao ?? 0}%
+          </div>
+        </Card>
+      </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && carregarLeads()}
+            placeholder="Buscar nome, empresa, CNPJ, telefone..."
+            style={{
+              flex: "1 1 280px",
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              fontFamily: BODY_FONT,
+            }}
+          />
+
+          <select
+            value={origem}
+            onChange={(e) => setOrigem(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todas as origens</option>
+            {origensDisponiveis.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+
+          <select
+            value={statusDiagnostico}
+            onChange={(e) => setStatusDiagnostico(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todos os status</option>
+            <option value="ACESSOU">Acessou</option>
+            <option value="EM_PREENCHIMENTO">Em preenchimento</option>
+            <option value="NAO_CONCLUIDO">Não concluído</option>
+            <option value="CONCLUIDO">Concluído</option>
+          </select>
+
+          <Botao onClick={carregarLeads}>
+            <Search size={14} /> Filtrar
+          </Botao>
+
+          <Botao
+            secundario
+            onClick={() => {
+              setBusca("");
+              setOrigem("");
+              setStatusDiagnostico("");
+              setTimeout(carregarLeads, 0);
+            }}
+          >
+            Limpar
+          </Botao>
+
+          <Botao secundario onClick={carregarLeads}>
+            <RefreshCcw size={14} /> Atualizar
+          </Botao>
+        </div>
+      </Card>
+
+      {erro && (
+        <div
+          style={{
+            background: "#FAECE7",
+            color: "#993C1D",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          {erro}
+        </div>
+      )}
+
+      {carregando ? (
+        <Card>Carregando leads...</Card>
+      ) : leads.length === 0 ? (
+        <Card>Nenhum lead encontrado.</Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          {leads.map((lead) => {
+            const status = corStatus(lead.statusDiagnostico);
+            const progresso = Math.max(
+              0,
+              Math.min(100, Number(lead.progressoPercentual) || 0)
+            );
+
+            return (
+              <Card key={lead.leadId} style={{ padding: 15 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "minmax(230px,1.7fr) minmax(130px,.8fr) minmax(170px,1fr) minmax(150px,.8fr)",
+                    gap: 14,
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: 13.5 }}>
+                      {lead.razaoSocial || lead.nome || "Lead sem identificação"}
+                    </strong>
+
+                    <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4 }}>
+                      {lead.nome || "-"}
+                      {lead.telefone ? ` · ${lead.telefone}` : ""}
+                    </div>
+
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>
+                      {lead.origem || "direto"}
+                      {lead.campanha ? ` · ${lead.campanha}` : ""}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: status.bg,
+                        color: status.color,
+                        borderRadius: 20,
+                        padding: "5px 8px",
+                        fontSize: 9.5,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {labelStatus(lead.statusDiagnostico)}
+                    </span>
+
+                    <div style={{ fontSize: 9.5, color: MUTED, marginTop: 6 }}>
+                      {lead.etapaAtual || "-"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        height: 8,
+                        background: "#E9EDF5",
+                        borderRadius: 20,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${progresso}%`,
+                          height: "100%",
+                          background: CORAL,
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 5 }}>
+                      {progresso}% · última atividade {formatarData(lead.ultimaAtividade)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                      }}
+                    >
+                      <Flame size={14} color={CORAL} />
+                      {temperatura(lead)}
+                    </div>
+
+                    {lead.diagnosticoId ? (
+                      <button
+                        type="button"
+                        onClick={() => onAbrirDiagnostico(lead.diagnosticoId)}
+                        style={{
+                          marginTop: 7,
+                          border: 0,
+                          padding: 0,
+                          background: "transparent",
+                          color: CORAL,
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Abrir diagnóstico →
+                      </button>
+                    ) : (
+                      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 7 }}>
+                        Diagnóstico ainda não vinculado
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
 // DETALHE DO DIAGNÓSTICO
 // =========================================================
 
@@ -3755,78 +4115,172 @@ function ListaInterna({
 // =========================================================
 
 export default function Admin() {
-  const [
-    token,
-    setToken,
-  ] = useState(
-    () =>
-      sessionStorage.getItem(
-        "finder_admin_token"
-      ) || ""
+  const [token, setToken] = useState(
+    () => sessionStorage.getItem("finder_admin_token") || ""
   );
 
-  const [
-    diagnosticoId,
-    setDiagnosticoId,
-  ] = useState(null);
+  const [diagnosticoId, setDiagnosticoId] = useState(null);
+  const [aba, setAba] = useState("leads");
 
   function sair() {
-    sessionStorage.removeItem(
-      "finder_admin_token"
-    );
-
+    sessionStorage.removeItem("finder_admin_token");
     setToken("");
-    setDiagnosticoId(
-      null
-    );
+    setDiagnosticoId(null);
+    setAba("leads");
   }
 
   if (!token) {
+    return <LoginAdmin onLogin={setToken} />;
+  }
+
+  if (diagnosticoId) {
     return (
-      <LoginAdmin
-        onLogin={
-          setToken
-        }
+      <DetalheDiagnostico
+        token={token}
+        id={diagnosticoId}
+        onVoltar={() => setDiagnosticoId(null)}
       />
     );
   }
 
-  if (
-    diagnosticoId
-  ) {
+  if (aba === "diagnosticos") {
     return (
-      <DetalheDiagnostico
-        token={
-          token
-        }
+      <div>
+        <div
+          style={{
+            background: "#101A2F",
+            padding: "9px 22px",
+            display: "flex",
+            justifyContent: "center",
+            gap: 8,
+            fontFamily: BODY_FONT,
+          }}
+        >
+          <Botao secundario onClick={() => setAba("leads")}>
+            <Users size={14} /> Leads / CRM
+          </Botao>
 
-        id={
-          diagnosticoId
-        }
+          <Botao onClick={() => setAba("diagnosticos")}>
+            <Building2 size={14} /> Diagnósticos
+          </Botao>
+        </div>
 
-        onVoltar={() =>
-          setDiagnosticoId(
-            null
-          )
-        }
-      />
+        <ListaDiagnosticos
+          token={token}
+          onAbrir={setDiagnosticoId}
+          onLogout={sair}
+        />
+      </div>
     );
   }
 
   return (
-    <ListaDiagnosticos
-      token={
-        token
-      }
+    <div
+      style={{
+        minHeight: "100vh",
+        background: BG,
+        fontFamily: BODY_FONT,
+        color: NAVY,
+      }}
+    >
+      <header
+        style={{
+          background: NAVY,
+          color: WHITE,
+          padding: "18px 28px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 18,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+            <img
+              src="/finder-logo.png"
+              alt="Finder of Solutions"
+              style={{
+                maxWidth: 150,
+                maxHeight: 45,
+                objectFit: "contain",
+                background: WHITE,
+                padding: 5,
+                borderRadius: 7,
+              }}
+            />
 
-      onAbrir={
-        setDiagnosticoId
-      }
+            <div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontFamily: DISPLAY_FONT,
+                  fontSize: 24,
+                }}
+              >
+                Leads / CRM
+              </h1>
 
-      onLogout={
-        sair
-      }
-    />
+              <p style={{ margin: "3px 0 0", fontSize: 11, opacity: 0.7 }}>
+                Funil do diagnóstico empresarial
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={sair}
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,.30)",
+              color: WHITE,
+              borderRadius: 9,
+              padding: "8px 11px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <LogOut size={15} /> Sair
+          </button>
+        </div>
+      </header>
+
+      <div
+        style={{
+          background: "#101A2F",
+          padding: "9px 22px",
+          display: "flex",
+          justifyContent: "center",
+          gap: 8,
+        }}
+      >
+        <Botao onClick={() => setAba("leads")}>
+          <Users size={14} /> Leads / CRM
+        </Botao>
+
+        <Botao secundario onClick={() => setAba("diagnosticos")}>
+          <Building2 size={14} /> Diagnósticos
+        </Botao>
+      </div>
+
+      <main
+        style={{
+          maxWidth: 1320,
+          margin: "0 auto",
+          padding: "26px 22px 50px",
+        }}
+      >
+        <LeadsCRM
+          token={token}
+          onAbrirDiagnostico={setDiagnosticoId}
+        />
+      </main>
+    </div>
   );
 }
 
