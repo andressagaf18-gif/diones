@@ -1303,16 +1303,75 @@ export default function DiagnosticoPrototipo() {
     if (!empresaPrincipal || relatorioEnviadoRef.current) return;
 
     const respostasDetalhadas = gruposSelecionados.map((g) => ({
-      area: g.label,
-      score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
-      subtemas: g.subtemas.map((s) => ({
-        tema: s.tema,
-        perguntas: s.perguntas.map((q) => ({
-          pergunta: textoDe(q, segmentoPredominante, categoriaPrincipal),
-          resposta: respostas[q.id] || "",
-        })),
-      })),
-    }));
+  area: g.label,
+
+  score: scoreDe(
+    g.subtemas.flatMap((s) => s.perguntas)
+  ),
+
+  subtemas: g.subtemas.map((s) => ({
+    tema: s.tema,
+
+    perguntas: s.perguntas.map((q) => {
+      const importancia =
+        Math.max(
+          1,
+          Math.min(
+            3,
+            Number(q.importancia) || 1
+          )
+        );
+
+      const resposta =
+        respostas[q.id] || "";
+
+      const pesoCalculado =
+        pesoResposta(
+          q,
+          resposta
+        );
+
+      return {
+        id:
+          q.id,
+
+        area:
+          g.label,
+
+        areaId:
+          g.id,
+
+        tema:
+          s.tema,
+
+        pergunta:
+          textoDe(
+            q,
+            segmentoPredominante,
+            categoriaPrincipal
+          ),
+
+        resposta,
+
+        importancia,
+
+        peso:
+          pesoCalculado,
+
+        motivo:
+          q.motivo ||
+          "",
+
+        riscoAvaliado:
+          riscoDe(
+            q,
+            segmentoPredominante,
+            categoriaPrincipal
+          ),
+      };
+    }),
+  })),
+}));
 
     const payloadEmail = {
       responsavel: {
