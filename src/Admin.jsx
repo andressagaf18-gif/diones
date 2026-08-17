@@ -28,7 +28,7 @@ const DISPLAY_FONT =
   "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 
 // =========================================================
-// HELPERS
+// FUNÇÕES AUXILIARES
 // =========================================================
 
 function formatarData(valor) {
@@ -55,16 +55,6 @@ function formatarCnpj(valor = "") {
     /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
     "$1.$2.$3/$4-$5"
   );
-}
-
-function normalizarLista(valor) {
-  return Array.isArray(valor) ? valor : [];
-}
-
-function juntarLista(valor) {
-  return Array.isArray(valor)
-    ? valor.filter(Boolean).join(" | ")
-    : "";
 }
 
 function scoreInfo(score) {
@@ -109,92 +99,20 @@ function scoreInfo(score) {
   };
 }
 
-function tituloChave(chave = "") {
-  const mapa = {
-    fase0a30: "0–30 dias",
-    fase31a60: "31–60 dias",
-    fase61a90: "61–90 dias",
+function normalizarLista(valor) {
+  return Array.isArray(valor) ? valor : [];
+}
 
-    primeiros30Dias: "0–30 dias",
-    dias0a30: "0–30 dias",
-    zeroA30: "0–30 dias",
-    de0a30: "0–30 dias",
-
-    dias31a60: "31–60 dias",
-    trintaEUmA60: "31–60 dias",
-    de31a60: "31–60 dias",
-
-    dias61a90: "61–90 dias",
-    sessentaEUmA90: "61–90 dias",
-    de61a90: "61–90 dias",
-
-    diagnosticoCentral: "Diagnóstico central",
-    evidenciaMaisForte: "Evidência mais forte",
-    hipotesePrincipal: "Hipótese principal",
-    validarPrimeiro: "O que validar primeiro",
-    naoFazerAgora: "O que não fazer agora",
-    pontosCegos: "Pontos cegos",
-    dadosDocumentosSolicitar: "Dados e documentos a solicitar",
-
-    potencialLead: "Potencial do lead",
-    justificativa: "Justificativa",
-    servicosAderentes: "Serviços aderentes",
-    argumentoAbordagem: "Argumento de abordagem",
-    objecoesProvaveis: "Objeções prováveis",
-    proximaAcaoComercial: "Próxima ação comercial",
-
-    resultadoEsperado: "Resultado esperado",
-    indicadores: "Indicadores",
-    acoes: "Ações",
-
-    impactoEsperado: "Impacto esperado",
-    esforco: "Esforço",
-    dependencias: "Dependências",
-
-    oQueMede: "O que mede",
-    formaCalculo: "Forma de cálculo",
-    frequencia: "Frequência",
-    metaSugerida: "Meta sugerida",
-
-    problemaQuePodeAjudar: "Problema que pode ajudar",
-    evidencia: "Evidência",
-
-    motivo: "Motivo",
-    validar: "O que validar",
-  };
-
-  if (mapa[chave]) {
-    return mapa[chave];
-  }
-
-  return String(chave)
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/^./, (c) => c.toUpperCase());
+function juntarLista(valor) {
+  return Array.isArray(valor)
+    ? valor.filter(Boolean).join(" | ")
+    : "";
 }
 
 function textoSeguro(valor) {
-  if (
-    valor === null ||
-    valor === undefined
-  ) {
-    return "";
-  }
-
-  if (
-    typeof valor === "string" ||
-    typeof valor === "number"
-  ) {
-    return String(valor);
-  }
-
-  if (Array.isArray(valor)) {
-    return valor
-      .map(textoSeguro)
-      .filter(Boolean)
-      .join(" • ");
-  }
-
+  if (valor === null || valor === undefined) return "";
+  if (typeof valor === "string" || typeof valor === "number") return String(valor);
+  if (Array.isArray(valor)) return valor.map(textoSeguro).filter(Boolean).join(" | ");
   if (typeof valor === "object") {
     return (
       valor.titulo ||
@@ -203,42 +121,227 @@ function textoSeguro(valor) {
       valor.pergunta ||
       valor.acao ||
       valor.objetivo ||
-      valor.servico ||
       valor.descricao ||
       valor.resumo ||
       JSON.stringify(valor)
     );
   }
-
   return String(valor);
 }
 
-function temConteudo(valor) {
-  if (!valor) {
-    return false;
-  }
-
-  if (Array.isArray(valor)) {
-    return valor.length > 0;
-  }
-
+function listaFlexivel(valor) {
+  if (!valor) return [];
+  if (Array.isArray(valor)) return valor.filter(Boolean);
+  if (typeof valor === "string") return valor.trim() ? [valor] : [];
   if (typeof valor === "object") {
-    return Object.values(valor).some(
-      (item) => temConteudo(item)
-    );
+    return Object.entries(valor)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "" && (!Array.isArray(v) || v.length))
+      .map(([chave, v]) => ({
+        chave,
+        valor: v,
+      }));
   }
-
-  return String(valor).trim() !== "";
+  return [valor];
 }
 
-// =========================================================
-// COMPONENTES BÁSICOS
-// =========================================================
+function tituloChave(chave = "") {
+  const mapa = {
+    primeiros30Dias: "0–30 dias",
+    dias0a30: "0–30 dias",
+    zeroA30: "0–30 dias",
+    de0a30: "0–30 dias",
+    dias31a60: "31–60 dias",
+    trintaEUmA60: "31–60 dias",
+    de31a60: "31–60 dias",
+    dias61a90: "61–90 dias",
+    sessentaEUmA90: "61–90 dias",
+    de61a90: "61–90 dias",
+  };
 
-function Card({
-  children,
-  style = {},
-}) {
+  if (mapa[chave]) return mapa[chave];
+
+  return String(chave)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function BlocoDossie({ titulo, children, destaque = false }) {
+  return (
+    <>
+      <h2 style={tituloSecao}>{titulo}</h2>
+      <Card
+        style={
+          destaque
+            ? {
+                border: "1px solid #F0C8BD",
+                background: "#FFF9F7",
+              }
+            : {}
+        }
+      >
+        {children}
+      </Card>
+    </>
+  );
+}
+
+function ListaDossie({ itens, vazio = "Sem informação gerada." }) {
+  const lista = listaFlexivel(itens);
+
+  if (!lista.length) {
+    return <span style={{ fontSize: 12, color: MUTED }}>{vazio}</span>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {lista.map((item, index) => {
+        if (item && typeof item === "object" && "chave" in item) {
+          return (
+            <div
+              key={index}
+              style={{
+                background: "#F7F8FB",
+                borderRadius: 10,
+                padding: 12,
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 12, marginBottom: 5 }}>
+                {tituloChave(item.chave)}
+              </strong>
+              {Array.isArray(item.valor) ? (
+                <ListaDossie itens={item.valor} />
+              ) : typeof item.valor === "object" && item.valor !== null ? (
+                <ListaDossie itens={item.valor} />
+              ) : (
+                <div style={{ fontSize: 12, lineHeight: 1.55 }}>
+                  {textoSeguro(item.valor)}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        if (item && typeof item === "object") {
+          const titulo =
+            item.titulo ||
+            item.nome ||
+            item.indicador ||
+            item.pergunta ||
+            item.acao ||
+            item.objetivo ||
+            `Item ${index + 1}`;
+
+          const detalhes = Object.entries(item).filter(
+            ([chave, valor]) =>
+              !["titulo", "nome", "indicador", "pergunta", "acao", "objetivo"].includes(chave) &&
+              valor !== null &&
+              valor !== undefined &&
+              valor !== "" &&
+              (!Array.isArray(valor) || valor.length)
+          );
+
+          return (
+            <div
+              key={index}
+              style={{
+                background: "#F7F8FB",
+                borderRadius: 10,
+                padding: 12,
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 12.5, marginBottom: 6 }}>
+                {textoSeguro(titulo)}
+              </strong>
+
+              {detalhes.map(([chave, valor]) => (
+                <div key={chave} style={{ fontSize: 11.5, lineHeight: 1.55, marginTop: 4 }}>
+                  <strong>{tituloChave(chave)}:</strong>{" "}
+                  {Array.isArray(valor)
+                    ? valor.map(textoSeguro).filter(Boolean).join(" • ")
+                    : typeof valor === "object"
+                    ? textoSeguro(valor)
+                    : String(valor)}
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={index}
+            style={{
+              display: "flex",
+              gap: 9,
+              alignItems: "flex-start",
+              fontSize: 12,
+              lineHeight: 1.55,
+            }}
+          >
+            <span style={{ color: CORAL, fontWeight: 900 }}>•</span>
+            <span>{textoSeguro(item)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Plano90Dias({ plano }) {
+  const lista = listaFlexivel(plano);
+
+  if (!lista.length) {
+    return <span style={{ fontSize: 12, color: MUTED }}>Sem plano de 90 dias gerado.</span>;
+  }
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
+        gap: 12,
+      }}
+    >
+      {lista.map((fase, index) => {
+        if (fase && typeof fase === "object" && "chave" in fase) {
+          return (
+            <div
+              key={index}
+              style={{
+                border: "1px solid #E3E7EF",
+                borderRadius: 12,
+                padding: 14,
+                background: "#F7F8FB",
+              }}
+            >
+              <strong style={{ display: "block", color: CORAL, marginBottom: 8 }}>
+                {tituloChave(fase.chave)}
+              </strong>
+              <ListaDossie itens={fase.valor} />
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={index}
+            style={{
+              border: "1px solid #E3E7EF",
+              borderRadius: 12,
+              padding: 14,
+              background: "#F7F8FB",
+            }}
+          >
+            <ListaDossie itens={[fase]} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Card({ children, style = {} }) {
   return (
     <div
       style={{
@@ -281,7 +384,6 @@ function Botao({
 
         borderRadius: 10,
         padding: "10px 14px",
-
         fontFamily: BODY_FONT,
         fontSize: 13,
         fontWeight: 700,
@@ -307,421 +409,19 @@ function Botao({
   );
 }
 
-function ListaInterna({
-  titulo,
-  itens,
-}) {
-  const lista =
-    normalizarLista(itens);
-
-  return (
-    <div
-      style={{
-        background: "#F7F8FB",
-        borderRadius: 9,
-        padding: 11,
-      }}
-    >
-      <strong
-        style={{
-          display: "block",
-          fontSize: 11,
-          marginBottom: 6,
-        }}
-      >
-        {titulo}
-      </strong>
-
-      {lista.length ? (
-        <ul
-          style={{
-            margin: 0,
-            paddingLeft: 17,
-            fontSize: 11.5,
-            lineHeight: 1.5,
-          }}
-        >
-          {lista.map(
-            (item, index) => (
-              <li key={index}>
-                {textoSeguro(item)}
-              </li>
-            )
-          )}
-        </ul>
-      ) : (
-        <span
-          style={{
-            fontSize: 11,
-            color: MUTED,
-          }}
-        >
-          Sem informação.
-        </span>
-      )}
-    </div>
-  );
-}
-
-// =========================================================
-// COMPONENTES DO DOSSIÊ
-// =========================================================
-
-function BlocoDossie({
-  titulo,
-  children,
-  destaque = false,
-}) {
-  return (
-    <>
-      <h2 style={tituloSecao}>
-        {titulo}
-      </h2>
-
-      <Card
-        style={
-          destaque
-            ? {
-                background: "#FFF9F7",
-                border: "1px solid #F0C8BD",
-              }
-            : {}
-        }
-      >
-        {children}
-      </Card>
-    </>
-  );
-}
-
-function RenderValor({
-  valor,
-}) {
-  if (
-    valor === null ||
-    valor === undefined ||
-    valor === ""
-  ) {
-    return (
-      <span
-        style={{
-          color: MUTED,
-          fontSize: 11.5,
-        }}
-      >
-        Sem informação.
-      </span>
-    );
-  }
-
-  if (Array.isArray(valor)) {
-    if (!valor.length) {
-      return (
-        <span
-          style={{
-            color: MUTED,
-            fontSize: 11.5,
-          }}
-        >
-          Sem informação.
-        </span>
-      );
-    }
-
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
-        {valor.map(
-          (item, index) => (
-            <RenderItem
-              key={index}
-              item={item}
-              index={index}
-            />
-          )
-        )}
-      </div>
-    );
-  }
-
-  if (
-    typeof valor === "object"
-  ) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 9,
-        }}
-      >
-        {Object.entries(valor)
-          .filter(
-            ([, item]) =>
-              temConteudo(item)
-          )
-          .map(
-            ([chave, item]) => (
-              <div
-                key={chave}
-                style={{
-                  background: "#F7F8FB",
-                  borderRadius: 10,
-                  padding: 12,
-                }}
-              >
-                <strong
-                  style={{
-                    display: "block",
-                    fontSize: 11.5,
-                    marginBottom: 5,
-                    color: NAVY,
-                  }}
-                >
-                  {tituloChave(chave)}
-                </strong>
-
-                <RenderValor
-                  valor={item}
-                />
-              </div>
-            )
-          )}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        fontSize: 11.8,
-        lineHeight: 1.55,
-      }}
-    >
-      {String(valor)}
-    </div>
-  );
-}
-
-function RenderItem({
-  item,
-  index,
-}) {
-  if (
-    item &&
-    typeof item === "object"
-  ) {
-    const titulo =
-      item.titulo ||
-      item.nome ||
-      item.indicador ||
-      item.pergunta ||
-      item.acao ||
-      item.objetivo ||
-      item.servico ||
-      `Item ${index + 1}`;
-
-    const chavesIgnoradas = [
-      "titulo",
-      "nome",
-      "indicador",
-      "pergunta",
-      "acao",
-      "objetivo",
-      "servico",
-    ];
-
-    return (
-      <div
-        style={{
-          background: "#F7F8FB",
-          borderRadius: 10,
-          padding: 12,
-        }}
-      >
-        <strong
-          style={{
-            display: "block",
-            fontSize: 12.3,
-            marginBottom: 6,
-          }}
-        >
-          {textoSeguro(titulo)}
-        </strong>
-
-        {Object.entries(item)
-          .filter(
-            ([chave, valor]) =>
-              !chavesIgnoradas.includes(
-                chave
-              ) &&
-              temConteudo(valor)
-          )
-          .map(
-            ([chave, valor]) => (
-              <div
-                key={chave}
-                style={{
-                  marginTop: 5,
-                  fontSize: 11.5,
-                  lineHeight: 1.55,
-                }}
-              >
-                <strong>
-                  {tituloChave(chave)}:
-                </strong>{" "}
-
-                {Array.isArray(valor)
-                  ? valor
-                      .map(
-                        textoSeguro
-                      )
-                      .filter(Boolean)
-                      .join(" • ")
-                  : typeof valor ===
-                      "object"
-                    ? textoSeguro(valor)
-                    : String(valor)}
-              </div>
-            )
-          )}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        alignItems: "flex-start",
-        fontSize: 11.8,
-        lineHeight: 1.55,
-      }}
-    >
-      <span
-        style={{
-          color: CORAL,
-          fontWeight: 900,
-        }}
-      >
-        •
-      </span>
-
-      <span>
-        {textoSeguro(item)}
-      </span>
-    </div>
-  );
-}
-
-function Plano90Dias({
-  plano,
-}) {
-  if (
-    !plano ||
-    typeof plano !== "object"
-  ) {
-    return (
-      <span
-        style={{
-          color: MUTED,
-          fontSize: 12,
-        }}
-      >
-        Plano de 90 dias não gerado.
-      </span>
-    );
-  }
-
-  const fases = [
-    {
-      chave: "fase0a30",
-      titulo: "0–30 dias",
-    },
-    {
-      chave: "fase31a60",
-      titulo: "31–60 dias",
-    },
-    {
-      chave: "fase61a90",
-      titulo: "61–90 dias",
-    },
-  ];
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns:
-          "repeat(auto-fit,minmax(250px,1fr))",
-        gap: 12,
-      }}
-    >
-      {fases.map(
-        (fase) => {
-          const dados =
-            plano[fase.chave] ||
-            {};
-
-          return (
-            <div
-              key={fase.chave}
-              style={{
-                background: WHITE,
-                border: "1px solid #E3E7EF",
-                borderRadius: 12,
-                padding: 14,
-              }}
-            >
-              <div
-                style={{
-                  color: CORAL,
-                  fontSize: 13,
-                  fontWeight: 900,
-                  marginBottom: 10,
-                }}
-              >
-                {fase.titulo}
-              </div>
-
-              <RenderValor
-                valor={dados}
-              />
-            </div>
-          );
-        }
-      )}
-    </div>
-  );
-}
-
 // =========================================================
 // LOGIN
 // =========================================================
 
-function LoginAdmin({
-  onLogin,
-}) {
-  const [
-    token,
-    setToken,
-  ] = useState("");
+function LoginAdmin({ onLogin }) {
+  const [token, setToken] =
+    useState("");
 
-  const [
-    erro,
-    setErro,
-  ] = useState("");
+  const [erro, setErro] =
+    useState("");
 
-  const [
-    carregando,
-    setCarregando,
-  ] = useState(false);
+  const [carregando, setCarregando] =
+    useState(false);
 
   async function entrar() {
     const valor =
@@ -753,9 +453,7 @@ function LoginAdmin({
       const data =
         await resposta
           .json()
-          .catch(
-            () => null
-          );
+          .catch(() => null);
 
       if (
         !resposta.ok ||
@@ -838,7 +536,8 @@ function LoginAdmin({
             margin: "0 0 22px",
           }}
         >
-          Área restrita da Finder para consulta dos diagnósticos empresariais realizados.
+          Área restrita da Finder para consulta
+          dos diagnósticos empresariais realizados.
         </p>
 
         <label
@@ -961,6 +660,10 @@ function ListaDiagnosticos({
     setErro,
   ] = useState("");
 
+  // =======================================================
+  // CARREGAR LISTA
+  // =======================================================
+
   async function carregar(
     termo = ""
   ) {
@@ -1004,14 +707,21 @@ function ListaDiagnosticos({
       const data =
         await resposta
           .json()
-          .catch(
-            () => null
-          );
+          .catch(() => null);
 
       if (
         !resposta.ok ||
         !data?.sucesso
       ) {
+        if (
+          resposta.status ===
+          401
+        ) {
+          throw new Error(
+            "Sua sessão administrativa expirou."
+          );
+        }
+
         throw new Error(
           data?.error ||
           "Não foi possível carregar os diagnósticos."
@@ -1066,6 +776,10 @@ function ListaDiagnosticos({
     carregar("");
   }
 
+  // =======================================================
+  // SCORE MÉDIO
+  // =======================================================
+
   const mediaScore =
     useMemo(() => {
       const scores =
@@ -1087,15 +801,19 @@ function ListaDiagnosticos({
       return Math.round(
         scores.reduce(
           (
-            soma,
+            acc,
             valor
           ) =>
-            soma + valor,
+            acc + valor,
           0
         ) /
         scores.length
       );
     }, [diagnosticos]);
+
+  // =======================================================
+  // EXPORTAR EXCEL
+  // =======================================================
 
   async function exportarExcel() {
     if (exportando) {
@@ -1110,6 +828,8 @@ function ListaDiagnosticos({
         await fetch(
           "/api/exportar-diagnosticos",
           {
+            method: "GET",
+
             headers: {
               Authorization:
                 `Bearer ${token}`,
@@ -1120,9 +840,7 @@ function ListaDiagnosticos({
       const data =
         await resposta
           .json()
-          .catch(
-            () => null
-          );
+          .catch(() => null);
 
       if (
         !resposta.ok ||
@@ -1140,6 +858,18 @@ function ListaDiagnosticos({
       const registros =
         data.diagnosticos;
 
+      if (
+        registros.length === 0
+      ) {
+        throw new Error(
+          "Não existem diagnósticos para exportar."
+        );
+      }
+
+      // ===================================================
+      // ABA 1 - DIAGNÓSTICOS
+      // ===================================================
+
       const abaDiagnosticos =
         registros.map(
           (item) => {
@@ -1151,25 +881,35 @@ function ListaDiagnosticos({
               item.empresa ||
               {};
 
+            const dores =
+              Array.isArray(
+                item.dores
+              )
+                ? item.dores
+                : [];
+
+            const doresEstruturadas =
+              item.doresEstruturadas ||
+              {};
+
+            const negocio =
+              item.negocioInterpretado ||
+              {};
+
             const resultado =
               item.resultado ||
               {};
 
-            const geral =
-              resultado
-                .diagnosticoGeral ||
-              {};
-
-            const comercial =
-              resultado
-                .visaoComercial ||
+            const diagnosticoGeral =
+              resultado.diagnosticoGeral ||
               {};
 
             return {
-              ID:
-                item.id || "",
+              "ID":
+                item.id ||
+                "",
 
-              Data:
+              "Data":
                 item.criadoEm
                   ? new Date(
                       item.criadoEm
@@ -1178,200 +918,229 @@ function ListaDiagnosticos({
                     )
                   : "",
 
-              Empresa:
+              "Empresa":
                 empresa.razaoSocial ||
                 "",
 
-              CNPJ:
+              "CNPJ":
                 formatarCnpj(
                   empresa.cnpj ||
                   ""
                 ),
 
-              Responsável:
+              "Responsável":
                 participante.nome ||
                 "",
 
-              Cargo:
+              "Cargo":
                 participante.cargo ||
                 "",
 
-              Telefone:
+              "Telefone":
                 participante.telefone ||
                 "",
 
-              Email:
+              "E-mail":
                 participante.email ||
                 "",
 
-              Segmento:
+              "Descrição do negócio":
+                empresa.descricaoNegocio ||
+                "",
+
+              "Segmento":
                 empresa.segmento ||
                 "",
 
-              Subsegmento:
+              "Subsegmento":
                 empresa.subsegmento ||
                 "",
 
-              Score:
+              "Score":
                 item.score ??
                 "",
 
               "Dores declaradas":
-                normalizarLista(
-                  item.dores
-                ).join(
+                dores.join(
                   " | "
                 ),
 
+              "Dor principal":
+                doresEstruturadas
+                  .principal ||
+                dores[0] ||
+                "",
+
+              "Objetivo 90 dias":
+                doresEstruturadas
+                  .objetivo90Dias ||
+                "",
+
+              "Impactos da dor":
+                juntarLista(
+                  doresEstruturadas
+                    .impactos
+                ),
+
+              "Modelo de negócio":
+                negocio.modeloNegocio ||
+                negocio.modeloOperacional ||
+                "",
+
+              "Como gera receita":
+                negocio.comoGeraReceita ||
+                "",
+
               "Resumo executivo":
-                geral.resumoExecutivo ||
+                diagnosticoGeral
+                  .resumoExecutivo ||
                 "",
 
               "Alerta estratégico":
-                geral.alertaEstrategico ||
+                diagnosticoGeral
+                  .alertaEstrategico ||
                 "",
+
+              "Leitura das dores":
+                diagnosticoGeral
+                  .leituraDasDores ||
+                diagnosticoGeral
+                  .leituraDaDor ||
+                "",
+
+              "Principais dores IA":
+                juntarLista(
+                  diagnosticoGeral
+                    .principaisDores
+                ),
+
+              "Causas prováveis":
+                juntarLista(
+                  diagnosticoGeral
+                    .causasProvaveis
+                ),
+
+              "Impactos":
+                juntarLista(
+                  diagnosticoGeral
+                    .impactos
+                ),
+
+              "Pontos fortes":
+                juntarLista(
+                  diagnosticoGeral
+                    .pontosFortes
+                ),
 
               "Prioridades imediatas":
                 juntarLista(
-                  geral
+                  diagnosticoGeral
                     .prioridadesImediatas
                 ),
 
-              "Potencial do lead":
-                comercial.potencialLead ||
-                "",
+              "Oportunidades":
+                juntarLista(
+                  diagnosticoGeral
+                    .oportunidades
+                ),
 
-              "Justificativa comercial":
-                comercial.justificativa ||
-                "",
-
-              "Argumento comercial":
-                comercial.argumentoAbordagem ||
-                "",
-
-              "Próxima ação comercial":
-                comercial.proximaAcaoComercial ||
-                "",
+              "Próximos passos":
+                juntarLista(
+                  diagnosticoGeral
+                    .proximosPassos
+                ),
             };
           }
         );
 
-      const abaAreas = [];
+      // ===================================================
+      // ABA 2 - PERGUNTAS E RESPOSTAS
+      // ===================================================
 
       const abaPerguntas = [];
 
-      const abaPlano90 = [];
-
-      const abaQuickWins = [];
-
-      const abaKpis = [];
-
-      const abaAprofundamento =
-        [];
-
-      const abaComercial = [];
-
       registros.forEach(
         (item) => {
+          const participante =
+            item.participante ||
+            {};
+
           const empresa =
             item.empresa ||
             {};
 
-          const resultado =
-            item.resultado ||
-            {};
+          const perguntas =
+            Array.isArray(
+              item.perguntasRespostas
+            )
+              ? item.perguntasRespostas
+              : [];
 
-          normalizarLista(
-            resultado.areas ||
-            item.areas
-          ).forEach(
-            (area) => {
-              abaAreas.push({
-                "ID Diagnóstico":
-                  item.id || "",
-
-                Empresa:
-                  empresa.razaoSocial ||
-                  "",
-
-                Área:
-                  area.area || "",
-
-                Score:
-                  area.score ?? "",
-
-                Nível:
-                  scoreInfo(
-                    area.score
-                  ).label,
-
-                Prioridade:
-                  area.prioridade ??
-                  "",
-
-                Resumo:
-                  area.resumo || "",
-
-                Achados:
-                  juntarLista(
-                    area.achados
-                  ),
-
-                "Causas prováveis":
-                  juntarLista(
-                    area.causasProvaveis
-                  ),
-
-                Riscos:
-                  juntarLista(
-                    area.riscos
-                  ),
-
-                Recomendações:
-                  juntarLista(
-                    area.recomendacoes
-                  ),
-              });
-            }
-          );
-
-          normalizarLista(
-            item.perguntasRespostas
-          ).forEach(
-            (pergunta) => {
+          perguntas.forEach(
+            (
+              pergunta,
+              index
+            ) => {
               abaPerguntas.push({
                 "ID Diagnóstico":
-                  item.id || "",
+                  item.id ||
+                  "",
 
-                Empresa:
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
                   empresa.razaoSocial ||
                   "",
 
-                Área:
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Responsável":
+                  participante.nome ||
+                  "",
+
+                "Nº":
+                  index + 1,
+
+                "Área":
                   pergunta.area ||
                   "",
 
-                Tema:
+                "Área ID":
+                  pergunta.areaId ||
+                  "",
+
+                "Tema":
                   pergunta.tema ||
                   "",
 
-                Pergunta:
+                "Pergunta":
                   pergunta.pergunta ||
                   "",
 
-                Resposta:
+                "Resposta":
                   pergunta.resposta ||
                   "",
 
-                Peso:
+                "Peso":
                   pergunta.peso ??
                   "",
 
-                Importância:
+                "Importância":
                   pergunta.importancia ??
                   "",
 
-                Motivo:
+                "Motivo":
                   pergunta.motivo ||
                   "",
 
@@ -1381,278 +1150,407 @@ function ListaDiagnosticos({
               });
             }
           );
+        }
+      );
 
-          const plano =
-            resultado.plano90Dias ||
+      // ===================================================
+      // ABA 3 - ANÁLISE POR ÁREA
+      // ===================================================
+
+      const abaAreas = [];
+
+      registros.forEach(
+        (item) => {
+          const empresa =
+            item.empresa ||
             {};
 
-          [
-            [
-              "0–30 dias",
-              plano.fase0a30,
-            ],
-            [
-              "31–60 dias",
-              plano.fase31a60,
-            ],
-            [
-              "61–90 dias",
-              plano.fase61a90,
-            ],
-          ].forEach(
-            ([fase, dados]) => {
-              if (!dados) return;
+          const areas =
+            Array.isArray(
+              item.areas
+            )
+              ? item.areas
+              : [];
 
-              abaPlano90.push({
+          areas.forEach(
+            (area) => {
+              abaAreas.push({
                 "ID Diagnóstico":
-                  item.id || "",
+                  item.id ||
+                  "",
 
-                Empresa:
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
                   empresa.razaoSocial ||
                   "",
 
-                Fase:
-                  fase,
-
-                Objetivo:
-                  dados.objetivo ||
-                  "",
-
-                Ações:
-                  juntarLista(
-                    dados.acoes
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
                   ),
 
-                "Resultado esperado":
-                  dados.resultadoEsperado ||
+                "Área":
+                  area.area ||
                   "",
 
-                Indicadores:
+                "Score":
+                  area.score ??
+                  "",
+
+                "Nível":
+                  area.nivel ||
+                  "",
+
+                "Prioridade":
+                  area.prioridade ??
+                  "",
+
+                "Resumo":
+                  area.resumo ||
+                  "",
+
+                "Achados":
                   juntarLista(
-                    dados.indicadores
+                    area.achados
                   ),
-              });
-            }
-          );
 
-          normalizarLista(
-            resultado.quickWins
-          ).forEach(
-            (quick) => {
-              abaQuickWins.push({
-                "ID Diagnóstico":
-                  item.id || "",
-
-                Empresa:
-                  empresa.razaoSocial ||
-                  "",
-
-                Ação:
-                  quick.acao || "",
-
-                Motivo:
-                  quick.motivo ||
-                  "",
-
-                "Impacto esperado":
-                  quick.impactoEsperado ||
-                  "",
-
-                Esforço:
-                  quick.esforco ||
-                  "",
-
-                Dependências:
+                "Causas prováveis":
                   juntarLista(
-                    quick.dependencias
+                    area.causasProvaveis
                   ),
-              });
-            }
-          );
 
-          normalizarLista(
-            resultado.kpisRecomendados
-          ).forEach(
-            (kpi) => {
-              abaKpis.push({
-                "ID Diagnóstico":
-                  item.id || "",
+                "Riscos":
+                  juntarLista(
+                    area.riscos
+                  ),
 
-                Empresa:
-                  empresa.razaoSocial ||
-                  "",
-
-                Indicador:
-                  kpi.indicador ||
-                  "",
-
-                "O que mede":
-                  kpi.oQueMede ||
-                  "",
-
-                "Forma de cálculo":
-                  kpi.formaCalculo ||
-                  "",
-
-                Frequência:
-                  kpi.frequencia ||
-                  "",
-
-                "Meta sugerida":
-                  kpi.metaSugerida ||
-                  "",
-              });
-            }
-          );
-
-          normalizarLista(
-            resultado
-              .perguntasAprofundamento
-          ).forEach(
-            (pergunta) => {
-              abaAprofundamento.push({
-                "ID Diagnóstico":
-                  item.id || "",
-
-                Empresa:
-                  empresa.razaoSocial ||
-                  "",
-
-                Pergunta:
-                  pergunta.pergunta ||
-                  "",
-
-                Motivo:
-                  pergunta.motivo ||
-                  "",
-
-                "O que validar":
-                  pergunta.validar ||
-                  "",
-              });
-            }
-          );
-
-          const comercial =
-            resultado
-              .visaoComercial ||
-            {};
-
-          normalizarLista(
-            comercial
-              .servicosAderentes
-          ).forEach(
-            (servico) => {
-              abaComercial.push({
-                "ID Diagnóstico":
-                  item.id || "",
-
-                Empresa:
-                  empresa.razaoSocial ||
-                  "",
-
-                "Potencial lead":
-                  comercial.potencialLead ||
-                  "",
-
-                Serviço:
-                  servico.servico ||
-                  "",
-
-                "Problema que pode ajudar":
-                  servico
-                    .problemaQuePodeAjudar ||
-                  "",
-
-                Evidência:
-                  servico.evidencia ||
-                  "",
-
-                "Argumento de abordagem":
-                  comercial
-                    .argumentoAbordagem ||
-                  "",
-
-                "Próxima ação":
-                  comercial
-                    .proximaAcaoComercial ||
-                  "",
+                "Recomendações":
+                  juntarLista(
+                    area.recomendacoes
+                  ),
               });
             }
           );
         }
       );
 
+      // ===================================================
+      // ABA 4 - DORES E OBJETIVOS
+      // ===================================================
+
+      const abaDores = [];
+
+      registros.forEach(
+        (item) => {
+          const empresa =
+            item.empresa ||
+            {};
+
+          const participante =
+            item.participante ||
+            {};
+
+          const estruturadas =
+            item.doresEstruturadas ||
+            {};
+
+          const dores =
+            Array.isArray(
+              estruturadas.selecionadas
+            )
+              ? estruturadas.selecionadas
+
+              : Array.isArray(
+                  item.dores
+                )
+                ? item.dores
+
+                : [];
+
+          // Mesmo se não houver dor,
+          // mantém uma linha com o diagnóstico.
+          if (
+            dores.length === 0
+          ) {
+            abaDores.push({
+              "ID Diagnóstico":
+                item.id ||
+                "",
+
+              "Data":
+                item.criadoEm
+                  ? new Date(
+                      item.criadoEm
+                    ).toLocaleString(
+                      "pt-BR"
+                    )
+                  : "",
+
+              "Empresa":
+                empresa.razaoSocial ||
+                "",
+
+              "CNPJ":
+                formatarCnpj(
+                  empresa.cnpj ||
+                  ""
+                ),
+
+              "Responsável":
+                participante.nome ||
+                "",
+
+              "Dor Nº":
+                "",
+
+              "Dor":
+                "",
+
+              "Dor principal":
+                estruturadas.principal ||
+                "",
+
+              "Objetivo 90 dias":
+                estruturadas
+                  .objetivo90Dias ||
+                "",
+
+              "Impactos":
+                juntarLista(
+                  estruturadas
+                    .impactos
+                ),
+            });
+
+            return;
+          }
+
+          dores.forEach(
+            (
+              dor,
+              index
+            ) => {
+              abaDores.push({
+                "ID Diagnóstico":
+                  item.id ||
+                  "",
+
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
+                  empresa.razaoSocial ||
+                  "",
+
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Responsável":
+                  participante.nome ||
+                  "",
+
+                "Dor Nº":
+                  index + 1,
+
+                "Dor":
+                  dor,
+
+                "Dor principal":
+                  estruturadas.principal ||
+                  dores[0] ||
+                  "",
+
+                "Objetivo 90 dias":
+                  estruturadas
+                    .objetivo90Dias ||
+                  "",
+
+                "Impactos":
+                  juntarLista(
+                    estruturadas
+                      .impactos
+                  ),
+              });
+            }
+          );
+        }
+      );
+
+      // ===================================================
+      // CRIAR ARQUIVO EXCEL
+      // ===================================================
+
       const workbook =
         XLSX.utils.book_new();
 
-      const adicionarAba = (
-        dados,
-        nome
-      ) => {
-        const worksheet =
-          XLSX.utils.json_to_sheet(
-            dados
-          );
-
-        XLSX.utils.book_append_sheet(
-          workbook,
-          worksheet,
-          nome
+      const wsDiagnosticos =
+        XLSX.utils.json_to_sheet(
+          abaDiagnosticos
         );
-      };
 
-      adicionarAba(
-        abaDiagnosticos,
+      const wsPerguntas =
+        XLSX.utils.json_to_sheet(
+          abaPerguntas
+        );
+
+      const wsAreas =
+        XLSX.utils.json_to_sheet(
+          abaAreas
+        );
+
+      const wsDores =
+        XLSX.utils.json_to_sheet(
+          abaDores
+        );
+
+      // ===================================================
+      // LARGURA DAS COLUNAS
+      // ===================================================
+
+      wsDiagnosticos["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 30 },
+        { wch: 60 },
+        { wch: 35 },
+        { wch: 50 },
+        { wch: 10 },
+        { wch: 50 },
+        { wch: 40 },
+        { wch: 60 },
+        { wch: 60 },
+        { wch: 40 },
+        { wch: 60 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+      ];
+
+      wsPerguntas["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 8 },
+        { wch: 28 },
+        { wch: 16 },
+        { wch: 35 },
+        { wch: 90 },
+        { wch: 18 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 70 },
+        { wch: 70 },
+      ];
+
+      wsAreas["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 28 },
+        { wch: 10 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 80 },
+        { wch: 90 },
+        { wch: 90 },
+        { wch: 90 },
+        { wch: 90 },
+      ];
+
+      wsDores["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 10 },
+        { wch: 45 },
+        { wch: 45 },
+        { wch: 70 },
+        { wch: 70 },
+      ];
+
+      // ===================================================
+      // ADICIONAR ABAS
+      // ===================================================
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsDiagnosticos,
         "Diagnósticos"
       );
 
-      adicionarAba(
-        abaAreas,
-        "Análise por Área"
-      );
-
-      adicionarAba(
-        abaPerguntas,
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsPerguntas,
         "Perguntas Respostas"
       );
 
-      adicionarAba(
-        abaPlano90,
-        "Plano 90 Dias"
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsAreas,
+        "Análise por Área"
       );
 
-      adicionarAba(
-        abaQuickWins,
-        "Quick Wins"
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsDores,
+        "Dores e Objetivos"
       );
 
-      adicionarAba(
-        abaKpis,
-        "KPIs"
-      );
+      // ===================================================
+      // DOWNLOAD
+      // ===================================================
 
-      adicionarAba(
-        abaAprofundamento,
-        "Aprofundamento"
-      );
-
-      adicionarAba(
-        abaComercial,
-        "Visão Comercial"
-      );
+      const agora =
+        new Date();
 
       const dataArquivo =
-        new Date()
+        agora
           .toISOString()
           .slice(
             0,
             10
           );
 
+      const nomeArquivo =
+        `diagnosticos-finder-${dataArquivo}.xlsx`;
+
       XLSX.writeFile(
         workbook,
-        `diagnosticos-finder-${dataArquivo}.xlsx`
+        nomeArquivo
       );
 
     } catch (error) {
@@ -1670,6 +1568,10 @@ function ListaDiagnosticos({
       setExportando(false);
     }
   }
+
+  // =======================================================
+  // RENDER LISTA
+  // =======================================================
 
   return (
     <div
@@ -1691,18 +1593,19 @@ function ListaDiagnosticos({
           style={{
             maxWidth: 1320,
             margin: "0 auto",
-
             display: "flex",
             justifyContent:
               "space-between",
-            alignItems: "center",
+            alignItems:
+              "center",
             gap: 18,
           }}
         >
           <div
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems:
+                "center",
               gap: 18,
             }}
           >
@@ -1712,8 +1615,10 @@ function ListaDiagnosticos({
               style={{
                 maxWidth: 150,
                 maxHeight: 45,
-                objectFit: "contain",
-                background: WHITE,
+                objectFit:
+                  "contain",
+                background:
+                  WHITE,
                 padding: 5,
                 borderRadius: 7,
               }}
@@ -1733,7 +1638,8 @@ function ListaDiagnosticos({
 
               <p
                 style={{
-                  margin: "3px 0 0",
+                  margin:
+                    "3px 0 0",
                   fontSize: 11,
                   opacity: 0.7,
                 }}
@@ -1752,14 +1658,24 @@ function ListaDiagnosticos({
               border:
                 "1px solid rgba(255,255,255,.30)",
 
-              color: WHITE,
-              borderRadius: 9,
-              padding: "8px 11px",
+              color:
+                WHITE,
 
-              cursor: "pointer",
+              borderRadius:
+                9,
 
-              display: "flex",
-              alignItems: "center",
+              padding:
+                "8px 11px",
+
+              cursor:
+                "pointer",
+
+              display:
+                "flex",
+
+              alignItems:
+                "center",
+
               gap: 6,
             }}
           >
@@ -1780,6 +1696,10 @@ function ListaDiagnosticos({
             "26px 22px 50px",
         }}
       >
+        {/* ================================================= */}
+        {/* CARDS RESUMO */}
+        {/* ================================================= */}
+
         <div
           style={{
             display: "grid",
@@ -1788,7 +1708,9 @@ function ListaDiagnosticos({
               "repeat(auto-fit,minmax(190px,1fr))",
 
             gap: 12,
-            marginBottom: 20,
+
+            marginBottom:
+              20,
           }}
         >
           <Card>
@@ -1850,10 +1772,15 @@ function ListaDiagnosticos({
                 fontWeight: 800,
               }}
             >
-              {mediaScore ?? "-"}
+              {mediaScore ??
+                "-"}
             </div>
           </Card>
         </div>
+
+        {/* ================================================= */}
+        {/* BUSCA + EXPORTAÇÃO */}
+        {/* ================================================= */}
 
         <Card
           style={{
@@ -1872,14 +1799,16 @@ function ListaDiagnosticos({
                 flex:
                   "1 1 360px",
 
-                position: "relative",
+                position:
+                  "relative",
               }}
             >
               <Search
                 size={16}
                 color={MUTED}
                 style={{
-                  position: "absolute",
+                  position:
+                    "absolute",
                   top: 12,
                   left: 12,
                 }}
@@ -1887,12 +1816,17 @@ function ListaDiagnosticos({
 
               <input
                 value={busca}
-                onChange={(e) =>
+                onChange={(
+                  e
+                ) =>
                   setBusca(
-                    e.target.value
+                    e.target
+                      .value
                   )
                 }
-                onKeyDown={(e) => {
+                onKeyDown={(
+                  e
+                ) => {
                   if (
                     e.key ===
                     "Enter"
@@ -1902,14 +1836,17 @@ function ListaDiagnosticos({
                 }}
                 placeholder="Buscar empresa, CNPJ, nome, e-mail, segmento..."
                 style={{
-                  width: "100%",
+                  width:
+                    "100%",
+
                   boxSizing:
                     "border-box",
 
                   border:
                     "1px solid #D8DEEA",
 
-                  borderRadius: 9,
+                  borderRadius:
+                    9,
 
                   padding:
                     "10px 12px 10px 36px",
@@ -1917,15 +1854,21 @@ function ListaDiagnosticos({
                   fontFamily:
                     BODY_FONT,
 
-                  fontSize: 13,
+                  fontSize:
+                    13,
                 }}
               />
             </div>
 
             <Botao
-              onClick={pesquisar}
+              onClick={
+                pesquisar
+              }
             >
-              <Search size={14} />
+              <Search
+                size={14}
+              />
+
               Buscar
             </Botao>
 
@@ -1982,6 +1925,10 @@ function ListaDiagnosticos({
           </div>
         </Card>
 
+        {/* ================================================= */}
+        {/* ERRO */}
+        {/* ================================================= */}
+
         {erro && (
           <div
             style={{
@@ -1991,18 +1938,30 @@ function ListaDiagnosticos({
               color:
                 "#993C1D",
 
-              padding: 13,
-              borderRadius: 10,
-              marginBottom: 14,
+              padding:
+                13,
 
-              display: "flex",
-              gap: 8,
+              borderRadius:
+                10,
+
+              marginBottom:
+                14,
+
+              display:
+                "flex",
+
+              gap:
+                8,
+
               alignItems:
                 "flex-start",
             }}
           >
             <AlertTriangle
               size={17}
+              style={{
+                flexShrink: 0,
+              }}
             />
 
             <div>
@@ -2010,6 +1969,10 @@ function ListaDiagnosticos({
             </div>
           </div>
         )}
+
+        {/* ================================================= */}
+        {/* LISTA */}
+        {/* ================================================= */}
 
         {carregando ? (
           <Card>
@@ -2033,7 +1996,7 @@ function ListaDiagnosticos({
           >
             {diagnosticos.map(
               (item) => {
-                const info =
+                const score =
                   scoreInfo(
                     item.score
                   );
@@ -2045,45 +2008,66 @@ function ListaDiagnosticos({
 
                 return (
                   <button
-                    key={item.id}
+                    key={
+                      item.id
+                    }
                     onClick={() =>
                       onAbrir(
                         item.id
                       )
                     }
                     style={{
-                      width: "100%",
-                      background: WHITE,
+                      width:
+                        "100%",
+
+                      background:
+                        WHITE,
 
                       border:
                         "1px solid #E2E6EE",
 
-                      borderRadius: 14,
-                      padding: 16,
+                      borderRadius:
+                        14,
 
-                      textAlign: "left",
-                      cursor: "pointer",
+                      padding:
+                        16,
 
-                      display: "grid",
+                      textAlign:
+                        "left",
+
+                      cursor:
+                        "pointer",
+
+                      display:
+                        "grid",
 
                       gridTemplateColumns:
                         "minmax(250px,2fr) minmax(180px,1.2fr) 90px 34px",
 
-                      gap: 15,
-                      alignItems: "center",
+                      gap:
+                        15,
+
+                      alignItems:
+                        "center",
 
                       fontFamily:
                         BODY_FONT,
 
-                      color: NAVY,
+                      color:
+                        NAVY,
                     }}
                   >
                     <div>
                       <div
                         style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          marginBottom: 4,
+                          fontSize:
+                            14,
+
+                          fontWeight:
+                            800,
+
+                          marginBottom:
+                            4,
                         }}
                       >
                         {item.razaoSocial ||
@@ -2092,12 +2076,20 @@ function ListaDiagnosticos({
 
                       <div
                         style={{
-                          fontSize: 11.5,
-                          color: MUTED,
+                          fontSize:
+                            11.5,
 
-                          display: "flex",
-                          gap: 9,
-                          flexWrap: "wrap",
+                          color:
+                            MUTED,
+
+                          display:
+                            "flex",
+
+                          gap:
+                            9,
+
+                          flexWrap:
+                            "wrap",
                         }}
                       >
                         <span>
@@ -2108,7 +2100,9 @@ function ListaDiagnosticos({
 
                         {item.segmento && (
                           <span>
-                            {item.segmento}
+                            {
+                              item.segmento
+                            }
                           </span>
                         )}
                       </div>
@@ -2117,10 +2111,17 @@ function ListaDiagnosticos({
                         0 && (
                         <div
                           style={{
-                            display: "flex",
-                            gap: 5,
-                            flexWrap: "wrap",
-                            marginTop: 8,
+                            display:
+                              "flex",
+
+                            gap:
+                              5,
+
+                            flexWrap:
+                              "wrap",
+
+                            marginTop:
+                              8,
                           }}
                         >
                           {dores
@@ -2152,7 +2153,9 @@ function ListaDiagnosticos({
                                       "3px 7px",
                                   }}
                                 >
-                                  {dor}
+                                  {
+                                    dor
+                                  }
                                 </span>
                               )
                             )}
@@ -2163,8 +2166,11 @@ function ListaDiagnosticos({
                     <div>
                       <div
                         style={{
-                          fontSize: 12,
-                          fontWeight: 700,
+                          fontSize:
+                            12,
+
+                          fontWeight:
+                            700,
                         }}
                       >
                         {item.nome ||
@@ -2173,9 +2179,14 @@ function ListaDiagnosticos({
 
                       <div
                         style={{
-                          fontSize: 10.5,
-                          color: MUTED,
-                          marginTop: 3,
+                          fontSize:
+                            10.5,
+
+                          color:
+                            MUTED,
+
+                          marginTop:
+                            3,
                         }}
                       >
                         {item.email ||
@@ -2184,9 +2195,14 @@ function ListaDiagnosticos({
 
                       <div
                         style={{
-                          fontSize: 10.5,
-                          color: MUTED,
-                          marginTop: 5,
+                          fontSize:
+                            10.5,
+
+                          color:
+                            MUTED,
+
+                          marginTop:
+                            5,
                         }}
                       >
                         {formatarData(
@@ -2204,10 +2220,10 @@ function ListaDiagnosticos({
                       <div
                         style={{
                           background:
-                            info.bg,
+                            score.bg,
 
                           color:
-                            info.color,
+                            score.color,
 
                           borderRadius:
                             12,
@@ -2218,7 +2234,8 @@ function ListaDiagnosticos({
                       >
                         <strong
                           style={{
-                            fontSize: 19,
+                            fontSize:
+                              19,
                           }}
                         >
                           {item.score ??
@@ -2227,11 +2244,16 @@ function ListaDiagnosticos({
 
                         <div
                           style={{
-                            fontSize: 8.5,
-                            marginTop: 1,
+                            fontSize:
+                              8.5,
+
+                            marginTop:
+                              1,
                           }}
                         >
-                          {info.label}
+                          {
+                            score.label
+                          }
                         </div>
                       </div>
                     </div>
@@ -2297,9 +2319,7 @@ function DetalheDiagnostico({
         const data =
           await resposta
             .json()
-            .catch(
-              () => null
-            );
+            .catch(() => null);
 
         if (
           !resposta.ok ||
@@ -2350,16 +2370,24 @@ function DetalheDiagnostico({
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: BG,
-          padding: 24,
+          minHeight:
+            "100vh",
+
+          background:
+            BG,
+
+          padding:
+            24,
+
           fontFamily:
             BODY_FONT,
         }}
       >
         <Botao
           secundario
-          onClick={onVoltar}
+          onClick={
+            onVoltar
+          }
         >
           <ArrowLeft
             size={15}
@@ -2370,12 +2398,20 @@ function DetalheDiagnostico({
 
         <div
           style={{
-            marginTop: 16,
+            marginTop:
+              16,
+
             background:
               "#FAECE7",
-            color: "#993C1D",
-            padding: 15,
-            borderRadius: 10,
+
+            color:
+              "#993C1D",
+
+            padding:
+              15,
+
+            borderRadius:
+              10,
           }}
         >
           {erro ||
@@ -2400,6 +2436,46 @@ function DetalheDiagnostico({
   const diagnosticoGeral =
     resultado.diagnosticoGeral ||
     {};
+
+  // =====================================================
+  // DOSSIÊ CONSULTIVO FINDER
+  // =====================================================
+
+  const plano90Dias =
+    resultado.plano90Dias ||
+    null;
+
+  const quickWins =
+    resultado.quickWins ||
+    [];
+
+  const kpisRecomendados =
+    resultado.kpisRecomendados ||
+    [];
+
+  const perguntasAprofundamento =
+    resultado.perguntasAprofundamento ||
+    [];
+
+  const visaoConsultor =
+    resultado.visaoConsultor ||
+    null;
+
+  const visaoComercial =
+    resultado.visaoComercial ||
+    null;
+
+  const lacunasDiagnostico =
+    resultado.lacunasDiagnostico ||
+    [];
+
+  const oportunidadesConsultoria =
+    resultado.oportunidadesConsultoria ||
+    [];
+
+  const inteligenciaTributaria =
+    resultado.inteligenciaTributaria ||
+    null;
 
   const perguntas =
     normalizarLista(
@@ -2427,79 +2503,60 @@ function DetalheDiagnostico({
       item.score
     );
 
-  const plano90Dias =
-    resultado.plano90Dias ||
-    null;
-
-  const quickWins =
-    normalizarLista(
-      resultado.quickWins
-    );
-
-  const kpisRecomendados =
-    normalizarLista(
-      resultado
-        .kpisRecomendados
-    );
-
-  const perguntasAprofundamento =
-    normalizarLista(
-      resultado
-        .perguntasAprofundamento
-    );
-
-  const visaoConsultor =
-    resultado.visaoConsultor ||
-    null;
-
-  const visaoComercial =
-    resultado.visaoComercial ||
-    null;
-
-  const lacunasDiagnostico =
-    normalizarLista(
-      resultado
-        .lacunasDiagnostico
-    );
-
-  const oportunidadesConsultoria =
-    normalizarLista(
-      resultado
-        .oportunidadesConsultoria
-    );
-
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: BG,
-        fontFamily: BODY_FONT,
-        color: NAVY,
+        minHeight:
+          "100vh",
+
+        background:
+          BG,
+
+        fontFamily:
+          BODY_FONT,
+
+        color:
+          NAVY,
       }}
     >
       <header
         style={{
-          background: NAVY,
+          background:
+            NAVY,
+
           padding:
             "17px 24px",
-          color: WHITE,
+
+          color:
+            WHITE,
         }}
       >
         <div
           style={{
-            maxWidth: 1180,
-            margin: "0 auto",
+            maxWidth:
+              1180,
 
-            display: "flex",
+            margin:
+              "0 auto",
+
+            display:
+              "flex",
+
             justifyContent:
               "space-between",
-            alignItems: "center",
-            gap: 15,
+
+            alignItems:
+              "center",
+
+            gap:
+              15,
           }}
         >
           <Botao
             secundario
-            onClick={onVoltar}
+            onClick={
+              onVoltar
+            }
           >
             <ArrowLeft
               size={15}
@@ -2510,8 +2567,11 @@ function DetalheDiagnostico({
 
           <span
             style={{
-              fontSize: 11,
-              opacity: 0.75,
+              fontSize:
+                11,
+
+              opacity:
+                0.75,
             }}
           >
             {formatarData(
@@ -2523,30 +2583,45 @@ function DetalheDiagnostico({
 
       <main
         style={{
-          maxWidth: 1180,
-          margin: "0 auto",
+          maxWidth:
+            1180,
+
+          margin:
+            "0 auto",
+
           padding:
             "24px 20px 60px",
         }}
       >
         <div
           style={{
-            display: "grid",
+            display:
+              "grid",
 
             gridTemplateColumns:
               "minmax(0,1fr) 170px",
 
-            gap: 14,
-            marginBottom: 16,
+            gap:
+              14,
+
+            marginBottom:
+              16,
           }}
         >
           <Card>
             <div
               style={{
-                fontSize: 11,
-                color: CORAL,
-                fontWeight: 800,
-                marginBottom: 6,
+                fontSize:
+                  11,
+
+                color:
+                  CORAL,
+
+                fontWeight:
+                  800,
+
+                marginBottom:
+                  6,
               }}
             >
               DIAGNÓSTICO EMPRESARIAL
@@ -2556,7 +2631,10 @@ function DetalheDiagnostico({
               style={{
                 fontFamily:
                   DISPLAY_FONT,
-                fontSize: 28,
+
+                fontSize:
+                  28,
+
                 margin:
                   "0 0 7px",
               }}
@@ -2567,9 +2645,14 @@ function DetalheDiagnostico({
 
             <div
               style={{
-                color: MUTED,
-                fontSize: 12,
-                lineHeight: 1.6,
+                color:
+                  MUTED,
+
+                fontSize:
+                  12,
+
+                lineHeight:
+                  1.6,
               }}
             >
               {formatarCnpj(
@@ -2590,15 +2673,21 @@ function DetalheDiagnostico({
             style={{
               background:
                 score.bg,
+
               textAlign:
                 "center",
             }}
           >
             <div
               style={{
-                fontSize: 38,
-                fontWeight: 900,
-                color: score.color,
+                fontSize:
+                  38,
+
+                fontWeight:
+                  900,
+
+                color:
+                  score.color,
               }}
             >
               {item.score ??
@@ -2607,9 +2696,14 @@ function DetalheDiagnostico({
 
             <div
               style={{
-                fontSize: 11,
-                color: score.color,
-                fontWeight: 700,
+                fontSize:
+                  11,
+
+                color:
+                  score.color,
+
+                fontWeight:
+                  700,
               }}
             >
               {score.label}
@@ -2619,13 +2713,17 @@ function DetalheDiagnostico({
 
         <div
           style={{
-            display: "grid",
+            display:
+              "grid",
 
             gridTemplateColumns:
               "repeat(auto-fit,minmax(230px,1fr))",
 
-            gap: 12,
-            marginBottom: 18,
+            gap:
+              12,
+
+            marginBottom:
+              18,
           }}
         >
           <Card>
@@ -2638,11 +2736,7 @@ function DetalheDiagnostico({
               Participante
             </h3>
 
-            <p
-              style={{
-                lineHeight: 1.6,
-              }}
-            >
+            <p>
               <strong>
                 {participante.nome ||
                   "-"}
@@ -2675,11 +2769,7 @@ function DetalheDiagnostico({
               Negócio
             </h3>
 
-            <p
-              style={{
-                lineHeight: 1.6,
-              }}
-            >
+            <p>
               {empresa.descricaoNegocio ||
                 "Descrição não registrada."}
             </p>
@@ -2698,9 +2788,11 @@ function DetalheDiagnostico({
             {dores.length ? (
               <ul
                 style={{
-                  paddingLeft: 18,
-                  marginBottom: 0,
-                  lineHeight: 1.55,
+                  paddingLeft:
+                    18,
+
+                  marginBottom:
+                    0,
                 }}
               >
                 {dores.map(
@@ -2738,8 +2830,11 @@ function DetalheDiagnostico({
             <Card>
               <p
                 style={{
-                  margin: 0,
-                  lineHeight: 1.65,
+                  margin:
+                    0,
+
+                  lineHeight:
+                    1.65,
                 }}
               >
                 {
@@ -2766,6 +2861,7 @@ function DetalheDiagnostico({
               style={{
                 background:
                   "#FAEEDA",
+
                 color:
                   "#70410A",
               }}
@@ -2778,7 +2874,373 @@ function DetalheDiagnostico({
           </>
         )}
 
-        <h2 style={tituloSecao}>
+        {inteligenciaTributaria?.disponivel && (
+          <>
+            <h2 style={tituloSecao}>
+              Inteligência tributária
+            </h2>
+
+            <Card
+              style={{
+                border: "1px solid #D8DEEA",
+                background: "#FBFCFE",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(180px,1fr))",
+                  gap: 10,
+                  marginBottom: 16,
+                }}
+              >
+                <div
+                  style={{
+                    background: WHITE,
+                    border: "1px solid #E3E7EF",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginBottom: 4,
+                    }}
+                  >
+                    FATURAMENTO DE REFERÊNCIA
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 18,
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .faturamentoMensalReferencia
+                    ).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })}
+                  </strong>
+
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginTop: 3,
+                    }}
+                  >
+                    por mês
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: WHITE,
+                    border: "1px solid #E3E7EF",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginBottom: 4,
+                    }}
+                  >
+                    TRIBUTOS ESTIMADOS
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 18,
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .tributosMensaisEstimados
+                    ).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })}
+                  </strong>
+
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginTop: 3,
+                    }}
+                  >
+                    por mês
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#FFF3EF",
+                    border: "1px solid #F0C8BD",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#993C1D",
+                      marginBottom: 4,
+                    }}
+                  >
+                    CARGA TRIBUTÁRIA ESTIMADA
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 25,
+                      color: "#993C1D",
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .cargaTributariaEstimada
+                    ).toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                    %
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    background: WHITE,
+                    border: "1px solid #E3E7EF",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginBottom: 4,
+                    }}
+                  >
+                    PROJEÇÃO ANUAL DE TRIBUTOS
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 18,
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .tributosAnuaisEstimados
+                    ).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })}
+                  </strong>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(230px,1fr))",
+                  gap: 10,
+                  marginBottom: 14,
+                }}
+              >
+                <ListaInterna
+                  titulo="Base da estimativa"
+                  itens={[
+                    `Regime informado: ${
+                      inteligenciaTributaria.regime || "-"
+                    }`,
+                    `Segmento: ${
+                      inteligenciaTributaria.segmento || "-"
+                    }`,
+                    `Categoria: ${
+                      inteligenciaTributaria.categoria || "-"
+                    }`,
+                    `Faixa de faturamento: ${
+                      inteligenciaTributaria.faturamentoFaixa || "-"
+                    }`,
+                    `Confiabilidade: ${
+                      inteligenciaTributaria.confiabilidade || "Referencial"
+                    }`,
+                  ]}
+                />
+
+                <ListaInterna
+                  titulo="Critério"
+                  itens={[
+                    inteligenciaTributaria.criterio ||
+                      "Estimativa gerencial.",
+                  ]}
+                />
+              </div>
+
+              <div
+                style={{
+                  background: "#17233D",
+                  color: WHITE,
+                  borderRadius: 12,
+                  padding: 15,
+                  marginTop: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "#FFB7A7",
+                    fontWeight: 900,
+                    letterSpacing: 0.7,
+                    marginBottom: 4,
+                  }}
+                >
+                  REFORMA TRIBUTÁRIA · IMPACTO SETORIAL
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 19,
+                    fontWeight: 800,
+                    marginBottom: 8,
+                  }}
+                >
+                  {inteligenciaTributaria.reforma?.status ||
+                    "A avaliar"}
+                </div>
+
+                <p
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    color: "#E4E9F2",
+                    margin: "0 0 10px",
+                  }}
+                >
+                  {inteligenciaTributaria.reforma
+                    ?.tratamentoSetorial ||
+                    "Tratamento setorial não classificado."}
+                </p>
+
+                <p
+                  style={{
+                    fontSize: 11.5,
+                    lineHeight: 1.55,
+                    color: "#CDD4E0",
+                    margin: 0,
+                  }}
+                >
+                  <strong>Fase 2026:</strong>{" "}
+                  {inteligenciaTributaria.reforma
+                    ?.fase2026 || "-"}
+                </p>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(220px,1fr))",
+                  gap: 10,
+                  marginTop: 12,
+                }}
+              >
+                <ListaInterna
+                  titulo="Fatores favoráveis"
+                  itens={
+                    inteligenciaTributaria.reforma
+                      ?.fatoresFavoraveis
+                  }
+                />
+
+                <ListaInterna
+                  titulo="Fatores de atenção"
+                  itens={
+                    inteligenciaTributaria.reforma
+                      ?.fatoresAtencao
+                  }
+                />
+
+                <ListaInterna
+                  titulo="O que validar antes da conclusão"
+                  itens={
+                    inteligenciaTributaria.reforma
+                      ?.pontosValidar
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  background: "#FFF3EF",
+                  borderLeft: `4px solid ${CORAL}`,
+                  borderRadius: 10,
+                  padding: 12,
+                }}
+              >
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "#993C1D",
+                    marginBottom: 5,
+                  }}
+                >
+                  OPORTUNIDADE CONSULTIVA FINDER
+                </strong>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {inteligenciaTributaria.reforma
+                    ?.oportunidadeFinder ||
+                    "Avaliar necessidade de planejamento tributário individualizado."}
+                </div>
+              </div>
+
+              <p
+                style={{
+                  fontSize: 10,
+                  color: MUTED,
+                  lineHeight: 1.45,
+                  margin: "12px 0 0",
+                  fontStyle: "italic",
+                }}
+              >
+                A carga apresentada é estimativa gerencial e não corresponde
+                à apuração fiscal definitiva. O impacto da Reforma Tributária
+                deve ser validado com faturamento real, composição das
+                receitas, créditos, custos, perfil de clientes e enquadramento
+                legal das operações.
+              </p>
+            </Card>
+          </>
+        )}
+
+        <h2
+          style={
+            tituloSecao
+          }
+        >
           Diagnóstico por área
         </h2>
 
@@ -2790,10 +3252,14 @@ function DetalheDiagnostico({
         ) : (
           <div
             style={{
-              display: "flex",
+              display:
+                "flex",
+
               flexDirection:
                 "column",
-              gap: 12,
+
+              gap:
+                12,
             }}
           >
             {areas.map(
@@ -2807,16 +3273,24 @@ function DetalheDiagnostico({
                   );
 
                 return (
-                  <Card key={index}>
+                  <Card
+                    key={
+                      index
+                    }
+                  >
                     <div
                       style={{
-                        display: "flex",
+                        display:
+                          "flex",
 
                         justifyContent:
                           "space-between",
 
-                        gap: 15,
-                        marginBottom: 10,
+                        gap:
+                          15,
+
+                        marginBottom:
+                          10,
                       }}
                     >
                       <div>
@@ -2832,9 +3306,11 @@ function DetalheDiagnostico({
 
                         <div
                           style={{
-                            fontSize: 10,
-                            color: info.color,
-                            fontWeight: 700,
+                            fontSize:
+                              10,
+
+                            color:
+                              MUTED,
                           }}
                         >
                           {info.label}
@@ -2852,9 +3328,11 @@ function DetalheDiagnostico({
                           padding:
                             "7px 10px",
 
-                          borderRadius: 10,
+                          borderRadius:
+                            10,
 
-                          fontWeight: 800,
+                          fontWeight:
+                            800,
                         }}
                       >
                         {area.score ??
@@ -2865,7 +3343,8 @@ function DetalheDiagnostico({
                     {area.resumo && (
                       <p
                         style={{
-                          lineHeight: 1.55,
+                          lineHeight:
+                            1.55,
                         }}
                       >
                         {area.resumo}
@@ -2874,12 +3353,14 @@ function DetalheDiagnostico({
 
                     <div
                       style={{
-                        display: "grid",
+                        display:
+                          "grid",
 
                         gridTemplateColumns:
                           "repeat(auto-fit,minmax(210px,1fr))",
 
-                        gap: 10,
+                        gap:
+                          10,
                       }}
                     >
                       <ListaInterna
@@ -2918,15 +3399,14 @@ function DetalheDiagnostico({
         )}
 
         {/* ================================================= */}
-        {/* DOSSIÊ CONSULTIVO FINDER */}
+        {/* DOSSIÊ CONSULTIVO FINDER - SOMENTE ADMIN */}
         {/* ================================================= */}
 
         <div
           style={{
-            marginTop: 36,
-            paddingTop: 20,
-            borderTop:
-              `4px solid ${NAVY}`,
+            marginTop: 34,
+            paddingTop: 8,
+            borderTop: "3px solid #17233D",
           }}
         >
           <div
@@ -2934,7 +3414,8 @@ function DetalheDiagnostico({
               color: CORAL,
               fontSize: 11,
               fontWeight: 900,
-              letterSpacing: 1,
+              letterSpacing: 0.8,
+              marginTop: 18,
             }}
           >
             USO INTERNO · FINDER OF SOLUTIONS
@@ -2942,163 +3423,143 @@ function DetalheDiagnostico({
 
           <h2
             style={{
-              fontFamily:
-                DISPLAY_FONT,
-
-              fontSize: 28,
-              margin:
-                "6px 0 5px",
+              ...tituloSecao,
+              fontSize: 25,
+              marginTop: 6,
+              marginBottom: 5,
             }}
           >
-            Dossiê Consultivo
+            Dossiê consultivo
           </h2>
 
           <p
             style={{
+              margin: "0 0 18px",
               color: MUTED,
               fontSize: 12,
               lineHeight: 1.55,
-              margin:
-                "0 0 18px",
             }}
           >
-            Camada interna para condução da reunião, validação das hipóteses, definição das prioridades, acompanhamento da execução e abordagem comercial.
+            Camada interna para condução da reunião, validação das hipóteses,
+            priorização da execução e definição da oportunidade comercial.
           </p>
         </div>
 
-        <BlocoDossie
-          titulo="Plano de ação — 90 dias"
-          destaque
-        >
-          <Plano90Dias
-            plano={plano90Dias}
+        <BlocoDossie titulo="Plano de ação — 90 dias" destaque>
+          <Plano90Dias plano={plano90Dias} />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="Quick wins">
+          <ListaDossie itens={quickWins} vazio="Nenhum quick win gerado." />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="KPIs recomendados">
+          <ListaDossie itens={kpisRecomendados} vazio="Nenhum KPI recomendado." />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="Visão do consultor" destaque>
+          <ListaDossie itens={visaoConsultor} vazio="Visão do consultor não gerada." />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="Perguntas para aprofundamento">
+          <ListaDossie
+            itens={perguntasAprofundamento}
+            vazio="Nenhuma pergunta de aprofundamento gerada."
           />
         </BlocoDossie>
 
-        <BlocoDossie
-          titulo="Quick wins"
-        >
-          <RenderValor
-            valor={
-              quickWins.length
-                ? quickWins
-                : null
-            }
-          />
+        <BlocoDossie titulo="Visão comercial Finder">
+          <ListaDossie itens={visaoComercial} vazio="Visão comercial não gerada." />
         </BlocoDossie>
 
-        <BlocoDossie
-          titulo="KPIs recomendados"
-        >
-          <RenderValor
-            valor={
-              kpisRecomendados.length
-                ? kpisRecomendados
-                : null
-            }
-          />
-        </BlocoDossie>
-
-        <BlocoDossie
-          titulo="Visão do consultor"
-          destaque
-        >
-          <RenderValor
-            valor={
-              visaoConsultor
-            }
-          />
-        </BlocoDossie>
-
-        <BlocoDossie
-          titulo="Perguntas para aprofundamento"
-        >
-          <RenderValor
-            valor={
-              perguntasAprofundamento.length
-                ? perguntasAprofundamento
-                : null
-            }
-          />
-        </BlocoDossie>
-
-        <BlocoDossie
-          titulo="Visão comercial Finder"
-        >
-          <RenderValor
-            valor={
-              visaoComercial
-            }
-          />
-        </BlocoDossie>
-
-        {lacunasDiagnostico.length >
-          0 && (
-          <BlocoDossie
-            titulo="Lacunas do diagnóstico"
-          >
-            <RenderValor
-              valor={
-                lacunasDiagnostico
-              }
-            />
+        {listaFlexivel(lacunasDiagnostico).length > 0 && (
+          <BlocoDossie titulo="Lacunas do diagnóstico">
+            <ListaDossie itens={lacunasDiagnostico} />
           </BlocoDossie>
         )}
 
-        {oportunidadesConsultoria.length >
-          0 && (
-          <BlocoDossie
-            titulo="Oportunidades de consultoria"
-          >
-            <RenderValor
-              valor={
-                oportunidadesConsultoria
-              }
-            />
+        {listaFlexivel(oportunidadesConsultoria).length > 0 && (
+          <BlocoDossie titulo="Oportunidades de consultoria">
+            <ListaDossie itens={oportunidadesConsultoria} />
           </BlocoDossie>
         )}
 
-        <h2 style={tituloSecao}>
+        <h2
+          style={
+            tituloSecao
+          }
+        >
           Perguntas e respostas
         </h2>
 
         <Card
           style={{
-            padding: 0,
-            overflowX: "auto",
+            padding:
+              0,
+
+            overflowX:
+              "auto",
           }}
         >
           <table
             style={{
-              width: "100%",
+              width:
+                "100%",
+
               borderCollapse:
                 "collapse",
-              minWidth: 900,
+
+              minWidth:
+                820,
             }}
           >
             <thead>
               <tr>
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Área
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Tema
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Pergunta
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Resposta
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Peso
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Importância
                 </th>
               </tr>
@@ -3112,7 +3573,9 @@ function DetalheDiagnostico({
                     index
                   ) => (
                     <tr
-                      key={index}
+                      key={
+                        index
+                      }
                     >
                       <td
                         style={
@@ -3144,7 +3607,9 @@ function DetalheDiagnostico({
                       <td
                         style={{
                           ...tdStyle,
-                          fontWeight: 800,
+
+                          fontWeight:
+                            800,
                         }}
                       >
                         {pergunta.resposta ||
@@ -3177,6 +3642,7 @@ function DetalheDiagnostico({
                     colSpan="6"
                     style={{
                       ...tdStyle,
+
                       textAlign:
                         "center",
                     }}
@@ -3189,6 +3655,95 @@ function DetalheDiagnostico({
           </table>
         </Card>
       </main>
+    </div>
+  );
+}
+
+// =========================================================
+// LISTA INTERNA
+// =========================================================
+
+function ListaInterna({
+  titulo,
+  itens,
+}) {
+  const lista =
+    normalizarLista(
+      itens
+    );
+
+  return (
+    <div
+      style={{
+        background:
+          "#F7F8FB",
+
+        borderRadius:
+          9,
+
+        padding:
+          11,
+      }}
+    >
+      <strong
+        style={{
+          display:
+            "block",
+
+          fontSize:
+            11,
+
+          marginBottom:
+            6,
+        }}
+      >
+        {titulo}
+      </strong>
+
+      {lista.length ? (
+        <ul
+          style={{
+            margin:
+              0,
+
+            paddingLeft:
+              17,
+
+            fontSize:
+              11.5,
+
+            lineHeight:
+              1.5,
+          }}
+        >
+          {lista.map(
+            (
+              item,
+              index
+            ) => (
+              <li
+                key={
+                  index
+                }
+              >
+                {item}
+              </li>
+            )
+          )}
+        </ul>
+      ) : (
+        <span
+          style={{
+            fontSize:
+              11,
+
+            color:
+              MUTED,
+          }}
+        >
+          Sem informação.
+        </span>
+      )}
     </div>
   );
 }
@@ -3219,7 +3774,6 @@ export default function Admin() {
     );
 
     setToken("");
-
     setDiagnosticoId(
       null
     );
@@ -3228,7 +3782,9 @@ export default function Admin() {
   if (!token) {
     return (
       <LoginAdmin
-        onLogin={setToken}
+        onLogin={
+          setToken
+        }
       />
     );
   }
@@ -3238,8 +3794,14 @@ export default function Admin() {
   ) {
     return (
       <DetalheDiagnostico
-        token={token}
-        id={diagnosticoId}
+        token={
+          token
+        }
+
+        id={
+          diagnosticoId
+        }
+
         onVoltar={() =>
           setDiagnosticoId(
             null
@@ -3251,11 +3813,17 @@ export default function Admin() {
 
   return (
     <ListaDiagnosticos
-      token={token}
+      token={
+        token
+      }
+
       onAbrir={
         setDiagnosticoId
       }
-      onLogout={sair}
+
+      onLogout={
+        sair
+      }
     />
   );
 }
@@ -3268,14 +3836,16 @@ const tituloSecao = {
   fontFamily:
     DISPLAY_FONT,
 
-  fontSize: 20,
+  fontSize:
+    20,
 
   margin:
     "25px 0 10px",
 };
 
 const thStyle = {
-  background: ICE,
+  background:
+    ICE,
 
   padding:
     "10px 9px",
@@ -3283,9 +3853,11 @@ const thStyle = {
   textAlign:
     "left",
 
-  color: NAVY,
+  color:
+    NAVY,
 
-  fontSize: 11,
+  fontSize:
+    11,
 
   whiteSpace:
     "nowrap",
@@ -3298,9 +3870,11 @@ const tdStyle = {
   padding:
     "10px 9px",
 
-  fontSize: 11.5,
+  fontSize:
+    11.5,
 
-  lineHeight: 1.45,
+  lineHeight:
+    1.45,
 
   verticalAlign:
     "top",
