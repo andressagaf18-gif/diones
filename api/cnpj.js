@@ -1,4 +1,4 @@
-// api/cnpj.js
+// cnpj.js
 
 export default async function handler(req, res) {
   // =========================================================
