@@ -28,7 +28,7 @@ const DISPLAY_FONT =
   "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 
 // =========================================================
-// FUNÇÕES AUXILIARES
+// HELPERS
 // =========================================================
 
 function formatarData(valor) {
@@ -55,6 +55,16 @@ function formatarCnpj(valor = "") {
     /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
     "$1.$2.$3/$4-$5"
   );
+}
+
+function normalizarLista(valor) {
+  return Array.isArray(valor) ? valor : [];
+}
+
+function juntarLista(valor) {
+  return Array.isArray(valor)
+    ? valor.filter(Boolean).join(" | ")
+    : "";
 }
 
 function scoreInfo(score) {
@@ -99,17 +109,136 @@ function scoreInfo(score) {
   };
 }
 
-function normalizarLista(valor) {
-  return Array.isArray(valor) ? valor : [];
+function tituloChave(chave = "") {
+  const mapa = {
+    fase0a30: "0–30 dias",
+    fase31a60: "31–60 dias",
+    fase61a90: "61–90 dias",
+
+    primeiros30Dias: "0–30 dias",
+    dias0a30: "0–30 dias",
+    zeroA30: "0–30 dias",
+    de0a30: "0–30 dias",
+
+    dias31a60: "31–60 dias",
+    trintaEUmA60: "31–60 dias",
+    de31a60: "31–60 dias",
+
+    dias61a90: "61–90 dias",
+    sessentaEUmA90: "61–90 dias",
+    de61a90: "61–90 dias",
+
+    diagnosticoCentral: "Diagnóstico central",
+    evidenciaMaisForte: "Evidência mais forte",
+    hipotesePrincipal: "Hipótese principal",
+    validarPrimeiro: "O que validar primeiro",
+    naoFazerAgora: "O que não fazer agora",
+    pontosCegos: "Pontos cegos",
+    dadosDocumentosSolicitar: "Dados e documentos a solicitar",
+
+    potencialLead: "Potencial do lead",
+    justificativa: "Justificativa",
+    servicosAderentes: "Serviços aderentes",
+    argumentoAbordagem: "Argumento de abordagem",
+    objecoesProvaveis: "Objeções prováveis",
+    proximaAcaoComercial: "Próxima ação comercial",
+
+    resultadoEsperado: "Resultado esperado",
+    indicadores: "Indicadores",
+    acoes: "Ações",
+
+    impactoEsperado: "Impacto esperado",
+    esforco: "Esforço",
+    dependencias: "Dependências",
+
+    oQueMede: "O que mede",
+    formaCalculo: "Forma de cálculo",
+    frequencia: "Frequência",
+    metaSugerida: "Meta sugerida",
+
+    problemaQuePodeAjudar: "Problema que pode ajudar",
+    evidencia: "Evidência",
+
+    motivo: "Motivo",
+    validar: "O que validar",
+  };
+
+  if (mapa[chave]) {
+    return mapa[chave];
+  }
+
+  return String(chave)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/^./, (c) => c.toUpperCase());
 }
 
-function juntarLista(valor) {
-  return Array.isArray(valor)
-    ? valor.filter(Boolean).join(" | ")
-    : "";
+function textoSeguro(valor) {
+  if (
+    valor === null ||
+    valor === undefined
+  ) {
+    return "";
+  }
+
+  if (
+    typeof valor === "string" ||
+    typeof valor === "number"
+  ) {
+    return String(valor);
+  }
+
+  if (Array.isArray(valor)) {
+    return valor
+      .map(textoSeguro)
+      .filter(Boolean)
+      .join(" • ");
+  }
+
+  if (typeof valor === "object") {
+    return (
+      valor.titulo ||
+      valor.nome ||
+      valor.indicador ||
+      valor.pergunta ||
+      valor.acao ||
+      valor.objetivo ||
+      valor.servico ||
+      valor.descricao ||
+      valor.resumo ||
+      JSON.stringify(valor)
+    );
+  }
+
+  return String(valor);
 }
 
-function Card({ children, style = {} }) {
+function temConteudo(valor) {
+  if (!valor) {
+    return false;
+  }
+
+  if (Array.isArray(valor)) {
+    return valor.length > 0;
+  }
+
+  if (typeof valor === "object") {
+    return Object.values(valor).some(
+      (item) => temConteudo(item)
+    );
+  }
+
+  return String(valor).trim() !== "";
+}
+
+// =========================================================
+// COMPONENTES BÁSICOS
+// =========================================================
+
+function Card({
+  children,
+  style = {},
+}) {
   return (
     <div
       style={{
@@ -152,6 +281,7 @@ function Botao({
 
         borderRadius: 10,
         padding: "10px 14px",
+
         fontFamily: BODY_FONT,
         fontSize: 13,
         fontWeight: 700,
@@ -177,19 +307,421 @@ function Botao({
   );
 }
 
+function ListaInterna({
+  titulo,
+  itens,
+}) {
+  const lista =
+    normalizarLista(itens);
+
+  return (
+    <div
+      style={{
+        background: "#F7F8FB",
+        borderRadius: 9,
+        padding: 11,
+      }}
+    >
+      <strong
+        style={{
+          display: "block",
+          fontSize: 11,
+          marginBottom: 6,
+        }}
+      >
+        {titulo}
+      </strong>
+
+      {lista.length ? (
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: 17,
+            fontSize: 11.5,
+            lineHeight: 1.5,
+          }}
+        >
+          {lista.map(
+            (item, index) => (
+              <li key={index}>
+                {textoSeguro(item)}
+              </li>
+            )
+          )}
+        </ul>
+      ) : (
+        <span
+          style={{
+            fontSize: 11,
+            color: MUTED,
+          }}
+        >
+          Sem informação.
+        </span>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
+// COMPONENTES DO DOSSIÊ
+// =========================================================
+
+function BlocoDossie({
+  titulo,
+  children,
+  destaque = false,
+}) {
+  return (
+    <>
+      <h2 style={tituloSecao}>
+        {titulo}
+      </h2>
+
+      <Card
+        style={
+          destaque
+            ? {
+                background: "#FFF9F7",
+                border: "1px solid #F0C8BD",
+              }
+            : {}
+        }
+      >
+        {children}
+      </Card>
+    </>
+  );
+}
+
+function RenderValor({
+  valor,
+}) {
+  if (
+    valor === null ||
+    valor === undefined ||
+    valor === ""
+  ) {
+    return (
+      <span
+        style={{
+          color: MUTED,
+          fontSize: 11.5,
+        }}
+      >
+        Sem informação.
+      </span>
+    );
+  }
+
+  if (Array.isArray(valor)) {
+    if (!valor.length) {
+      return (
+        <span
+          style={{
+            color: MUTED,
+            fontSize: 11.5,
+          }}
+        >
+          Sem informação.
+        </span>
+      );
+    }
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        {valor.map(
+          (item, index) => (
+            <RenderItem
+              key={index}
+              item={item}
+              index={index}
+            />
+          )
+        )}
+      </div>
+    );
+  }
+
+  if (
+    typeof valor === "object"
+  ) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 9,
+        }}
+      >
+        {Object.entries(valor)
+          .filter(
+            ([, item]) =>
+              temConteudo(item)
+          )
+          .map(
+            ([chave, item]) => (
+              <div
+                key={chave}
+                style={{
+                  background: "#F7F8FB",
+                  borderRadius: 10,
+                  padding: 12,
+                }}
+              >
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: 11.5,
+                    marginBottom: 5,
+                    color: NAVY,
+                  }}
+                >
+                  {tituloChave(chave)}
+                </strong>
+
+                <RenderValor
+                  valor={item}
+                />
+              </div>
+            )
+          )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        fontSize: 11.8,
+        lineHeight: 1.55,
+      }}
+    >
+      {String(valor)}
+    </div>
+  );
+}
+
+function RenderItem({
+  item,
+  index,
+}) {
+  if (
+    item &&
+    typeof item === "object"
+  ) {
+    const titulo =
+      item.titulo ||
+      item.nome ||
+      item.indicador ||
+      item.pergunta ||
+      item.acao ||
+      item.objetivo ||
+      item.servico ||
+      `Item ${index + 1}`;
+
+    const chavesIgnoradas = [
+      "titulo",
+      "nome",
+      "indicador",
+      "pergunta",
+      "acao",
+      "objetivo",
+      "servico",
+    ];
+
+    return (
+      <div
+        style={{
+          background: "#F7F8FB",
+          borderRadius: 10,
+          padding: 12,
+        }}
+      >
+        <strong
+          style={{
+            display: "block",
+            fontSize: 12.3,
+            marginBottom: 6,
+          }}
+        >
+          {textoSeguro(titulo)}
+        </strong>
+
+        {Object.entries(item)
+          .filter(
+            ([chave, valor]) =>
+              !chavesIgnoradas.includes(
+                chave
+              ) &&
+              temConteudo(valor)
+          )
+          .map(
+            ([chave, valor]) => (
+              <div
+                key={chave}
+                style={{
+                  marginTop: 5,
+                  fontSize: 11.5,
+                  lineHeight: 1.55,
+                }}
+              >
+                <strong>
+                  {tituloChave(chave)}:
+                </strong>{" "}
+
+                {Array.isArray(valor)
+                  ? valor
+                      .map(
+                        textoSeguro
+                      )
+                      .filter(Boolean)
+                      .join(" • ")
+                  : typeof valor ===
+                      "object"
+                    ? textoSeguro(valor)
+                    : String(valor)}
+              </div>
+            )
+          )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        alignItems: "flex-start",
+        fontSize: 11.8,
+        lineHeight: 1.55,
+      }}
+    >
+      <span
+        style={{
+          color: CORAL,
+          fontWeight: 900,
+        }}
+      >
+        •
+      </span>
+
+      <span>
+        {textoSeguro(item)}
+      </span>
+    </div>
+  );
+}
+
+function Plano90Dias({
+  plano,
+}) {
+  if (
+    !plano ||
+    typeof plano !== "object"
+  ) {
+    return (
+      <span
+        style={{
+          color: MUTED,
+          fontSize: 12,
+        }}
+      >
+        Plano de 90 dias não gerado.
+      </span>
+    );
+  }
+
+  const fases = [
+    {
+      chave: "fase0a30",
+      titulo: "0–30 dias",
+    },
+    {
+      chave: "fase31a60",
+      titulo: "31–60 dias",
+    },
+    {
+      chave: "fase61a90",
+      titulo: "61–90 dias",
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          "repeat(auto-fit,minmax(250px,1fr))",
+        gap: 12,
+      }}
+    >
+      {fases.map(
+        (fase) => {
+          const dados =
+            plano[fase.chave] ||
+            {};
+
+          return (
+            <div
+              key={fase.chave}
+              style={{
+                background: WHITE,
+                border: "1px solid #E3E7EF",
+                borderRadius: 12,
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  color: CORAL,
+                  fontSize: 13,
+                  fontWeight: 900,
+                  marginBottom: 10,
+                }}
+              >
+                {fase.titulo}
+              </div>
+
+              <RenderValor
+                valor={dados}
+              />
+            </div>
+          );
+        }
+      )}
+    </div>
+  );
+}
+
 // =========================================================
 // LOGIN
 // =========================================================
 
-function LoginAdmin({ onLogin }) {
-  const [token, setToken] =
-    useState("");
+function LoginAdmin({
+  onLogin,
+}) {
+  const [
+    token,
+    setToken,
+  ] = useState("");
 
-  const [erro, setErro] =
-    useState("");
+  const [
+    erro,
+    setErro,
+  ] = useState("");
 
-  const [carregando, setCarregando] =
-    useState(false);
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(false);
 
   async function entrar() {
     const valor =
@@ -221,7 +753,9 @@ function LoginAdmin({ onLogin }) {
       const data =
         await resposta
           .json()
-          .catch(() => null);
+          .catch(
+            () => null
+          );
 
       if (
         !resposta.ok ||
@@ -304,8 +838,7 @@ function LoginAdmin({ onLogin }) {
             margin: "0 0 22px",
           }}
         >
-          Área restrita da Finder para consulta
-          dos diagnósticos empresariais realizados.
+          Área restrita da Finder para consulta dos diagnósticos empresariais realizados.
         </p>
 
         <label
@@ -428,10 +961,6 @@ function ListaDiagnosticos({
     setErro,
   ] = useState("");
 
-  // =======================================================
-  // CARREGAR LISTA
-  // =======================================================
-
   async function carregar(
     termo = ""
   ) {
@@ -475,21 +1004,14 @@ function ListaDiagnosticos({
       const data =
         await resposta
           .json()
-          .catch(() => null);
+          .catch(
+            () => null
+          );
 
       if (
         !resposta.ok ||
         !data?.sucesso
       ) {
-        if (
-          resposta.status ===
-          401
-        ) {
-          throw new Error(
-            "Sua sessão administrativa expirou."
-          );
-        }
-
         throw new Error(
           data?.error ||
           "Não foi possível carregar os diagnósticos."
@@ -544,10 +1066,6 @@ function ListaDiagnosticos({
     carregar("");
   }
 
-  // =======================================================
-  // SCORE MÉDIO
-  // =======================================================
-
   const mediaScore =
     useMemo(() => {
       const scores =
@@ -569,19 +1087,15 @@ function ListaDiagnosticos({
       return Math.round(
         scores.reduce(
           (
-            acc,
+            soma,
             valor
           ) =>
-            acc + valor,
+            soma + valor,
           0
         ) /
         scores.length
       );
     }, [diagnosticos]);
-
-  // =======================================================
-  // EXPORTAR EXCEL
-  // =======================================================
 
   async function exportarExcel() {
     if (exportando) {
@@ -596,8 +1110,6 @@ function ListaDiagnosticos({
         await fetch(
           "/api/exportar-diagnosticos",
           {
-            method: "GET",
-
             headers: {
               Authorization:
                 `Bearer ${token}`,
@@ -608,7 +1120,9 @@ function ListaDiagnosticos({
       const data =
         await resposta
           .json()
-          .catch(() => null);
+          .catch(
+            () => null
+          );
 
       if (
         !resposta.ok ||
@@ -626,18 +1140,6 @@ function ListaDiagnosticos({
       const registros =
         data.diagnosticos;
 
-      if (
-        registros.length === 0
-      ) {
-        throw new Error(
-          "Não existem diagnósticos para exportar."
-        );
-      }
-
-      // ===================================================
-      // ABA 1 - DIAGNÓSTICOS
-      // ===================================================
-
       const abaDiagnosticos =
         registros.map(
           (item) => {
@@ -649,35 +1151,25 @@ function ListaDiagnosticos({
               item.empresa ||
               {};
 
-            const dores =
-              Array.isArray(
-                item.dores
-              )
-                ? item.dores
-                : [];
-
-            const doresEstruturadas =
-              item.doresEstruturadas ||
-              {};
-
-            const negocio =
-              item.negocioInterpretado ||
-              {};
-
             const resultado =
               item.resultado ||
               {};
 
-            const diagnosticoGeral =
-              resultado.diagnosticoGeral ||
+            const geral =
+              resultado
+                .diagnosticoGeral ||
+              {};
+
+            const comercial =
+              resultado
+                .visaoComercial ||
               {};
 
             return {
-              "ID":
-                item.id ||
-                "",
+              ID:
+                item.id || "",
 
-              "Data":
+              Data:
                 item.criadoEm
                   ? new Date(
                       item.criadoEm
@@ -686,246 +1178,98 @@ function ListaDiagnosticos({
                     )
                   : "",
 
-              "Empresa":
+              Empresa:
                 empresa.razaoSocial ||
                 "",
 
-              "CNPJ":
+              CNPJ:
                 formatarCnpj(
                   empresa.cnpj ||
                   ""
                 ),
 
-              "Responsável":
+              Responsável:
                 participante.nome ||
                 "",
 
-              "Cargo":
+              Cargo:
                 participante.cargo ||
                 "",
 
-              "Telefone":
+              Telefone:
                 participante.telefone ||
                 "",
 
-              "E-mail":
+              Email:
                 participante.email ||
                 "",
 
-              "Descrição do negócio":
-                empresa.descricaoNegocio ||
-                "",
-
-              "Segmento":
+              Segmento:
                 empresa.segmento ||
                 "",
 
-              "Subsegmento":
+              Subsegmento:
                 empresa.subsegmento ||
                 "",
 
-              "Score":
+              Score:
                 item.score ??
                 "",
 
               "Dores declaradas":
-                dores.join(
+                normalizarLista(
+                  item.dores
+                ).join(
                   " | "
                 ),
 
-              "Dor principal":
-                doresEstruturadas
-                  .principal ||
-                dores[0] ||
-                "",
-
-              "Objetivo 90 dias":
-                doresEstruturadas
-                  .objetivo90Dias ||
-                "",
-
-              "Impactos da dor":
-                juntarLista(
-                  doresEstruturadas
-                    .impactos
-                ),
-
-              "Modelo de negócio":
-                negocio.modeloNegocio ||
-                negocio.modeloOperacional ||
-                "",
-
-              "Como gera receita":
-                negocio.comoGeraReceita ||
-                "",
-
               "Resumo executivo":
-                diagnosticoGeral
-                  .resumoExecutivo ||
+                geral.resumoExecutivo ||
                 "",
 
               "Alerta estratégico":
-                diagnosticoGeral
-                  .alertaEstrategico ||
+                geral.alertaEstrategico ||
                 "",
-
-              "Leitura das dores":
-                diagnosticoGeral
-                  .leituraDasDores ||
-                diagnosticoGeral
-                  .leituraDaDor ||
-                "",
-
-              "Principais dores IA":
-                juntarLista(
-                  diagnosticoGeral
-                    .principaisDores
-                ),
-
-              "Causas prováveis":
-                juntarLista(
-                  diagnosticoGeral
-                    .causasProvaveis
-                ),
-
-              "Impactos":
-                juntarLista(
-                  diagnosticoGeral
-                    .impactos
-                ),
-
-              "Pontos fortes":
-                juntarLista(
-                  diagnosticoGeral
-                    .pontosFortes
-                ),
 
               "Prioridades imediatas":
                 juntarLista(
-                  diagnosticoGeral
+                  geral
                     .prioridadesImediatas
                 ),
 
-              "Oportunidades":
-                juntarLista(
-                  diagnosticoGeral
-                    .oportunidades
-                ),
+              "Potencial do lead":
+                comercial.potencialLead ||
+                "",
 
-              "Próximos passos":
-                juntarLista(
-                  diagnosticoGeral
-                    .proximosPassos
-                ),
+              "Justificativa comercial":
+                comercial.justificativa ||
+                "",
+
+              "Argumento comercial":
+                comercial.argumentoAbordagem ||
+                "",
+
+              "Próxima ação comercial":
+                comercial.proximaAcaoComercial ||
+                "",
             };
           }
         );
 
-      // ===================================================
-      // ABA 2 - PERGUNTAS E RESPOSTAS
-      // ===================================================
+      const abaAreas = [];
 
       const abaPerguntas = [];
 
-      registros.forEach(
-        (item) => {
-          const participante =
-            item.participante ||
-            {};
+      const abaPlano90 = [];
 
-          const empresa =
-            item.empresa ||
-            {};
+      const abaQuickWins = [];
 
-          const perguntas =
-            Array.isArray(
-              item.perguntasRespostas
-            )
-              ? item.perguntasRespostas
-              : [];
+      const abaKpis = [];
 
-          perguntas.forEach(
-            (
-              pergunta,
-              index
-            ) => {
-              abaPerguntas.push({
-                "ID Diagnóstico":
-                  item.id ||
-                  "",
+      const abaAprofundamento =
+        [];
 
-                "Data":
-                  item.criadoEm
-                    ? new Date(
-                        item.criadoEm
-                      ).toLocaleString(
-                        "pt-BR"
-                      )
-                    : "",
-
-                "Empresa":
-                  empresa.razaoSocial ||
-                  "",
-
-                "CNPJ":
-                  formatarCnpj(
-                    empresa.cnpj ||
-                    ""
-                  ),
-
-                "Responsável":
-                  participante.nome ||
-                  "",
-
-                "Nº":
-                  index + 1,
-
-                "Área":
-                  pergunta.area ||
-                  "",
-
-                "Área ID":
-                  pergunta.areaId ||
-                  "",
-
-                "Tema":
-                  pergunta.tema ||
-                  "",
-
-                "Pergunta":
-                  pergunta.pergunta ||
-                  "",
-
-                "Resposta":
-                  pergunta.resposta ||
-                  "",
-
-                "Peso":
-                  pergunta.peso ??
-                  "",
-
-                "Importância":
-                  pergunta.importancia ??
-                  "",
-
-                "Motivo":
-                  pergunta.motivo ||
-                  "",
-
-                "Risco avaliado":
-                  pergunta.riscoAvaliado ||
-                  "",
-              });
-            }
-          );
-        }
-      );
-
-      // ===================================================
-      // ABA 3 - ANÁLISE POR ÁREA
-      // ===================================================
-
-      const abaAreas = [];
+      const abaComercial = [];
 
       registros.forEach(
         (item) => {
@@ -933,60 +1277,42 @@ function ListaDiagnosticos({
             item.empresa ||
             {};
 
-          const areas =
-            Array.isArray(
-              item.areas
-            )
-              ? item.areas
-              : [];
+          const resultado =
+            item.resultado ||
+            {};
 
-          areas.forEach(
+          normalizarLista(
+            resultado.areas ||
+            item.areas
+          ).forEach(
             (area) => {
               abaAreas.push({
                 "ID Diagnóstico":
-                  item.id ||
-                  "",
+                  item.id || "",
 
-                "Data":
-                  item.criadoEm
-                    ? new Date(
-                        item.criadoEm
-                      ).toLocaleString(
-                        "pt-BR"
-                      )
-                    : "",
-
-                "Empresa":
+                Empresa:
                   empresa.razaoSocial ||
                   "",
 
-                "CNPJ":
-                  formatarCnpj(
-                    empresa.cnpj ||
-                    ""
-                  ),
+                Área:
+                  area.area || "",
 
-                "Área":
-                  area.area ||
-                  "",
+                Score:
+                  area.score ?? "",
 
-                "Score":
-                  area.score ??
-                  "",
+                Nível:
+                  scoreInfo(
+                    area.score
+                  ).label,
 
-                "Nível":
-                  area.nivel ||
-                  "",
-
-                "Prioridade":
+                Prioridade:
                   area.prioridade ??
                   "",
 
-                "Resumo":
-                  area.resumo ||
-                  "",
+                Resumo:
+                  area.resumo || "",
 
-                "Achados":
+                Achados:
                   juntarLista(
                     area.achados
                   ),
@@ -996,329 +1322,337 @@ function ListaDiagnosticos({
                     area.causasProvaveis
                   ),
 
-                "Riscos":
+                Riscos:
                   juntarLista(
                     area.riscos
                   ),
 
-                "Recomendações":
+                Recomendações:
                   juntarLista(
                     area.recomendacoes
                   ),
               });
             }
           );
-        }
-      );
 
-      // ===================================================
-      // ABA 4 - DORES E OBJETIVOS
-      // ===================================================
-
-      const abaDores = [];
-
-      registros.forEach(
-        (item) => {
-          const empresa =
-            item.empresa ||
-            {};
-
-          const participante =
-            item.participante ||
-            {};
-
-          const estruturadas =
-            item.doresEstruturadas ||
-            {};
-
-          const dores =
-            Array.isArray(
-              estruturadas.selecionadas
-            )
-              ? estruturadas.selecionadas
-
-              : Array.isArray(
-                  item.dores
-                )
-                ? item.dores
-
-                : [];
-
-          // Mesmo se não houver dor,
-          // mantém uma linha com o diagnóstico.
-          if (
-            dores.length === 0
-          ) {
-            abaDores.push({
-              "ID Diagnóstico":
-                item.id ||
-                "",
-
-              "Data":
-                item.criadoEm
-                  ? new Date(
-                      item.criadoEm
-                    ).toLocaleString(
-                      "pt-BR"
-                    )
-                  : "",
-
-              "Empresa":
-                empresa.razaoSocial ||
-                "",
-
-              "CNPJ":
-                formatarCnpj(
-                  empresa.cnpj ||
-                  ""
-                ),
-
-              "Responsável":
-                participante.nome ||
-                "",
-
-              "Dor Nº":
-                "",
-
-              "Dor":
-                "",
-
-              "Dor principal":
-                estruturadas.principal ||
-                "",
-
-              "Objetivo 90 dias":
-                estruturadas
-                  .objetivo90Dias ||
-                "",
-
-              "Impactos":
-                juntarLista(
-                  estruturadas
-                    .impactos
-                ),
-            });
-
-            return;
-          }
-
-          dores.forEach(
-            (
-              dor,
-              index
-            ) => {
-              abaDores.push({
+          normalizarLista(
+            item.perguntasRespostas
+          ).forEach(
+            (pergunta) => {
+              abaPerguntas.push({
                 "ID Diagnóstico":
-                  item.id ||
-                  "",
+                  item.id || "",
 
-                "Data":
-                  item.criadoEm
-                    ? new Date(
-                        item.criadoEm
-                      ).toLocaleString(
-                        "pt-BR"
-                      )
-                    : "",
-
-                "Empresa":
+                Empresa:
                   empresa.razaoSocial ||
                   "",
 
-                "CNPJ":
-                  formatarCnpj(
-                    empresa.cnpj ||
-                    ""
-                  ),
-
-                "Responsável":
-                  participante.nome ||
+                Área:
+                  pergunta.area ||
                   "",
 
-                "Dor Nº":
-                  index + 1,
-
-                "Dor":
-                  dor,
-
-                "Dor principal":
-                  estruturadas.principal ||
-                  dores[0] ||
+                Tema:
+                  pergunta.tema ||
                   "",
 
-                "Objetivo 90 dias":
-                  estruturadas
-                    .objetivo90Dias ||
+                Pergunta:
+                  pergunta.pergunta ||
                   "",
 
-                "Impactos":
+                Resposta:
+                  pergunta.resposta ||
+                  "",
+
+                Peso:
+                  pergunta.peso ??
+                  "",
+
+                Importância:
+                  pergunta.importancia ??
+                  "",
+
+                Motivo:
+                  pergunta.motivo ||
+                  "",
+
+                "Risco avaliado":
+                  pergunta.riscoAvaliado ||
+                  "",
+              });
+            }
+          );
+
+          const plano =
+            resultado.plano90Dias ||
+            {};
+
+          [
+            [
+              "0–30 dias",
+              plano.fase0a30,
+            ],
+            [
+              "31–60 dias",
+              plano.fase31a60,
+            ],
+            [
+              "61–90 dias",
+              plano.fase61a90,
+            ],
+          ].forEach(
+            ([fase, dados]) => {
+              if (!dados) return;
+
+              abaPlano90.push({
+                "ID Diagnóstico":
+                  item.id || "",
+
+                Empresa:
+                  empresa.razaoSocial ||
+                  "",
+
+                Fase:
+                  fase,
+
+                Objetivo:
+                  dados.objetivo ||
+                  "",
+
+                Ações:
                   juntarLista(
-                    estruturadas
-                      .impactos
+                    dados.acoes
                   ),
+
+                "Resultado esperado":
+                  dados.resultadoEsperado ||
+                  "",
+
+                Indicadores:
+                  juntarLista(
+                    dados.indicadores
+                  ),
+              });
+            }
+          );
+
+          normalizarLista(
+            resultado.quickWins
+          ).forEach(
+            (quick) => {
+              abaQuickWins.push({
+                "ID Diagnóstico":
+                  item.id || "",
+
+                Empresa:
+                  empresa.razaoSocial ||
+                  "",
+
+                Ação:
+                  quick.acao || "",
+
+                Motivo:
+                  quick.motivo ||
+                  "",
+
+                "Impacto esperado":
+                  quick.impactoEsperado ||
+                  "",
+
+                Esforço:
+                  quick.esforco ||
+                  "",
+
+                Dependências:
+                  juntarLista(
+                    quick.dependencias
+                  ),
+              });
+            }
+          );
+
+          normalizarLista(
+            resultado.kpisRecomendados
+          ).forEach(
+            (kpi) => {
+              abaKpis.push({
+                "ID Diagnóstico":
+                  item.id || "",
+
+                Empresa:
+                  empresa.razaoSocial ||
+                  "",
+
+                Indicador:
+                  kpi.indicador ||
+                  "",
+
+                "O que mede":
+                  kpi.oQueMede ||
+                  "",
+
+                "Forma de cálculo":
+                  kpi.formaCalculo ||
+                  "",
+
+                Frequência:
+                  kpi.frequencia ||
+                  "",
+
+                "Meta sugerida":
+                  kpi.metaSugerida ||
+                  "",
+              });
+            }
+          );
+
+          normalizarLista(
+            resultado
+              .perguntasAprofundamento
+          ).forEach(
+            (pergunta) => {
+              abaAprofundamento.push({
+                "ID Diagnóstico":
+                  item.id || "",
+
+                Empresa:
+                  empresa.razaoSocial ||
+                  "",
+
+                Pergunta:
+                  pergunta.pergunta ||
+                  "",
+
+                Motivo:
+                  pergunta.motivo ||
+                  "",
+
+                "O que validar":
+                  pergunta.validar ||
+                  "",
+              });
+            }
+          );
+
+          const comercial =
+            resultado
+              .visaoComercial ||
+            {};
+
+          normalizarLista(
+            comercial
+              .servicosAderentes
+          ).forEach(
+            (servico) => {
+              abaComercial.push({
+                "ID Diagnóstico":
+                  item.id || "",
+
+                Empresa:
+                  empresa.razaoSocial ||
+                  "",
+
+                "Potencial lead":
+                  comercial.potencialLead ||
+                  "",
+
+                Serviço:
+                  servico.servico ||
+                  "",
+
+                "Problema que pode ajudar":
+                  servico
+                    .problemaQuePodeAjudar ||
+                  "",
+
+                Evidência:
+                  servico.evidencia ||
+                  "",
+
+                "Argumento de abordagem":
+                  comercial
+                    .argumentoAbordagem ||
+                  "",
+
+                "Próxima ação":
+                  comercial
+                    .proximaAcaoComercial ||
+                  "",
               });
             }
           );
         }
       );
 
-      // ===================================================
-      // CRIAR ARQUIVO EXCEL
-      // ===================================================
-
       const workbook =
         XLSX.utils.book_new();
 
-      const wsDiagnosticos =
-        XLSX.utils.json_to_sheet(
-          abaDiagnosticos
+      const adicionarAba = (
+        dados,
+        nome
+      ) => {
+        const worksheet =
+          XLSX.utils.json_to_sheet(
+            dados
+          );
+
+        XLSX.utils.book_append_sheet(
+          workbook,
+          worksheet,
+          nome
         );
+      };
 
-      const wsPerguntas =
-        XLSX.utils.json_to_sheet(
-          abaPerguntas
-        );
-
-      const wsAreas =
-        XLSX.utils.json_to_sheet(
-          abaAreas
-        );
-
-      const wsDores =
-        XLSX.utils.json_to_sheet(
-          abaDores
-        );
-
-      // ===================================================
-      // LARGURA DAS COLUNAS
-      // ===================================================
-
-      wsDiagnosticos["!cols"] = [
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 25 },
-        { wch: 18 },
-        { wch: 18 },
-        { wch: 30 },
-        { wch: 60 },
-        { wch: 35 },
-        { wch: 50 },
-        { wch: 10 },
-        { wch: 50 },
-        { wch: 40 },
-        { wch: 60 },
-        { wch: 60 },
-        { wch: 40 },
-        { wch: 60 },
-        { wch: 80 },
-        { wch: 80 },
-        { wch: 80 },
-        { wch: 80 },
-        { wch: 80 },
-        { wch: 80 },
-        { wch: 80 },
-        { wch: 80 },
-        { wch: 80 },
-      ];
-
-      wsPerguntas["!cols"] = [
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 25 },
-        { wch: 8 },
-        { wch: 28 },
-        { wch: 16 },
-        { wch: 35 },
-        { wch: 90 },
-        { wch: 18 },
-        { wch: 10 },
-        { wch: 12 },
-        { wch: 70 },
-        { wch: 70 },
-      ];
-
-      wsAreas["!cols"] = [
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 28 },
-        { wch: 10 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 80 },
-        { wch: 90 },
-        { wch: 90 },
-        { wch: 90 },
-        { wch: 90 },
-      ];
-
-      wsDores["!cols"] = [
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 25 },
-        { wch: 10 },
-        { wch: 45 },
-        { wch: 45 },
-        { wch: 70 },
-        { wch: 70 },
-      ];
-
-      // ===================================================
-      // ADICIONAR ABAS
-      // ===================================================
-
-      XLSX.utils.book_append_sheet(
-        workbook,
-        wsDiagnosticos,
+      adicionarAba(
+        abaDiagnosticos,
         "Diagnósticos"
       );
 
-      XLSX.utils.book_append_sheet(
-        workbook,
-        wsPerguntas,
-        "Perguntas Respostas"
-      );
-
-      XLSX.utils.book_append_sheet(
-        workbook,
-        wsAreas,
+      adicionarAba(
+        abaAreas,
         "Análise por Área"
       );
 
-      XLSX.utils.book_append_sheet(
-        workbook,
-        wsDores,
-        "Dores e Objetivos"
+      adicionarAba(
+        abaPerguntas,
+        "Perguntas Respostas"
       );
 
-      // ===================================================
-      // DOWNLOAD
-      // ===================================================
+      adicionarAba(
+        abaPlano90,
+        "Plano 90 Dias"
+      );
 
-      const agora =
-        new Date();
+      adicionarAba(
+        abaQuickWins,
+        "Quick Wins"
+      );
+
+      adicionarAba(
+        abaKpis,
+        "KPIs"
+      );
+
+      adicionarAba(
+        abaAprofundamento,
+        "Aprofundamento"
+      );
+
+      adicionarAba(
+        abaComercial,
+        "Visão Comercial"
+      );
 
       const dataArquivo =
-        agora
+        new Date()
           .toISOString()
           .slice(
             0,
             10
           );
 
-      const nomeArquivo =
-        `diagnosticos-finder-${dataArquivo}.xlsx`;
-
       XLSX.writeFile(
         workbook,
-        nomeArquivo
+        `diagnosticos-finder-${dataArquivo}.xlsx`
       );
 
     } catch (error) {
@@ -1336,10 +1670,6 @@ function ListaDiagnosticos({
       setExportando(false);
     }
   }
-
-  // =======================================================
-  // RENDER LISTA
-  // =======================================================
 
   return (
     <div
@@ -1361,19 +1691,18 @@ function ListaDiagnosticos({
           style={{
             maxWidth: 1320,
             margin: "0 auto",
+
             display: "flex",
             justifyContent:
               "space-between",
-            alignItems:
-              "center",
+            alignItems: "center",
             gap: 18,
           }}
         >
           <div
             style={{
               display: "flex",
-              alignItems:
-                "center",
+              alignItems: "center",
               gap: 18,
             }}
           >
@@ -1383,10 +1712,8 @@ function ListaDiagnosticos({
               style={{
                 maxWidth: 150,
                 maxHeight: 45,
-                objectFit:
-                  "contain",
-                background:
-                  WHITE,
+                objectFit: "contain",
+                background: WHITE,
                 padding: 5,
                 borderRadius: 7,
               }}
@@ -1406,8 +1733,7 @@ function ListaDiagnosticos({
 
               <p
                 style={{
-                  margin:
-                    "3px 0 0",
+                  margin: "3px 0 0",
                   fontSize: 11,
                   opacity: 0.7,
                 }}
@@ -1426,24 +1752,14 @@ function ListaDiagnosticos({
               border:
                 "1px solid rgba(255,255,255,.30)",
 
-              color:
-                WHITE,
+              color: WHITE,
+              borderRadius: 9,
+              padding: "8px 11px",
 
-              borderRadius:
-                9,
+              cursor: "pointer",
 
-              padding:
-                "8px 11px",
-
-              cursor:
-                "pointer",
-
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
+              display: "flex",
+              alignItems: "center",
               gap: 6,
             }}
           >
@@ -1464,10 +1780,6 @@ function ListaDiagnosticos({
             "26px 22px 50px",
         }}
       >
-        {/* ================================================= */}
-        {/* CARDS RESUMO */}
-        {/* ================================================= */}
-
         <div
           style={{
             display: "grid",
@@ -1476,9 +1788,7 @@ function ListaDiagnosticos({
               "repeat(auto-fit,minmax(190px,1fr))",
 
             gap: 12,
-
-            marginBottom:
-              20,
+            marginBottom: 20,
           }}
         >
           <Card>
@@ -1540,15 +1850,10 @@ function ListaDiagnosticos({
                 fontWeight: 800,
               }}
             >
-              {mediaScore ??
-                "-"}
+              {mediaScore ?? "-"}
             </div>
           </Card>
         </div>
-
-        {/* ================================================= */}
-        {/* BUSCA + EXPORTAÇÃO */}
-        {/* ================================================= */}
 
         <Card
           style={{
@@ -1567,16 +1872,14 @@ function ListaDiagnosticos({
                 flex:
                   "1 1 360px",
 
-                position:
-                  "relative",
+                position: "relative",
               }}
             >
               <Search
                 size={16}
                 color={MUTED}
                 style={{
-                  position:
-                    "absolute",
+                  position: "absolute",
                   top: 12,
                   left: 12,
                 }}
@@ -1584,17 +1887,12 @@ function ListaDiagnosticos({
 
               <input
                 value={busca}
-                onChange={(
-                  e
-                ) =>
+                onChange={(e) =>
                   setBusca(
-                    e.target
-                      .value
+                    e.target.value
                   )
                 }
-                onKeyDown={(
-                  e
-                ) => {
+                onKeyDown={(e) => {
                   if (
                     e.key ===
                     "Enter"
@@ -1604,17 +1902,14 @@ function ListaDiagnosticos({
                 }}
                 placeholder="Buscar empresa, CNPJ, nome, e-mail, segmento..."
                 style={{
-                  width:
-                    "100%",
-
+                  width: "100%",
                   boxSizing:
                     "border-box",
 
                   border:
                     "1px solid #D8DEEA",
 
-                  borderRadius:
-                    9,
+                  borderRadius: 9,
 
                   padding:
                     "10px 12px 10px 36px",
@@ -1622,21 +1917,15 @@ function ListaDiagnosticos({
                   fontFamily:
                     BODY_FONT,
 
-                  fontSize:
-                    13,
+                  fontSize: 13,
                 }}
               />
             </div>
 
             <Botao
-              onClick={
-                pesquisar
-              }
+              onClick={pesquisar}
             >
-              <Search
-                size={14}
-              />
-
+              <Search size={14} />
               Buscar
             </Botao>
 
@@ -1693,10 +1982,6 @@ function ListaDiagnosticos({
           </div>
         </Card>
 
-        {/* ================================================= */}
-        {/* ERRO */}
-        {/* ================================================= */}
-
         {erro && (
           <div
             style={{
@@ -1706,30 +1991,18 @@ function ListaDiagnosticos({
               color:
                 "#993C1D",
 
-              padding:
-                13,
+              padding: 13,
+              borderRadius: 10,
+              marginBottom: 14,
 
-              borderRadius:
-                10,
-
-              marginBottom:
-                14,
-
-              display:
-                "flex",
-
-              gap:
-                8,
-
+              display: "flex",
+              gap: 8,
               alignItems:
                 "flex-start",
             }}
           >
             <AlertTriangle
               size={17}
-              style={{
-                flexShrink: 0,
-              }}
             />
 
             <div>
@@ -1737,10 +2010,6 @@ function ListaDiagnosticos({
             </div>
           </div>
         )}
-
-        {/* ================================================= */}
-        {/* LISTA */}
-        {/* ================================================= */}
 
         {carregando ? (
           <Card>
@@ -1764,7 +2033,7 @@ function ListaDiagnosticos({
           >
             {diagnosticos.map(
               (item) => {
-                const score =
+                const info =
                   scoreInfo(
                     item.score
                   );
@@ -1776,66 +2045,45 @@ function ListaDiagnosticos({
 
                 return (
                   <button
-                    key={
-                      item.id
-                    }
+                    key={item.id}
                     onClick={() =>
                       onAbrir(
                         item.id
                       )
                     }
                     style={{
-                      width:
-                        "100%",
-
-                      background:
-                        WHITE,
+                      width: "100%",
+                      background: WHITE,
 
                       border:
                         "1px solid #E2E6EE",
 
-                      borderRadius:
-                        14,
+                      borderRadius: 14,
+                      padding: 16,
 
-                      padding:
-                        16,
+                      textAlign: "left",
+                      cursor: "pointer",
 
-                      textAlign:
-                        "left",
-
-                      cursor:
-                        "pointer",
-
-                      display:
-                        "grid",
+                      display: "grid",
 
                       gridTemplateColumns:
                         "minmax(250px,2fr) minmax(180px,1.2fr) 90px 34px",
 
-                      gap:
-                        15,
-
-                      alignItems:
-                        "center",
+                      gap: 15,
+                      alignItems: "center",
 
                       fontFamily:
                         BODY_FONT,
 
-                      color:
-                        NAVY,
+                      color: NAVY,
                     }}
                   >
                     <div>
                       <div
                         style={{
-                          fontSize:
-                            14,
-
-                          fontWeight:
-                            800,
-
-                          marginBottom:
-                            4,
+                          fontSize: 14,
+                          fontWeight: 800,
+                          marginBottom: 4,
                         }}
                       >
                         {item.razaoSocial ||
@@ -1844,20 +2092,12 @@ function ListaDiagnosticos({
 
                       <div
                         style={{
-                          fontSize:
-                            11.5,
+                          fontSize: 11.5,
+                          color: MUTED,
 
-                          color:
-                            MUTED,
-
-                          display:
-                            "flex",
-
-                          gap:
-                            9,
-
-                          flexWrap:
-                            "wrap",
+                          display: "flex",
+                          gap: 9,
+                          flexWrap: "wrap",
                         }}
                       >
                         <span>
@@ -1868,9 +2108,7 @@ function ListaDiagnosticos({
 
                         {item.segmento && (
                           <span>
-                            {
-                              item.segmento
-                            }
+                            {item.segmento}
                           </span>
                         )}
                       </div>
@@ -1879,17 +2117,10 @@ function ListaDiagnosticos({
                         0 && (
                         <div
                           style={{
-                            display:
-                              "flex",
-
-                            gap:
-                              5,
-
-                            flexWrap:
-                              "wrap",
-
-                            marginTop:
-                              8,
+                            display: "flex",
+                            gap: 5,
+                            flexWrap: "wrap",
+                            marginTop: 8,
                           }}
                         >
                           {dores
@@ -1921,9 +2152,7 @@ function ListaDiagnosticos({
                                       "3px 7px",
                                   }}
                                 >
-                                  {
-                                    dor
-                                  }
+                                  {dor}
                                 </span>
                               )
                             )}
@@ -1934,11 +2163,8 @@ function ListaDiagnosticos({
                     <div>
                       <div
                         style={{
-                          fontSize:
-                            12,
-
-                          fontWeight:
-                            700,
+                          fontSize: 12,
+                          fontWeight: 700,
                         }}
                       >
                         {item.nome ||
@@ -1947,14 +2173,9 @@ function ListaDiagnosticos({
 
                       <div
                         style={{
-                          fontSize:
-                            10.5,
-
-                          color:
-                            MUTED,
-
-                          marginTop:
-                            3,
+                          fontSize: 10.5,
+                          color: MUTED,
+                          marginTop: 3,
                         }}
                       >
                         {item.email ||
@@ -1963,14 +2184,9 @@ function ListaDiagnosticos({
 
                       <div
                         style={{
-                          fontSize:
-                            10.5,
-
-                          color:
-                            MUTED,
-
-                          marginTop:
-                            5,
+                          fontSize: 10.5,
+                          color: MUTED,
+                          marginTop: 5,
                         }}
                       >
                         {formatarData(
@@ -1988,10 +2204,10 @@ function ListaDiagnosticos({
                       <div
                         style={{
                           background:
-                            score.bg,
+                            info.bg,
 
                           color:
-                            score.color,
+                            info.color,
 
                           borderRadius:
                             12,
@@ -2002,8 +2218,7 @@ function ListaDiagnosticos({
                       >
                         <strong
                           style={{
-                            fontSize:
-                              19,
+                            fontSize: 19,
                           }}
                         >
                           {item.score ??
@@ -2012,16 +2227,11 @@ function ListaDiagnosticos({
 
                         <div
                           style={{
-                            fontSize:
-                              8.5,
-
-                            marginTop:
-                              1,
+                            fontSize: 8.5,
+                            marginTop: 1,
                           }}
                         >
-                          {
-                            score.label
-                          }
+                          {info.label}
                         </div>
                       </div>
                     </div>
@@ -2087,7 +2297,9 @@ function DetalheDiagnostico({
         const data =
           await resposta
             .json()
-            .catch(() => null);
+            .catch(
+              () => null
+            );
 
         if (
           !resposta.ok ||
@@ -2138,24 +2350,16 @@ function DetalheDiagnostico({
     return (
       <div
         style={{
-          minHeight:
-            "100vh",
-
-          background:
-            BG,
-
-          padding:
-            24,
-
+          minHeight: "100vh",
+          background: BG,
+          padding: 24,
           fontFamily:
             BODY_FONT,
         }}
       >
         <Botao
           secundario
-          onClick={
-            onVoltar
-          }
+          onClick={onVoltar}
         >
           <ArrowLeft
             size={15}
@@ -2166,20 +2370,12 @@ function DetalheDiagnostico({
 
         <div
           style={{
-            marginTop:
-              16,
-
+            marginTop: 16,
             background:
               "#FAECE7",
-
-            color:
-              "#993C1D",
-
-            padding:
-              15,
-
-            borderRadius:
-              10,
+            color: "#993C1D",
+            padding: 15,
+            borderRadius: 10,
           }}
         >
           {erro ||
@@ -2231,60 +2427,79 @@ function DetalheDiagnostico({
       item.score
     );
 
+  const plano90Dias =
+    resultado.plano90Dias ||
+    null;
+
+  const quickWins =
+    normalizarLista(
+      resultado.quickWins
+    );
+
+  const kpisRecomendados =
+    normalizarLista(
+      resultado
+        .kpisRecomendados
+    );
+
+  const perguntasAprofundamento =
+    normalizarLista(
+      resultado
+        .perguntasAprofundamento
+    );
+
+  const visaoConsultor =
+    resultado.visaoConsultor ||
+    null;
+
+  const visaoComercial =
+    resultado.visaoComercial ||
+    null;
+
+  const lacunasDiagnostico =
+    normalizarLista(
+      resultado
+        .lacunasDiagnostico
+    );
+
+  const oportunidadesConsultoria =
+    normalizarLista(
+      resultado
+        .oportunidadesConsultoria
+    );
+
   return (
     <div
       style={{
-        minHeight:
-          "100vh",
-
-        background:
-          BG,
-
-        fontFamily:
-          BODY_FONT,
-
-        color:
-          NAVY,
+        minHeight: "100vh",
+        background: BG,
+        fontFamily: BODY_FONT,
+        color: NAVY,
       }}
     >
       <header
         style={{
-          background:
-            NAVY,
-
+          background: NAVY,
           padding:
             "17px 24px",
-
-          color:
-            WHITE,
+          color: WHITE,
         }}
       >
         <div
           style={{
-            maxWidth:
-              1180,
+            maxWidth: 1180,
+            margin: "0 auto",
 
-            margin:
-              "0 auto",
-
-            display:
-              "flex",
-
+            display: "flex",
             justifyContent:
               "space-between",
-
-            alignItems:
-              "center",
-
-            gap:
-              15,
+            alignItems: "center",
+            gap: 15,
           }}
         >
           <Botao
             secundario
-            onClick={
-              onVoltar
-            }
+            onClick={onVoltar}
           >
             <ArrowLeft
               size={15}
@@ -2295,11 +2510,8 @@ function DetalheDiagnostico({
 
           <span
             style={{
-              fontSize:
-                11,
-
-              opacity:
-                0.75,
+              fontSize: 11,
+              opacity: 0.75,
             }}
           >
             {formatarData(
@@ -2311,45 +2523,30 @@ function DetalheDiagnostico({
 
       <main
         style={{
-          maxWidth:
-            1180,
-
-          margin:
-            "0 auto",
-
+          maxWidth: 1180,
+          margin: "0 auto",
           padding:
             "24px 20px 60px",
         }}
       >
         <div
           style={{
-            display:
-              "grid",
+            display: "grid",
 
             gridTemplateColumns:
               "minmax(0,1fr) 170px",
 
-            gap:
-              14,
-
-            marginBottom:
-              16,
+            gap: 14,
+            marginBottom: 16,
           }}
         >
           <Card>
             <div
               style={{
-                fontSize:
-                  11,
-
-                color:
-                  CORAL,
-
-                fontWeight:
-                  800,
-
-                marginBottom:
-                  6,
+                fontSize: 11,
+                color: CORAL,
+                fontWeight: 800,
+                marginBottom: 6,
               }}
             >
               DIAGNÓSTICO EMPRESARIAL
@@ -2359,10 +2556,7 @@ function DetalheDiagnostico({
               style={{
                 fontFamily:
                   DISPLAY_FONT,
-
-                fontSize:
-                  28,
-
+                fontSize: 28,
                 margin:
                   "0 0 7px",
               }}
@@ -2373,14 +2567,9 @@ function DetalheDiagnostico({
 
             <div
               style={{
-                color:
-                  MUTED,
-
-                fontSize:
-                  12,
-
-                lineHeight:
-                  1.6,
+                color: MUTED,
+                fontSize: 12,
+                lineHeight: 1.6,
               }}
             >
               {formatarCnpj(
@@ -2401,21 +2590,15 @@ function DetalheDiagnostico({
             style={{
               background:
                 score.bg,
-
               textAlign:
                 "center",
             }}
           >
             <div
               style={{
-                fontSize:
-                  38,
-
-                fontWeight:
-                  900,
-
-                color:
-                  score.color,
+                fontSize: 38,
+                fontWeight: 900,
+                color: score.color,
               }}
             >
               {item.score ??
@@ -2424,14 +2607,9 @@ function DetalheDiagnostico({
 
             <div
               style={{
-                fontSize:
-                  11,
-
-                color:
-                  score.color,
-
-                fontWeight:
-                  700,
+                fontSize: 11,
+                color: score.color,
+                fontWeight: 700,
               }}
             >
               {score.label}
@@ -2441,17 +2619,13 @@ function DetalheDiagnostico({
 
         <div
           style={{
-            display:
-              "grid",
+            display: "grid",
 
             gridTemplateColumns:
               "repeat(auto-fit,minmax(230px,1fr))",
 
-            gap:
-              12,
-
-            marginBottom:
-              18,
+            gap: 12,
+            marginBottom: 18,
           }}
         >
           <Card>
@@ -2464,7 +2638,11 @@ function DetalheDiagnostico({
               Participante
             </h3>
 
-            <p>
+            <p
+              style={{
+                lineHeight: 1.6,
+              }}
+            >
               <strong>
                 {participante.nome ||
                   "-"}
@@ -2497,7 +2675,11 @@ function DetalheDiagnostico({
               Negócio
             </h3>
 
-            <p>
+            <p
+              style={{
+                lineHeight: 1.6,
+              }}
+            >
               {empresa.descricaoNegocio ||
                 "Descrição não registrada."}
             </p>
@@ -2516,11 +2698,9 @@ function DetalheDiagnostico({
             {dores.length ? (
               <ul
                 style={{
-                  paddingLeft:
-                    18,
-
-                  marginBottom:
-                    0,
+                  paddingLeft: 18,
+                  marginBottom: 0,
+                  lineHeight: 1.55,
                 }}
               >
                 {dores.map(
@@ -2558,11 +2738,8 @@ function DetalheDiagnostico({
             <Card>
               <p
                 style={{
-                  margin:
-                    0,
-
-                  lineHeight:
-                    1.65,
+                  margin: 0,
+                  lineHeight: 1.65,
                 }}
               >
                 {
@@ -2589,7 +2766,6 @@ function DetalheDiagnostico({
               style={{
                 background:
                   "#FAEEDA",
-
                 color:
                   "#70410A",
               }}
@@ -2602,11 +2778,7 @@ function DetalheDiagnostico({
           </>
         )}
 
-        <h2
-          style={
-            tituloSecao
-          }
-        >
+        <h2 style={tituloSecao}>
           Diagnóstico por área
         </h2>
 
@@ -2618,14 +2790,10 @@ function DetalheDiagnostico({
         ) : (
           <div
             style={{
-              display:
-                "flex",
-
+              display: "flex",
               flexDirection:
                 "column",
-
-              gap:
-                12,
+              gap: 12,
             }}
           >
             {areas.map(
@@ -2639,24 +2807,16 @@ function DetalheDiagnostico({
                   );
 
                 return (
-                  <Card
-                    key={
-                      index
-                    }
-                  >
+                  <Card key={index}>
                     <div
                       style={{
-                        display:
-                          "flex",
+                        display: "flex",
 
                         justifyContent:
                           "space-between",
 
-                        gap:
-                          15,
-
-                        marginBottom:
-                          10,
+                        gap: 15,
+                        marginBottom: 10,
                       }}
                     >
                       <div>
@@ -2672,15 +2832,12 @@ function DetalheDiagnostico({
 
                         <div
                           style={{
-                            fontSize:
-                              10,
-
-                            color:
-                              MUTED,
+                            fontSize: 10,
+                            color: info.color,
+                            fontWeight: 700,
                           }}
                         >
-                          {area.nivel ||
-                            ""}
+                          {info.label}
                         </div>
                       </div>
 
@@ -2695,11 +2852,9 @@ function DetalheDiagnostico({
                           padding:
                             "7px 10px",
 
-                          borderRadius:
-                            10,
+                          borderRadius: 10,
 
-                          fontWeight:
-                            800,
+                          fontWeight: 800,
                         }}
                       >
                         {area.score ??
@@ -2710,8 +2865,7 @@ function DetalheDiagnostico({
                     {area.resumo && (
                       <p
                         style={{
-                          lineHeight:
-                            1.55,
+                          lineHeight: 1.55,
                         }}
                       >
                         {area.resumo}
@@ -2720,14 +2874,12 @@ function DetalheDiagnostico({
 
                     <div
                       style={{
-                        display:
-                          "grid",
+                        display: "grid",
 
                         gridTemplateColumns:
                           "repeat(auto-fit,minmax(210px,1fr))",
 
-                        gap:
-                          10,
+                        gap: 10,
                       }}
                     >
                       <ListaInterna
@@ -2765,82 +2917,188 @@ function DetalheDiagnostico({
           </div>
         )}
 
-        <h2
-          style={
-            tituloSecao
-          }
+        {/* ================================================= */}
+        {/* DOSSIÊ CONSULTIVO FINDER */}
+        {/* ================================================= */}
+
+        <div
+          style={{
+            marginTop: 36,
+            paddingTop: 20,
+            borderTop:
+              `4px solid ${NAVY}`,
+          }}
         >
+          <div
+            style={{
+              color: CORAL,
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 1,
+            }}
+          >
+            USO INTERNO · FINDER OF SOLUTIONS
+          </div>
+
+          <h2
+            style={{
+              fontFamily:
+                DISPLAY_FONT,
+
+              fontSize: 28,
+              margin:
+                "6px 0 5px",
+            }}
+          >
+            Dossiê Consultivo
+          </h2>
+
+          <p
+            style={{
+              color: MUTED,
+              fontSize: 12,
+              lineHeight: 1.55,
+              margin:
+                "0 0 18px",
+            }}
+          >
+            Camada interna para condução da reunião, validação das hipóteses, definição das prioridades, acompanhamento da execução e abordagem comercial.
+          </p>
+        </div>
+
+        <BlocoDossie
+          titulo="Plano de ação — 90 dias"
+          destaque
+        >
+          <Plano90Dias
+            plano={plano90Dias}
+          />
+        </BlocoDossie>
+
+        <BlocoDossie
+          titulo="Quick wins"
+        >
+          <RenderValor
+            valor={
+              quickWins.length
+                ? quickWins
+                : null
+            }
+          />
+        </BlocoDossie>
+
+        <BlocoDossie
+          titulo="KPIs recomendados"
+        >
+          <RenderValor
+            valor={
+              kpisRecomendados.length
+                ? kpisRecomendados
+                : null
+            }
+          />
+        </BlocoDossie>
+
+        <BlocoDossie
+          titulo="Visão do consultor"
+          destaque
+        >
+          <RenderValor
+            valor={
+              visaoConsultor
+            }
+          />
+        </BlocoDossie>
+
+        <BlocoDossie
+          titulo="Perguntas para aprofundamento"
+        >
+          <RenderValor
+            valor={
+              perguntasAprofundamento.length
+                ? perguntasAprofundamento
+                : null
+            }
+          />
+        </BlocoDossie>
+
+        <BlocoDossie
+          titulo="Visão comercial Finder"
+        >
+          <RenderValor
+            valor={
+              visaoComercial
+            }
+          />
+        </BlocoDossie>
+
+        {lacunasDiagnostico.length >
+          0 && (
+          <BlocoDossie
+            titulo="Lacunas do diagnóstico"
+          >
+            <RenderValor
+              valor={
+                lacunasDiagnostico
+              }
+            />
+          </BlocoDossie>
+        )}
+
+        {oportunidadesConsultoria.length >
+          0 && (
+          <BlocoDossie
+            titulo="Oportunidades de consultoria"
+          >
+            <RenderValor
+              valor={
+                oportunidadesConsultoria
+              }
+            />
+          </BlocoDossie>
+        )}
+
+        <h2 style={tituloSecao}>
           Perguntas e respostas
         </h2>
 
         <Card
           style={{
-            padding:
-              0,
-
-            overflowX:
-              "auto",
+            padding: 0,
+            overflowX: "auto",
           }}
         >
           <table
             style={{
-              width:
-                "100%",
-
+              width: "100%",
               borderCollapse:
                 "collapse",
-
-              minWidth:
-                820,
+              minWidth: 900,
             }}
           >
             <thead>
               <tr>
-                <th
-                  style={
-                    thStyle
-                  }
-                >
+                <th style={thStyle}>
                   Área
                 </th>
 
-                <th
-                  style={
-                    thStyle
-                  }
-                >
+                <th style={thStyle}>
                   Tema
                 </th>
 
-                <th
-                  style={
-                    thStyle
-                  }
-                >
+                <th style={thStyle}>
                   Pergunta
                 </th>
 
-                <th
-                  style={
-                    thStyle
-                  }
-                >
+                <th style={thStyle}>
                   Resposta
                 </th>
 
-                <th
-                  style={
-                    thStyle
-                  }
-                >
+                <th style={thStyle}>
                   Peso
                 </th>
 
-                <th
-                  style={
-                    thStyle
-                  }
-                >
+                <th style={thStyle}>
                   Importância
                 </th>
               </tr>
@@ -2854,9 +3112,7 @@ function DetalheDiagnostico({
                     index
                   ) => (
                     <tr
-                      key={
-                        index
-                      }
+                      key={index}
                     >
                       <td
                         style={
@@ -2888,9 +3144,7 @@ function DetalheDiagnostico({
                       <td
                         style={{
                           ...tdStyle,
-
-                          fontWeight:
-                            800,
+                          fontWeight: 800,
                         }}
                       >
                         {pergunta.resposta ||
@@ -2923,7 +3177,6 @@ function DetalheDiagnostico({
                     colSpan="6"
                     style={{
                       ...tdStyle,
-
                       textAlign:
                         "center",
                     }}
@@ -2936,95 +3189,6 @@ function DetalheDiagnostico({
           </table>
         </Card>
       </main>
-    </div>
-  );
-}
-
-// =========================================================
-// LISTA INTERNA
-// =========================================================
-
-function ListaInterna({
-  titulo,
-  itens,
-}) {
-  const lista =
-    normalizarLista(
-      itens
-    );
-
-  return (
-    <div
-      style={{
-        background:
-          "#F7F8FB",
-
-        borderRadius:
-          9,
-
-        padding:
-          11,
-      }}
-    >
-      <strong
-        style={{
-          display:
-            "block",
-
-          fontSize:
-            11,
-
-          marginBottom:
-            6,
-        }}
-      >
-        {titulo}
-      </strong>
-
-      {lista.length ? (
-        <ul
-          style={{
-            margin:
-              0,
-
-            paddingLeft:
-              17,
-
-            fontSize:
-              11.5,
-
-            lineHeight:
-              1.5,
-          }}
-        >
-          {lista.map(
-            (
-              item,
-              index
-            ) => (
-              <li
-                key={
-                  index
-                }
-              >
-                {item}
-              </li>
-            )
-          )}
-        </ul>
-      ) : (
-        <span
-          style={{
-            fontSize:
-              11,
-
-            color:
-              MUTED,
-          }}
-        >
-          Sem informação.
-        </span>
-      )}
     </div>
   );
 }
@@ -3055,6 +3219,7 @@ export default function Admin() {
     );
 
     setToken("");
+
     setDiagnosticoId(
       null
     );
@@ -3063,9 +3228,7 @@ export default function Admin() {
   if (!token) {
     return (
       <LoginAdmin
-        onLogin={
-          setToken
-        }
+        onLogin={setToken}
       />
     );
   }
@@ -3075,14 +3238,8 @@ export default function Admin() {
   ) {
     return (
       <DetalheDiagnostico
-        token={
-          token
-        }
-
-        id={
-          diagnosticoId
-        }
-
+        token={token}
+        id={diagnosticoId}
         onVoltar={() =>
           setDiagnosticoId(
             null
@@ -3094,17 +3251,11 @@ export default function Admin() {
 
   return (
     <ListaDiagnosticos
-      token={
-        token
-      }
-
+      token={token}
       onAbrir={
         setDiagnosticoId
       }
-
-      onLogout={
-        sair
-      }
+      onLogout={sair}
     />
   );
 }
@@ -3117,16 +3268,14 @@ const tituloSecao = {
   fontFamily:
     DISPLAY_FONT,
 
-  fontSize:
-    20,
+  fontSize: 20,
 
   margin:
     "25px 0 10px",
 };
 
 const thStyle = {
-  background:
-    ICE,
+  background: ICE,
 
   padding:
     "10px 9px",
@@ -3134,11 +3283,9 @@ const thStyle = {
   textAlign:
     "left",
 
-  color:
-    NAVY,
+  color: NAVY,
 
-  fontSize:
-    11,
+  fontSize: 11,
 
   whiteSpace:
     "nowrap",
@@ -3151,11 +3298,9 @@ const tdStyle = {
   padding:
     "10px 9px",
 
-  fontSize:
-    11.5,
+  fontSize: 11.5,
 
-  lineHeight:
-    1.45,
+  lineHeight: 1.45,
 
   verticalAlign:
     "top",
