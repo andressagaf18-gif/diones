@@ -609,7 +609,7 @@ Antes de responder verifique:
     additionalProperties: false,
 
     properties: {
-      areas: {
+            areas: {
         type: "array",
         items: {
           type: "object",
@@ -617,11 +617,19 @@ Antes de responder verifique:
 
           properties: {
             area: { type: "string" },
-            score: { type: ["number", "null"] },
+
+            score: {
+              type: ["number", "null"],
+            },
 
             nivel: {
               type: "string",
-              enum: ["bom", "atencao", "alto", "critico"],
+              enum: [
+                "bom",
+                "atencao",
+                "alto",
+                "critico",
+              ],
             },
 
             prioridade: {
@@ -630,26 +638,36 @@ Antes de responder verifique:
               maximum: 5,
             },
 
-            resumo: { type: "string" },
+            resumo: {
+              type: "string",
+            },
 
             achados: {
               type: "array",
-              items: { type: "string" },
+              items: {
+                type: "string",
+              },
             },
 
             causasProvaveis: {
               type: "array",
-              items: { type: "string" },
+              items: {
+                type: "string",
+              },
             },
 
             riscos: {
               type: "array",
-              items: { type: "string" },
+              items: {
+                type: "string",
+              },
             },
 
             recomendacoes: {
               type: "array",
-              items: { type: "string" },
+              items: {
+                type: "string",
+              },
             },
           },
 
@@ -672,59 +690,95 @@ Antes de responder verifique:
         additionalProperties: false,
 
         properties: {
-          scoreGeral: { type: ["number", "null"] },
+          scoreGeral: {
+            type: ["number", "null"],
+          },
 
           nivelGeral: {
             type: "string",
-            enum: ["bom", "atencao", "alto", "critico"],
+            enum: [
+              "bom",
+              "atencao",
+              "alto",
+              "critico",
+            ],
           },
 
           doresSelecionadas: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
-          leituraDasDores: { type: "string" },
-          dorPrincipal: { type: "string" },
-          leituraDaDor: { type: "string" },
-          alertaEstrategico: { type: "string" },
+          leituraDasDores: {
+            type: "string",
+          },
+
+          dorPrincipal: {
+            type: "string",
+          },
+
+          leituraDaDor: {
+            type: "string",
+          },
+
+          alertaEstrategico: {
+            type: "string",
+          },
 
           causasProvaveis: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
           impactos: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
           principaisDores: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
           pontosFortes: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
           prioridadesImediatas: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
           oportunidades: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
           proximosPassos: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
-          resumoExecutivo: { type: "string" },
+          resumoExecutivo: {
+            type: "string",
+          },
         },
 
         required: [
@@ -746,6 +800,10 @@ Antes de responder verifique:
         ],
       },
 
+      // =====================================================
+      // PLANO DE AÇÃO DE 90 DIAS
+      // =====================================================
+
       plano90Dias: {
         type: "object",
         additionalProperties: false,
@@ -754,18 +812,31 @@ Antes de responder verifique:
           fase0a30: {
             type: "object",
             additionalProperties: false,
+
             properties: {
-              objetivo: { type: "string" },
+              objetivo: {
+                type: "string",
+              },
+
               acoes: {
                 type: "array",
-                items: { type: "string" },
+                items: {
+                  type: "string",
+                },
               },
-              resultadoEsperado: { type: "string" },
+
+              resultadoEsperado: {
+                type: "string",
+              },
+
               indicadores: {
                 type: "array",
-                items: { type: "string" },
+                items: {
+                  type: "string",
+                },
               },
             },
+
             required: [
               "objetivo",
               "acoes",
@@ -777,18 +848,31 @@ Antes de responder verifique:
           fase31a60: {
             type: "object",
             additionalProperties: false,
+
             properties: {
-              objetivo: { type: "string" },
+              objetivo: {
+                type: "string",
+              },
+
               acoes: {
                 type: "array",
-                items: { type: "string" },
+                items: {
+                  type: "string",
+                },
               },
-              resultadoEsperado: { type: "string" },
+
+              resultadoEsperado: {
+                type: "string",
+              },
+
               indicadores: {
                 type: "array",
-                items: { type: "string" },
+                items: {
+                  type: "string",
+                },
               },
             },
+
             required: [
               "objetivo",
               "acoes",
@@ -800,18 +884,31 @@ Antes de responder verifique:
           fase61a90: {
             type: "object",
             additionalProperties: false,
+
             properties: {
-              objetivo: { type: "string" },
+              objetivo: {
+                type: "string",
+              },
+
               acoes: {
                 type: "array",
-                items: { type: "string" },
+                items: {
+                  type: "string",
+                },
               },
-              resultadoEsperado: { type: "string" },
+
+              resultadoEsperado: {
+                type: "string",
+              },
+
               indicadores: {
                 type: "array",
-                items: { type: "string" },
+                items: {
+                  type: "string",
+                },
               },
             },
+
             required: [
               "objetivo",
               "acoes",
@@ -821,28 +918,51 @@ Antes de responder verifique:
           },
         },
 
-        required: ["fase0a30", "fase31a60", "fase61a90"],
+        required: [
+          "fase0a30",
+          "fase31a60",
+          "fase61a90",
+        ],
       },
+
+      // =====================================================
+      // QUICK WINS
+      // =====================================================
 
       quickWins: {
         type: "array",
+
         items: {
           type: "object",
           additionalProperties: false,
 
           properties: {
-            acao: { type: "string" },
-            motivo: { type: "string" },
-            impactoEsperado: { type: "string" },
+            acao: {
+              type: "string",
+            },
+
+            motivo: {
+              type: "string",
+            },
+
+            impactoEsperado: {
+              type: "string",
+            },
 
             esforco: {
               type: "string",
-              enum: ["baixo", "medio", "alto"],
+              enum: [
+                "baixo",
+                "medio",
+                "alto",
+              ],
             },
 
             dependencias: {
               type: "array",
-              items: { type: "string" },
+              items: {
+                type: "string",
+              },
             },
           },
 
@@ -856,18 +976,37 @@ Antes de responder verifique:
         },
       },
 
+      // =====================================================
+      // INDICADORES RECOMENDADOS
+      // =====================================================
+
       kpisRecomendados: {
         type: "array",
+
         items: {
           type: "object",
           additionalProperties: false,
 
           properties: {
-            indicador: { type: "string" },
-            oQueMede: { type: "string" },
-            formaCalculo: { type: "string" },
-            frequencia: { type: "string" },
-            metaSugerida: { type: "string" },
+            indicador: {
+              type: "string",
+            },
+
+            oQueMede: {
+              type: "string",
+            },
+
+            formaCalculo: {
+              type: "string",
+            },
+
+            frequencia: {
+              type: "string",
+            },
+
+            metaSugerida: {
+              type: "string",
+            },
           },
 
           required: [
@@ -880,41 +1019,80 @@ Antes de responder verifique:
         },
       },
 
+      // =====================================================
+      // PERGUNTAS PARA REUNIÃO DE APROFUNDAMENTO
+      // =====================================================
+
       perguntasAprofundamento: {
         type: "array",
+
         items: {
           type: "object",
           additionalProperties: false,
 
           properties: {
-            pergunta: { type: "string" },
-            motivo: { type: "string" },
-            validar: { type: "string" },
+            pergunta: {
+              type: "string",
+            },
+
+            motivo: {
+              type: "string",
+            },
+
+            validar: {
+              type: "string",
+            },
           },
 
-          required: ["pergunta", "motivo", "validar"],
+          required: [
+            "pergunta",
+            "motivo",
+            "validar",
+          ],
         },
       },
+
+      // =====================================================
+      // VISÃO INTERNA DO CONSULTOR
+      // =====================================================
 
       visaoConsultor: {
         type: "object",
         additionalProperties: false,
 
         properties: {
-          diagnosticoCentral: { type: "string" },
-          evidenciaMaisForte: { type: "string" },
-          hipotesePrincipal: { type: "string" },
-          validarPrimeiro: { type: "string" },
-          naoFazerAgora: { type: "string" },
+          diagnosticoCentral: {
+            type: "string",
+          },
+
+          evidenciaMaisForte: {
+            type: "string",
+          },
+
+          hipotesePrincipal: {
+            type: "string",
+          },
+
+          validarPrimeiro: {
+            type: "string",
+          },
+
+          naoFazerAgora: {
+            type: "string",
+          },
 
           pontosCegos: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
           dadosDocumentosSolicitar: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
         },
 
@@ -929,6 +1107,10 @@ Antes de responder verifique:
         ],
       },
 
+      // =====================================================
+      // VISÃO COMERCIAL INTERNA
+      // =====================================================
+
       visaoComercial: {
         type: "object",
         additionalProperties: false,
@@ -936,21 +1118,37 @@ Antes de responder verifique:
         properties: {
           potencialLead: {
             type: "string",
-            enum: ["baixo", "medio", "alto", "imediato"],
+            enum: [
+              "baixo",
+              "medio",
+              "alto",
+              "imediato",
+            ],
           },
 
-          justificativa: { type: "string" },
+          justificativa: {
+            type: "string",
+          },
 
           servicosAderentes: {
             type: "array",
+
             items: {
               type: "object",
               additionalProperties: false,
 
               properties: {
-                servico: { type: "string" },
-                problemaQuePodeAjudar: { type: "string" },
-                evidencia: { type: "string" },
+                servico: {
+                  type: "string",
+                },
+
+                problemaQuePodeAjudar: {
+                  type: "string",
+                },
+
+                evidencia: {
+                  type: "string",
+                },
               },
 
               required: [
@@ -961,14 +1159,20 @@ Antes de responder verifique:
             },
           },
 
-          argumentoAbordagem: { type: "string" },
+          argumentoAbordagem: {
+            type: "string",
+          },
 
           objecoesProvaveis: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string",
+            },
           },
 
-          proximaAcaoComercial: { type: "string" },
+          proximaAcaoComercial: {
+            type: "string",
+          },
         },
 
         required: [
@@ -980,654 +1184,3 @@ Antes de responder verifique:
           "proximaAcaoComercial",
         ],
       },
-            visaoGrupo: {
-        type: "object",
-        additionalProperties: false,
-
-        properties: {
-          resumo: { type: "string" },
-
-          sinergias: {
-            type: "array",
-            items: { type: "string" },
-          },
-
-          riscosCompartilhados: {
-            type: "array",
-            items: { type: "string" },
-          },
-
-          oportunidadesCompartilhadas: {
-            type: "array",
-            items: { type: "string" },
-          },
-        },
-
-        required: [
-          "resumo",
-          "sinergias",
-          "riscosCompartilhados",
-          "oportunidadesCompartilhadas",
-        ],
-      },
-
-      lacunasDiagnostico: {
-        type: "array",
-
-        items: {
-          type: "object",
-          additionalProperties: false,
-
-          properties: {
-            tema: { type: "string" },
-            motivo: { type: "string" },
-
-            perguntasSugeridas: {
-              type: "array",
-              items: { type: "string" },
-            },
-          },
-
-          required: [
-            "tema",
-            "motivo",
-            "perguntasSugeridas",
-          ],
-        },
-      },
-
-      oportunidadesConsultoria: {
-        type: "array",
-
-        items: {
-          type: "object",
-          additionalProperties: false,
-
-          properties: {
-            servico: { type: "string" },
-            motivo: { type: "string" },
-            evidencia: { type: "string" },
-          },
-
-          required: [
-            "servico",
-            "motivo",
-            "evidencia",
-          ],
-        },
-      },
-    },
-
-    required: [
-      "areas",
-      "diagnosticoGeral",
-      "plano90Dias",
-      "quickWins",
-      "kpisRecomendados",
-      "perguntasAprofundamento",
-      "visaoConsultor",
-      "visaoComercial",
-      "visaoGrupo",
-      "lacunasDiagnostico",
-      "oportunidadesConsultoria",
-    ],
-  };
-
-  try {
-    const response = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
-          model: "gpt-5-mini",
-
-          max_output_tokens: 14000,
-
-          input: [
-            {
-              role: "system",
-              content: [
-                {
-                  type: "input_text",
-                  text: systemPrompt,
-                },
-              ],
-            },
-
-            {
-              role: "user",
-              content: [
-                {
-                  type: "input_text",
-
-                  text: `
-Analise o diagnóstico empresarial abaixo.
-
-Produza uma análise específica para este negócio.
-
-Priorize evidências concretas.
-
-Cruze as respostas entre si.
-
-Não invente informações ausentes.
-
-Não trate hipótese como fato.
-
-O relatório será utilizado internamente por consultores da Finder.
-
-Além do diagnóstico técnico, produza um plano de 90 dias,
-quick wins, KPIs, perguntas para aprofundamento,
-visão do consultor e visão comercial.
-
-CONTEXTO:
-
-${JSON.stringify(contexto, null, 2)}
-`,
-                },
-              ],
-            },
-          ],
-
-          text: {
-            format: {
-              type: "json_schema",
-              name: "diagnostico_empresarial_expandido",
-              strict: true,
-              schema,
-            },
-          },
-        }),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error(
-        "Erro OpenAI:",
-        JSON.stringify(data, null, 2)
-      );
-
-      return res.status(response.status).json({
-        sucesso: false,
-
-        error:
-          data?.error?.message ||
-          "Erro ao gerar diagnóstico.",
-      });
-    }
-
-    const texto = extrairOutputText(data);
-
-    if (!texto) {
-      console.error(
-        "Resposta sem output_text:",
-        JSON.stringify(data, null, 2)
-      );
-
-      return res.status(500).json({
-        sucesso: false,
-        error:
-          "A inteligência artificial não retornou o diagnóstico estruturado.",
-      });
-    }
-
-    let resultado;
-
-    try {
-      resultado = JSON.parse(texto);
-    } catch (error) {
-      console.error(
-        "Erro ao converter JSON:",
-        error
-      );
-
-      console.error(
-        "Texto recebido:",
-        texto
-      );
-
-      return res.status(500).json({
-        sucesso: false,
-        error:
-          "A inteligência artificial retornou um diagnóstico em formato inválido.",
-      });
-    }
-
-    /*
-    =========================================================
-    NORMALIZAÇÃO DOS DADOS
-    =========================================================
-    */
-
-    resultado.areas = Array.isArray(resultado.areas)
-      ? resultado.areas.map((area) => ({
-          ...area,
-
-          nivel:
-            area?.nivel ||
-            nivelScore(area?.score),
-
-          achados: limitarArray(
-            area?.achados,
-            8
-          ),
-
-          causasProvaveis: limitarArray(
-            area?.causasProvaveis,
-            8
-          ),
-
-          riscos: limitarArray(
-            area?.riscos,
-            8
-          ),
-
-          recomendacoes: limitarArray(
-            area?.recomendacoes,
-            8
-          ),
-        }))
-      : [];
-
-    if (!resultado.diagnosticoGeral) {
-      resultado.diagnosticoGeral = {};
-    }
-
-    resultado.diagnosticoGeral = {
-      ...resultado.diagnosticoGeral,
-
-      scoreGeral:
-        Number.isFinite(Number(scoreGeral))
-          ? Number(scoreGeral)
-          : resultado.diagnosticoGeral?.scoreGeral ?? null,
-
-      nivelGeral:
-        resultado.diagnosticoGeral?.nivelGeral ||
-        nivelScore(scoreGeral),
-
-      doresSelecionadas:
-        Array.isArray(
-          resultado.diagnosticoGeral?.doresSelecionadas
-        ) &&
-        resultado.diagnosticoGeral.doresSelecionadas.length
-          ? resultado.diagnosticoGeral.doresSelecionadas
-          : dores,
-
-      dorPrincipal:
-        resultado.diagnosticoGeral?.dorPrincipal ||
-        dorPrincipalFinal,
-
-      causasProvaveis: limitarArray(
-        resultado.diagnosticoGeral?.causasProvaveis,
-        8
-      ),
-
-      impactos: limitarArray(
-        resultado.diagnosticoGeral?.impactos,
-        8
-      ),
-
-      principaisDores: limitarArray(
-        resultado.diagnosticoGeral?.principaisDores,
-        8
-      ),
-
-      pontosFortes: limitarArray(
-        resultado.diagnosticoGeral?.pontosFortes,
-        8
-      ),
-
-      prioridadesImediatas: limitarArray(
-        resultado.diagnosticoGeral
-          ?.prioridadesImediatas,
-        8
-      ),
-
-      oportunidades: limitarArray(
-        resultado.diagnosticoGeral?.oportunidades,
-        8
-      ),
-
-      proximosPassos: limitarArray(
-        resultado.diagnosticoGeral?.proximosPassos,
-        8
-      ),
-    };
-
-    /*
-    =========================================================
-    PLANO DE 90 DIAS
-    =========================================================
-    */
-
-    const normalizarFase = (fase) => ({
-      objetivo: fase?.objetivo || "",
-
-      acoes: limitarArray(
-        fase?.acoes,
-        8
-      ),
-
-      resultadoEsperado:
-        fase?.resultadoEsperado || "",
-
-      indicadores: limitarArray(
-        fase?.indicadores,
-        6
-      ),
-    });
-
-    resultado.plano90Dias = {
-      fase0a30: normalizarFase(
-        resultado.plano90Dias?.fase0a30
-      ),
-
-      fase31a60: normalizarFase(
-        resultado.plano90Dias?.fase31a60
-      ),
-
-      fase61a90: normalizarFase(
-        resultado.plano90Dias?.fase61a90
-      ),
-    };
-
-    /*
-    =========================================================
-    QUICK WINS
-    =========================================================
-    */
-
-    resultado.quickWins = Array.isArray(
-      resultado.quickWins
-    )
-      ? resultado.quickWins
-          .slice(0, 8)
-          .map((item) => ({
-            acao: item?.acao || "",
-            motivo: item?.motivo || "",
-            impactoEsperado:
-              item?.impactoEsperado || "",
-
-            esforco: [
-              "baixo",
-              "medio",
-              "alto",
-            ].includes(item?.esforco)
-              ? item.esforco
-              : "medio",
-
-            dependencias: limitarArray(
-              item?.dependencias,
-              5
-            ),
-          }))
-      : [];
-
-    /*
-    =========================================================
-    KPIs
-    =========================================================
-    */
-
-    resultado.kpisRecomendados =
-      Array.isArray(resultado.kpisRecomendados)
-        ? resultado.kpisRecomendados
-            .slice(0, 10)
-            .map((item) => ({
-              indicador:
-                item?.indicador || "",
-
-              oQueMede:
-                item?.oQueMede || "",
-
-              formaCalculo:
-                item?.formaCalculo || "",
-
-              frequencia:
-                item?.frequencia || "",
-
-              metaSugerida:
-                item?.metaSugerida ||
-                "Definir após levantamento da linha de base.",
-            }))
-        : [];
-
-    /*
-    =========================================================
-    PERGUNTAS DE APROFUNDAMENTO
-    =========================================================
-    */
-
-    resultado.perguntasAprofundamento =
-      Array.isArray(
-        resultado.perguntasAprofundamento
-      )
-        ? resultado.perguntasAprofundamento
-            .slice(0, 12)
-            .map((item) => ({
-              pergunta:
-                item?.pergunta || "",
-
-              motivo:
-                item?.motivo || "",
-
-              validar:
-                item?.validar || "",
-            }))
-        : [];
-
-    /*
-    =========================================================
-    VISÃO DO CONSULTOR
-    =========================================================
-    */
-
-    resultado.visaoConsultor = {
-      diagnosticoCentral:
-        resultado.visaoConsultor
-          ?.diagnosticoCentral || "",
-
-      evidenciaMaisForte:
-        resultado.visaoConsultor
-          ?.evidenciaMaisForte || "",
-
-      hipotesePrincipal:
-        resultado.visaoConsultor
-          ?.hipotesePrincipal || "",
-
-      validarPrimeiro:
-        resultado.visaoConsultor
-          ?.validarPrimeiro || "",
-
-      naoFazerAgora:
-        resultado.visaoConsultor
-          ?.naoFazerAgora || "",
-
-      pontosCegos: limitarArray(
-        resultado.visaoConsultor
-          ?.pontosCegos,
-        8
-      ),
-
-      dadosDocumentosSolicitar:
-        limitarArray(
-          resultado.visaoConsultor
-            ?.dadosDocumentosSolicitar,
-          10
-        ),
-    };
-
-    /*
-    =========================================================
-    VISÃO COMERCIAL
-    =========================================================
-    */
-
-    const potencialLeadPermitido = [
-      "baixo",
-      "medio",
-      "alto",
-      "imediato",
-    ];
-
-    resultado.visaoComercial = {
-      potencialLead:
-        potencialLeadPermitido.includes(
-          resultado.visaoComercial
-            ?.potencialLead
-        )
-          ? resultado.visaoComercial
-              .potencialLead
-          : "medio",
-
-      justificativa:
-        resultado.visaoComercial
-          ?.justificativa || "",
-
-      servicosAderentes:
-        Array.isArray(
-          resultado.visaoComercial
-            ?.servicosAderentes
-        )
-          ? resultado.visaoComercial.servicosAderentes
-              .slice(0, 8)
-              .map((item) => ({
-                servico:
-                  item?.servico || "",
-
-                problemaQuePodeAjudar:
-                  item?.problemaQuePodeAjudar ||
-                  "",
-
-                evidencia:
-                  item?.evidencia || "",
-              }))
-          : [],
-
-      argumentoAbordagem:
-        resultado.visaoComercial
-          ?.argumentoAbordagem || "",
-
-      objecoesProvaveis:
-        limitarArray(
-          resultado.visaoComercial
-            ?.objecoesProvaveis,
-          8
-        ),
-
-      proximaAcaoComercial:
-        resultado.visaoComercial
-          ?.proximaAcaoComercial || "",
-    };
-
-    /*
-    =========================================================
-    VISÃO DO GRUPO
-    =========================================================
-    */
-
-    resultado.visaoGrupo = {
-      resumo:
-        resultado.visaoGrupo?.resumo || "",
-
-      sinergias: limitarArray(
-        resultado.visaoGrupo?.sinergias,
-        8
-      ),
-
-      riscosCompartilhados: limitarArray(
-        resultado.visaoGrupo
-          ?.riscosCompartilhados,
-        8
-      ),
-
-      oportunidadesCompartilhadas:
-        limitarArray(
-          resultado.visaoGrupo
-            ?.oportunidadesCompartilhadas,
-          8
-        ),
-    };
-
-    /*
-    =========================================================
-    LACUNAS DO DIAGNÓSTICO
-    =========================================================
-    */
-
-    resultado.lacunasDiagnostico =
-      Array.isArray(
-        resultado.lacunasDiagnostico
-      )
-        ? resultado.lacunasDiagnostico
-            .slice(0, 10)
-            .map((item) => ({
-              tema:
-                item?.tema || "",
-
-              motivo:
-                item?.motivo || "",
-
-              perguntasSugeridas:
-                limitarArray(
-                  item?.perguntasSugeridas,
-                  5
-                ),
-            }))
-        : [];
-
-    /*
-    =========================================================
-    OPORTUNIDADES DE CONSULTORIA
-    =========================================================
-    */
-
-    resultado.oportunidadesConsultoria =
-      Array.isArray(
-        resultado.oportunidadesConsultoria
-      )
-        ? resultado.oportunidadesConsultoria
-            .slice(0, 10)
-            .map((item) => ({
-              servico:
-                item?.servico || "",
-
-              motivo:
-                item?.motivo || "",
-
-              evidencia:
-                item?.evidencia || "",
-            }))
-        : [];
-
-    /*
-    =========================================================
-    RETORNO FINAL
-    =========================================================
-    */
-
-    return res.status(200).json({
-      sucesso: true,
-      resultado,
-    });
-  } catch (error) {
-    console.error(
-      "Erro geral diagnóstico:",
-      error
-    );
-
-    return res.status(500).json({
-      sucesso: false,
-
-      error:
-        "Erro interno ao gerar o diagnóstico.",
-    });
-  }
-}
