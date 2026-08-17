@@ -906,6 +906,14 @@ export default function DiagnosticoPrototipo() {
   const [iaResultado, setIaResultado] = useState(null);
   const toastTimer = useRef(null);
 
+  // =========================================================
+  // CRM / RASTREAMENTO DO LEAD
+  // Complemento: não altera o fluxo existente do diagnóstico.
+  // =========================================================
+  const [leadId, setLeadId] = useState("");
+  const [sessionIdLead, setSessionIdLead] = useState("");
+  const leadInicializadoRef = useRef(false);
+
   const empresaPrincipal = empresas[0] || null;
 
   const atividadesSelecionadasObjetos = cnaesEmpresa.filter((atividade) =>
@@ -1002,6 +1010,208 @@ export default function DiagnosticoPrototipo() {
 
   const todasPerguntas = gruposSelecionados.flatMap((g) => g.subtemas.flatMap((s) => s.perguntas));
   const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
+
+  // =========================================================
+  // CRM — REGISTRA O ACESSO ASSIM QUE O CLIENTE ABRE O LINK
+  // =========================================================
+  useEffect(() => {
+    if (leadInicializadoRef.current) {
+      return;
+    }
+
+    leadInicializadoRef.current = true;
+
+    let cancelado = false;
+
+    async function iniciarSessaoLead() {
+      try {
+        const params = new URLSearchParams(
+          window.location.search
+        );
+
+        const origem =
+          params.get("origem") ||
+          params.get("utm_source") ||
+          "direto";
+
+        const campanha =
+          params.get("campanha") ||
+          params.get("utm_campaign") ||
+          "";
+
+        const promoter =
+          params.get("promoter") ||
+          "";
+
+        const utmSource =
+          params.get("utm_source") ||
+          "";
+
+        const utmMedium =
+          params.get("utm_medium") ||
+          "";
+
+        const utmCampaign =
+          params.get("utm_campaign") ||
+          "";
+
+        const utmContent =
+          params.get("utm_content") ||
+          "";
+
+        const utmTerm =
+          params.get("utm_term") ||
+          "";
+
+        const chaveSessao =
+          "finder_diagnostico_session_id";
+
+        let sessionId =
+          sessionStorage.getItem(
+            chaveSessao
+          ) || "";
+
+        if (!sessionId) {
+          const uuid =
+            typeof crypto !== "undefined" &&
+            typeof crypto.randomUUID === "function"
+              ? crypto.randomUUID()
+              : `${Date.now()}_${Math.random()
+                  .toString(36)
+                  .slice(2)}`;
+
+          sessionId =
+            `sessao_${uuid}`;
+
+          sessionStorage.setItem(
+            chaveSessao,
+            sessionId
+          );
+        }
+
+        setSessionIdLead(
+          sessionId
+        );
+
+        const resposta =
+          await fetch(
+            "/api/iniciar-diagnostico",
+            {
+              method: "POST",
+
+              headers: {
+                "content-type":
+                  "application/json",
+              },
+
+              body: JSON.stringify({
+                sessionId,
+
+                origem,
+                campanha,
+                promoter,
+
+                utm_source:
+                  utmSource,
+
+                utm_medium:
+                  utmMedium,
+
+                utm_campaign:
+                  utmCampaign,
+
+                utm_content:
+                  utmContent,
+
+                utm_term:
+                  utmTerm,
+
+                referrer:
+                  document.referrer ||
+                  "",
+              }),
+            }
+          );
+
+        const data =
+          await resposta
+            .json()
+            .catch(() => null);
+
+        if (
+          !resposta.ok ||
+          !data?.sucesso
+        ) {
+          console.warn(
+            "[CRM] Não foi possível registrar o acesso:",
+            data
+          );
+
+          return;
+        }
+
+        if (cancelado) {
+          return;
+        }
+
+        setLeadId(
+          data.leadId ||
+          ""
+        );
+
+        if (
+          data.sessionId &&
+          data.sessionId !==
+            sessionId
+        ) {
+          sessionStorage.setItem(
+            chaveSessao,
+            data.sessionId
+          );
+
+          setSessionIdLead(
+            data.sessionId
+          );
+        }
+
+        console.info(
+          "[CRM] Lead registrado:",
+          {
+            leadId:
+              data.leadId,
+
+            sessionId:
+              data.sessionId,
+
+            origem:
+              data.origem ||
+              origem,
+
+            campanha:
+              data.campanha ||
+              campanha,
+
+            statusDiagnostico:
+              data.statusDiagnostico,
+
+            statusComercial:
+              data.statusComercial,
+          }
+        );
+      } catch (erro) {
+        console.warn(
+          "[CRM] Falha ao iniciar sessão do lead:",
+          erro
+        );
+      }
+    }
+
+    iniciarSessaoLead();
+
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (step !== "analisando" || !empresaPrincipal || gruposSelecionados.length === 0) return;
@@ -1686,6 +1896,13 @@ export default function DiagnosticoPrototipo() {
 }));
 
     const payloadEmail = {
+      // CRM — metadados da sessão de origem do diagnóstico.
+      crm: {
+        leadId,
+        sessionId:
+          sessionIdLead,
+      },
+
       responsavel: {
         nome,
         cargo,
