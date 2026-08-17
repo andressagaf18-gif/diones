@@ -147,7 +147,7 @@ function objetoSeguro(valor) {
 }
 
 // =========================================================
-// HANDLER
+// HANDLER PRINCIPAL
 // =========================================================
 
 export default async function handler(req, res) {
@@ -156,7 +156,7 @@ export default async function handler(req, res) {
   );
 
   // =======================================================
-  // MÉTODO
+  // 1. MÉTODO
   // =======================================================
 
   if (req.method !== "POST") {
@@ -168,21 +168,8 @@ export default async function handler(req, res) {
   }
 
   // =======================================================
-  // VARIÁVEIS DE AMBIENTE
+  // 2. DATABASE_URL É OBRIGATÓRIA
   // =======================================================
-
-  if (!process.env.RESEND_API_KEY) {
-    console.error(
-      "[enviar-relatorio] RESEND_API_KEY ausente"
-    );
-
-    return res.status(500).json({
-      sucesso: false,
-      etapa: "configuracao_resend",
-      error:
-        "RESEND_API_KEY não configurada na Vercel.",
-    });
-  }
 
   if (!process.env.DATABASE_URL) {
     console.error(
@@ -198,7 +185,22 @@ export default async function handler(req, res) {
   }
 
   // =======================================================
-  // CRIAR CONEXÃO SOMENTE AGORA
+  // 3. RESEND É OPCIONAL
+  // =======================================================
+
+  const resendConfigurado =
+    Boolean(
+      process.env.RESEND_API_KEY
+    );
+
+  if (!resendConfigurado) {
+    console.warn(
+      "[enviar-relatorio] RESEND_API_KEY ausente. O diagnóstico será salvo no banco, mas os e-mails não serão enviados."
+    );
+  }
+
+  // =======================================================
+  // 4. CONEXÃO NEON
   // =======================================================
 
   let sql;
@@ -227,7 +229,7 @@ export default async function handler(req, res) {
   }
 
   // =======================================================
-  // CONFIGURAÇÕES DE E-MAIL
+  // 5. CONFIGURAÇÕES
   // =======================================================
 
   const emailFinder =
@@ -239,7 +241,7 @@ export default async function handler(req, res) {
     "Finder of Solutions <onboarding@resend.dev>";
 
   // =======================================================
-  // BODY
+  // 6. BODY
   // =======================================================
 
   const body =
@@ -300,7 +302,7 @@ export default async function handler(req, res) {
     );
 
   // =======================================================
-  // RESULTADO DA IA
+  // 7. DADOS DO DIAGNÓSTICO
   // =======================================================
 
   const diagnostico =
@@ -329,7 +331,7 @@ export default async function handler(req, res) {
     );
 
   // =======================================================
-  // DADOS PRINCIPAIS
+  // 8. DADOS PRINCIPAIS
   // =======================================================
 
   const razaoSocial =
@@ -385,7 +387,7 @@ export default async function handler(req, res) {
       : null;
 
   // =======================================================
-  // DORES
+  // 9. DORES
   // =======================================================
 
   let doresSelecionadas = [];
@@ -414,7 +416,7 @@ export default async function handler(req, res) {
   }
 
   // =======================================================
-  // PERGUNTAS
+  // 10. PERGUNTAS E RESPOSTAS
   // =======================================================
 
   const perguntasFinais =
@@ -563,7 +565,7 @@ export default async function handler(req, res) {
   }
 
   // =======================================================
-  // SALVAR NO NEON
+  // 11. SALVAR NO NEON
   // =======================================================
 
   let registroSalvo = null;
@@ -731,20 +733,10 @@ export default async function handler(req, res) {
       "[enviar-relatorio] ERRO_BANCO:",
       erroBanco
     );
-
-    /*
-     * IMPORTANTE:
-     *
-     * Não retornamos 500 aqui.
-     *
-     * O relatório continua sendo enviado por e-mail.
-     * Assim um problema temporário no banco não quebra
-     * o fluxo do participante.
-     */
   }
 
   // =======================================================
-  // HTML PERGUNTAS / RESPOSTAS
+  // 12. HTML RESPOSTAS
   // =======================================================
 
   const respostasHtml =
@@ -756,6 +748,7 @@ export default async function handler(req, res) {
               index
             ) => `
               <tr>
+
                 <td>
                   ${index + 1}
                 </td>
@@ -793,6 +786,7 @@ export default async function handler(req, res) {
                     item.peso
                   )}
                 </td>
+
               </tr>
             `
           )
@@ -806,7 +800,7 @@ export default async function handler(req, res) {
       `;
 
   // =======================================================
-  // ÁREAS
+  // 13. HTML ÁREAS
   // =======================================================
 
   const areasHtml =
@@ -819,6 +813,7 @@ export default async function handler(req, res) {
                 <div class="area-header">
 
                   <div>
+
                     <h3>
                       ${escaparHtml(
                         area?.area ||
@@ -833,13 +828,16 @@ export default async function handler(req, res) {
                         )
                       )}
                     </span>
+
                   </div>
 
                   <div class="score-area">
+
                     ${
                       area?.score ??
                       "-"
                     }/100
+
                   </div>
 
                 </div>
@@ -859,6 +857,7 @@ export default async function handler(req, res) {
                 <div class="grid">
 
                   <div class="box">
+
                     <strong>
                       Achados
                     </strong>
@@ -869,9 +868,11 @@ export default async function handler(req, res) {
                         "Nenhum achado relevante."
                       )}
                     </ul>
+
                   </div>
 
                   <div class="box">
+
                     <strong>
                       Possíveis causas
                     </strong>
@@ -882,9 +883,11 @@ export default async function handler(req, res) {
                         "Não determinadas."
                       )}
                     </ul>
+
                   </div>
 
                   <div class="box">
+
                     <strong>
                       Riscos
                     </strong>
@@ -895,9 +898,11 @@ export default async function handler(req, res) {
                         "Nenhum risco relevante informado."
                       )}
                     </ul>
+
                   </div>
 
                   <div class="box">
+
                     <strong>
                       Recomendações
                     </strong>
@@ -908,9 +913,11 @@ export default async function handler(req, res) {
                         "Nenhuma recomendação adicional."
                       )}
                     </ol>
+
                   </div>
 
                 </div>
+
               </div>
             `
           )
@@ -918,7 +925,7 @@ export default async function handler(req, res) {
       : "";
 
   // =======================================================
-  // LACUNAS
+  // 14. HTML LACUNAS
   // =======================================================
 
   const lacunasHtml =
@@ -927,6 +934,7 @@ export default async function handler(req, res) {
           .map(
             (item) => `
               <div class="box">
+
                 <strong>
                   ${escaparHtml(
                     item?.tema ||
@@ -955,6 +963,7 @@ export default async function handler(req, res) {
                     `
                     : ""
                 }
+
               </div>
             `
           )
@@ -966,7 +975,7 @@ export default async function handler(req, res) {
       `;
 
   // =======================================================
-  // CONSULTORIA
+  // 15. HTML CONSULTORIA
   // =======================================================
 
   const consultoriaHtml =
@@ -985,7 +994,7 @@ export default async function handler(req, res) {
                 </strong>
 
                 <p>
-                  Prioridade:
+                  <strong>Prioridade:</strong>
                   ${escaparHtml(
                     prioridadeTexto(
                       item?.prioridade
@@ -1007,7 +1016,7 @@ export default async function handler(req, res) {
       : "";
 
   // =======================================================
-  // HTML FINDER
+  // 16. HTML FINDER
   // =======================================================
 
   const htmlFinder = `
@@ -1020,7 +1029,7 @@ export default async function handler(req, res) {
 <meta charset="utf-8">
 
 <meta name="viewport"
-content="width=device-width,initial-scale=1">
+content="width=device-width, initial-scale=1">
 
 <title>
 Diagnóstico Empresarial Finder
@@ -1194,42 +1203,54 @@ td {
     <div class="grid">
 
       <div class="box">
+
         <strong>Nome</strong>
+
         <p>
           ${escaparHtml(
             nomeResponsavel
           )}
         </p>
+
       </div>
 
       <div class="box">
+
         <strong>Cargo</strong>
+
         <p>
           ${escaparHtml(
             cargoResponsavel ||
             "-"
           )}
         </p>
+
       </div>
 
       <div class="box">
+
         <strong>WhatsApp</strong>
+
         <p>
           ${escaparHtml(
             telefoneLead ||
             "-"
           )}
         </p>
+
       </div>
 
       <div class="box">
+
         <strong>E-mail</strong>
+
         <p>
           ${escaparHtml(
             emailLead ||
             "-"
           )}
         </p>
+
       </div>
 
     </div>
@@ -1241,51 +1262,61 @@ td {
     <div class="grid">
 
       <div class="box">
+
         <strong>Razão social</strong>
+
         <p>
           ${escaparHtml(
             razaoSocial
           )}
         </p>
+
       </div>
 
       <div class="box">
+
         <strong>CNPJ</strong>
+
         <p>
           ${escaparHtml(
             cnpj ||
             "-"
           )}
         </p>
+
       </div>
 
       <div class="box">
+
         <strong>Segmento</strong>
+
         <p>
           ${escaparHtml(
             segmentoInterpretado ||
             "-"
           )}
         </p>
+
       </div>
 
       <div class="box">
+
         <strong>Subsegmento</strong>
+
         <p>
           ${escaparHtml(
             subsegmentoInterpretado ||
             "-"
           )}
         </p>
+
       </div>
 
     </div>
 
     <div class="box">
 
-      <strong>
-        CNAE principal
-      </strong>
+      <strong>CNAE principal</strong>
 
       <p>
         ${formatarCnae(
@@ -1298,13 +1329,39 @@ td {
 
     <div class="box">
 
-      <strong>
-        CNAEs secundários
-      </strong>
+      <strong>CNAEs secundários</strong>
 
       <p>
         ${formatarAtividades(
           empresa.cnaesSecundarios
+        )}
+      </p>
+
+    </div>
+
+    <div class="box">
+
+      <strong>
+        Atividade predominante
+      </strong>
+
+      <p>
+        ${formatarCnae(
+          empresa.atividadePredominante
+        )}
+      </p>
+
+    </div>
+
+    <div class="box">
+
+      <strong>
+        Atividades exercidas
+      </strong>
+
+      <p>
+        ${formatarAtividades(
+          empresa.atividadesSelecionadas
         )}
       </p>
 
@@ -1339,6 +1396,22 @@ td {
 
     </div>
 
+    <div class="box">
+
+      <strong>
+        Objetivo dos próximos 90 dias
+      </strong>
+
+      <p>
+        ${escaparHtml(
+          dores.objetivo90Dias ||
+          resultado?.contextoInterpretado?.objetivo90Dias ||
+          "-"
+        )}
+      </p>
+
+    </div>
+
     <h2>
       Score geral
     </h2>
@@ -1346,10 +1419,12 @@ td {
     <div class="box">
 
       <span class="score">
+
         ${
           diagnostico.scoreGeral ??
           "-"
         }/100
+
       </span>
 
       <p>
@@ -1492,12 +1567,14 @@ td {
       <thead>
 
         <tr>
+
           <th>#</th>
           <th>Área</th>
           <th>Tema</th>
           <th>Pergunta</th>
           <th>Resposta</th>
           <th>Peso</th>
+
         </tr>
 
       </thead>
@@ -1569,7 +1646,7 @@ td {
 `;
 
   // =======================================================
-  // HTML DO PARTICIPANTE
+  // 17. HTML PARTICIPANTE
   // =======================================================
 
   const htmlLead = `
@@ -1626,17 +1703,24 @@ Finder of Solutions
 <div style="padding:30px;">
 
 <p>
+
 Olá,
+
 <strong>
+
 ${escaparHtml(
   nomeResponsavel
 )}
+
 </strong>.
+
 </p>
 
 <p>
+
 Obrigado por participar do
 Diagnóstico Empresarial Finder.
+
 </p>
 
 <div
@@ -1804,7 +1888,7 @@ Falar com um especialista
 `;
 
   // =======================================================
-  // FUNÇÃO DE E-MAIL
+  // 18. FUNÇÃO EMAIL
   // =======================================================
 
   async function enviarEmail({
@@ -1812,6 +1896,12 @@ Falar com um especialista
     assunto,
     html,
   }) {
+    if (!resendConfigurado) {
+      throw new Error(
+        "RESEND_API_KEY não configurada."
+      );
+    }
+
     console.log(
       "[enviar-relatorio] Enviando e-mail:",
       assunto
@@ -1849,15 +1939,21 @@ Falar com um especialista
         }
       );
 
-    const data =
-      await resposta.json();
+    let data = {};
+
+    try {
+      data =
+        await resposta.json();
+    } catch {
+      data = {};
+    }
 
     if (!resposta.ok) {
       throw new Error(
         data?.message ||
         data?.error?.message ||
         data?.error ||
-        "Erro ao enviar e-mail."
+        `Erro ao enviar e-mail. HTTP ${resposta.status}`
       );
     }
 
@@ -1865,43 +1961,55 @@ Falar com um especialista
   }
 
   // =======================================================
-  // ENVIAR FINDER
+  // 19. ENVIOS
   // =======================================================
 
   let envioFinder = null;
   let envioLead = null;
+
   let erroFinder = null;
   let erroLead = null;
 
-  try {
-    envioFinder =
-      await enviarEmail({
-        para:
-          emailFinder,
+  // =======================================================
+  // FINDER
+  // =======================================================
 
-        assunto:
-          `Novo diagnóstico empresarial — ${razaoSocial}`,
+  if (
+    resendConfigurado
+  ) {
+    try {
+      envioFinder =
+        await enviarEmail({
+          para:
+            emailFinder,
 
-        html:
-          htmlFinder,
-      });
+          assunto:
+            `Novo diagnóstico empresarial — ${razaoSocial}`,
 
-    console.log(
-      "[enviar-relatorio] Email Finder enviado"
-    );
-  } catch (error) {
+          html:
+            htmlFinder,
+        });
+
+      console.log(
+        "[enviar-relatorio] Email Finder enviado"
+      );
+    } catch (error) {
+      erroFinder =
+        error?.message ||
+        String(error);
+
+      console.error(
+        "[enviar-relatorio] ERRO_EMAIL_FINDER:",
+        erroFinder
+      );
+    }
+  } else {
     erroFinder =
-      error?.message ||
-      String(error);
-
-    console.error(
-      "[enviar-relatorio] ERRO_EMAIL_FINDER:",
-      erroFinder
-    );
+      "RESEND_API_KEY não configurada.";
   }
 
   // =======================================================
-  // ENVIAR PARTICIPANTE
+  // PARTICIPANTE
   // =======================================================
 
   const emailLeadValido =
@@ -1913,6 +2021,7 @@ Falar com um especialista
     );
 
   if (
+    resendConfigurado &&
     emailLeadValido
   ) {
     try {
@@ -1941,59 +2050,110 @@ Falar com um especialista
         erroLead
       );
     }
+  } else if (
+    !resendConfigurado
+  ) {
+    erroLead =
+      "RESEND_API_KEY não configurada.";
+  } else if (
+    emailLead &&
+    !emailLeadValido
+  ) {
+    erroLead =
+      "E-mail do participante inválido.";
   }
 
   // =======================================================
-  // RESULTADO
+  // 20. RESULTADO FINAL
   // =======================================================
 
   /*
-   * Só devolvemos 500 se NADA importante funcionou:
+   * Para o aplicativo, o principal é preservar o diagnóstico.
    *
-   * banco não salvou
-   * E
-   * e-mail Finder não foi enviado
+   * Se o banco salvou:
+   * retorna 200 mesmo se o Resend estiver sem configuração.
+   *
+   * Se o banco não salvou:
+   * retornamos 500 para não fingir que o registro foi armazenado.
    */
 
-  if (
-    !registroSalvo &&
-    !envioFinder
-  ) {
+  if (!registroSalvo) {
+    console.error(
+      "[enviar-relatorio] FINALIZADO COM ERRO DE BANCO"
+    );
+
     return res.status(500).json({
       sucesso: false,
 
       etapa:
-        "banco_e_email",
+        "salvar_banco",
 
       error:
-        "Não foi possível salvar o diagnóstico nem enviar o relatório para a Finder.",
+        "O diagnóstico foi gerado, mas não foi possível salvá-lo no banco.",
 
       banco: {
-        salvo: false,
+        salvo:
+          false,
+
         erro:
           erroBanco,
       },
 
       finder: {
-        enviado: false,
+        configurado:
+          resendConfigurado,
+
+        enviado:
+          Boolean(
+            envioFinder
+          ),
+
+        email:
+          emailFinder,
+
         erro:
           erroFinder,
+      },
+
+      lead: {
+        solicitado:
+          Boolean(
+            emailLead
+          ),
+
+        emailValido:
+          emailLeadValido,
+
+        enviado:
+          Boolean(
+            envioLead
+          ),
+
+        email:
+          emailLead ||
+          null,
+
+        erro:
+          erroLead,
       },
     });
   }
 
   console.log(
-    "[enviar-relatorio] FINALIZADO"
+    "[enviar-relatorio] FINALIZADO COM SUCESSO"
   );
 
   return res.status(200).json({
     sucesso: true,
 
+    mensagem:
+      resendConfigurado
+        ? "Diagnóstico salvo e processo de envio concluído."
+        : "Diagnóstico salvo com sucesso. E-mails não enviados porque o Resend ainda não está configurado.",
+
     banco: {
       salvo:
-        Boolean(
-          registroSalvo
-        ),
+        true,
 
       id:
         registroSalvo?.id ||
@@ -2004,10 +2164,13 @@ Falar com um especialista
         null,
 
       erro:
-        erroBanco,
+        null,
     },
 
     finder: {
+      configurado:
+        resendConfigurado,
+
       enviado:
         Boolean(
           envioFinder
