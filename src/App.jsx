@@ -829,12 +829,58 @@ export default function DiagnosticoPrototipo() {
         });
 
         setIaResultado({
+          // Diagnóstico técnico já existente
           areas: mapa,
-          diagnosticoGeral: data.diagnosticoGeral || null,
-          visaoGrupo: data.visaoGrupo || null,
-          lacunasDiagnostico: data.lacunasDiagnostico || [],
-          oportunidadesConsultoria: data.oportunidadesConsultoria || [],
-          modelo: data.modelo || "",
+
+          diagnosticoGeral:
+            data.diagnosticoGeral || null,
+
+          visaoGrupo:
+            data.visaoGrupo || null,
+
+          lacunasDiagnostico:
+            Array.isArray(data.lacunasDiagnostico)
+              ? data.lacunasDiagnostico
+              : [],
+
+          oportunidadesConsultoria:
+            Array.isArray(data.oportunidadesConsultoria)
+              ? data.oportunidadesConsultoria
+              : [],
+
+          // Novo dossiê consultivo do administrador
+          plano90Dias:
+            data.plano90Dias || null,
+
+          quickWins:
+            Array.isArray(data.quickWins)
+              ? data.quickWins
+              : [],
+
+          kpisRecomendados:
+            Array.isArray(data.kpisRecomendados)
+              ? data.kpisRecomendados
+              : [],
+
+          perguntasAprofundamento:
+            Array.isArray(data.perguntasAprofundamento)
+              ? data.perguntasAprofundamento
+              : [],
+
+          visaoConsultor:
+            data.visaoConsultor || null,
+
+          visaoComercial:
+            data.visaoComercial || null,
+
+          contextoInterpretado:
+            data.contextoInterpretado || null,
+
+          resultadoCompleto:
+            data.resultado || null,
+
+          modelo:
+            data.modelo || "",
         });
       }
 
@@ -1409,19 +1455,87 @@ export default function DiagnosticoPrototipo() {
         areasSelecionadas: gruposSelecionados.map((g) => g.label),
       },
       resultado: {
+        // Resultado principal
         scoreGeral: score,
-        nivelGeral: tierGeral.label,
-        areas: areasComScore.map((a) => ({
-          area: a.label,
-          score: a.score,
-          nivel: tierDe(a.score).label,
-          ...(iaResultado?.areas?.[a.label] || {}),
-        })),
-        diagnosticoGeral: iaResultado?.diagnosticoGeral || null,
-        visaoGrupo: iaResultado?.visaoGrupo || null,
-        lacunasDiagnostico: iaResultado?.lacunasDiagnostico || [],
-        oportunidadesConsultoria: iaResultado?.oportunidadesConsultoria || [],
-        respostas: respostasDetalhadas,
+
+        nivelGeral:
+          tierGeral.label,
+
+        areas:
+          areasComScore.map((a) => ({
+            area: a.label,
+
+            score: a.score,
+
+            nivel:
+              tierDe(a.score).label,
+
+            // Preserva resumo, achados, causas, riscos,
+            // recomendações e prioridade gerados pela IA.
+            ...(iaResultado?.areas?.[a.label] || {}),
+          })),
+
+        diagnosticoGeral:
+          iaResultado?.diagnosticoGeral || null,
+
+        // Diagnóstico completo já existente
+        visaoGrupo:
+          iaResultado?.visaoGrupo || null,
+
+        lacunasDiagnostico:
+          Array.isArray(
+            iaResultado?.lacunasDiagnostico
+          )
+            ? iaResultado.lacunasDiagnostico
+            : [],
+
+        oportunidadesConsultoria:
+          Array.isArray(
+            iaResultado?.oportunidadesConsultoria
+          )
+            ? iaResultado.oportunidadesConsultoria
+            : [],
+
+        // Novo dossiê consultivo do administrador
+        plano90Dias:
+          iaResultado?.plano90Dias || null,
+
+        quickWins:
+          Array.isArray(
+            iaResultado?.quickWins
+          )
+            ? iaResultado.quickWins
+            : [],
+
+        kpisRecomendados:
+          Array.isArray(
+            iaResultado?.kpisRecomendados
+          )
+            ? iaResultado.kpisRecomendados
+            : [],
+
+        perguntasAprofundamento:
+          Array.isArray(
+            iaResultado?.perguntasAprofundamento
+          )
+            ? iaResultado.perguntasAprofundamento
+            : [],
+
+        visaoConsultor:
+          iaResultado?.visaoConsultor || null,
+
+        visaoComercial:
+          iaResultado?.visaoComercial || null,
+
+        contextoInterpretado:
+          iaResultado?.contextoInterpretado || null,
+
+        // Rastreabilidade
+        respostas:
+          respostasDetalhadas,
+
+        resultadoCompleto:
+          iaResultado?.resultadoCompleto || null,
       },
     };
 
