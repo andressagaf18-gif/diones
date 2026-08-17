@@ -1584,91 +1584,23 @@ export default function DiagnosticoPrototipo() {
         .replace(/'/g, "&#039;");
 
     const listaHtml = (itens, vazio = "Nenhuma informação relevante identificada.") =>
-      itens?.length
+      Array.isArray(itens) && itens.length
         ? itens.map((item) => `<li>${escaparHtml(item)}</li>`).join("")
         : `<li>${escaparHtml(vazio)}</li>`;
 
-    const areasDetalhadasHtml = areasComScore
-      .map((a) => {
-        const iaArea = iaResultado?.areas?.[a.label] || {};
-        const achados = iaArea.achados || [];
-        const causas = iaArea.causasProvaveis || [];
-        const riscos = iaArea.riscos || [];
-        const recomendacoes = iaArea.recomendacoes || [];
-        const resumo = iaArea.resumo || "";
-        const prioridade = iaArea.prioridade ?? "-";
+    const prioridadesExecutivas = subOrdenados
+      .slice(0, 3)
+      .map((item) => `${item.area}: fortalecer ${String(item.tema || "esta frente").toLowerCase()}`);
 
-        return `
-          <section class="area-card">
-            <div class="area-head">
-              <div>
-                <h3>${escaparHtml(a.label)}</h3>
-                <span class="nivel">${escaparHtml(tierDe(a.score).label)}</span>
-              </div>
-              <div class="area-score">${a.score}<small>/100</small></div>
-            </div>
+    const conexoesExecutivas = causasProvaveisIa.slice(0, 3);
+    const impactosExecutivos = impactosIa.slice(0, 3);
+    const pontosFortesExecutivos = pontosFortesIa.slice(0, 3);
 
-            ${resumo ? `<p class="area-resumo">${escaparHtml(resumo)}</p>` : ""}
+    const mensagemWhatsApp = encodeURIComponent(
+      `Olá! Fiz o Diagnóstico Empresarial Finder.\n\nEmpresa: ${empresaPrincipal?.razao || ""}\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nO resultado fez sentido para mim e gostaria de conversar com um especialista para entender as prioridades e os próximos passos.`
+    );
 
-            <div class="area-grid">
-              <div>
-                <h4>Achados</h4>
-                <ul>${listaHtml(achados, "Nenhum achado adicional registrado.")}</ul>
-              </div>
-              <div>
-                <h4>Causas prováveis</h4>
-                <ul>${listaHtml(causas, "Não foi possível determinar causas com segurança.")}</ul>
-              </div>
-              <div>
-                <h4>Principais riscos</h4>
-                <ul>${listaHtml(riscos, "Nenhum risco relevante identificado nesta área.")}</ul>
-              </div>
-              <div>
-                <h4>Plano de ação</h4>
-                <ol>${listaHtml(recomendacoes, "Manter os controles atuais e revisar os indicadores periodicamente.")}</ol>
-              </div>
-            </div>
-
-            <div class="prioridade">Prioridade de atuação: <strong>${escaparHtml(prioridade)}</strong></div>
-          </section>
-        `;
-      })
-      .join("");
-
-    const areasResumoHtml = areasComScore
-      .map(
-        (a) => `
-          <tr>
-            <td>${escaparHtml(a.label)}</td>
-            <td><strong>${a.score}/100</strong></td>
-            <td>${escaparHtml(tierDe(a.score).label)}</td>
-          </tr>
-        `
-      )
-      .join("");
-
-    const subtemasHtml = subScoresAll
-      .map(
-        (s) => `
-          <tr>
-            <td>${escaparHtml(s.area)}</td>
-            <td>${escaparHtml(s.tema)}</td>
-            <td>${s.score}/100</td>
-          </tr>
-        `
-      )
-      .join("");
-
-    const endereco = empresaPrincipal.endereco || {};
-    const enderecoTexto = [
-      endereco.logradouro,
-      endereco.numero,
-      endereco.bairro,
-      endereco.municipio,
-      endereco.uf,
-    ].filter(Boolean).join(", ");
-
-    const whatsappEspecialista = "https://wa.me/5541989049616";
+    const whatsappEspecialista = `https://wa.me/5541989049616?text=${mensagemWhatsApp}`;
     const logoUrl = `${window.location.origin}/finder-logo.png`;
     const dataGeracao = new Date().toLocaleString("pt-BR");
 
@@ -1677,311 +1609,148 @@ export default function DiagnosticoPrototipo() {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Diagnóstico Finder - ${escaparHtml(empresaPrincipal.razao)}</title>
+<title>Diagnóstico Executivo Finder - ${escaparHtml(empresaPrincipal.razao)}</title>
 <style>
-  @page { size: A4; margin: 13mm; }
+  @page { size: A4; margin: 14mm; }
   * { box-sizing: border-box; }
   body {
     font-family: Arial, Helvetica, sans-serif;
     color: #17233D;
     margin: 0;
     font-size: 11.5px;
-    line-height: 1.5;
+    line-height: 1.55;
     background: #fff;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .capa-logo { width: 230px; max-width: 70%; background: #fff; border-radius: 8px; padding: 8px; margin-bottom: 16px; }
   .capa {
     background: #17233D;
     color: #fff;
     padding: 30px 28px;
     border-radius: 14px;
     margin-bottom: 20px;
-    page-break-inside: avoid;
   }
-  .marca { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .8; }
-  .capa h1 { font-size: 27px; margin: 12px 0 7px; }
+  .logo { width: 220px; max-width: 70%; background: #fff; border-radius: 8px; padding: 8px; margin-bottom: 16px; }
+  .marca { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .8; }
+  .capa h1 { font-size: 25px; margin: 10px 0 7px; }
   .capa .empresa { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
   .capa .meta { color: #D7DDEA; margin: 0; }
-  h2 {
-    font-size: 16px;
-    margin: 22px 0 10px;
-    padding-bottom: 6px;
-    border-bottom: 2px solid #FF6B4A;
-  }
-  h3 { font-size: 14px; margin: 0; }
-  h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; margin: 0 0 6px; }
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 9px 20px;
-  }
-  .box {
-    border: 1px solid #D8DEEA;
-    background: #F7F8FB;
-    border-radius: 10px;
-    padding: 13px;
-    page-break-inside: avoid;
-  }
+  h2 { font-size: 16px; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #FF6B4A; }
+  h3 { font-size: 13px; margin: 0 0 5px; }
   .score-box {
     display: grid;
-    grid-template-columns: 125px 1fr;
+    grid-template-columns: 130px 1fr;
     gap: 20px;
     align-items: center;
-    background: #17233D;
-    color: #fff;
-    padding: 18px;
-    border-radius: 12px;
-    page-break-inside: avoid;
-  }
-  .score-num { font-size: 42px; font-weight: 800; color: #FF6B4A; }
-  .score-num small { font-size: 14px; color: #D7DDEA; }
-  .score-box p { margin: 3px 0; color: #D7DDEA; }
-  .resumo {
-    border-left: 4px solid #FF6B4A;
-    background: #FFF3EF;
-    border-radius: 8px;
-    padding: 13px 15px;
-    page-break-inside: avoid;
-  }
-  .three-cols {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
-  }
-  .mini {
-    border: 1px solid #E0E4EC;
-    border-radius: 9px;
-    padding: 11px;
-    page-break-inside: avoid;
-  }
-  .mini strong { display: block; margin-bottom: 5px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-  th, td { border-bottom: 1px solid #D8DEEA; padding: 7px 6px; text-align: left; vertical-align: top; }
-  th { background: #E9EDF5; font-size: 10.5px; }
-  ul, ol { margin: 0; padding-left: 18px; }
-  li { margin-bottom: 5px; }
-  .area-card {
+    background: #F7F8FB;
     border: 1px solid #D8DEEA;
-    border-radius: 11px;
-    padding: 14px;
-    margin: 0 0 13px;
-    page-break-inside: avoid;
-  }
-  .area-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 9px; }
-  .area-score { font-size: 25px; font-weight: 800; color: #FF6B4A; }
-  .area-score small { font-size: 10px; color: #5B667A; }
-  .nivel {
-    display: inline-block;
-    margin-top: 4px;
-    padding: 2px 8px;
-    border-radius: 20px;
-    background: #E9EDF5;
-    font-size: 9.5px;
-    font-weight: 700;
-  }
-  .area-resumo { background: #F7F8FB; border-radius: 7px; padding: 9px; margin: 0 0 10px; }
-  .area-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .prioridade { margin-top: 9px; font-size: 10px; color: #5B667A; }
-  .cta {
-    margin-top: 24px;
-    background: #17233D;
-    color: white;
+    padding: 17px;
     border-radius: 12px;
-    padding: 18px;
     page-break-inside: avoid;
   }
-  .cta h3 { font-size: 15px; margin-bottom: 5px; }
-  .cta a { color: #fff; font-weight: 700; }
-  .aviso { margin-top: 20px; font-size: 9.5px; color: #5B667A; font-style: italic; }
+  .score { font-size: 40px; font-weight: 800; color: #FF6B4A; }
+  .score small { font-size: 13px; color: #5B667A; }
+  .box { border: 1px solid #D8DEEA; background: #F7F8FB; border-radius: 10px; padding: 13px; page-break-inside: avoid; }
+  .insight { border-left: 4px solid #FF6B4A; background: #FFF3EF; border-radius: 8px; padding: 13px 15px; page-break-inside: avoid; }
+  .positivo { background: #E1F5EE; border: 1px solid #C9E8D8; border-radius: 10px; padding: 13px; }
+  .alerta { background: #FAEEDA; color: #70410A; border-radius: 10px; padding: 13px; }
+  .prioridades { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; }
+  .prioridade { border: 1px solid #D8DEEA; border-radius: 10px; padding: 11px; page-break-inside: avoid; }
+  .num { width: 23px; height: 23px; border-radius: 7px; background: #17233D; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-bottom: 7px; }
+  ul { margin: 0; padding-left: 18px; }
+  li { margin-bottom: 5px; }
+  .cta { margin-top: 24px; background: #17233D; color: white; border-radius: 12px; padding: 18px; page-break-inside: avoid; }
+  .cta h3 { font-size: 16px; margin: 0 0 7px; }
+  .cta p { color: #D7DDEA; margin: 0 0 10px; }
+  .cta a { display: inline-block; background: #FF6B4A; color: #fff; font-weight: 700; text-decoration: none; padding: 10px 14px; border-radius: 8px; }
+  .aviso { margin-top: 19px; font-size: 9.5px; color: #5B667A; font-style: italic; }
   .footer { margin-top: 16px; padding-top: 9px; border-top: 1px solid #D8DEEA; font-size: 9px; color: #7A8495; text-align: center; }
-  @media print {
-    a { color: inherit; text-decoration: none; }
-  }
+  @media print { a { color: inherit; } }
 </style>
 </head>
 <body>
 
   <section class="capa">
-    <img src="${logoUrl}" alt="Finder of Solutions" class="capa-logo" />
+    <img src="${logoUrl}" alt="Finder of Solutions" class="logo" />
     <div class="marca">Finder of Solutions</div>
-    <h1>Diagnóstico Empresarial Preliminar</h1>
+    <h1>Diagnóstico Executivo Empresarial</h1>
     <p class="empresa">${escaparHtml(empresaPrincipal.razao)}</p>
-    <p class="meta">${escaparHtml(categoriaPrincipal)} · ${escaparHtml(
-      atividadePredominante?.descricao || empresaPrincipal.cnae || ""
-    )}</p>
+    <p class="meta">${escaparHtml(categoriaPrincipal)} · ${escaparHtml(atividadePredominante?.descricao || empresaPrincipal.cnae || "")}</p>
   </section>
 
-  <h2>1. Identificação</h2>
-  <div class="box grid">
-    <div><strong>Responsável:</strong><br>${escaparHtml(nome)}</div>
-    <div><strong>Cargo:</strong><br>${escaparHtml(cargo)}</div>
-    <div><strong>WhatsApp:</strong><br>${escaparHtml(telefone || "-")}</div>
-    <div><strong>E-mail:</strong><br>${escaparHtml(email || "-")}</div>
-    <div><strong>CNPJ:</strong><br>${escaparHtml(empresaPrincipal.cnpjDigits || "-")}</div>
-    <div><strong>Porte:</strong><br>${escaparHtml(empresaPrincipal.porte || "-")}</div>
-    <div><strong>Regime informado:</strong><br>${escaparHtml(regime || "-")}</div>
-    <div><strong>Faturamento informado:</strong><br>${escaparHtml(faturamento?.label || "-")}</div>
-    <div style="grid-column:1/-1"><strong>Atividade predominante informada:</strong><br>${escaparHtml(
-      atividadePredominante
-        ? `${atividadePredominante.codigo || ""} — ${atividadePredominante.descricao || ""}`
-        : "-"
-    )}</div>
-    <div style="grid-column:1/-1"><strong>Atividades efetivamente exercidas informadas:</strong><br>${escaparHtml(
-      atividadesSelecionadasObjetos.length
-        ? atividadesSelecionadasObjetos
-            .map((atividade) => `${atividade.codigo || ""} — ${atividade.descricao || ""}`)
-            .join(" | ")
-        : "-"
-    )}</div>
-    <div style="grid-column:1/-1"><strong>Descrição real do negócio:</strong><br>${escaparHtml(descricaoNegocio || "-")}</div>
-    <div style="grid-column:1/-1"><strong>Negócio interpretado:</strong><br>${escaparHtml(negocioInterpretado?.subsegmento || negocioInterpretado?.segmento || "-")}</div>
-    <div style="grid-column:1/-1"><strong>Endereço:</strong><br>${escaparHtml(enderecoTexto || "-")}</div>
-  </div>
-
-  <h2>2. Resultado geral</h2>
+  <h2>Seu resultado</h2>
   <div class="score-box">
     <div>
-      <div class="score-num">${score}<small>/100</small></div>
+      <div class="score">${score}<small>/100</small></div>
       <strong>${escaparHtml(tierGeral.label)}</strong>
     </div>
     <div>
-      <p><strong>Categoria:</strong> ${escaparHtml(categoriaPrincipal)}</p>
-      <p><strong>Colaboradores:</strong> ${escaparHtml(colaboradores || "-")}</p>
-      <p><strong>Áreas avaliadas:</strong> ${escaparHtml(gruposSelecionados.map((g) => g.label).join(", "))}</p>
+      <strong>Principal área de atenção</strong><br />
+      ${escaparHtml(areaMaisFraca?.label || "-")}<br /><br />
+      <span style="color:#5B667A">Este índice representa a maturidade das respostas fornecidas no diagnóstico e serve como sinalizador para aprofundamento.</span>
     </div>
+  </div>
+
+  <h2>O que entendemos sobre o seu negócio</h2>
+  <div class="box">
+    <strong>${escaparHtml(negocioInterpretado?.subsegmento || negocioInterpretado?.segmento || categoriaPrincipal)}</strong>
+    <p>${escaparHtml(descricaoNegocio || "Descrição do negócio não informada.")}</p>
+    ${negocioInterpretado?.modeloOperacional ? `<p><strong>Modelo operacional:</strong> ${escaparHtml(negocioInterpretado.modeloOperacional)}</p>` : ""}
   </div>
 
   ${resumoExecutivo ? `
-    <h2>3. Resumo executivo</h2>
-    <div class="resumo">${escaparHtml(resumoExecutivo)}</div>
+    <h2>Leitura executiva</h2>
+    <div class="insight">${escaparHtml(resumoExecutivo)}</div>
   ` : ""}
 
   ${leituraDaDorIa ? `
-    <h2>4. Leitura da dor declarada</h2>
-    <div class="resumo">${escaparHtml(leituraDaDorIa)}</div>
+    <h2>O que suas respostas estão mostrando</h2>
+    <div class="box">${escaparHtml(leituraDaDorIa)}</div>
+  ` : ""}
+
+  ${conexoesExecutivas.length ? `
+    <h2>Conexões que merecem atenção</h2>
+    <div class="box"><ul>${listaHtml(conexoesExecutivas)}</ul></div>
+  ` : ""}
+
+  ${impactosExecutivos.length ? `
+    <h2>Onde isso pode estar impactando</h2>
+    <div class="box"><ul>${listaHtml(impactosExecutivos)}</ul></div>
+  ` : ""}
+
+  ${pontosFortesExecutivos.length ? `
+    <h2>O que já está funcionando a seu favor</h2>
+    <div class="positivo"><ul>${listaHtml(pontosFortesExecutivos)}</ul></div>
   ` : ""}
 
   ${alertaEstrategicoIa ? `
-    <h2>5. Alerta estratégico</h2>
-    <div class="box"><strong>${escaparHtml(alertaEstrategicoIa)}</strong></div>
+    <h2>Alerta estratégico</h2>
+    <div class="alerta"><strong>${escaparHtml(alertaEstrategicoIa)}</strong></div>
   ` : ""}
 
-  ${(causasProvaveisIa.length || impactosIa.length) ? `
-    <h2>6. Causas prováveis e impactos</h2>
-    <div class="area-grid">
-      <div class="box">
-        <h4>Causas prováveis</h4>
-        <ul>${listaHtml(causasProvaveisIa, "Não foi possível determinar causas com segurança.")}</ul>
-      </div>
-      <div class="box">
-        <h4>Impactos possíveis</h4>
-        <ul>${listaHtml(impactosIa, "Nenhum impacto adicional identificado.")}</ul>
-      </div>
-    </div>
-  ` : ""}
-
-  <h2>7. Visão executiva</h2>
-  <div class="three-cols">
-    <div class="mini">
-      <strong>Principais dores</strong>
-      <ul>${listaHtml(principaisDoresIa.length ? principaisDoresIa : pontosAtencaoFinal.slice(0,3))}</ul>
-    </div>
-    <div class="mini">
-      <strong>Pontos fortes</strong>
-      <ul>${listaHtml(pontosFortesIa, "Pontos fortes serão validados em análise aprofundada.")}</ul>
-    </div>
-    <div class="mini">
-      <strong>Prioridades</strong>
-      <ol>${listaHtml(prioridadesIa.length ? prioridadesIa : recomendacoesFinal.slice(0,3).map((r) => r.dica))}</ol>
-    </div>
-  </div>
-
-  <h2>8. Índice de maturidade por área</h2>
-  <table>
-    <thead><tr><th>Área</th><th>Score</th><th>Nível</th></tr></thead>
-    <tbody>${areasResumoHtml}</tbody>
-  </table>
-
-  <h2>9. Detalhamento por subtema</h2>
-  <table>
-    <thead><tr><th>Área</th><th>Subtema</th><th>Score</th></tr></thead>
-    <tbody>${subtemasHtml}</tbody>
-  </table>
-
-  <h2>10. Diagnóstico detalhado</h2>
-  ${areasDetalhadasHtml}
-
-  <h2>11. Oportunidades identificadas</h2>
-  <div class="box">
-    <ul>${listaHtml(oportunidadesIa.length ? oportunidadesIa : recomendacoesFinal.map((r) => r.dica))}</ul>
-  </div>
-
-  ${regime !== "Não sei" && aliquota != null ? `
-    <h2>12. Referência tributária</h2>
-    <div class="box">
-      <strong>Carga tributária estimada de referência:</strong> ${escaparHtml(String(aliquota))}%<br>
-      <strong>Estimativa anual:</strong> ${escaparHtml(formatBRL(valorAnualImposto))}<br>
-      <span style="color:#5B667A">Estimativa simplificada com base nas informações fornecidas; não representa cálculo fiscal definitivo.</span>
-    </div>
-  ` : ""}
-
-  ${observacao.trim() ? `
-    <h2>13. Observação do participante</h2>
-    <div class="box">${escaparHtml(observacao.trim())}</div>
-  ` : ""}
-
-  ${proximosPassosIa.length ? `
-    <h2>14. Próximos passos recomendados</h2>
-    <div class="box">
-      <ol>${listaHtml(proximosPassosIa)}</ol>
-    </div>
-  ` : ""}
-
-  ${visaoGrupoIa?.aplicavel ? `
-    <h2>15. Visão do grupo empresarial</h2>
-    <div class="box">
-      <p>${escaparHtml(visaoGrupoIa.resumo || "")}</p>
-      <ul>${listaHtml(visaoGrupoIa.pontosAtencao || [])}</ul>
-    </div>
-  ` : ""}
-
-  ${lacunasDiagnosticoIa.length ? `
-    <h2>16. Pontos que merecem aprofundamento</h2>
-    ${lacunasDiagnosticoIa.map((lacuna) => `
-      <div class="box" style="margin-bottom:8px;">
-        <strong>${escaparHtml(lacuna.tema || "Tema")}</strong>
-        <p>${escaparHtml(lacuna.motivo || "")}</p>
-        <ul>${listaHtml(lacuna.perguntasSugeridas || [])}</ul>
+  <h2>Prioridades identificadas</h2>
+  <div class="prioridades">
+    ${prioridadesExecutivas.map((item, i) => `
+      <div class="prioridade">
+        <div class="num">${i + 1}</div>
+        <h3>${escaparHtml(item)}</h3>
+        <span style="color:#5B667A">A prioridade indica onde aprofundar a análise. O plano de implementação deve ser definido após validação profissional.</span>
       </div>
     `).join("")}
-  ` : ""}
-
-  ${oportunidadesConsultoriaIa.length ? `
-    <h2>17. Oportunidades de aprofundamento profissional</h2>
-    ${oportunidadesConsultoriaIa.map((item) => `
-      <div class="box" style="margin-bottom:8px;">
-        <strong>${escaparHtml(item.oportunidade || item.area || "")}</strong><br>
-        <span>${escaparHtml(item.motivo || "")}</span><br>
-        <small>Prioridade: ${escaparHtml(item.prioridade || "")}</small>
-      </div>
-    `).join("")}
-  ` : ""}
+  </div>
 
   <section class="cta">
-    <h3>Quer aprofundar este diagnóstico?</h3>
-    <div>Fale com um especialista Finder pelo WhatsApp:</div>
-    <a href="${whatsappEspecialista}">(41) 98904-9616</a>
+    <h3>Seu diagnóstico mostrou onde olhar. Agora precisamos definir como agir.</h3>
+    <p>A análise consultiva da Finder aprofunda as causas, valida os riscos e transforma as prioridades em um plano de ação adequado à realidade da empresa.</p>
+    <a href="${whatsappEspecialista}">Quero falar com um especialista</a>
   </section>
 
   <p class="aviso">
-    As informações apresentadas possuem caráter preliminar e foram elaboradas a partir das respostas fornecidas pelo participante.
-    Recomenda-se análise individualizada para validação das oportunidades identificadas.
+    Este é um diagnóstico executivo preliminar elaborado a partir das informações fornecidas pelo participante. A análise técnica completa, validação dos achados e definição das ações exigem avaliação profissional individualizada.
   </p>
 
   <div class="footer">
-    Finder of Solutions · Diagnóstico Empresarial · Gerado em ${escaparHtml(dataGeracao)}
+    Finder of Solutions · Diagnóstico Executivo Empresarial · Gerado em ${escaparHtml(dataGeracao)}
   </div>
 
 </body>
@@ -2013,8 +1782,8 @@ export default function DiagnosticoPrototipo() {
         { once: true }
       );
     } catch (erro) {
-      console.error("Erro ao gerar relatório:", erro);
-      showToast("Não foi possível gerar o relatório.");
+      console.error("Erro ao gerar relatório executivo:", erro);
+      showToast("Não foi possível gerar o relatório executivo.");
     }
   }
 
@@ -3007,9 +2776,8 @@ export default function DiagnosticoPrototipo() {
 
                 <div style={{ background: tierDe(areaMaisFraca.score).bg, borderRadius: 14, padding: 14, marginBottom: 16, display: "flex", gap: 10 }}>
                   <Flame size={18} color={tierDe(areaMaisFraca.score).color} style={{ flexShrink: 0, marginTop: 1 }} />
-                  <p style={{ fontSize: 12, color: tierDe(areaMaisFraca.score).color, margin: 0, lineHeight: 1.45 }}>
-                    Sua empresa possui nível <strong>{tierDe(areaMaisFraca.score).label.toUpperCase()}</strong> em <strong>{areaMaisFraca.label}</strong>.
-                    Encontramos {riscosNaAreaMaisFraca} {riscosNaAreaMaisFraca === 1 ? "ponto" : "pontos"} que podem estar gerando perda de resultado. Agende um diagnóstico completo.
+                  <p style={{ fontSize: 12, color: tierDe(areaMaisFraca.score).color, margin: 0, lineHeight: 1.5 }}>
+                    Identificamos sinais que merecem atenção em <strong>{areaMaisFraca.label}</strong>. Seu resultado indica nível <strong>{tierDe(areaMaisFraca.score).label.toUpperCase()}</strong> nessa área. Veja abaixo o que suas respostas estão mostrando.
                   </p>
                 </div>
 
@@ -3018,259 +2786,168 @@ export default function DiagnosticoPrototipo() {
                   <span style={{ ...badgeStyle, background: tierGeral.bg, color: tierGeral.color, marginTop: 10, fontWeight: 700 }}>{tierGeral.label}</span>
                 </div>
 
-                <p style={{ fontSize: 12, color: MUTED, textAlign: "center", margin: "0 0 4px" }}>
-                  {empresaPrincipal.razao}{empresas.length > 1 ? ` + ${empresas.length - 1} empresa${empresas.length > 2 ? "s" : ""} do grupo` : ""}
+                <p style={{ fontSize: 12, color: MUTED, textAlign: "center", margin: "0 0 4px", fontWeight: 700 }}>
+                  {empresaPrincipal.razao}
                 </p>
-                <p style={{ fontSize: 11, color: "#9AA3B5", textAlign: "center", margin: "0 0 16px" }}>
+                <p style={{ fontSize: 11, color: "#9AA3B5", textAlign: "center", margin: "0 0 17px", lineHeight: 1.4 }}>
                   {categoriaPrincipal} · {colaboradores} colaboradores · {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
 
-                {resumoExecutivo && (
-                  <div style={{ background: "#FFF3EF", borderLeft: `4px solid ${CORAL}`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
-                    <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 5px" }}>
-                      Resumo executivo
+                <p style={sectionTitleStyle}>O que entendemos sobre o seu negócio</p>
+                <div style={{ background: "#F7F8FB", borderRadius: 12, padding: 13, marginBottom: 14, border: "1px solid #E6E9EF" }}>
+                  <p style={{ fontSize: 11.8, color: NAVY, margin: 0, lineHeight: 1.55 }}>
+                    <strong>{negocioInterpretado?.subsegmento || negocioInterpretado?.segmento || categoriaPrincipal}</strong>
+                    {negocioInterpretado?.modeloOperacional ? ` — ${negocioInterpretado.modeloOperacional}` : ""}.
+                  </p>
+                  {descricaoNegocio && (
+                    <p style={{ fontSize: 11.2, color: MUTED, margin: "7px 0 0", lineHeight: 1.5 }}>
+                      Com base no que você informou, entendemos sua operação como: {descricaoNegocio}.
                     </p>
-                    <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.5 }}>{resumoExecutivo}</p>
-                  </div>
+                  )}
+                </div>
+
+                {resumoExecutivo && (
+                  <>
+                    <p style={sectionTitleStyle}>Leitura executiva</p>
+                    <div style={{ background: "#FFF3EF", borderLeft: `4px solid ${CORAL}`, borderRadius: 10, padding: 13, marginBottom: 14 }}>
+                      <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.6 }}>{resumoExecutivo}</p>
+                    </div>
+                  </>
                 )}
 
                 {leituraDaDorIa && (
-                  <div style={{ background: "#F7F8FB", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                    <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 5px" }}>
-                      Leitura da principal dor
-                    </p>
-                    <p style={{ fontSize: 11.8, color: NAVY, margin: 0, lineHeight: 1.5 }}>{leituraDaDorIa}</p>
-                  </div>
-                )}
-
-                {alertaEstrategicoIa && (
-                  <div style={{ background: "#FAEEDA", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                    <p style={{ fontSize: 10.5, fontWeight: 700, color: "#854F0B", textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 5px" }}>
-                      Alerta estratégico
-                    </p>
-                    <p style={{ fontSize: 11.8, color: "#854F0B", margin: 0, lineHeight: 1.5, fontWeight: 600 }}>{alertaEstrategicoIa}</p>
-                  </div>
+                  <>
+                    <p style={sectionTitleStyle}>O que suas respostas estão mostrando</p>
+                    <div style={{ background: WHITE, border: "1px solid #DDE2EA", borderRadius: 12, padding: 13, marginBottom: 14 }}>
+                      <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.6 }}>{leituraDaDorIa}</p>
+                    </div>
+                  </>
                 )}
 
                 {causasProvaveisIa.length > 0 && (
-                  <div style={{ background: "#F7F8FB", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                    <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 6px" }}>
-                      Possíveis causas
-                    </p>
-                    {causasProvaveisIa.slice(0, 4).map((item, i) => (
-                      <p key={i} style={{ fontSize: 11.5, color: NAVY, margin: i ? "5px 0 0" : 0, lineHeight: 1.4 }}>
-                        • {item}
-                      </p>
-                    ))}
-                  </div>
+                  <>
+                    <p style={sectionTitleStyle}>Conexões que merecem atenção</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 15 }}>
+                      {causasProvaveisIa.slice(0, 3).map((item, i) => (
+                        <div key={i} style={{ background: "#F7F8FB", borderRadius: 10, padding: 11, border: "1px solid #E6E9EF", display: "flex", gap: 9, alignItems: "flex-start" }}>
+                          <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#FFF3EF", color: CORAL, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
+                          <p style={{ fontSize: 11.7, color: NAVY, margin: 0, lineHeight: 1.5 }}>{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {impactosIa.length > 0 && (
+                  <>
+                    <p style={sectionTitleStyle}>Onde isso pode estar impactando</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 15 }}>
+                      {impactosIa.slice(0, 3).map((item, i) => (
+                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                          <AlertTriangle size={14} color="#993C1D" style={{ marginTop: 2, flexShrink: 0 }} />
+                          <p style={{ fontSize: 11.7, color: NAVY, margin: 0, lineHeight: 1.45 }}>{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
 
                 {pontosFortesIa.length > 0 && (
-                  <div style={{ background: "#E1F5EE", borderRadius: 10, padding: 12, marginBottom: 14 }}>
-                    <p style={{ fontSize: 10.5, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 6px" }}>
-                      Pontos fortes
-                    </p>
-                    {pontosFortesIa.slice(0, 3).map((p, i) => (
-                      <p key={i} style={{ fontSize: 11.5, color: "#0F6E56", margin: i ? "5px 0 0" : 0, lineHeight: 1.4 }}>
-                        • {p}
-                      </p>
-                    ))}
-                  </div>
+                  <>
+                    <p style={sectionTitleStyle}>O que já está funcionando a seu favor</p>
+                    <div style={{ background: "#E1F5EE", borderRadius: 11, padding: 12, marginBottom: 15 }}>
+                      {pontosFortesIa.slice(0, 3).map((item, i) => (
+                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: i ? 7 : 0 }}>
+                          <CheckCircle2 size={14} color="#0F6E56" style={{ marginTop: 2, flexShrink: 0 }} />
+                          <p style={{ fontSize: 11.7, color: "#0F6E56", margin: 0, lineHeight: 1.45 }}>{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
+
+                {alertaEstrategicoIa && (
+                  <>
+                    <p style={sectionTitleStyle}>Alerta estratégico</p>
+                    <div style={{ background: "#FAEEDA", borderRadius: 11, padding: 13, marginBottom: 15 }}>
+                      <p style={{ fontSize: 11.8, color: "#70410A", margin: 0, lineHeight: 1.55, fontWeight: 600 }}>{alertaEstrategicoIa}</p>
+                    </div>
+                  </>
+                )}
+
+                <p style={sectionTitleStyle}>Prioridades identificadas</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 17 }}>
+                  {subOrdenados.slice(0, 3).map((item, i) => (
+                    <div key={`${item.area}-${item.tema}-${i}`} style={{ background: WHITE, border: "1px solid #E1E5EC", borderRadius: 10, padding: 11, display: "flex", gap: 9, alignItems: "flex-start" }}>
+                      <div style={{ minWidth: 24, height: 24, borderRadius: 7, background: NAVY, color: WHITE, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
+                      <div>
+                        <p style={{ fontSize: 11.8, fontWeight: 700, color: NAVY, margin: "1px 0 3px", lineHeight: 1.4 }}>{item.area} · {item.tema}</p>
+                        <p style={{ fontSize: 10.6, color: MUTED, margin: 0, lineHeight: 1.4 }}>Esta frente merece aprofundamento antes da definição do plano de implementação.</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {observacao.trim() && (
+                  <>
+                    <p style={sectionTitleStyle}>Sua observação</p>
+                    <div style={{ background: ICE, borderRadius: 10, padding: 11, marginBottom: 15 }}>
+                      <p style={{ fontSize: 11.5, color: NAVY, margin: 0, lineHeight: 1.45, fontStyle: "italic" }}>“{observacao.trim()}”</p>
+                    </div>
+                  </>
+                )}
+
+                <div style={{ background: NAVY, color: WHITE, borderRadius: 14, padding: 16, marginBottom: 15 }}>
+                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>
+                    Seu diagnóstico mostrou onde olhar. Agora precisamos definir como agir.
+                  </p>
+                  <p style={{ fontSize: 11.5, color: "#D7DDEA", margin: "0 0 10px", lineHeight: 1.5 }}>
+                    A análise consultiva da Finder aprofunda as causas, valida os riscos e transforma as prioridades em um plano de ação adequado à realidade da sua empresa.
+                  </p>
+                  <p style={{ fontSize: 10.5, color: "#AEB8CA", margin: 0, lineHeight: 1.45 }}>
+                    O diagnóstico técnico completo permanece reservado para a análise com o especialista.
+                  </p>
+                </div>
 
                 {envioRelatorio === "sent" && (
                   <div style={{ background: "#E1F5EE", borderRadius: 10, padding: 10, marginBottom: 14 }}>
-                    <p style={{ fontSize: 11.5, color: "#0F6E56", margin: 0, lineHeight: 1.4 }}>
-                      Diagnóstico registrado e enviado para a Finder
-                      {consentimentoEmail && email ? ` e para ${email}` : ""}.
-                    </p>
+                    <p style={{ fontSize: 11, color: "#0F6E56", margin: 0, lineHeight: 1.4 }}>Seu diagnóstico foi registrado com sucesso.</p>
                   </div>
                 )}
 
                 {envioRelatorio === "error" && (
                   <div style={{ background: "#FAECE7", borderRadius: 10, padding: 10, marginBottom: 14 }}>
-                    <p style={{ fontSize: 11.5, color: "#993C1D", margin: 0, lineHeight: 1.4 }}>
-                      O diagnóstico foi concluído, mas houve falha no envio por e-mail. Você ainda pode gerar o PDF normalmente.
-                    </p>
+                    <p style={{ fontSize: 11, color: "#993C1D", margin: 0, lineHeight: 1.4 }}>Seu diagnóstico foi concluído. Houve uma falha em uma etapa de envio, mas o resultado permanece disponível nesta tela.</p>
                   </div>
                 )}
-
-                {observacao.trim() && (
-                  <div style={{ background: ICE, borderRadius: 12, padding: 12, marginBottom: 16 }}>
-                    <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 4px" }}>Observação do participante</p>
-                    <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.4, fontStyle: "italic" }}>"{observacao.trim()}"</p>
-                  </div>
-                )}
-
-                <div style={{
-                  background: regime === "Não sei" ? "#FAECE7" : NAVY, borderRadius: 14, padding: 16, marginBottom: 18,
-                }}>
-                  {regime === "Não sei" ? (
-                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <AlertTriangle size={18} color="#993C1D" style={{ flexShrink: 0, marginTop: 1 }} />
-                      <div>
-                        <p style={{ fontSize: 12.5, fontWeight: 700, color: "#993C1D", margin: "0 0 4px" }}>Regime tributário não identificado</p>
-                        <p style={{ fontSize: 11.5, color: "#993C1D", margin: 0, lineHeight: 1.4 }}>
-                          Não saber o próprio regime tributário já é, em si, um ponto de atenção — pode significar pagar mais imposto do que o necessário.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                        <Percent size={14} color="#C6CEDD" />
-                        <p style={{ fontSize: 11, color: "#C6CEDD", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>Carga tributária estimada</p>
-                      </div>
-                      <p style={{ fontFamily: DISPLAY_FONT, fontSize: 32, fontWeight: 700, color: WHITE, margin: "0 0 4px" }}>{aliquota}%</p>
-                      <p style={{ fontSize: 12, color: "#C6CEDD", margin: 0 }}>
-                        ≈ {formatBRL(valorAnualImposto)}/ano em {regime}, com base no faturamento informado
-                      </p>
-                      <p style={{ fontSize: 10, color: "#8592AC", margin: "8px 0 0", fontStyle: "italic" }}>
-                        Estimativa de referência para {segmentoPredominante?.toLowerCase()}. O valor real depende de detalhes específicos da operação.
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                <p style={sectionTitleStyle}>Índice de maturidade por departamento</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-                  {areasComScore.map((a) => {
-                    const t = tierDe(a.score);
-                    return (
-                      <div key={a.id}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 12, color: NAVY, fontWeight: 700 }}>{a.label}</span>
-                          <span style={{ fontSize: 10.5, padding: "1px 8px", borderRadius: 10, background: t.bg, color: t.color, fontWeight: 700 }}>{t.label} · {a.score}</span>
-                        </div>
-                        <div style={{ height: 6, background: "#EEF0F5", borderRadius: 4, overflow: "hidden" }}>
-                          <div style={{ width: `${a.score}%`, height: "100%", background: t.color, borderRadius: 4, transition: "width 0.6s ease" }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <p style={sectionTitleStyle}>Detalhamento por subtema</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 16 }}>
-                  {subScoresAll.map((s, i) => (
-                    <div key={i}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                        <span style={{ fontSize: 11.5, color: NAVY, fontWeight: 600 }}>
-                          {gruposSelecionados.length > 1 ? `${s.area} · ${s.tema}` : s.tema}
-                        </span>
-                        <span style={{ fontSize: 11.5, color: MUTED }}>{s.score}</span>
-                      </div>
-                      <div style={{ height: 6, background: "#EEF0F5", borderRadius: 4, overflow: "hidden" }}>
-                        <div style={{ width: `${s.score}%`, height: "100%", background: tierDe(s.score).color, borderRadius: 4, transition: "width 0.6s ease" }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {pontosAtencaoFinal.length > 0 && (
-                  <>
-                    <p style={sectionTitleStyle}>Principais riscos identificados</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-                      {pontosAtencaoFinal.map((p, i) => (
-                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                          <div style={{ width: 5, height: 5, borderRadius: "50%", background: CORAL, marginTop: 6, flexShrink: 0 }} />
-                          <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.4 }}>{p}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                <p style={sectionTitleStyle}>Oportunidades de ganho rápido</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                  {recomendacoesFinal.map((s, i) => (
-                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                      <CheckCircle2 size={14} color="#0F6E56" style={{ marginTop: 2, flexShrink: 0 }} />
-                      <div>
-                        {gruposSelecionados.length > 1 && (
-                          <p style={{ fontSize: 10, color: MUTED, margin: "0 0 2px", fontWeight: 600 }}>{s.area}</p>
-                        )}
-                        <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.4 }}>{s.dica}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {proximosPassosIa.length > 0 && (
-                  <>
-                    <p style={sectionTitleStyle}>Próximos passos recomendados</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 16 }}>
-                      {proximosPassosIa.slice(0, 5).map((item, i) => (
-                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                          <CheckCircle2 size={14} color="#185FA5" style={{ marginTop: 2, flexShrink: 0 }} />
-                          <p style={{ fontSize: 11.8, color: NAVY, margin: 0, lineHeight: 1.4 }}>{item}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {visaoGrupoIa?.aplicavel && (
-                  <>
-                    <p style={sectionTitleStyle}>Visão do grupo empresarial</p>
-                    <div style={{ background: ICE, borderRadius: 10, padding: 12, marginBottom: 16 }}>
-                      <p style={{ fontSize: 11.8, color: NAVY, margin: "0 0 6px", lineHeight: 1.45 }}>{visaoGrupoIa.resumo}</p>
-                      {(visaoGrupoIa.pontosAtencao || []).slice(0, 4).map((item, i) => (
-                        <p key={i} style={{ fontSize: 11.3, color: NAVY, margin: i ? "4px 0 0" : 0 }}>• {item}</p>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {lacunasDiagnosticoIa.length > 0 && (
-                  <>
-                    <p style={sectionTitleStyle}>O que ainda precisa ser aprofundado</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                      {lacunasDiagnosticoIa.slice(0, 4).map((lacuna, i) => (
-                        <div key={i} style={{ background: "#FFF3EF", borderRadius: 10, padding: 10 }}>
-                          <p style={{ fontSize: 11.3, color: NAVY, fontWeight: 700, margin: "0 0 3px" }}>{lacuna.tema}</p>
-                          <p style={{ fontSize: 10.8, color: MUTED, margin: 0, lineHeight: 1.4 }}>{lacuna.motivo}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                <p style={{ fontSize: 10.5, color: "#9AA3B5", fontStyle: "italic", margin: "0 0 16px", lineHeight: 1.4 }}>
-                  Diagnóstico empresarial preliminar elaborado a partir das respostas fornecidas. Recomenda-se análise profissional individualizada para validação.
-                </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <PrimaryButton onClick={gerarPdf}>
-                    <Download size={15} /> Baixar relatório em PDF
-                  </PrimaryButton>
                   <PrimaryButton
-                    style={{ background: NAVY }}
+                    style={{ background: NAVY, padding: "14px 16px" }}
                     onClick={() => {
                       const numero = "5541989049616";
                       const mensagem = encodeURIComponent(
-                        `Olá! Acabei de realizar o Diagnóstico Empresarial Finder.
-
-Empresa: ${empresaPrincipal?.razao || ""}
-Responsável: ${nome || ""}
-Score: ${score}/100
-Principal ponto de atenção: ${areaMaisFraca?.label || ""}
-
-Gostaria de falar com um especialista sobre o resultado.`
+                        `Olá! Fiz o Diagnóstico Empresarial Finder.\n\nEmpresa: ${empresaPrincipal?.razao || ""}\nResponsável: ${nome || ""}\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nO resultado fez sentido para mim e gostaria de conversar com um especialista para entender as prioridades e os próximos passos.`
                       );
-
                       window.open(`https://wa.me/${numero}?text=${mensagem}`, "_blank");
                     }}
                   >
-                    <CalendarCheck size={15} /> Falar com especialista
+                    <CalendarCheck size={15} /> Quero falar com um especialista
                   </PrimaryButton>
-                  <button onClick={reiniciar} style={{
-                    background: "none", border: "none", color: MUTED, fontSize: 11.5,
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 6, cursor: "pointer",
-                  }}>
-                    <RotateCcw size={12} /> Reiniciar simulação
+
+                  <PrimaryButton onClick={gerarPdf}>
+                    <Download size={15} /> Baixar meu diagnóstico executivo
+                  </PrimaryButton>
+
+                  <button onClick={reiniciar} style={{ background: "none", border: "none", color: MUTED, fontSize: 11.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 7, cursor: "pointer" }}>
+                    <RotateCcw size={12} /> Fazer um novo diagnóstico
                   </button>
                 </div>
+
+                <p style={{ fontSize: 9.8, color: "#9AA3B5", fontStyle: "italic", margin: "14px 0 0", lineHeight: 1.45, textAlign: "center" }}>
+                  Diagnóstico empresarial executivo e preliminar elaborado a partir das informações fornecidas pelo participante. A validação dos achados e a definição das ações exigem análise profissional individualizada.
+                </p>
+
               </div>
             )}
 
