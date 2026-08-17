@@ -81,6 +81,272 @@ function estimarAliquota(regime, segmento, anual) {
   return null;
 }
 
+
+// =========================================================
+// INTELIGÊNCIA TRIBUTÁRIA
+// =========================================================
+//
+// IMPORTANTE:
+// - a carga abaixo é uma ESTIMATIVA GERENCIAL;
+// - não substitui apuração fiscal;
+// - o faturamento usado é o valor de referência da faixa
+//   escolhida no formulário;
+// - o impacto da Reforma Tributária é preliminar e deve ser
+//   validado com os dados reais da empresa.
+// =========================================================
+
+function moedaTributaria(valor) {
+  const numero = Number(valor);
+
+  if (!Number.isFinite(numero)) {
+    return "-";
+  }
+
+  return numero.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  });
+}
+
+function percentualTributario(valor) {
+  const numero = Number(valor);
+
+  if (!Number.isFinite(numero)) {
+    return "-";
+  }
+
+  return `${numero.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function obterImpactoReformaTributaria({
+  regime,
+  segmento,
+  categoria,
+}) {
+  const segmentoTributario =
+    normalizarSegmentoTributario(segmento);
+
+  const resultado = {
+    status: "A avaliar",
+    tratamentoSetorial:
+      "Aplicação preliminar da regra geral do IBS/CBS. O enquadramento definitivo depende da atividade efetivamente exercida e da classificação tributária das operações.",
+
+    fase2026:
+      regime === "Simples Nacional"
+        ? "Para optantes do Simples Nacional, 2026 permanece como período sem alteração material do recolhimento de IBS/CBS; os efeitos operacionais e de opção ganham relevância a partir de 2027."
+        : "Em 2026, a fase de teste utiliza 0,9% de CBS e 0,1% de IBS para contribuintes do regime regular, observadas as regras de compensação, dispensa e obrigações acessórias.",
+
+    fatoresFavoraveis: [],
+    fatoresAtencao: [],
+    pontosValidar: [
+      "Confirmar a atividade efetivamente exercida e o enquadramento legal de cada receita.",
+      "Validar o regime tributário atual e o perfil B2B/B2C da carteira.",
+      "Mapear compras, despesas e investimentos potencialmente geradores de créditos.",
+      "Simular preço, margem e fluxo de caixa antes de concluir aumento ou redução de carga.",
+    ],
+
+    oportunidadeFinder:
+      "Realizar simulação tributária individualizada comparando a carga atual com cenários da Reforma Tributária.",
+  };
+
+  if (categoria === "Contabilidade") {
+    resultado.status =
+      "Moderado · requer simulação";
+
+    resultado.tratamentoSetorial =
+      "Serviços de contabilistas podem se enquadrar na redução de 30% das alíquotas de IBS e CBS prevista para determinadas profissões regulamentadas, desde que atendidos os requisitos legais. A redução incide sobre IBS/CBS, e não sobre a carga tributária total da empresa.";
+
+    resultado.fatoresFavoraveis.push(
+      "Possibilidade de tratamento diferenciado com redução das alíquotas de IBS/CBS, sujeito ao enquadramento legal."
+    );
+
+    resultado.fatoresAtencao.push(
+      "Escritórios contábeis tendem a possuir estrutura relevante de folha, que não gera crédito como uma aquisição comum de bens e serviços."
+    );
+
+    resultado.fatoresAtencao.push(
+      "A composição B2B da carteira pode alterar a percepção comercial do novo imposto, pois clientes contribuintes podem valorizar a geração de créditos."
+    );
+  } else if (categoria === "Advocacia") {
+    resultado.status =
+      "Moderado · requer simulação";
+
+    resultado.tratamentoSetorial =
+      "Serviços de advocacia podem se enquadrar na redução de 30% das alíquotas de IBS e CBS prevista para determinadas profissões regulamentadas, observados os requisitos legais.";
+
+    resultado.fatoresFavoraveis.push(
+      "Possibilidade de redução setorial das alíquotas de IBS/CBS, quando atendidas as condições legais."
+    );
+
+    resultado.fatoresAtencao.push(
+      "A estrutura intensiva em mão de obra pode limitar o volume de créditos aproveitáveis."
+    );
+  } else if (categoria === "Saúde / Clínica") {
+    resultado.status =
+      "Relevante · validar enquadramento";
+
+    resultado.tratamentoSetorial =
+      "Diversos serviços de saúde possuem tratamento diferenciado com redução de 60% das alíquotas de IBS e CBS, mas é necessário confirmar se os serviços efetivamente prestados estão na lista legal aplicável.";
+
+    resultado.fatoresFavoraveis.push(
+      "Possibilidade de redução setorial relevante das alíquotas de IBS/CBS para serviços de saúde enquadrados."
+    );
+
+    resultado.fatoresAtencao.push(
+      "A classificação do serviço e a composição das receitas devem ser validadas antes de aplicar qualquer redução."
+    );
+  } else if (
+    categoria === "Imobiliária / Atividades Imobiliárias"
+  ) {
+    resultado.status =
+      "Alto · exige análise específica";
+
+    resultado.tratamentoSetorial =
+      "Operações imobiliárias possuem regras específicas na Reforma Tributária. Locação, venda, intermediação e administração não devem ser tratadas como uma única operação para fins de projeção.";
+
+    resultado.fatoresAtencao.push(
+      "Separar receitas de locação, venda, administração, intermediação e demais serviços antes da simulação."
+    );
+  } else if (segmentoTributario === "Indústria") {
+    resultado.status =
+      "Moderado · depende dos créditos";
+
+    resultado.tratamentoSetorial =
+      "Na indústria, o efeito líquido tende a depender fortemente do volume de insumos, serviços, energia, ativos e demais aquisições que gerem créditos de IBS/CBS.";
+
+    resultado.fatoresFavoraveis.push(
+      "Maior potencial de créditos sobre aquisições vinculadas à atividade empresarial, conforme as regras aplicáveis."
+    );
+
+    resultado.fatoresAtencao.push(
+      "Preço, estoque, compras, benefícios atuais e cadeia de fornecedores precisam ser simulados em conjunto."
+    );
+  } else if (segmentoTributario === "Comércio") {
+    resultado.status =
+      "Moderado · depende da cadeia";
+
+    resultado.tratamentoSetorial =
+      "No comércio, a análise deve considerar créditos sobre aquisições, composição de estoque, perfil dos fornecedores, margem e destino das vendas.";
+
+    resultado.fatoresFavoraveis.push(
+      "Aquisições de mercadorias podem gerar créditos relevantes quando atendidos os requisitos do novo sistema."
+    );
+
+    resultado.fatoresAtencao.push(
+      "Empresas com venda predominante ao consumidor final podem ter maior sensibilidade de preço do que operações B2B."
+    );
+  } else {
+    resultado.status =
+      "Moderado · requer simulação";
+
+    resultado.tratamentoSetorial =
+      "Empresas de serviços precisam avaliar especialmente a relação entre receita, folha, despesas creditáveis, perfil B2B/B2C e eventual tratamento diferenciado previsto para a atividade.";
+
+    resultado.fatoresAtencao.push(
+      "Negócios intensivos em mão de obra podem apresentar menor proporção de despesas geradoras de créditos."
+    );
+
+    resultado.fatoresFavoraveis.push(
+      "Em operações B2B, a geração de créditos ao cliente pode alterar a análise de preço e competitividade."
+    );
+  }
+
+  if (regime === "Simples Nacional") {
+    resultado.pontosValidar.unshift(
+      "Simular a permanência do IBS/CBS dentro do Simples versus eventual recolhimento pelas regras do regime regular quando a legislação permitir a opção."
+    );
+  }
+
+  return resultado;
+}
+
+function montarInteligenciaTributaria({
+  regime,
+  segmento,
+  categoria,
+  faturamento,
+}) {
+  const anualReferencia =
+    Number(faturamento?.anual);
+
+  const aliquotaEstimada =
+    regime &&
+    regime !== "Não sei" &&
+    Number.isFinite(anualReferencia)
+      ? estimarAliquota(
+          regime,
+          segmento,
+          anualReferencia
+        )
+      : null;
+
+  const mensalReferencia =
+    Number.isFinite(anualReferencia)
+      ? anualReferencia / 12
+      : null;
+
+  const tributosAnuaisEstimados =
+    aliquotaEstimada !== null &&
+    Number.isFinite(anualReferencia)
+      ? anualReferencia *
+        (aliquotaEstimada / 100)
+      : null;
+
+  const tributosMensaisEstimados =
+    tributosAnuaisEstimados !== null
+      ? tributosAnuaisEstimados / 12
+      : null;
+
+  return {
+    disponivel:
+      aliquotaEstimada !== null &&
+      Number.isFinite(mensalReferencia),
+
+    faturamentoFaixa:
+      faturamento?.label || "",
+
+    faturamentoMensalReferencia:
+      mensalReferencia,
+
+    faturamentoAnualReferencia:
+      Number.isFinite(anualReferencia)
+        ? anualReferencia
+        : null,
+
+    tributosMensaisEstimados,
+    tributosAnuaisEstimados,
+
+    cargaTributariaEstimada:
+      aliquotaEstimada,
+
+    regime:
+      regime || "",
+
+    segmento:
+      segmento || "",
+
+    categoria:
+      categoria || "",
+
+    criterio:
+      "Estimativa gerencial baseada na faixa de faturamento informada, no regime tributário e no segmento. Não representa apuração fiscal efetiva.",
+
+    confiabilidade:
+      "Referencial",
+
+    reforma:
+      obterImpactoReformaTributaria({
+        regime,
+        segmento,
+        categoria,
+      }),
+  };
+}
+
 // Modelo de maturidade: Sim = 5, Parcialmente = 3, Não = 0 (invertido para perguntas de risco).
 function pesoResposta(q, r) {
   if (!r) return 0;
@@ -1530,6 +1796,9 @@ export default function DiagnosticoPrototipo() {
         contextoInterpretado:
           iaResultado?.contextoInterpretado || null,
 
+        // Inteligência tributária — cliente + administração
+        inteligenciaTributaria,
+
         // Rastreabilidade
         respostas:
           respostasDetalhadas,
@@ -1655,6 +1924,17 @@ export default function DiagnosticoPrototipo() {
 
   const aliquota = empresaPrincipal && regime ? estimarAliquota(regime, segmentoPredominante, faturamento?.anual || 0) : null;
   const valorAnualImposto = aliquota != null && faturamento ? faturamento.anual * (aliquota / 100) : null;
+
+
+  const inteligenciaTributaria =
+    montarInteligenciaTributaria({
+      regime,
+      segmento:
+        segmentoPredominante,
+      categoria:
+        categoriaPrincipal,
+      faturamento,
+    });
 
   const diagnosticoGeral = iaResultado?.diagnosticoGeral || null;
   const resumoExecutivo = diagnosticoGeral?.resumoExecutivo || "";
@@ -1815,6 +2095,49 @@ export default function DiagnosticoPrototipo() {
   ${resumoExecutivo ? `
     <h2>Leitura executiva</h2>
     <div class="insight">${escaparHtml(resumoExecutivo)}</div>
+  ` : ""}
+
+  ${inteligenciaTributaria?.disponivel ? `
+    <h2>Inteligência tributária</h2>
+    <div class="box">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <strong>Faturamento de referência</strong><br>
+          ${escaparHtml(moedaTributaria(inteligenciaTributaria.faturamentoMensalReferencia))}/mês
+        </div>
+        <div>
+          <strong>Tributos estimados</strong><br>
+          ${escaparHtml(moedaTributaria(inteligenciaTributaria.tributosMensaisEstimados))}/mês
+        </div>
+        <div>
+          <strong>Carga tributária estimada</strong><br>
+          <span style="font-size:18px;color:#993C1D;font-weight:800;">
+            ${escaparHtml(percentualTributario(inteligenciaTributaria.cargaTributariaEstimada))}
+          </span>
+        </div>
+      </div>
+
+      <p style="margin:0 0 8px;">
+        A cada R$ 100 faturados, aproximadamente
+        <strong>R$ ${Number(inteligenciaTributaria.cargaTributariaEstimada).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })}</strong>
+        correspondem à carga tributária estimada nesta referência.
+      </p>
+
+      <div class="alerta">
+        <strong>Reforma Tributária:</strong>
+        impacto preliminar do segmento:
+        <strong>${escaparHtml(inteligenciaTributaria.reforma?.status || "A avaliar")}</strong>.
+        O efeito efetivo depende do regime, atividade, créditos, perfil dos clientes e das operações.
+      </div>
+
+      <p style="font-size:9.5px;color:#7A8495;margin:9px 0 0;font-style:italic;">
+        Estimativa gerencial baseada na faixa de faturamento informada, regime e segmento.
+        Não representa apuração fiscal definitiva.
+      </p>
+    </div>
   ` : ""}
 
   ${leituraDaDorIa ? `
@@ -2925,6 +3248,198 @@ export default function DiagnosticoPrototipo() {
                     <p style={sectionTitleStyle}>Leitura executiva</p>
                     <div style={{ background: "#FFF3EF", borderLeft: `4px solid ${CORAL}`, borderRadius: 10, padding: 13, marginBottom: 14 }}>
                       <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.6 }}>{resumoExecutivo}</p>
+                    </div>
+                  </>
+                )}
+
+                {inteligenciaTributaria?.disponivel && (
+                  <>
+                    <p style={sectionTitleStyle}>Inteligência tributária</p>
+
+                    <div
+                      style={{
+                        background: "#F7F8FB",
+                        border: "1px solid #DDE2EA",
+                        borderRadius: 12,
+                        padding: 13,
+                        marginBottom: 14,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: 9,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div
+                          style={{
+                            background: WHITE,
+                            borderRadius: 9,
+                            padding: 10,
+                            border: "1px solid #E3E7EF",
+                          }}
+                        >
+                          <p
+                            style={{
+                              fontSize: 9.5,
+                              color: MUTED,
+                              margin: "0 0 3px",
+                            }}
+                          >
+                            FATURAMENTO DE REFERÊNCIA
+                          </p>
+                          <strong
+                            style={{
+                              fontSize: 14,
+                              color: NAVY,
+                            }}
+                          >
+                            {moedaTributaria(
+                              inteligenciaTributaria
+                                .faturamentoMensalReferencia
+                            )}/mês
+                          </strong>
+                        </div>
+
+                        <div
+                          style={{
+                            background: WHITE,
+                            borderRadius: 9,
+                            padding: 10,
+                            border: "1px solid #E3E7EF",
+                          }}
+                        >
+                          <p
+                            style={{
+                              fontSize: 9.5,
+                              color: MUTED,
+                              margin: "0 0 3px",
+                            }}
+                          >
+                            TRIBUTOS ESTIMADOS
+                          </p>
+                          <strong
+                            style={{
+                              fontSize: 14,
+                              color: NAVY,
+                            }}
+                          >
+                            {moedaTributaria(
+                              inteligenciaTributaria
+                                .tributosMensaisEstimados
+                            )}/mês
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "#FFF3EF",
+                          borderLeft: `4px solid ${CORAL}`,
+                          borderRadius: 9,
+                          padding: 11,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontSize: 9.5,
+                            color: "#993C1D",
+                            margin: "0 0 3px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          CARGA TRIBUTÁRIA ESTIMADA
+                        </p>
+
+                        <strong
+                          style={{
+                            fontSize: 23,
+                            color: "#993C1D",
+                          }}
+                        >
+                          {percentualTributario(
+                            inteligenciaTributaria
+                              .cargaTributariaEstimada
+                          )}
+                        </strong>
+
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: NAVY,
+                            margin: "6px 0 0",
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          A cada R$ 100 faturados, aproximadamente{" "}
+                          <strong>
+                            R${" "}
+                            {Number(
+                              inteligenciaTributaria
+                                .cargaTributariaEstimada
+                            ).toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </strong>{" "}
+                          correspondem à carga tributária estimada nesta referência.
+                        </p>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "#FAEEDA",
+                          borderRadius: 9,
+                          padding: 10,
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontSize: 9.5,
+                            color: "#70410A",
+                            margin: "0 0 3px",
+                            fontWeight: 800,
+                          }}
+                        >
+                          REFORMA TRIBUTÁRIA
+                        </p>
+
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: "#70410A",
+                            margin: 0,
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          Impacto preliminar do segmento:{" "}
+                          <strong>
+                            {
+                              inteligenciaTributaria
+                                .reforma?.status
+                            }
+                          </strong>
+                          . O efeito efetivo depende do regime tributário,
+                          atividade, créditos, perfil dos clientes e das
+                          operações realizadas.
+                        </p>
+                      </div>
+
+                      <p
+                        style={{
+                          fontSize: 9.2,
+                          color: "#8A93A3",
+                          margin: "9px 0 0",
+                          lineHeight: 1.4,
+                          fontStyle: "italic",
+                        }}
+                      >
+                        Estimativa gerencial. Não substitui apuração fiscal
+                        nem planejamento tributário individualizado.
+                      </p>
                     </div>
                   </>
                 )}
