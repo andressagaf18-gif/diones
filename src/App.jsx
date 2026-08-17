@@ -912,7 +912,9 @@ export default function DiagnosticoPrototipo() {
   // =========================================================
   const [leadId, setLeadId] = useState("");
   const [sessionIdLead, setSessionIdLead] = useState("");
+  const [diagnosticoIdSalvo, setDiagnosticoIdSalvo] = useState("");
   const leadInicializadoRef = useRef(false);
+  const ultimaAtualizacaoLeadRef = useRef("");
 
   const empresaPrincipal = empresas[0] || null;
 
@@ -1212,6 +1214,215 @@ export default function DiagnosticoPrototipo() {
       cancelado = true;
     };
   }, []);
+
+  async function atualizarLeadCRM(dados = {}) {
+    const identificadorLead =
+      leadId ||
+      "";
+
+    const identificadorSessao =
+      sessionIdLead ||
+      sessionStorage.getItem(
+        "finder_diagnostico_session_id"
+      ) ||
+      "";
+
+    if (
+      !identificadorLead &&
+      !identificadorSessao
+    ) {
+      return;
+    }
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/atualizar-lead",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              leadId:
+                identificadorLead,
+
+              sessionId:
+                identificadorSessao,
+
+              ...dados,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        console.warn(
+          "[CRM] Falha ao atualizar lead:",
+          data
+        );
+
+        return;
+      }
+
+      if (
+        data?.lead?.leadId &&
+        !leadId
+      ) {
+        setLeadId(
+          data.lead.leadId
+        );
+      }
+    } catch (erro) {
+      console.warn(
+        "[CRM] Erro ao atualizar lead:",
+        erro
+      );
+    }
+  }
+
+  function progressoDoDiagnostico() {
+    const progressoBase = {
+      intro: 0,
+      cadastro: 10,
+      cnpj: 20,
+      porte: 35,
+      dor: 50,
+      gerandoPerguntas: 60,
+      confirmarNegocio: 65,
+      checklist: 70,
+      analisando: 95,
+      resultado: 100,
+    };
+
+    if (
+      step === "checklist" &&
+      todasPerguntas.length > 0
+    ) {
+      const respondidas =
+        todasPerguntas.filter(
+          (q) =>
+            Boolean(
+              respostas[q.id]
+            )
+        ).length;
+
+      const proporcao =
+        respondidas /
+        todasPerguntas.length;
+
+      return Math.round(
+        70 +
+        proporcao * 20
+      );
+    }
+
+    return progressoBase[step] ?? 0;
+  }
+
+  // =========================================================
+  // CRM — ATUALIZA STATUS, PROGRESSO E DADOS CONHECIDOS
+  // =========================================================
+  useEffect(() => {
+    if (
+      !leadId &&
+      !sessionIdLead
+    ) {
+      return;
+    }
+
+    const progresso =
+      progressoDoDiagnostico();
+
+    const statusDiagnostico =
+      step === "intro"
+        ? "ACESSOU"
+        : step === "resultado"
+        ? "CONCLUIDO"
+        : "EM_PREENCHIMENTO";
+
+    const payload = {
+      statusDiagnostico,
+
+      etapaAtual:
+        String(step || "")
+          .toUpperCase(),
+
+      progressoPercentual:
+        progresso,
+
+      nome:
+        nome || "",
+
+      email:
+        email || "",
+
+      telefone:
+        telefone || "",
+
+      cnpj:
+        empresaPrincipal?.cnpjDigits ||
+        "",
+
+      razaoSocial:
+        empresaPrincipal?.razao ||
+        "",
+
+      diagnosticoId:
+        diagnosticoIdSalvo ||
+        "",
+    };
+
+    const assinatura =
+      JSON.stringify(
+        payload
+      );
+
+    if (
+      ultimaAtualizacaoLeadRef.current ===
+      assinatura
+    ) {
+      return;
+    }
+
+    ultimaAtualizacaoLeadRef.current =
+      assinatura;
+
+    const timer =
+      setTimeout(
+        () => {
+          atualizarLeadCRM(
+            payload
+          );
+        },
+        250
+      );
+
+    return () =>
+      clearTimeout(timer);
+  }, [
+    step,
+    leadId,
+    sessionIdLead,
+    nome,
+    email,
+    telefone,
+    empresaPrincipal?.cnpjDigits,
+    empresaPrincipal?.razao,
+    diagnosticoIdSalvo,
+    todasPerguntas.length,
+    respostas,
+  ]);
 
   useEffect(() => {
     if (step !== "analisando" || !empresaPrincipal || gruposSelecionados.length === 0) return;
@@ -2043,6 +2254,52 @@ export default function DiagnosticoPrototipo() {
       }
 
       relatorioEnviadoRef.current = true;
+
+      const idSalvo =
+        data?.id ||
+        data?.diagnosticoId ||
+        data?.diagnostico?.id ||
+        "";
+
+      if (idSalvo) {
+        setDiagnosticoIdSalvo(
+          String(idSalvo)
+        );
+      }
+
+      await atualizarLeadCRM({
+        statusDiagnostico:
+          "CONCLUIDO",
+
+        etapaAtual:
+          "RESULTADO",
+
+        progressoPercentual:
+          100,
+
+        nome:
+          nome || "",
+
+        email:
+          email || "",
+
+        telefone:
+          telefone || "",
+
+        cnpj:
+          empresaPrincipal?.cnpjDigits ||
+          "",
+
+        razaoSocial:
+          empresaPrincipal?.razao ||
+          "",
+
+        diagnosticoId:
+          idSalvo
+            ? String(idSalvo)
+            : "",
+      });
+
       setEnvioRelatorio("sent");
     } catch (error) {
       console.error("Erro no envio do relatório:", error);
@@ -2079,6 +2336,8 @@ export default function DiagnosticoPrototipo() {
     setImpactosDor([]);
     setRespostas({});
     setIaResultado(null);
+    setDiagnosticoIdSalvo("");
+    ultimaAtualizacaoLeadRef.current = "";
   }
 
   function scoreDe(perguntas) {
