@@ -1,30 +1,17 @@
 // api/diagnostico.js
 
 function extrairOutputText(data) {
-  if (
-    typeof data?.output_text === "string" &&
-    data.output_text.trim()
-  ) {
+  if (typeof data?.output_text === "string" && data.output_text.trim()) {
     return data.output_text.trim();
   }
 
-  if (!Array.isArray(data?.output)) {
-    return "";
-  }
+  if (!Array.isArray(data?.output)) return "";
 
   for (const item of data.output) {
-    if (
-      item?.type !== "message" ||
-      !Array.isArray(item.content)
-    ) {
-      continue;
-    }
+    if (item?.type !== "message" || !Array.isArray(item.content)) continue;
 
     for (const content of item.content) {
-      if (
-        content?.type === "output_text" &&
-        content.text
-      ) {
+      if (content?.type === "output_text" && content.text) {
         return String(content.text).trim();
       }
     }
@@ -34,48 +21,26 @@ function extrairOutputText(data) {
 }
 
 function limitarArray(valor, limite = 5) {
-  return Array.isArray(valor)
-    ? valor.slice(0, limite)
-    : [];
+  return Array.isArray(valor) ? valor.slice(0, limite) : [];
 }
 
 function nivelScore(score) {
   const valor = Number(score);
 
-  if (!Number.isFinite(valor)) {
-    return "critico";
-  }
-
-  if (valor >= 80) {
-    return "bom";
-  }
-
-  if (valor >= 60) {
-    return "atencao";
-  }
-
-  if (valor >= 40) {
-    return "alto";
-  }
-
+  if (!Number.isFinite(valor)) return "critico";
+  if (valor >= 80) return "bom";
+  if (valor >= 60) return "atencao";
+  if (valor >= 40) return "alto";
   return "critico";
 }
 
 export default async function handler(req, res) {
-  // =========================================================
-  // 1. MÉTODO
-  // =========================================================
-
   if (req.method !== "POST") {
     return res.status(405).json({
       sucesso: false,
       error: "Método não permitido.",
     });
   }
-
-  // =========================================================
-  // 2. OPENAI
-  // =========================================================
 
   if (!process.env.OPENAI_API_KEY) {
     return res.status(500).json({
@@ -84,53 +49,37 @@ export default async function handler(req, res) {
     });
   }
 
-  // =========================================================
-  // 3. RECEBER PAYLOAD
-  // =========================================================
-
   const body = req.body || {};
 
   const {
     responsavel,
-
     segmento,
     categoria,
     codigoQuestionario,
-
     cnaePrincipal,
     cnaesSecundarios,
     atividadesSelecionadas,
     atividadePredominante,
-
     descricaoNegocio,
     negocioInterpretado,
-
     empresas,
-
     faturamento,
     colaboradores,
     regime,
     observacao,
-
     doresSelecionadas,
     dorPrincipal,
     dor90Dias,
     impactosDor,
-
     areas,
     scoreGeral,
   } = body;
 
-  // =========================================================
-  // 4. NORMALIZAR DORES
-  // =========================================================
-
-  const dores =
-    Array.isArray(doresSelecionadas)
-      ? doresSelecionadas.filter(Boolean)
-      : Array.isArray(body?.dor?.selecionadas)
-        ? body.dor.selecionadas.filter(Boolean)
-        : [];
+  const dores = Array.isArray(doresSelecionadas)
+    ? doresSelecionadas.filter(Boolean)
+    : Array.isArray(body?.dor?.selecionadas)
+      ? body.dor.selecionadas.filter(Boolean)
+      : [];
 
   const dorPrincipalFinal =
     dorPrincipal ||
@@ -143,77 +92,95 @@ export default async function handler(req, res) {
     body?.dor?.objetivo90Dias ||
     "";
 
-  const impactosDorFinal =
-    Array.isArray(impactosDor)
-      ? impactosDor
-      : Array.isArray(body?.dor?.impactos)
-        ? body.dor.impactos
-        : [];
+  const impactosDorFinal = Array.isArray(impactosDor)
+    ? impactosDor
+    : Array.isArray(body?.dor?.impactos)
+      ? body.dor.impactos
+      : [];
 
-  // =========================================================
-  // 5. VALIDAR ÁREAS
-  // =========================================================
-
-  if (
-    !Array.isArray(areas) ||
-    areas.length === 0
-  ) {
+  if (!Array.isArray(areas) || areas.length === 0) {
     return res.status(400).json({
       sucesso: false,
-      error:
-        "Nenhuma área foi enviada para análise.",
+      error: "Nenhuma área foi enviada para análise.",
     });
   }
 
-  // =========================================================
-  // 6. PROMPT PRINCIPAL
-  // =========================================================
-
   const systemPrompt = `
-Você é um CONSULTOR EMPRESARIAL SÊNIOR.
+Você é um CONSULTOR EMPRESARIAL SÊNIOR da Finder.
 
-Seu trabalho é interpretar um diagnóstico empresarial já respondido e transformar os dados em um relatório consultivo, profundo, específico e útil para tomada de decisão.
+Seu trabalho é interpretar um diagnóstico empresarial já respondido e transformá-lo em um DOSSIÊ CONSULTIVO INTERNO profundo, específico, prudente e útil para tomada de decisão.
 
-Você NÃO deve simplesmente repetir perguntas e respostas.
+Este relatório completo será utilizado internamente por consultores.
 
-Você deve cruzar:
+NÃO simplesmente repita perguntas e respostas.
+
+Cruze:
 
 - descrição real do negócio;
-- negócio interpretado previamente;
+- negócio interpretado;
 - atividade predominante;
-- atividades efetivamente exercidas;
+- atividades exercidas;
 - CNAEs;
 - segmento;
-- múltiplas dores;
+- dores;
 - objetivo de 90 dias;
 - perguntas;
 - respostas;
-- motivos das perguntas;
+- motivos;
 - riscos avaliados;
+- importância;
 - pesos;
 - scores.
 
 =========================================================
-REGRA PRINCIPAL
+LÓGICA PRINCIPAL
 =========================================================
 
-Estruture mentalmente a análise desta forma:
+Estruture mentalmente:
 
 DORES DECLARADAS
 ↓
-EVIDÊNCIAS NAS RESPOSTAS
+EVIDÊNCIAS
+↓
+ACHADOS
 ↓
 POSSÍVEIS CAUSAS
 ↓
-IMPACTOS
+IMPACTOS E RISCOS
 ↓
 PRIORIDADES
 ↓
 AÇÕES
+↓
+INDICADORES
+↓
+PLANO DE 90 DIAS
 
-Não analise cada pergunta isoladamente.
+Não analise perguntas isoladamente.
 
-Procure relações entre respostas de áreas diferentes.
+Procure relações entre respostas diferentes.
+
+=========================================================
+EVIDÊNCIA X HIPÓTESE
+=========================================================
+
+Nunca apresente hipótese como fato.
+
+EVIDÊNCIA:
+informação diretamente sustentada pelas respostas.
+
+HIPÓTESE:
+interpretação que ainda precisa ser validada.
+
+Use expressões como:
+
+- pode estar relacionado;
+- há indícios;
+- merece validação;
+- pode contribuir;
+- as respostas sugerem.
+
+Nunca invente números.
 
 =========================================================
 NEGÓCIO REAL
@@ -229,443 +196,133 @@ Considere nesta ordem:
 6. CNAEs secundários;
 7. segmento e categoria.
 
-O CNAE é apenas uma evidência cadastral.
-
-Não permita que um CNAE genérico prevaleça sobre a realidade operacional descrita pelo participante.
-
-Exemplo:
-
-CNAE:
-"Apoio administrativo"
-
-Descrição:
-"Fabricamos churrasqueiras metálicas."
-
-A análise deve considerar prioritariamente a operação industrial.
+CNAE é evidência cadastral, não descrição definitiva da operação.
 
 =========================================================
-MÚLTIPLAS DORES
+DORES
 =========================================================
 
-O empresário pode ter selecionado várias dores.
-
-Exemplo:
-
-- falta de caixa;
-- margem baixa;
-- vendas abaixo do esperado;
-- estoque alto;
-- custos elevados.
-
-NÃO trate cada dor isoladamente.
-
-NÃO considere automaticamente a primeira dor como a principal.
-
-Considere cada dor como uma percepção que pode ser:
+Uma dor declarada pode representar:
 
 - sintoma;
 - consequência;
-- possível causa;
+- causa;
 - problema independente;
 - percepção ainda não confirmada.
 
-Cruze as dores com as respostas.
+Cruze a dor com as respostas.
 
-Exemplo:
-
-Dores:
-- dinheiro não sobra;
-- margem baixa;
-- estoque alto.
-
-Respostas:
-- não conhece margem por produto;
-- não conhece giro;
-- não projeta caixa;
-- não conhece capital de giro.
-
-Leitura possível:
-
-"A pressão de caixa pode estar relacionada à combinação entre baixa visibilidade da margem, capital imobilizado em estoque e ausência de projeção financeira."
-
-Somente produza essa conclusão se houver suporte nas respostas.
-
-=========================================================
-OBJETIVO DOS PRÓXIMOS 90 DIAS
-=========================================================
-
-Compare o objetivo informado pelo empresário com os achados.
-
-Se houver alinhamento, explique.
-
-Se houver divergência, explique.
+Se a percepção do empresário não estiver totalmente sustentada, destaque isso de maneira prudente.
 
 Exemplo:
 
 Empresário:
-"Preciso vender mais."
+"Falta mão de obra."
 
-Mas as respostas indicam:
+Respostas:
+- retrabalho não mensurado;
+- capacidade não medida;
+- demandas mal distribuídas.
 
-- não conhece custo;
-- não conhece margem;
-- não conhece capacidade;
-- não conhece estoque.
+Conclusão possível:
 
-Possível alerta:
+"A percepção de falta de mão de obra pode estar sendo ampliada por perdas de capacidade decorrentes de retrabalho e alocação."
 
-"Antes de acelerar vendas, pode ser necessário validar custo, margem e capacidade para evitar crescimento sem rentabilidade."
-
-=========================================================
-INDÚSTRIA
-=========================================================
-
-Quando o negócio real for industrial, procure evidências relacionadas a:
-
-CUSTOS
-
-- ficha técnica;
-- custo por produto;
-- matéria-prima;
-- mão de obra;
-- custos indiretos;
-- custo padrão;
-- custo realizado;
-- margem por produto;
-- formação de preço.
-
-ESTOQUE
-
-- matéria-prima;
-- produto em processo;
-- produto acabado;
-- inventário;
-- divergência físico x sistema;
-- giro;
-- cobertura;
-- estoque parado;
-- obsolescência.
-
-PRODUÇÃO
-
-- PCP;
-- ordem de produção;
-- capacidade;
-- máquinas;
-- gargalos;
-- produtividade;
-- lead time;
-- prazo;
-- manutenção.
-
-PERDAS
-
-- desperdício;
-- sucata;
-- refugo;
-- retrabalho;
-- consumo real x padrão.
-
-QUALIDADE
-
-- devoluções;
-- não conformidades;
-- inspeção;
-- retrabalho;
-- indicadores.
-
-MARGEM
-
-- margem por produto;
-- margem por família;
-- margem por cliente;
-- margem por pedido.
+Não conclua que contratação é desnecessária sem medir capacidade.
 
 =========================================================
-FABRICAÇÃO SOB ENCOMENDA
+OBJETIVO DE 90 DIAS
 =========================================================
 
-Quando houver fabricação personalizada, considere:
+Compare o objetivo declarado com os achados.
 
-- orçamento por pedido;
-- escopo;
-- projeto;
-- consumo de material;
-- mão de obra;
-- custo previsto;
-- custo realizado;
-- prazo;
-- retrabalho;
-- alteração de escopo;
-- compras específicas;
-- margem por pedido.
+Se estiver alinhado, explique.
 
-=========================================================
-COMÉRCIO
-=========================================================
+Se estiver desalinhado, explique o ponto cego.
 
-Considere:
-
-- margem por produto;
-- margem por categoria;
-- markup;
-- preço;
-- estoque;
-- curva ABC;
-- giro;
-- cobertura;
-- ruptura;
-- estoque parado;
-- compras;
-- fornecedores;
-- ticket;
-- descontos;
-- canais;
-- conversão;
-- rentabilidade por canal.
-
-=========================================================
-SERVIÇOS
-=========================================================
-
-Considere:
-
-- margem por cliente;
-- margem por contrato;
-- horas consumidas;
-- custo/hora;
-- capacidade;
-- produtividade;
-- precificação;
-- recorrência;
-- concentração;
-- inadimplência;
-- retrabalho;
-- dependência de sócios;
-- padronização.
-
-=========================================================
-FINANCEIRO
-=========================================================
-
-Procure evidências relacionadas a:
-
-- fluxo de caixa;
-- projeção;
-- contas a pagar;
-- contas a receber;
-- inadimplência;
-- conciliação;
-- DRE;
-- margem;
-- rentabilidade;
-- ponto de equilíbrio;
-- capital de giro;
-- necessidade de caixa;
-- prazo de pagamento;
-- prazo de recebimento;
-- endividamento;
-- retiradas;
-- orçamento.
-
-Nunca confunda faturamento com lucro.
-
-Nunca confunda saldo bancário com resultado econômico.
-
-=========================================================
-COMERCIAL
-=========================================================
-
-Considere:
-
-- CRM;
-- funil;
-- propostas;
-- follow-up;
-- conversão;
-- ticket;
-- recorrência;
-- carteira;
-- concentração;
-- forecast;
-- motivos de perda;
-- descontos;
-- margem comercial.
-
-=========================================================
-MARKETING
-=========================================================
-
-Considere:
-
-- origem dos leads;
-- posicionamento;
-- canais;
-- público;
-- mensuração;
-- conversão;
-- aquisição;
-- integração com comercial.
-
-Não conclua automaticamente que mais investimento em marketing é necessário.
-
-=========================================================
-CONTÁBIL / FISCAL
-=========================================================
-
-Considere:
-
-- DRE;
-- balancete;
-- conciliações;
-- estoque;
-- centros de custo;
-- fechamento;
-- cadastros;
-- emissão fiscal;
-- integração;
-- regime tributário;
-- qualidade dos dados.
-
-Nunca conclua automaticamente que existe imposto pago a maior.
-
-=========================================================
-GESTÃO
-=========================================================
-
-Considere:
-
-- indicadores;
-- metas;
-- reuniões;
-- planejamento;
-- responsabilidades;
-- decisões;
-- acompanhamento;
-- visão consolidada;
-- dados.
-
-=========================================================
-OPERACIONAL
-=========================================================
-
-Considere:
-
-- capacidade;
-- produtividade;
-- gargalos;
-- qualidade;
-- estoque;
-- perdas;
-- retrabalho;
-- prazo;
-- planejamento;
-- entrega.
-
-Sempre interprete de acordo com o negócio real.
-
-=========================================================
-PESSOAS
-=========================================================
-
-Considere:
-
-- responsabilidades;
-- capacidade;
-- produtividade;
-- treinamento;
-- rotatividade;
-- liderança;
-- dependência de pessoas-chave.
-
-Não faça diagnóstico psicológico.
-
-=========================================================
-TECNOLOGIA
-=========================================================
-
-Considere:
-
-- ERP;
-- CRM;
-- BI;
-- integrações;
-- automação;
-- planilhas;
-- qualidade de dados;
-- segurança;
-- backup;
-- acesso;
-- retrabalho manual.
-
-=========================================================
-JURÍDICO
-=========================================================
-
-Considere:
-
-- contratos;
-- responsabilidades;
-- formalização;
-- documentação;
-- riscos contratuais;
-- proteção de dados.
-
-Não dê parecer jurídico conclusivo.
-
-=========================================================
-PERGUNTAS DINÂMICAS
-=========================================================
-
-As perguntas podem possuir:
-
-- tema;
-- motivo;
-- riscoAvaliado;
-- importancia;
-- peso.
-
-Use essas informações como contexto.
-
-Não copie mecanicamente o "riscoAvaliado" para o relatório.
-
-Primeiro confronte o risco com a resposta.
+Não aceite objetivos vagos como metas válidas.
 
 Exemplo:
 
-Pergunta:
-"A empresa conhece o custo completo por produto?"
+"organizar financeiro"
 
-Resposta:
-"Não"
+não é meta mensurável.
 
-Risco avaliado:
-"Formação de preço baseada em custo incompleto."
-
-Esse conjunto pode sustentar um achado relacionado a baixa visibilidade de custos.
+Recomende estabelecimento de linha de base e indicador.
 
 =========================================================
-INTERPRETAÇÃO DAS RESPOSTAS
+ANÁLISE POR TIPO DE NEGÓCIO
 =========================================================
 
-SIM
-=
-controle existente.
+INDÚSTRIA:
+custos, ficha técnica, matéria-prima, mão de obra, custos indiretos,
+estoque, PCP, capacidade, máquinas, gargalos, produtividade,
+lead time, perdas, sucata, retrabalho, qualidade, margem,
+custo previsto x realizado e margem por pedido.
 
-PARCIALMENTE
-=
-controle incompleto, inconsistente ou informal.
+FABRICAÇÃO SOB ENCOMENDA:
+orçamento, escopo, projeto, consumo de material, mão de obra,
+custo previsto, custo realizado, prazo, alteração de escopo,
+compras específicas e margem por pedido.
 
-NÃO
-=
-ausência ou fragilidade.
+COMÉRCIO:
+margem, markup, preço, estoque, curva ABC, giro, cobertura,
+ruptura, estoque parado, compras, fornecedores, ticket,
+descontos, canais e rentabilidade.
 
-Priorize:
+SERVIÇOS:
+margem por cliente, horas, custo/hora, capacidade,
+produtividade, precificação, recorrência, concentração,
+retrabalho, dependência de pessoas e padronização.
 
-1. respostas NÃO em perguntas críticas;
-2. respostas PARCIALMENTE em perguntas críticas;
-3. respostas NÃO em perguntas importantes;
-4. respostas positivas para identificar pontos fortes.
+FINANCEIRO:
+fluxo de caixa, projeção, pagar, receber, inadimplência,
+conciliação, DRE, margem, rentabilidade, ponto de equilíbrio,
+capital de giro, prazos, endividamento, retiradas e orçamento.
+
+Nunca confunda faturamento com lucro.
+Nunca confunda saldo bancário com resultado econômico.
+
+COMERCIAL:
+CRM, funil, propostas, follow-up, conversão, ticket,
+carteira, concentração, forecast, perdas, descontos e margem.
+
+MARKETING:
+origem de leads, posicionamento, canais, público,
+mensuração, conversão e integração comercial.
+
+Não recomende automaticamente aumentar investimento.
+
+CONTÁBIL/FISCAL:
+DRE, balancete, conciliações, estoque, centros de custo,
+fechamento, cadastros, emissão fiscal, integração,
+regime tributário e qualidade dos dados.
+
+Não conclua automaticamente que há imposto pago a maior.
+
+GESTÃO:
+indicadores, metas, reuniões, planejamento,
+responsabilidades e acompanhamento.
+
+OPERACIONAL:
+capacidade, produtividade, gargalos, qualidade,
+perdas, retrabalho, prazo, planejamento e entrega.
+
+PESSOAS:
+responsabilidades, capacidade, produtividade,
+treinamento, rotatividade, liderança e dependência de pessoas-chave.
+
+Não faça diagnóstico psicológico.
+
+TECNOLOGIA:
+ERP, CRM, BI, integrações, automação,
+planilhas, qualidade de dados, segurança e retrabalho manual.
+
+JURÍDICO:
+contratos, responsabilidades, formalização,
+documentação, riscos contratuais e proteção de dados.
+
+Não dê parecer jurídico conclusivo.
 
 =========================================================
 SCORE
@@ -673,106 +330,180 @@ SCORE
 
 O score já foi calculado pelo aplicativo.
 
-NÃO RECALCULE.
-
-NÃO ALTERE.
-
-NÃO CRIE NOVO SCORE.
-
-O score é contexto.
-
-A interpretação pode ser mais importante que a nota isolada.
+NÃO recalcule.
+NÃO altere.
+NÃO crie outro score.
 
 =========================================================
-ACHADO
+ACHADOS
 =========================================================
 
-Achado é algo sustentado pelas respostas.
-
-Exemplo:
-
-"A empresa informou não conhecer o custo completo por produto."
+Achados devem ser diretamente sustentados pelas respostas.
 
 =========================================================
-CAUSA PROVÁVEL
+CAUSAS PROVÁVEIS
 =========================================================
 
-Causa provável é uma hipótese sustentada por mais de uma evidência ou por uma evidência relevante.
-
-Utilize linguagem prudente:
-
-"pode estar relacionado"
-
-"pode contribuir"
-
-"há indícios"
+Devem ser hipóteses razoáveis sustentadas por evidências.
 
 =========================================================
-RISCO
+RISCOS
 =========================================================
 
-Explique a possível consequência empresarial.
+Explique consequências empresariais concretas.
 
-Não diga apenas:
-
-"Risco financeiro."
-
-Explique.
-
-Exemplo:
-
-"A ausência de apuração confiável de custo por produto pode dificultar a formação de preço e a identificação de itens com baixa rentabilidade."
+Não use apenas rótulos como "risco financeiro".
 
 =========================================================
-RECOMENDAÇÃO
+RECOMENDAÇÕES
 =========================================================
 
-As recomendações devem ser práticas e ligadas aos achados.
+Devem responder aos achados.
 
-Use verbos como:
+Prefira:
 
-- Implantar
-- Revisar
-- Mapear
-- Estruturar
-- Validar
-- Mensurar
-- Acompanhar
-- Padronizar
-- Automatizar
-- Monitorar
-
-Evite recomendações vagas.
+Implantar
+Revisar
+Mapear
+Estruturar
+Validar
+Mensurar
+Padronizar
+Automatizar
+Monitorar
 
 =========================================================
-PONTOS FORTES
+PLANO DE 90 DIAS
 =========================================================
 
-Somente reconheça pontos fortes sustentados por respostas positivas.
+Crie três fases:
 
-Não invente elogios.
+FASE 1:
+0 a 30 dias
+
+FASE 2:
+31 a 60 dias
+
+FASE 3:
+61 a 90 dias
+
+Para cada fase informe:
+
+- objetivo;
+- ações;
+- resultado esperado;
+- indicadores.
+
+O plano deve respeitar dependências.
+
+Primeiro medir quando não existir linha de base.
+Depois corrigir.
+Depois consolidar e acompanhar.
+
+NÃO invente metas percentuais.
+
+Se não houver linha de base, use:
+
+"Definir após levantamento da linha de base."
 
 =========================================================
-ALERTA ESTRATÉGICO
+QUICK WINS
 =========================================================
 
-Crie um alerta curto mostrando o principal ponto cego identificado.
+Identifique ações de implementação relativamente rápida.
 
-Exemplo:
+Para cada uma informe:
 
-"A empresa busca aumentar vendas, mas ainda existem indícios de baixa visibilidade de custo e margem. Crescer nessas condições pode ampliar faturamento sem garantir crescimento proporcional do resultado."
+- ação;
+- motivo;
+- impacto esperado;
+- esforço: baixo, medio ou alto;
+- dependências.
 
-Somente faça esse tipo de conclusão se houver evidência.
+Quick win NÃO significa promessa de resultado.
+
+=========================================================
+KPIs
+=========================================================
+
+Sugira indicadores realmente relacionados aos achados.
+
+Para cada indicador informe:
+
+- nome;
+- o que mede;
+- forma de cálculo;
+- frequência;
+- meta sugerida.
+
+Se não houver base para meta:
+
+"Definir após levantamento da linha de base."
+
+Não invente benchmark.
+
+=========================================================
+PERGUNTAS PARA APROFUNDAMENTO
+=========================================================
+
+Gere perguntas que o consultor deve fazer na reunião.
+
+Não repita perguntas já respondidas, salvo quando houver necessidade explícita de validação.
+
+Para cada pergunta informe:
+
+- pergunta;
+- motivo;
+- informação que pretende validar.
+
+=========================================================
+VISÃO DO CONSULTOR
+=========================================================
+
+Produza:
+
+- diagnosticoCentral;
+- evidenciaMaisForte;
+- hipotesePrincipal;
+- validarPrimeiro;
+- naoFazerAgora;
+- pontosCegos;
+- dadosDocumentosSolicitar.
+
+"naoFazerAgora" deve evitar decisões prematuras.
+
+=========================================================
+VISÃO COMERCIAL
+=========================================================
+
+Esta seção é INTERNA.
+
+Avalie:
+
+- potencialLead: baixo, medio, alto ou imediato;
+- justificativa;
+- servicosAderentes;
+- argumentoAbordagem;
+- objecoesProvaveis;
+- proximaAcaoComercial.
+
+Não transforme toda fragilidade em venda.
+
+Para cada serviço aderente informe:
+
+- servico;
+- problemaQuePodeAjudar;
+- evidencia.
+
+Não afirme que o serviço resolverá o problema sem validação.
 
 =========================================================
 LACUNAS
 =========================================================
 
-Mesmo com perguntas dinâmicas, pode haver temas sem dados suficientes.
+Identifique temas importantes sem dados suficientes.
 
-Identifique essas lacunas.
-
-Cada lacuna deve informar:
+Informe:
 
 - tema;
 - motivo;
@@ -781,62 +512,21 @@ Cada lacuna deve informar:
 Não invente respostas.
 
 =========================================================
-MÚLTIPLAS EMPRESAS
-=========================================================
-
-Se houver mais de um CNPJ:
-
-- diferencie empresa-base e grupo;
-- não misture atividades sem evidência;
-- observe complementaridades;
-- observe necessidade de visão consolidada;
-- identifique possíveis problemas de gestão fragmentada;
-- não faça conclusão tributária ou jurídica sem dados.
-
-=========================================================
-OPORTUNIDADES DE CONSULTORIA
-=========================================================
-
-Identifique apenas oportunidades sustentadas pelas respostas.
-
-Exemplos:
-
-- estruturação financeira;
-- gestão de custos;
-- precificação;
-- BPO financeiro;
-- implantação de ERP;
-- BI;
-- revisão tributária;
-- processos;
-- estoque;
-- planejamento;
-- comercial.
-
-Não transforme toda fragilidade em venda.
-
-=========================================================
 RESUMO EXECUTIVO
 =========================================================
 
-Produza um resumo entre 140 e 240 palavras.
+Produza entre 140 e 240 palavras.
 
-Ele deve explicar:
+Explique:
 
-1. o que a empresa realmente faz;
-2. quais dores foram declaradas;
-3. quais dessas dores encontram suporte;
-4. quais causas prováveis aparecem;
-5. quais pontos fortes existem;
-6. qual é o principal risco;
-7. qual é a prioridade;
-8. qual deveria ser o próximo passo.
-
-Não mencione ChatGPT.
-
-Não mencione inteligência artificial.
-
-Não diga que realizou auditoria.
+1. negócio real;
+2. dores;
+3. evidências;
+4. causas prováveis;
+5. pontos fortes;
+6. principal risco;
+7. prioridade;
+8. próximo passo.
 
 =========================================================
 SEGURANÇA
@@ -845,7 +535,7 @@ SEGURANÇA
 NÃO INVENTE:
 
 - lucro;
-- margem percentual;
+- margem;
 - dívida;
 - prejuízo;
 - multa;
@@ -855,194 +545,111 @@ NÃO INVENTE:
 - processo judicial;
 - problema trabalhista.
 
-Se não houver evidência suficiente, diga isso.
+Não faça promessa de economia ou resultado.
 
 =========================================================
 VALIDAÇÃO FINAL
 =========================================================
 
-Antes de responder, verifique:
+Antes de responder verifique:
 
-- considerei o negócio real?
-- considerei todas as dores?
-- cruzei as dores com respostas?
-- diferenciei causa de sintoma?
-- considerei peso/importância das perguntas?
-- evitei repetir o checklist?
-- cada risco possui evidência?
-- cada recomendação responde a um achado?
+- cada achado possui evidência?
+- hipótese está identificada como hipótese?
+- riscos possuem suporte?
+- recomendações respondem aos achados?
+- plano de 90 dias respeita dependências?
+- KPIs são mensuráveis?
+- metas não foram inventadas?
+- perguntas aprofundam realmente o diagnóstico?
+- oportunidades comerciais possuem aderência?
 - existem lacunas?
-- estou inventando algo?
 `;
 
-  // =========================================================
-  // 7. CONTEXTO PARA IA
-  // =========================================================
-
   const contexto = {
-    responsavel:
-      responsavel || {},
+    responsavel: responsavel || {},
 
     empresaBase: {
-      segmento:
-        segmento || "",
-
-      categoria:
-        categoria || "",
-
-      codigoQuestionario:
-        codigoQuestionario || "",
-
-      cnaePrincipal:
-        cnaePrincipal || null,
-
-      cnaesSecundarios:
-        Array.isArray(
-          cnaesSecundarios
-        )
-          ? cnaesSecundarios
-          : [],
-
-      atividadesSelecionadas:
-        Array.isArray(
-          atividadesSelecionadas
-        )
-          ? atividadesSelecionadas
-          : [],
-
-      atividadePredominante:
-        atividadePredominante ||
-        null,
-
-      descricaoNegocio:
-        descricaoNegocio ||
-        "",
-
-      negocioInterpretado:
-        negocioInterpretado ||
-        null,
+      segmento: segmento || "",
+      categoria: categoria || "",
+      codigoQuestionario: codigoQuestionario || "",
+      cnaePrincipal: cnaePrincipal || null,
+      cnaesSecundarios: Array.isArray(cnaesSecundarios)
+        ? cnaesSecundarios
+        : [],
+      atividadesSelecionadas: Array.isArray(atividadesSelecionadas)
+        ? atividadesSelecionadas
+        : [],
+      atividadePredominante: atividadePredominante || null,
+      descricaoNegocio: descricaoNegocio || "",
+      negocioInterpretado: negocioInterpretado || null,
     },
 
-    grupoEmpresarial:
-      Array.isArray(empresas)
-        ? empresas
-        : [],
+    grupoEmpresarial: Array.isArray(empresas) ? empresas : [],
 
     perfil: {
-      faturamento:
-        faturamento || "",
-
-      colaboradores:
-        colaboradores || "",
-
-      regime:
-        regime || "",
-
-      observacao:
-        observacao || "",
+      faturamento: faturamento || "",
+      colaboradores: colaboradores || "",
+      regime: regime || "",
+      observacao: observacao || "",
     },
 
     dores: {
-      selecionadas:
-        dores,
-
-      principalCompatibilidade:
-        dorPrincipalFinal,
-
-      objetivo90Dias:
-        dor90DiasFinal,
-
-      impactosPercebidos:
-        impactosDorFinal,
+      selecionadas: dores,
+      principalCompatibilidade: dorPrincipalFinal,
+      objetivo90Dias: dor90DiasFinal,
+      impactosPercebidos: impactosDorFinal,
     },
 
     scoreGeral,
-
     areas,
   };
 
-  // =========================================================
-  // 8. SCHEMA
-  // =========================================================
-
   const schema = {
     type: "object",
-
     additionalProperties: false,
 
     properties: {
       areas: {
         type: "array",
-
         items: {
           type: "object",
-
           additionalProperties: false,
 
           properties: {
-            area: {
-              type: "string",
-            },
-
-            score: {
-              type: [
-                "number",
-                "null",
-              ],
-            },
+            area: { type: "string" },
+            score: { type: ["number", "null"] },
 
             nivel: {
               type: "string",
-
-              enum: [
-                "bom",
-                "atencao",
-                "alto",
-                "critico",
-              ],
+              enum: ["bom", "atencao", "alto", "critico"],
             },
 
             prioridade: {
               type: "integer",
-
               minimum: 1,
               maximum: 5,
             },
 
-            resumo: {
-              type: "string",
-            },
+            resumo: { type: "string" },
 
             achados: {
               type: "array",
-
-              items: {
-                type: "string",
-              },
+              items: { type: "string" },
             },
 
             causasProvaveis: {
               type: "array",
-
-              items: {
-                type: "string",
-              },
+              items: { type: "string" },
             },
 
             riscos: {
               type: "array",
-
-              items: {
-                type: "string",
-              },
+              items: { type: "string" },
             },
 
             recomendacoes: {
               type: "array",
-
-              items: {
-                type: "string",
-              },
+              items: { type: "string" },
             },
           },
 
@@ -1062,111 +669,62 @@ Antes de responder, verifique:
 
       diagnosticoGeral: {
         type: "object",
-
         additionalProperties: false,
 
         properties: {
-          scoreGeral: {
-            type: [
-              "number",
-              "null",
-            ],
-          },
+          scoreGeral: { type: ["number", "null"] },
 
           nivelGeral: {
             type: "string",
-
-            enum: [
-              "bom",
-              "atencao",
-              "alto",
-              "critico",
-            ],
+            enum: ["bom", "atencao", "alto", "critico"],
           },
 
           doresSelecionadas: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
-          leituraDasDores: {
-            type: "string",
-          },
-
-          dorPrincipal: {
-            type: "string",
-          },
-
-          leituraDaDor: {
-            type: "string",
-          },
-
-          alertaEstrategico: {
-            type: "string",
-          },
+          leituraDasDores: { type: "string" },
+          dorPrincipal: { type: "string" },
+          leituraDaDor: { type: "string" },
+          alertaEstrategico: { type: "string" },
 
           causasProvaveis: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
           impactos: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
           principaisDores: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
           pontosFortes: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
           prioridadesImediatas: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
           oportunidades: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
           proximosPassos: {
             type: "array",
-
-            items: {
-              type: "string",
-            },
+            items: { type: "string" },
           },
 
-          resumoExecutivo: {
-            type: "string",
-          },
+          resumoExecutivo: { type: "string" },
         },
 
         required: [
@@ -1188,33 +746,268 @@ Antes de responder, verifique:
         ],
       },
 
-      visaoGrupo: {
+      plano90Dias: {
         type: "object",
-
         additionalProperties: false,
 
         properties: {
-          aplicavel: {
-            type: "boolean",
-          },
-
-          resumo: {
-            type: "string",
-          },
-
-          pontosAtencao: {
-            type: "array",
-
-            items: {
-              type: "string",
+          fase0a30: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              objetivo: { type: "string" },
+              acoes: {
+                type: "array",
+                items: { type: "string" },
+              },
+              resultadoEsperado: { type: "string" },
+              indicadores: {
+                type: "array",
+                items: { type: "string" },
+              },
             },
+            required: [
+              "objetivo",
+              "acoes",
+              "resultadoEsperado",
+              "indicadores",
+            ],
+          },
+
+          fase31a60: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              objetivo: { type: "string" },
+              acoes: {
+                type: "array",
+                items: { type: "string" },
+              },
+              resultadoEsperado: { type: "string" },
+              indicadores: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: [
+              "objetivo",
+              "acoes",
+              "resultadoEsperado",
+              "indicadores",
+            ],
+          },
+
+          fase61a90: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              objetivo: { type: "string" },
+              acoes: {
+                type: "array",
+                items: { type: "string" },
+              },
+              resultadoEsperado: { type: "string" },
+              indicadores: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: [
+              "objetivo",
+              "acoes",
+              "resultadoEsperado",
+              "indicadores",
+            ],
+          },
+        },
+
+        required: ["fase0a30", "fase31a60", "fase61a90"],
+      },
+
+      quickWins: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+
+          properties: {
+            acao: { type: "string" },
+            motivo: { type: "string" },
+            impactoEsperado: { type: "string" },
+
+            esforco: {
+              type: "string",
+              enum: ["baixo", "medio", "alto"],
+            },
+
+            dependencias: {
+              type: "array",
+              items: { type: "string" },
+            },
+          },
+
+          required: [
+            "acao",
+            "motivo",
+            "impactoEsperado",
+            "esforco",
+            "dependencias",
+          ],
+        },
+      },
+
+      kpisRecomendados: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+
+          properties: {
+            indicador: { type: "string" },
+            oQueMede: { type: "string" },
+            formaCalculo: { type: "string" },
+            frequencia: { type: "string" },
+            metaSugerida: { type: "string" },
+          },
+
+          required: [
+            "indicador",
+            "oQueMede",
+            "formaCalculo",
+            "frequencia",
+            "metaSugerida",
+          ],
+        },
+      },
+
+      perguntasAprofundamento: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+
+          properties: {
+            pergunta: { type: "string" },
+            motivo: { type: "string" },
+            validar: { type: "string" },
+          },
+
+          required: ["pergunta", "motivo", "validar"],
+        },
+      },
+
+      visaoConsultor: {
+        type: "object",
+        additionalProperties: false,
+
+        properties: {
+          diagnosticoCentral: { type: "string" },
+          evidenciaMaisForte: { type: "string" },
+          hipotesePrincipal: { type: "string" },
+          validarPrimeiro: { type: "string" },
+          naoFazerAgora: { type: "string" },
+
+          pontosCegos: {
+            type: "array",
+            items: { type: "string" },
+          },
+
+          dadosDocumentosSolicitar: {
+            type: "array",
+            items: { type: "string" },
           },
         },
 
         required: [
-          "aplicavel",
+          "diagnosticoCentral",
+          "evidenciaMaisForte",
+          "hipotesePrincipal",
+          "validarPrimeiro",
+          "naoFazerAgora",
+          "pontosCegos",
+          "dadosDocumentosSolicitar",
+        ],
+      },
+
+      visaoComercial: {
+        type: "object",
+        additionalProperties: false,
+
+        properties: {
+          potencialLead: {
+            type: "string",
+            enum: ["baixo", "medio", "alto", "imediato"],
+          },
+
+          justificativa: { type: "string" },
+
+          servicosAderentes: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+
+              properties: {
+                servico: { type: "string" },
+                problemaQuePodeAjudar: { type: "string" },
+                evidencia: { type: "string" },
+              },
+
+              required: [
+                "servico",
+                "problemaQuePodeAjudar",
+                "evidencia",
+              ],
+            },
+          },
+
+          argumentoAbordagem: { type: "string" },
+
+          objecoesProvaveis: {
+            type: "array",
+            items: { type: "string" },
+          },
+
+          proximaAcaoComercial: { type: "string" },
+        },
+
+        required: [
+          "potencialLead",
+          "justificativa",
+          "servicosAderentes",
+          "argumentoAbordagem",
+          "objecoesProvaveis",
+          "proximaAcaoComercial",
+        ],
+      },
+            visaoGrupo: {
+        type: "object",
+        additionalProperties: false,
+
+        properties: {
+          resumo: { type: "string" },
+
+          sinergias: {
+            type: "array",
+            items: { type: "string" },
+          },
+
+          riscosCompartilhados: {
+            type: "array",
+            items: { type: "string" },
+          },
+
+          oportunidadesCompartilhadas: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+
+        required: [
           "resumo",
-          "pontosAtencao",
+          "sinergias",
+          "riscosCompartilhados",
+          "oportunidadesCompartilhadas",
         ],
       },
 
@@ -1223,24 +1016,15 @@ Antes de responder, verifique:
 
         items: {
           type: "object",
-
           additionalProperties: false,
 
           properties: {
-            tema: {
-              type: "string",
-            },
-
-            motivo: {
-              type: "string",
-            },
+            tema: { type: "string" },
+            motivo: { type: "string" },
 
             perguntasSugeridas: {
               type: "array",
-
-              items: {
-                type: "string",
-              },
+              items: { type: "string" },
             },
           },
 
@@ -1257,39 +1041,18 @@ Antes de responder, verifique:
 
         items: {
           type: "object",
-
           additionalProperties: false,
 
           properties: {
-            area: {
-              type: "string",
-            },
-
-            oportunidade: {
-              type: "string",
-            },
-
-            motivo: {
-              type: "string",
-            },
-
-            prioridade: {
-              type: "string",
-
-              enum: [
-                "baixa",
-                "media",
-                "alta",
-                "imediata",
-              ],
-            },
+            servico: { type: "string" },
+            motivo: { type: "string" },
+            evidencia: { type: "string" },
           },
 
           required: [
-            "area",
-            "oportunidade",
+            "servico",
             "motivo",
-            "prioridade",
+            "evidencia",
           ],
         },
       },
@@ -1298,522 +1061,573 @@ Antes de responder, verifique:
     required: [
       "areas",
       "diagnosticoGeral",
+      "plano90Dias",
+      "quickWins",
+      "kpisRecomendados",
+      "perguntasAprofundamento",
+      "visaoConsultor",
+      "visaoComercial",
       "visaoGrupo",
       "lacunasDiagnostico",
       "oportunidadesConsultoria",
     ],
   };
 
-  // =========================================================
-  // 9. CHAMAR OPENAI
-  // =========================================================
-
   try {
-    const modelo =
-      process.env.OPENAI_DIAGNOSTIC_MODEL ||
-      process.env.OPENAI_MODEL ||
-      "gpt-5.6";
+    const response = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
 
-    const response =
-      await fetch(
-        "https://api.openai.com/v1/responses",
-        {
-          method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
 
-          headers: {
-            "Content-Type":
-              "application/json",
+        body: JSON.stringify({
+          model: "gpt-5-mini",
 
-            Authorization:
-              `Bearer ${process.env.OPENAI_API_KEY}`,
-          },
+          max_output_tokens: 14000,
 
-          body:
-            JSON.stringify({
-              model:
-                modelo,
-
-              reasoning: {
-                effort:
-                  "medium",
-              },
-
-              max_output_tokens:
-                8000,
-
-              input: [
+          input: [
+            {
+              role: "system",
+              content: [
                 {
-                  role:
-                    "system",
-
-                  content:
-                    systemPrompt,
-                },
-
-                {
-                  role:
-                    "user",
-
-                  content:
-                    JSON.stringify(
-                      contexto
-                    ),
+                  type: "input_text",
+                  text: systemPrompt,
                 },
               ],
+            },
 
-              text: {
-                format: {
-                  type:
-                    "json_schema",
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
 
-                  name:
-                    "diagnostico_empresarial",
+                  text: `
+Analise o diagnóstico empresarial abaixo.
 
-                  strict:
-                    true,
+Produza uma análise específica para este negócio.
 
-                  schema,
+Priorize evidências concretas.
+
+Cruze as respostas entre si.
+
+Não invente informações ausentes.
+
+Não trate hipótese como fato.
+
+O relatório será utilizado internamente por consultores da Finder.
+
+Além do diagnóstico técnico, produza um plano de 90 dias,
+quick wins, KPIs, perguntas para aprofundamento,
+visão do consultor e visão comercial.
+
+CONTEXTO:
+
+${JSON.stringify(contexto, null, 2)}
+`,
                 },
-              },
-            }),
-        }
-      );
+              ],
+            },
+          ],
 
-    const data =
-      await response.json();
+          text: {
+            format: {
+              type: "json_schema",
+              name: "diagnostico_empresarial_expandido",
+              strict: true,
+              schema,
+            },
+          },
+        }),
+      }
+    );
+
+    const data = await response.json();
 
     if (!response.ok) {
       console.error(
-        "Erro OpenAI diagnóstico:",
-        JSON.stringify(
-          data,
-          null,
-          2
-        )
+        "Erro OpenAI:",
+        JSON.stringify(data, null, 2)
       );
 
-      return res
-        .status(response.status)
-        .json({
-          sucesso: false,
+      return res.status(response.status).json({
+        sucesso: false,
 
-          error:
-            data?.error?.message ||
-            "Erro ao gerar diagnóstico.",
-        });
+        error:
+          data?.error?.message ||
+          "Erro ao gerar diagnóstico.",
+      });
     }
 
-    // =========================================================
-    // 10. EXTRAIR CONTEÚDO
-    // =========================================================
+    const texto = extrairOutputText(data);
 
-    const text =
-      extrairOutputText(
-        data
+    if (!texto) {
+      console.error(
+        "Resposta sem output_text:",
+        JSON.stringify(data, null, 2)
       );
 
-    if (!text) {
-      return res
-        .status(502)
-        .json({
-          sucesso: false,
-
-          error:
-            "A IA não retornou conteúdo para o diagnóstico.",
-        });
+      return res.status(500).json({
+        sucesso: false,
+        error:
+          "A inteligência artificial não retornou o diagnóstico estruturado.",
+      });
     }
 
-    let parsed;
+    let resultado;
 
     try {
-      parsed =
-        JSON.parse(
-          text
-        );
+      resultado = JSON.parse(texto);
     } catch (error) {
       console.error(
-        "JSON inválido no diagnóstico:",
-        text
+        "Erro ao converter JSON:",
+        error
       );
 
-      return res
-        .status(502)
-        .json({
-          sucesso: false,
+      console.error(
+        "Texto recebido:",
+        texto
+      );
 
-          error:
-            "A IA retornou diagnóstico em formato inválido.",
-        });
+      return res.status(500).json({
+        sucesso: false,
+        error:
+          "A inteligência artificial retornou um diagnóstico em formato inválido.",
+      });
     }
 
-    // =========================================================
-    // 11. PRESERVAR SCORES DO APP
-    // =========================================================
+    /*
+    =========================================================
+    NORMALIZAÇÃO DOS DADOS
+    =========================================================
+    */
 
-    const mapaScores =
-      new Map(
-        areas.map(
-          (area) => [
-            area.area,
+    resultado.areas = Array.isArray(resultado.areas)
+      ? resultado.areas.map((area) => ({
+          ...area,
 
-            Number.isFinite(
-              Number(
-                area.score
-              )
-            )
-              ? Number(
-                  area.score
-                )
-              : null,
-          ]
-        )
-      );
+          nivel:
+            area?.nivel ||
+            nivelScore(area?.score),
 
-    // =========================================================
-    // 12. NORMALIZAR ÁREAS
-    // =========================================================
+          achados: limitarArray(
+            area?.achados,
+            8
+          ),
 
-    const areasProcessadas =
-      areas.map(
-        (
-          areaOriginal
-        ) => {
-          const areaIA =
-            Array.isArray(
-              parsed.areas
-            )
-              ? parsed.areas.find(
-                  (item) =>
-                    item.area ===
-                    areaOriginal.area
-                ) || {}
-              : {};
+          causasProvaveis: limitarArray(
+            area?.causasProvaveis,
+            8
+          ),
 
-          const score =
-            mapaScores.get(
-              areaOriginal.area
-            );
+          riscos: limitarArray(
+            area?.riscos,
+            8
+          ),
 
-          let prioridade =
-            Number(
-              areaIA.prioridade
-            );
+          recomendacoes: limitarArray(
+            area?.recomendacoes,
+            8
+          ),
+        }))
+      : [];
 
-          if (
-            !Number.isFinite(
-              prioridade
-            ) ||
-            prioridade < 1 ||
-            prioridade > 5
-          ) {
-            prioridade =
-              score < 40
-                ? 1
-                : score < 60
-                  ? 2
-                  : score < 80
-                    ? 3
-                    : 5;
-          }
+    if (!resultado.diagnosticoGeral) {
+      resultado.diagnosticoGeral = {};
+    }
 
-          return {
-            area:
-              areaOriginal.area,
+    resultado.diagnosticoGeral = {
+      ...resultado.diagnosticoGeral,
 
-            score,
-
-            nivel:
-              nivelScore(
-                score
-              ),
-
-            prioridade,
-
-            resumo:
-              String(
-                areaIA.resumo ||
-                ""
-              ),
-
-            achados:
-              limitarArray(
-                areaIA.achados,
-                6
-              ),
-
-            causasProvaveis:
-              limitarArray(
-                areaIA.causasProvaveis,
-                6
-              ),
-
-            riscos:
-              limitarArray(
-                areaIA.riscos,
-                6
-              ),
-
-            recomendacoes:
-              limitarArray(
-                areaIA.recomendacoes,
-                6
-              ),
-          };
-        }
-      );
-
-    // =========================================================
-    // 13. DIAGNÓSTICO GERAL
-    // =========================================================
-
-    const scoreOriginal =
-      Number.isFinite(
-        Number(scoreGeral)
-      )
-        ? Number(scoreGeral)
-        : null;
-
-    const geral =
-      parsed.diagnosticoGeral ||
-      {};
-
-    const diagnosticoGeral = {
       scoreGeral:
-        scoreOriginal,
+        Number.isFinite(Number(scoreGeral))
+          ? Number(scoreGeral)
+          : resultado.diagnosticoGeral?.scoreGeral ?? null,
 
       nivelGeral:
-        nivelScore(
-          scoreOriginal
-        ),
+        resultado.diagnosticoGeral?.nivelGeral ||
+        nivelScore(scoreGeral),
 
       doresSelecionadas:
-        dores,
+        Array.isArray(
+          resultado.diagnosticoGeral?.doresSelecionadas
+        ) &&
+        resultado.diagnosticoGeral.doresSelecionadas.length
+          ? resultado.diagnosticoGeral.doresSelecionadas
+          : dores,
 
-      leituraDasDores:
-        String(
-          geral.leituraDasDores ||
-          ""
-        ),
-
-      // Mantido por compatibilidade com seu App atual
       dorPrincipal:
-        String(
-          geral.dorPrincipal ||
-          dorPrincipalFinal ||
-          ""
-        ),
+        resultado.diagnosticoGeral?.dorPrincipal ||
+        dorPrincipalFinal,
 
-      leituraDaDor:
-        String(
-          geral.leituraDaDor ||
-          geral.leituraDasDores ||
-          ""
-        ),
+      causasProvaveis: limitarArray(
+        resultado.diagnosticoGeral?.causasProvaveis,
+        8
+      ),
 
-      alertaEstrategico:
-        String(
-          geral.alertaEstrategico ||
-          ""
-        ),
+      impactos: limitarArray(
+        resultado.diagnosticoGeral?.impactos,
+        8
+      ),
 
-      causasProvaveis:
+      principaisDores: limitarArray(
+        resultado.diagnosticoGeral?.principaisDores,
+        8
+      ),
+
+      pontosFortes: limitarArray(
+        resultado.diagnosticoGeral?.pontosFortes,
+        8
+      ),
+
+      prioridadesImediatas: limitarArray(
+        resultado.diagnosticoGeral
+          ?.prioridadesImediatas,
+        8
+      ),
+
+      oportunidades: limitarArray(
+        resultado.diagnosticoGeral?.oportunidades,
+        8
+      ),
+
+      proximosPassos: limitarArray(
+        resultado.diagnosticoGeral?.proximosPassos,
+        8
+      ),
+    };
+
+    /*
+    =========================================================
+    PLANO DE 90 DIAS
+    =========================================================
+    */
+
+    const normalizarFase = (fase) => ({
+      objetivo: fase?.objetivo || "",
+
+      acoes: limitarArray(
+        fase?.acoes,
+        8
+      ),
+
+      resultadoEsperado:
+        fase?.resultadoEsperado || "",
+
+      indicadores: limitarArray(
+        fase?.indicadores,
+        6
+      ),
+    });
+
+    resultado.plano90Dias = {
+      fase0a30: normalizarFase(
+        resultado.plano90Dias?.fase0a30
+      ),
+
+      fase31a60: normalizarFase(
+        resultado.plano90Dias?.fase31a60
+      ),
+
+      fase61a90: normalizarFase(
+        resultado.plano90Dias?.fase61a90
+      ),
+    };
+
+    /*
+    =========================================================
+    QUICK WINS
+    =========================================================
+    */
+
+    resultado.quickWins = Array.isArray(
+      resultado.quickWins
+    )
+      ? resultado.quickWins
+          .slice(0, 8)
+          .map((item) => ({
+            acao: item?.acao || "",
+            motivo: item?.motivo || "",
+            impactoEsperado:
+              item?.impactoEsperado || "",
+
+            esforco: [
+              "baixo",
+              "medio",
+              "alto",
+            ].includes(item?.esforco)
+              ? item.esforco
+              : "medio",
+
+            dependencias: limitarArray(
+              item?.dependencias,
+              5
+            ),
+          }))
+      : [];
+
+    /*
+    =========================================================
+    KPIs
+    =========================================================
+    */
+
+    resultado.kpisRecomendados =
+      Array.isArray(resultado.kpisRecomendados)
+        ? resultado.kpisRecomendados
+            .slice(0, 10)
+            .map((item) => ({
+              indicador:
+                item?.indicador || "",
+
+              oQueMede:
+                item?.oQueMede || "",
+
+              formaCalculo:
+                item?.formaCalculo || "",
+
+              frequencia:
+                item?.frequencia || "",
+
+              metaSugerida:
+                item?.metaSugerida ||
+                "Definir após levantamento da linha de base.",
+            }))
+        : [];
+
+    /*
+    =========================================================
+    PERGUNTAS DE APROFUNDAMENTO
+    =========================================================
+    */
+
+    resultado.perguntasAprofundamento =
+      Array.isArray(
+        resultado.perguntasAprofundamento
+      )
+        ? resultado.perguntasAprofundamento
+            .slice(0, 12)
+            .map((item) => ({
+              pergunta:
+                item?.pergunta || "",
+
+              motivo:
+                item?.motivo || "",
+
+              validar:
+                item?.validar || "",
+            }))
+        : [];
+
+    /*
+    =========================================================
+    VISÃO DO CONSULTOR
+    =========================================================
+    */
+
+    resultado.visaoConsultor = {
+      diagnosticoCentral:
+        resultado.visaoConsultor
+          ?.diagnosticoCentral || "",
+
+      evidenciaMaisForte:
+        resultado.visaoConsultor
+          ?.evidenciaMaisForte || "",
+
+      hipotesePrincipal:
+        resultado.visaoConsultor
+          ?.hipotesePrincipal || "",
+
+      validarPrimeiro:
+        resultado.visaoConsultor
+          ?.validarPrimeiro || "",
+
+      naoFazerAgora:
+        resultado.visaoConsultor
+          ?.naoFazerAgora || "",
+
+      pontosCegos: limitarArray(
+        resultado.visaoConsultor
+          ?.pontosCegos,
+        8
+      ),
+
+      dadosDocumentosSolicitar:
         limitarArray(
-          geral.causasProvaveis,
-          6
-        ),
-
-      impactos:
-        limitarArray(
-          geral.impactos,
-          6
-        ),
-
-      principaisDores:
-        limitarArray(
-          geral.principaisDores,
-          6
-        ),
-
-      pontosFortes:
-        limitarArray(
-          geral.pontosFortes,
-          6
-        ),
-
-      prioridadesImediatas:
-        limitarArray(
-          geral.prioridadesImediatas,
-          6
-        ),
-
-      oportunidades:
-        limitarArray(
-          geral.oportunidades,
-          6
-        ),
-
-      proximosPassos:
-        limitarArray(
-          geral.proximosPassos,
-          6
-        ),
-
-      resumoExecutivo:
-        String(
-          geral.resumoExecutivo ||
-          ""
+          resultado.visaoConsultor
+            ?.dadosDocumentosSolicitar,
+          10
         ),
     };
 
-    // =========================================================
-    // 14. VISÃO DO GRUPO
-    // =========================================================
+    /*
+    =========================================================
+    VISÃO COMERCIAL
+    =========================================================
+    */
 
-    const visaoGrupo = {
-      aplicavel:
-        Boolean(
-          parsed?.visaoGrupo
-            ?.aplicavel
+    const potencialLeadPermitido = [
+      "baixo",
+      "medio",
+      "alto",
+      "imediato",
+    ];
+
+    resultado.visaoComercial = {
+      potencialLead:
+        potencialLeadPermitido.includes(
+          resultado.visaoComercial
+            ?.potencialLead
+        )
+          ? resultado.visaoComercial
+              .potencialLead
+          : "medio",
+
+      justificativa:
+        resultado.visaoComercial
+          ?.justificativa || "",
+
+      servicosAderentes:
+        Array.isArray(
+          resultado.visaoComercial
+            ?.servicosAderentes
+        )
+          ? resultado.visaoComercial.servicosAderentes
+              .slice(0, 8)
+              .map((item) => ({
+                servico:
+                  item?.servico || "",
+
+                problemaQuePodeAjudar:
+                  item?.problemaQuePodeAjudar ||
+                  "",
+
+                evidencia:
+                  item?.evidencia || "",
+              }))
+          : [],
+
+      argumentoAbordagem:
+        resultado.visaoComercial
+          ?.argumentoAbordagem || "",
+
+      objecoesProvaveis:
+        limitarArray(
+          resultado.visaoComercial
+            ?.objecoesProvaveis,
+          8
         ),
 
+      proximaAcaoComercial:
+        resultado.visaoComercial
+          ?.proximaAcaoComercial || "",
+    };
+
+    /*
+    =========================================================
+    VISÃO DO GRUPO
+    =========================================================
+    */
+
+    resultado.visaoGrupo = {
       resumo:
-        String(
-          parsed?.visaoGrupo
-            ?.resumo ||
-          ""
-        ),
+        resultado.visaoGrupo?.resumo || "",
 
-      pontosAtencao:
+      sinergias: limitarArray(
+        resultado.visaoGrupo?.sinergias,
+        8
+      ),
+
+      riscosCompartilhados: limitarArray(
+        resultado.visaoGrupo
+          ?.riscosCompartilhados,
+        8
+      ),
+
+      oportunidadesCompartilhadas:
         limitarArray(
-          parsed?.visaoGrupo
-            ?.pontosAtencao,
-          6
+          resultado.visaoGrupo
+            ?.oportunidadesCompartilhadas,
+          8
         ),
     };
 
-    // =========================================================
-    // 15. LACUNAS
-    // =========================================================
+    /*
+    =========================================================
+    LACUNAS DO DIAGNÓSTICO
+    =========================================================
+    */
 
-    const lacunasDiagnostico =
+    resultado.lacunasDiagnostico =
       Array.isArray(
-        parsed.lacunasDiagnostico
+        resultado.lacunasDiagnostico
       )
-        ? parsed.lacunasDiagnostico
-            .slice(0, 8)
-            .map(
-              (item) => ({
-                tema:
-                  String(
-                    item?.tema ||
-                    ""
-                  ),
+        ? resultado.lacunasDiagnostico
+            .slice(0, 10)
+            .map((item) => ({
+              tema:
+                item?.tema || "",
 
-                motivo:
-                  String(
-                    item?.motivo ||
-                    ""
-                  ),
+              motivo:
+                item?.motivo || "",
 
-                perguntasSugeridas:
-                  limitarArray(
-                    item
-                      ?.perguntasSugeridas,
-                    6
-                  ),
-              })
-            )
+              perguntasSugeridas:
+                limitarArray(
+                  item?.perguntasSugeridas,
+                  5
+                ),
+            }))
         : [];
 
-    // =========================================================
-    // 16. OPORTUNIDADES DE CONSULTORIA
-    // =========================================================
+    /*
+    =========================================================
+    OPORTUNIDADES DE CONSULTORIA
+    =========================================================
+    */
 
-    const oportunidadesConsultoria =
+    resultado.oportunidadesConsultoria =
       Array.isArray(
-        parsed.oportunidadesConsultoria
+        resultado.oportunidadesConsultoria
       )
-        ? parsed.oportunidadesConsultoria
-            .slice(0, 6)
-            .map(
-              (item) => ({
-                area:
-                  String(
-                    item?.area ||
-                    ""
-                  ),
+        ? resultado.oportunidadesConsultoria
+            .slice(0, 10)
+            .map((item) => ({
+              servico:
+                item?.servico || "",
 
-                oportunidade:
-                  String(
-                    item?.oportunidade ||
-                    ""
-                  ),
+              motivo:
+                item?.motivo || "",
 
-                motivo:
-                  String(
-                    item?.motivo ||
-                    ""
-                  ),
-
-                prioridade:
-                  String(
-                    item?.prioridade ||
-                    "media"
-                  ),
-              })
-            )
+              evidencia:
+                item?.evidencia || "",
+            }))
         : [];
 
-    // =========================================================
-    // 17. RETORNO
-    // =========================================================
+    /*
+    =========================================================
+    RETORNO FINAL
+    =========================================================
+    */
 
-    return res
-      .status(200)
-      .json({
-        sucesso: true,
-
-        modelo,
-
-        areas:
-          areasProcessadas,
-
-        diagnosticoGeral,
-
-        visaoGrupo,
-
-        lacunasDiagnostico,
-
-        oportunidadesConsultoria,
-
-        contextoInterpretado: {
-          descricaoNegocio:
-            descricaoNegocio || "",
-
-          negocioInterpretado:
-            negocioInterpretado || null,
-
-          doresSelecionadas:
-            dores,
-
-          objetivo90Dias:
-            dor90DiasFinal,
-        },
-      });
-
+    return res.status(200).json({
+      sucesso: true,
+      resultado,
+    });
   } catch (error) {
     console.error(
       "Erro geral diagnóstico:",
       error
     );
 
-    return res
-      .status(500)
-      .json({
-        sucesso: false,
+    return res.status(500).json({
+      sucesso: false,
 
-        error:
-          "Erro interno ao gerar o diagnóstico.",
-      });
+      error:
+        "Erro interno ao gerar o diagnóstico.",
+    });
   }
 }
