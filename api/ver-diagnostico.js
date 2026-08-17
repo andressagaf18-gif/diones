@@ -1,4 +1,4 @@
-api/ver-diagnostico.js
+
 
 import { neon } from "@neondatabase/serverless";
 
