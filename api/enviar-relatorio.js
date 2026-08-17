@@ -15,17 +15,47 @@ function escaparHtml(valor = "") {
     .replace(/'/g, "&#039;");
 }
 
+function arraySeguro(valor) {
+  return Array.isArray(valor) ? valor : [];
+}
+
+function objetoSeguro(valor) {
+  return (
+    valor &&
+    typeof valor === "object" &&
+    !Array.isArray(valor)
+  )
+    ? valor
+    : {};
+}
+
+function textoSeguro(valor, fallback = "") {
+  if (
+    valor === null ||
+    valor === undefined
+  ) {
+    return fallback;
+  }
+
+  return String(valor);
+}
+
 function listaHtml(
   lista = [],
   vazio = "Nenhuma informação registrada."
 ) {
-  if (!Array.isArray(lista) || lista.length === 0) {
+  const itens =
+    arraySeguro(lista).filter(Boolean);
+
+  if (!itens.length) {
     return `<li>${escaparHtml(vazio)}</li>`;
   }
 
-  return lista
-    .filter(Boolean)
-    .map((item) => `<li>${escaparHtml(item)}</li>`)
+  return itens
+    .map(
+      (item) =>
+        `<li>${escaparHtml(item)}</li>`
+    )
     .join("");
 }
 
@@ -55,14 +85,22 @@ function formatarCnae(cnae) {
 }
 
 function formatarAtividades(lista = []) {
-  if (!Array.isArray(lista) || lista.length === 0) {
+  const atividades =
+    arraySeguro(lista);
+
+  if (!atividades.length) {
     return "-";
   }
 
-  return lista
+  return atividades
     .map((atividade) => {
-      if (typeof atividade === "string") {
-        return escaparHtml(atividade);
+      if (
+        typeof atividade ===
+        "string"
+      ) {
+        return escaparHtml(
+          atividade
+        );
       }
 
       const codigo =
@@ -86,9 +124,10 @@ function formatarAtividades(lista = []) {
 }
 
 function valorResposta(valor) {
-  const texto = String(valor ?? "")
-    .trim()
-    .toLowerCase();
+  const texto =
+    String(valor ?? "")
+      .trim()
+      .toLowerCase();
 
   if (texto === "sim") {
     return "Sim";
@@ -101,56 +140,511 @@ function valorResposta(valor) {
     return "Não";
   }
 
-  if (texto === "parcialmente") {
+  if (
+    texto === "parcialmente" ||
+    texto === "parcial"
+  ) {
     return "Parcialmente";
   }
 
-  return String(valor ?? "-");
+  return String(
+    valor ?? "-"
+  );
 }
 
 function nivelTexto(nivel) {
   const mapa = {
     bom: "Bom",
     atencao: "Atenção",
+    atenção: "Atenção",
     alto: "Risco alto",
     critico: "Crítico",
+    crítico: "Crítico",
+    emergencial: "Emergencial",
   };
 
-  return mapa[nivel] || nivel || "-";
+  const chave =
+    String(nivel || "")
+      .trim()
+      .toLowerCase();
+
+  return (
+    mapa[chave] ||
+    nivel ||
+    "-"
+  );
 }
 
-function prioridadeTexto(prioridade) {
+function prioridadeTexto(
+  prioridade
+) {
   const mapa = {
     imediata: "Imediata",
     alta: "Alta",
     media: "Média",
+    média: "Média",
     baixa: "Baixa",
   };
 
-  return mapa[prioridade] || prioridade || "-";
-}
+  const chave =
+    String(
+      prioridade || ""
+    )
+      .trim()
+      .toLowerCase();
 
-function arraySeguro(valor) {
-  return Array.isArray(valor)
-    ? valor
-    : [];
-}
-
-function objetoSeguro(valor) {
   return (
-    valor &&
-    typeof valor === "object" &&
-    !Array.isArray(valor)
-  )
-    ? valor
-    : {};
+    mapa[chave] ||
+    prioridade ||
+    "-"
+  );
 }
 
 // =========================================================
-// HANDLER PRINCIPAL
+// NORMALIZAÇÃO DAS ÁREAS
 // =========================================================
 
-export default async function handler(req, res) {
+function normalizarAreas(
+  areas = []
+) {
+  return arraySeguro(areas).map(
+    (area) => {
+      const item =
+        objetoSeguro(area);
+
+      return {
+        // mantém tudo que a IA enviou
+        ...item,
+
+        area:
+          item.area ||
+          item.nome ||
+          "",
+
+        score:
+          item.score ??
+          null,
+
+        nivel:
+          item.nivel ||
+          "",
+
+        prioridade:
+          item.prioridade ??
+          null,
+
+        resumo:
+          item.resumo ||
+          "",
+
+        achados:
+          arraySeguro(
+            item.achados
+          ),
+
+        causasProvaveis:
+          arraySeguro(
+            item.causasProvaveis
+          ),
+
+        riscos:
+          arraySeguro(
+            item.riscos
+          ),
+
+        recomendacoes:
+          arraySeguro(
+            item.recomendacoes
+          ),
+      };
+    }
+  );
+}
+
+// =========================================================
+// PERGUNTAS / RESPOSTAS
+//
+// O App.jsx envia hoje algo semelhante a:
+//
+// resultado.respostas = [
+//   {
+//     area: "Administrativo",
+//     score: 41,
+//     subtemas: [
+//       {
+//         tema: "...",
+//         perguntas: [
+//           {
+//             pergunta: "...",
+//             resposta: "sim"
+//           }
+//         ]
+//       }
+//     ]
+//   }
+// ]
+//
+// Esta função transforma isso em uma lista simples.
+// =========================================================
+
+function achatarRespostasResultado(
+  respostasResultado = []
+) {
+  const saida = [];
+
+  arraySeguro(
+    respostasResultado
+  ).forEach(
+    (
+      blocoArea,
+      areaIndex
+    ) => {
+      const area =
+        objetoSeguro(
+          blocoArea
+        );
+
+      const nomeArea =
+        area.area ||
+        area.nome ||
+        "-";
+
+      // Formato aninhado:
+      // area > subtemas > perguntas
+      if (
+        Array.isArray(
+          area.subtemas
+        )
+      ) {
+        area.subtemas.forEach(
+          (
+            blocoTema,
+            temaIndex
+          ) => {
+            const subtema =
+              objetoSeguro(
+                blocoTema
+              );
+
+            const tema =
+              subtema.tema ||
+              "-";
+
+            arraySeguro(
+              subtema.perguntas
+            ).forEach(
+              (
+                perguntaItem,
+                perguntaIndex
+              ) => {
+                const p =
+                  objetoSeguro(
+                    perguntaItem
+                  );
+
+                saida.push({
+                  id:
+                    p.id ||
+                    `area_${areaIndex + 1}_tema_${temaIndex + 1}_pergunta_${perguntaIndex + 1}`,
+
+                  area:
+                    p.area ||
+                    nomeArea,
+
+                  areaId:
+                    p.areaId ||
+                    "",
+
+                  tema:
+                    p.tema ||
+                    tema,
+
+                  pergunta:
+                    p.pergunta ||
+                    p.texto ||
+                    p.text ||
+                    "-",
+
+                  resposta:
+                    p.resposta ??
+                    p.valor ??
+                    "-",
+
+                  peso:
+                    p.peso ??
+                    p.importancia ??
+                    null,
+
+                  importancia:
+                    p.importancia ??
+                    p.peso ??
+                    null,
+
+                  motivo:
+                    p.motivo ||
+                    "",
+
+                  riscoAvaliado:
+                    p.riscoAvaliado ||
+                    p.risco ||
+                    "",
+
+                  scoreArea:
+                    area.score ??
+                    null,
+                });
+              }
+            );
+          }
+        );
+
+        return;
+      }
+
+      // Formato já achatado
+      if (
+        area.pergunta ||
+        area.texto
+      ) {
+        saida.push({
+          id:
+            area.id ||
+            areaIndex + 1,
+
+          area:
+            nomeArea,
+
+          areaId:
+            area.areaId ||
+            "",
+
+          tema:
+            area.tema ||
+            "-",
+
+          pergunta:
+            area.pergunta ||
+            area.texto ||
+            "-",
+
+          resposta:
+            area.resposta ??
+            area.valor ??
+            "-",
+
+          peso:
+            area.peso ??
+            area.importancia ??
+            null,
+
+          importancia:
+            area.importancia ??
+            area.peso ??
+            null,
+
+          motivo:
+            area.motivo ||
+            "",
+
+          riscoAvaliado:
+            area.riscoAvaliado ||
+            area.risco ||
+            "",
+        });
+      }
+    }
+  );
+
+  return saida;
+}
+
+// =========================================================
+// NORMALIZAR PERGUNTAS E RESPOSTAS
+// =========================================================
+
+function normalizarPerguntasRespostas({
+  perguntas,
+  respostas,
+  resultado,
+}) {
+  const perguntasOriginais =
+    arraySeguro(perguntas);
+
+  const respostasOriginais =
+    arraySeguro(respostas);
+
+  const mapaPerguntas =
+    new Map();
+
+  perguntasOriginais.forEach(
+    (pergunta) => {
+      if (
+        pergunta?.id !==
+        undefined
+      ) {
+        mapaPerguntas.set(
+          String(pergunta.id),
+          pergunta
+        );
+      }
+    }
+  );
+
+  // 1. Se body.respostas veio preenchido
+  if (
+    respostasOriginais.length
+  ) {
+    return respostasOriginais.map(
+      (item, index) => {
+        const resposta =
+          objetoSeguro(item);
+
+        const original =
+          resposta.id !==
+          undefined
+            ? mapaPerguntas.get(
+                String(
+                  resposta.id
+                )
+              )
+            : null;
+
+        return {
+          id:
+            resposta.id ??
+            original?.id ??
+            index + 1,
+
+          area:
+            resposta.area ||
+            original?.area ||
+            "-",
+
+          areaId:
+            resposta.areaId ||
+            original?.areaId ||
+            "",
+
+          tema:
+            resposta.tema ||
+            original?.tema ||
+            "-",
+
+          pergunta:
+            resposta.pergunta ||
+            resposta.texto ||
+            original?.pergunta ||
+            original?.texto ||
+            "-",
+
+          resposta:
+            resposta.resposta ??
+            resposta.valor ??
+            "-",
+
+          peso:
+            resposta.peso ??
+            resposta.importancia ??
+            original?.peso ??
+            original?.importancia ??
+            null,
+
+          importancia:
+            resposta.importancia ??
+            original?.importancia ??
+            null,
+
+          motivo:
+            resposta.motivo ||
+            original?.motivo ||
+            "",
+
+          riscoAvaliado:
+            resposta.riscoAvaliado ||
+            resposta.risco ||
+            original?.riscoAvaliado ||
+            original?.risco ||
+            "",
+        };
+      }
+    );
+  }
+
+  // 2. O formato realmente usado pelo App.jsx atual
+  const respostasResultado =
+    achatarRespostasResultado(
+      resultado?.respostas
+    );
+
+  if (
+    respostasResultado.length
+  ) {
+    return respostasResultado;
+  }
+
+  // 3. Se só perguntas vieram
+  if (
+    perguntasOriginais.length
+  ) {
+    return perguntasOriginais.map(
+      (item, index) => ({
+        id:
+          item?.id ??
+          index + 1,
+
+        area:
+          item?.area ||
+          "-",
+
+        areaId:
+          item?.areaId ||
+          "",
+
+        tema:
+          item?.tema ||
+          "-",
+
+        pergunta:
+          item?.pergunta ||
+          item?.texto ||
+          "-",
+
+        resposta:
+          item?.resposta ??
+          "-",
+
+        peso:
+          item?.peso ??
+          item?.importancia ??
+          null,
+
+        importancia:
+          item?.importancia ??
+          null,
+
+        motivo:
+          item?.motivo ||
+          "",
+
+        riscoAvaliado:
+          item?.riscoAvaliado ||
+          item?.risco ||
+          "",
+      })
+    );
+  }
+
+  return [];
+}
+
+// =========================================================
+// HANDLER
+// =========================================================
+
+export default async function handler(
+  req,
+  res
+) {
   console.log(
     "[enviar-relatorio] INICIO"
   );
@@ -163,34 +657,39 @@ export default async function handler(req, res) {
     return res.status(405).json({
       sucesso: false,
       etapa: "metodo",
-      error: "Método não permitido.",
+      error:
+        "Método não permitido.",
     });
   }
 
   // =======================================================
-  // 2. DATABASE_URL É OBRIGATÓRIA
+  // 2. DATABASE_URL
   // =======================================================
 
-  if (!process.env.DATABASE_URL) {
+  if (
+    !process.env.DATABASE_URL
+  ) {
     console.error(
       "[enviar-relatorio] DATABASE_URL ausente"
     );
 
     return res.status(500).json({
       sucesso: false,
-      etapa: "configuracao_banco",
+      etapa:
+        "configuracao_banco",
       error:
         "DATABASE_URL não configurada na Vercel.",
     });
   }
 
   // =======================================================
-  // 3. RESEND É OPCIONAL
+  // 3. RESEND OPCIONAL
   // =======================================================
 
   const resendConfigurado =
     Boolean(
-      process.env.RESEND_API_KEY
+      process.env
+        .RESEND_API_KEY
     );
 
   if (!resendConfigurado) {
@@ -200,7 +699,7 @@ export default async function handler(req, res) {
   }
 
   // =======================================================
-  // 4. CONEXÃO NEON
+  // 4. NEON
   // =======================================================
 
   let sql;
@@ -216,28 +715,34 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error(
       "[enviar-relatorio] ERRO_CONEXAO_NEON:",
-      error?.message || error
+      error?.message ||
+        error
     );
 
-    return res.status(500).json({
-      sucesso: false,
-      etapa: "conexao_neon",
-      error:
-        error?.message ||
-        "Erro ao iniciar conexão com Neon.",
-    });
+    return res
+      .status(500)
+      .json({
+        sucesso: false,
+        etapa:
+          "conexao_neon",
+        error:
+          error?.message ||
+          "Erro ao iniciar conexão com Neon.",
+      });
   }
 
   // =======================================================
-  // 5. CONFIGURAÇÕES
+  // 5. CONFIGURAÇÃO DE E-MAIL
   // =======================================================
 
   const emailFinder =
-    process.env.RELATORIO_EMAIL_DESTINO ||
+    process.env
+      .RELATORIO_EMAIL_DESTINO ||
     "contato@finderofsolutions.com.br";
 
   const emailRemetente =
-    process.env.RELATORIO_EMAIL_REMETENTE ||
+    process.env
+      .RELATORIO_EMAIL_REMETENTE ||
     "Finder of Solutions <onboarding@resend.dev>";
 
   // =======================================================
@@ -259,24 +764,9 @@ export default async function handler(req, res) {
       body.empresa
     );
 
-  const empresas =
-    arraySeguro(
-      body.empresas
-    );
-
   const perfil =
     objetoSeguro(
       body.perfil
-    );
-
-  const dores =
-    objetoSeguro(
-      body.dores
-    );
-
-  const negocioInterpretado =
-    objetoSeguro(
-      body.negocioInterpretado
     );
 
   const resultado =
@@ -284,16 +774,36 @@ export default async function handler(req, res) {
       body.resultado
     );
 
-  const descricaoNegocio =
-    String(
-      body.descricaoNegocio ||
-      empresa.descricaoNegocio ||
-      ""
-    );
+  // =======================================================
+  // 7. DADOS QUE PODEM VIR EM LOCAIS DIFERENTES
+  // =======================================================
 
-  const respostas =
+  const empresas =
     arraySeguro(
-      body.respostas
+      body.empresas
+    ).length
+      ? arraySeguro(
+          body.empresas
+        )
+      : empresa &&
+          Object.keys(
+            empresa
+          ).length
+        ? [empresa]
+        : [];
+
+  const descricaoNegocio =
+    textoSeguro(
+      body.descricaoNegocio ||
+        perfil.descricaoNegocio ||
+        empresa.descricaoNegocio ||
+        ""
+    ).trim();
+
+  const negocioInterpretado =
+    objetoSeguro(
+      body.negocioInterpretado ||
+        perfil.negocioInterpretado
     );
 
   const perguntas =
@@ -301,8 +811,13 @@ export default async function handler(req, res) {
       body.perguntas
     );
 
+  const respostas =
+    arraySeguro(
+      body.respostas
+    );
+
   // =======================================================
-  // 7. DADOS DO DIAGNÓSTICO
+  // 8. DIAGNÓSTICO
   // =======================================================
 
   const diagnostico =
@@ -326,12 +841,12 @@ export default async function handler(req, res) {
     );
 
   const areas =
-    arraySeguro(
+    normalizarAreas(
       resultado.areas
     );
 
   // =======================================================
-  // 8. DADOS PRINCIPAIS
+  // 9. PRINCIPAIS DADOS
   // =======================================================
 
   const razaoSocial =
@@ -361,7 +876,7 @@ export default async function handler(req, res) {
   const emailLead =
     String(
       responsavel.email ||
-      ""
+        ""
     ).trim();
 
   const segmentoInterpretado =
@@ -372,12 +887,18 @@ export default async function handler(req, res) {
 
   const subsegmentoInterpretado =
     negocioInterpretado.subsegmento ||
+    empresa.subsegmento ||
     "";
 
+  // IMPORTANTE:
+  // App.jsx envia scoreGeral diretamente em resultado.
+  const scoreBruto =
+    resultado.scoreGeral ??
+    diagnostico.scoreGeral ??
+    null;
+
   const scoreNumero =
-    Number(
-      diagnostico.scoreGeral
-    );
+    Number(scoreBruto);
 
   const score =
     Number.isFinite(
@@ -387,219 +908,157 @@ export default async function handler(req, res) {
       : null;
 
   // =======================================================
-  // 9. DORES
+  // 10. DORES
   // =======================================================
 
-  let doresSelecionadas = [];
-
-  if (
+  const doresSelecionadas =
     Array.isArray(
-      diagnostico.doresSelecionadas
-    ) &&
-    diagnostico.doresSelecionadas.length
-  ) {
-    doresSelecionadas =
-      diagnostico.doresSelecionadas;
-  } else if (
-    Array.isArray(
-      dores.selecionadas
+      body?.dores?.selecionadas
     )
-  ) {
-    doresSelecionadas =
-      dores.selecionadas;
-  } else if (
-    dores.principal
-  ) {
-    doresSelecionadas = [
-      dores.principal,
-    ];
-  }
+      ? body.dores.selecionadas
+
+      : Array.isArray(
+          perfil.doresSelecionadas
+        )
+        ? perfil.doresSelecionadas
+
+        : Array.isArray(
+            diagnostico.doresSelecionadas
+          )
+          ? diagnostico.doresSelecionadas
+
+          : perfil.dorPrincipal
+            ? [
+                perfil.dorPrincipal,
+              ]
+
+            : [];
+
+  const dorPrincipal =
+    body?.dores?.principal ||
+    perfil.dorPrincipal ||
+    doresSelecionadas[0] ||
+    "";
+
+  const objetivo90Dias =
+    body?.dores
+      ?.objetivo90Dias ||
+    perfil.dor90Dias ||
+    "";
+
+  const impactosDor =
+    Array.isArray(
+      body?.dores?.impactos
+    )
+      ? body.dores.impactos
+
+      : Array.isArray(
+          perfil.impactosDor
+        )
+        ? perfil.impactosDor
+
+        : [];
+
+  const doresEstruturadas = {
+    selecionadas:
+      doresSelecionadas,
+
+    principal:
+      dorPrincipal,
+
+    objetivo90Dias,
+
+    impactos:
+      impactosDor,
+  };
 
   // =======================================================
-  // 10. PERGUNTAS E RESPOSTAS
+  // 11. PERGUNTAS E RESPOSTAS
   // =======================================================
 
-  const perguntasFinais =
-    perguntas.length
-      ? perguntas
-      : arraySeguro(
-          resultado.perguntas
-        );
+  const respostasNormalizadas =
+    normalizarPerguntasRespostas({
+      perguntas,
+      respostas,
+      resultado,
+    });
 
-  const respostasFinais =
-    respostas.length
-      ? respostas
-      : arraySeguro(
+  console.log(
+    "[enviar-relatorio] Dados recebidos:",
+    {
+      areas:
+        areas.length,
+
+      perguntasBody:
+        perguntas.length,
+
+      respostasBody:
+        respostas.length,
+
+      respostasResultado:
+        Array.isArray(
           resultado.respostas
-        );
+        )
+          ? resultado
+              .respostas
+              .length
+          : 0,
 
-  const mapaPerguntas =
-    new Map();
+      respostasNormalizadas:
+        respostasNormalizadas.length,
 
-  perguntasFinais.forEach(
-    (pergunta) => {
-      if (pergunta?.id) {
-        mapaPerguntas.set(
-          String(pergunta.id),
-          pergunta
-        );
-      }
+      descricaoNegocio:
+        Boolean(
+          descricaoNegocio
+        ),
+
+      negocioInterpretado:
+        Boolean(
+          Object.keys(
+            negocioInterpretado
+          ).length
+        ),
     }
   );
 
-  let respostasNormalizadas =
-    [];
-
-  if (
-    respostasFinais.length
-  ) {
-    respostasNormalizadas =
-      respostasFinais.map(
-        (
-          item,
-          index
-        ) => {
-          const original =
-            item?.id
-              ? mapaPerguntas.get(
-                  String(item.id)
-                )
-              : null;
-
-          return {
-            id:
-              item?.id ||
-              original?.id ||
-              index + 1,
-
-            area:
-              item?.area ||
-              original?.area ||
-              "-",
-
-            areaId:
-              item?.areaId ||
-              original?.areaId ||
-              "",
-
-            tema:
-              item?.tema ||
-              original?.tema ||
-              "-",
-
-            pergunta:
-              item?.pergunta ||
-              item?.texto ||
-              original?.pergunta ||
-              "-",
-
-            resposta:
-              item?.resposta ??
-              item?.valor ??
-              "-",
-
-            peso:
-              item?.peso ||
-              item?.importancia ||
-              original?.peso ||
-              original?.importancia ||
-              "-",
-
-            motivo:
-              item?.motivo ||
-              original?.motivo ||
-              "",
-
-            riscoAvaliado:
-              item?.riscoAvaliado ||
-              original?.riscoAvaliado ||
-              "",
-          };
-        }
-      );
-  } else {
-    respostasNormalizadas =
-      perguntasFinais.map(
-        (
-          item,
-          index
-        ) => ({
-          id:
-            item?.id ||
-            index + 1,
-
-          area:
-            item?.area ||
-            "-",
-
-          areaId:
-            item?.areaId ||
-            "",
-
-          tema:
-            item?.tema ||
-            "-",
-
-          pergunta:
-            item?.pergunta ||
-            "-",
-
-          resposta:
-            item?.resposta ||
-            "-",
-
-          peso:
-            item?.peso ||
-            item?.importancia ||
-            "-",
-
-          motivo:
-            item?.motivo ||
-            "",
-
-          riscoAvaliado:
-            item?.riscoAvaliado ||
-            "",
-        })
-      );
-  }
-
   // =======================================================
-  // 11. SALVAR NO NEON
+  // 12. SALVAR NO NEON
   // =======================================================
 
-  let registroSalvo = null;
-  let erroBanco = null;
+  let registroSalvo =
+    null;
+
+  let erroBanco =
+    null;
 
   try {
     console.log(
       "[enviar-relatorio] Iniciando INSERT Neon"
     );
 
+    /*
+     * Não reduzimos mais as áreas.
+     *
+     * Antes o código salvava só:
+     * area / score / nivel / prioridade.
+     *
+     * Agora salvamos também:
+     * resumo
+     * achados
+     * causasProvaveis
+     * riscos
+     * recomendacoes
+     * e quaisquer campos adicionais enviados pela IA.
+     */
     const areasBanco =
-      areas.map(
-        (area) => ({
-          area:
-            area?.area ||
-            "",
-
-          score:
-            area?.score ??
-            null,
-
-          nivel:
-            area?.nivel ||
-            "",
-
-          prioridade:
-            area?.prioridade ??
-            null,
-        })
-      );
+      areas;
 
     const dadosCompletos = {
+      schemaVersion: 2,
+
       recebidoEm:
-        new Date().toISOString(),
+        new Date()
+          .toISOString(),
 
       responsavel,
 
@@ -609,61 +1068,71 @@ export default async function handler(req, res) {
 
       perfil,
 
-      dores,
+      dores:
+        doresEstruturadas,
 
       descricaoNegocio,
 
       negocioInterpretado,
 
-      perguntas:
-        perguntasFinais,
+      perguntas,
 
       respostas:
         respostasNormalizadas,
 
-      resultado,
+      resultado: {
+        ...resultado,
+
+        areas:
+          areasBanco,
+      },
     };
 
     const doresJson =
       JSON.stringify(
-        doresSelecionadas ||
-        []
+        doresSelecionadas
       );
 
     const areasJson =
       JSON.stringify(
-        areasBanco ||
-        []
+        areasBanco
       );
 
     const empresasJson =
       JSON.stringify(
-        empresas ||
-        []
+        empresas
       );
 
     const negocioJson =
       JSON.stringify(
-        negocioInterpretado ||
-        {}
+        negocioInterpretado
       );
 
     const respostasJson =
       JSON.stringify(
-        respostasNormalizadas ||
-        []
+        respostasNormalizadas
       );
 
     const diagnosticoJson =
-      JSON.stringify(
-        resultado ||
-        {}
-      );
+      JSON.stringify({
+        ...resultado,
+
+        areas:
+          areasBanco,
+
+        respostas:
+          respostasNormalizadas,
+
+        contextoSalvo: {
+          descricaoNegocio,
+          dores:
+            doresEstruturadas,
+        },
+      });
 
     const completoJson =
       JSON.stringify(
-        dadosCompletos ||
-        {}
+        dadosCompletos
       );
 
     const rows =
@@ -736,7 +1205,7 @@ export default async function handler(req, res) {
   }
 
   // =======================================================
-  // 12. HTML RESPOSTAS
+  // 13. HTML RESPOSTAS
   // =======================================================
 
   const respostasHtml =
@@ -782,9 +1251,16 @@ export default async function handler(req, res) {
                 </td>
 
                 <td>
-                  ${escaparHtml(
-                    item.peso
-                  )}
+                  ${
+                    item.peso !==
+                      null &&
+                    item.peso !==
+                      undefined
+                      ? escaparHtml(
+                          item.peso
+                        )
+                      : "-"
+                  }
                 </td>
 
               </tr>
@@ -800,7 +1276,7 @@ export default async function handler(req, res) {
       `;
 
   // =======================================================
-  // 13. HTML ÁREAS
+  // 14. HTML ÁREAS
   // =======================================================
 
   const areasHtml =
@@ -816,7 +1292,7 @@ export default async function handler(req, res) {
 
                     <h3>
                       ${escaparHtml(
-                        area?.area ||
+                        area.area ||
                         "Área"
                       )}
                     </h3>
@@ -824,7 +1300,7 @@ export default async function handler(req, res) {
                     <span class="nivel">
                       ${escaparHtml(
                         nivelTexto(
-                          area?.nivel
+                          area.nivel
                         )
                       )}
                     </span>
@@ -832,18 +1308,16 @@ export default async function handler(req, res) {
                   </div>
 
                   <div class="score-area">
-
                     ${
-                      area?.score ??
+                      area.score ??
                       "-"
                     }/100
-
                   </div>
 
                 </div>
 
                 ${
-                  area?.resumo
+                  area.resumo
                     ? `
                       <p>
                         ${escaparHtml(
@@ -864,7 +1338,7 @@ export default async function handler(req, res) {
 
                     <ul>
                       ${listaHtml(
-                        area?.achados,
+                        area.achados,
                         "Nenhum achado relevante."
                       )}
                     </ul>
@@ -879,7 +1353,7 @@ export default async function handler(req, res) {
 
                     <ul>
                       ${listaHtml(
-                        area?.causasProvaveis,
+                        area.causasProvaveis,
                         "Não determinadas."
                       )}
                     </ul>
@@ -894,7 +1368,7 @@ export default async function handler(req, res) {
 
                     <ul>
                       ${listaHtml(
-                        area?.riscos,
+                        area.riscos,
                         "Nenhum risco relevante informado."
                       )}
                     </ul>
@@ -909,7 +1383,7 @@ export default async function handler(req, res) {
 
                     <ol>
                       ${listaHtml(
-                        area?.recomendacoes,
+                        area.recomendacoes,
                         "Nenhuma recomendação adicional."
                       )}
                     </ol>
@@ -925,7 +1399,7 @@ export default async function handler(req, res) {
       : "";
 
   // =======================================================
-  // 14. HTML LACUNAS
+  // 15. LACUNAS
   // =======================================================
 
   const lacunasHtml =
@@ -951,9 +1425,12 @@ export default async function handler(req, res) {
 
                 ${
                   Array.isArray(
-                    item?.perguntasSugeridas
+                    item
+                      ?.perguntasSugeridas
                   ) &&
-                  item.perguntasSugeridas.length
+                  item
+                    .perguntasSugeridas
+                    .length
                     ? `
                       <ul>
                         ${listaHtml(
@@ -975,7 +1452,7 @@ export default async function handler(req, res) {
       `;
 
   // =======================================================
-  // 15. HTML CONSULTORIA
+  // 16. OPORTUNIDADES
   // =======================================================
 
   const consultoriaHtml =
@@ -994,7 +1471,10 @@ export default async function handler(req, res) {
                 </strong>
 
                 <p>
-                  <strong>Prioridade:</strong>
+                  <strong>
+                    Prioridade:
+                  </strong>
+
                   ${escaparHtml(
                     prioridadeTexto(
                       item?.prioridade
@@ -1016,7 +1496,7 @@ export default async function handler(req, res) {
       : "";
 
   // =======================================================
-  // 16. HTML FINDER
+  // 17. HTML FINDER
   // =======================================================
 
   const htmlFinder = `
@@ -1029,7 +1509,7 @@ export default async function handler(req, res) {
 <meta charset="utf-8">
 
 <meta name="viewport"
-content="width=device-width, initial-scale=1">
+content="width=device-width,initial-scale=1">
 
 <title>
 Diagnóstico Empresarial Finder
@@ -1203,168 +1683,88 @@ td {
     <div class="grid">
 
       <div class="box">
-
         <strong>Nome</strong>
-
-        <p>
-          ${escaparHtml(
-            nomeResponsavel
-          )}
-        </p>
-
+        <p>${escaparHtml(nomeResponsavel)}</p>
       </div>
 
       <div class="box">
-
         <strong>Cargo</strong>
-
-        <p>
-          ${escaparHtml(
-            cargoResponsavel ||
-            "-"
-          )}
-        </p>
-
+        <p>${escaparHtml(cargoResponsavel || "-")}</p>
       </div>
 
       <div class="box">
-
         <strong>WhatsApp</strong>
-
-        <p>
-          ${escaparHtml(
-            telefoneLead ||
-            "-"
-          )}
-        </p>
-
+        <p>${escaparHtml(telefoneLead || "-")}</p>
       </div>
 
       <div class="box">
-
         <strong>E-mail</strong>
-
-        <p>
-          ${escaparHtml(
-            emailLead ||
-            "-"
-          )}
-        </p>
-
+        <p>${escaparHtml(emailLead || "-")}</p>
       </div>
 
     </div>
 
-    <h2>
-      Empresa
-    </h2>
+    <h2>Empresa</h2>
 
     <div class="grid">
 
       <div class="box">
-
         <strong>Razão social</strong>
-
-        <p>
-          ${escaparHtml(
-            razaoSocial
-          )}
-        </p>
-
+        <p>${escaparHtml(razaoSocial)}</p>
       </div>
 
       <div class="box">
-
         <strong>CNPJ</strong>
-
-        <p>
-          ${escaparHtml(
-            cnpj ||
-            "-"
-          )}
-        </p>
-
+        <p>${escaparHtml(cnpj || "-")}</p>
       </div>
 
       <div class="box">
-
         <strong>Segmento</strong>
-
-        <p>
-          ${escaparHtml(
-            segmentoInterpretado ||
-            "-"
-          )}
-        </p>
-
+        <p>${escaparHtml(segmentoInterpretado || "-")}</p>
       </div>
 
       <div class="box">
-
         <strong>Subsegmento</strong>
-
-        <p>
-          ${escaparHtml(
-            subsegmentoInterpretado ||
-            "-"
-          )}
-        </p>
-
+        <p>${escaparHtml(subsegmentoInterpretado || "-")}</p>
       </div>
 
     </div>
 
     <div class="box">
-
       <strong>CNAE principal</strong>
-
       <p>
         ${formatarCnae(
           empresa.cnaePrincipal ||
           empresa.cnae
         )}
       </p>
-
     </div>
 
     <div class="box">
-
       <strong>CNAEs secundários</strong>
-
       <p>
         ${formatarAtividades(
           empresa.cnaesSecundarios
         )}
       </p>
-
     </div>
 
     <div class="box">
-
-      <strong>
-        Atividade predominante
-      </strong>
-
+      <strong>Atividade predominante</strong>
       <p>
         ${formatarCnae(
           empresa.atividadePredominante
         )}
       </p>
-
     </div>
 
     <div class="box">
-
-      <strong>
-        Atividades exercidas
-      </strong>
-
+      <strong>Atividades exercidas</strong>
       <p>
         ${formatarAtividades(
           empresa.atividadesSelecionadas
         )}
       </p>
-
     </div>
 
     <h2>
@@ -1372,14 +1772,12 @@ td {
     </h2>
 
     <div class="box">
-
       <p>
         ${escaparHtml(
           descricaoNegocio ||
           "Não informado."
         )}
       </p>
-
     </div>
 
     <h2>
@@ -1387,29 +1785,24 @@ td {
     </h2>
 
     <div class="box">
-
       <ul>
         ${listaHtml(
           doresSelecionadas
         )}
       </ul>
-
     </div>
 
     <div class="box">
-
       <strong>
         Objetivo dos próximos 90 dias
       </strong>
 
       <p>
         ${escaparHtml(
-          dores.objetivo90Dias ||
-          resultado?.contextoInterpretado?.objetivo90Dias ||
+          objetivo90Dias ||
           "-"
         )}
       </p>
-
     </div>
 
     <h2>
@@ -1419,17 +1812,13 @@ td {
     <div class="box">
 
       <span class="score">
-
-        ${
-          diagnostico.scoreGeral ??
-          "-"
-        }/100
-
+        ${score ?? "-"}/100
       </span>
 
       <p>
         ${escaparHtml(
           nivelTexto(
+            resultado.nivelGeral ||
             diagnostico.nivelGeral
           )
         )}
@@ -1446,14 +1835,12 @@ td {
           </h2>
 
           <div class="box">
-
             <p>
               ${escaparHtml(
                 diagnostico.leituraDasDores ||
                 diagnostico.leituraDaDor
               )}
             </p>
-
           </div>
         `
         : ""
@@ -1467,11 +1854,9 @@ td {
           </h2>
 
           <div class="alerta">
-
             ${escaparHtml(
               diagnostico.alertaEstrategico
             )}
-
           </div>
         `
         : ""
@@ -1482,14 +1867,12 @@ td {
     </h2>
 
     <div class="box">
-
       <p>
         ${escaparHtml(
           diagnostico.resumoExecutivo ||
           "Resumo executivo não disponível."
         )}
       </p>
-
     </div>
 
     <h2>
@@ -1567,22 +1950,18 @@ td {
       <thead>
 
         <tr>
-
           <th>#</th>
           <th>Área</th>
           <th>Tema</th>
           <th>Pergunta</th>
           <th>Resposta</th>
           <th>Peso</th>
-
         </tr>
 
       </thead>
 
       <tbody>
-
         ${respostasHtml}
-
       </tbody>
 
     </table>
@@ -1610,14 +1989,12 @@ td {
     </h2>
 
     <div class="box">
-
       <p>
         ${escaparHtml(
           perfil.observacao ||
           "Nenhuma observação registrada."
         )}
       </p>
-
     </div>
 
   </div>
@@ -1646,7 +2023,7 @@ td {
 `;
 
   // =======================================================
-  // 17. HTML PARTICIPANTE
+  // 18. HTML PARTICIPANTE
   // =======================================================
 
   const htmlLead = `
@@ -1703,24 +2080,17 @@ Finder of Solutions
 <div style="padding:30px;">
 
 <p>
-
 Olá,
-
 <strong>
-
 ${escaparHtml(
   nomeResponsavel
 )}
-
 </strong>.
-
 </p>
 
 <p>
-
 Obrigado por participar do
 Diagnóstico Empresarial Finder.
-
 </p>
 
 <div
@@ -1745,21 +2115,17 @@ margin-top:5px;
 "
 >
 
-${
-  diagnostico.scoreGeral ??
-  "-"
-}/100
+${score ?? "-"}/100
 
 </div>
 
 <p>
-
 ${escaparHtml(
   nivelTexto(
+    resultado.nivelGeral ||
     diagnostico.nivelGeral
   )
 )}
-
 </p>
 
 </div>
@@ -1799,11 +2165,9 @@ ${
       </strong>
 
       <p>
-
-      ${escaparHtml(
-        diagnostico.alertaEstrategico
-      )}
-
+        ${escaparHtml(
+          diagnostico.alertaEstrategico
+        )}
       </p>
 
       </div>
@@ -1816,11 +2180,9 @@ Prioridades identificadas
 </h3>
 
 <ol>
-
 ${listaHtml(
   diagnostico.prioridadesImediatas
 )}
-
 </ol>
 
 <h3>
@@ -1828,11 +2190,9 @@ Próximos passos
 </h3>
 
 <ol>
-
 ${listaHtml(
   diagnostico.proximosPassos
 )}
-
 </ol>
 
 <div
@@ -1847,16 +2207,12 @@ text-align:center;
 >
 
 <strong>
-
 Quer entender melhor esses números?
-
 </strong>
 
 <p>
-
 Converse com um especialista da
 Finder of Solutions.
-
 </p>
 
 <a
@@ -1888,7 +2244,7 @@ Falar com um especialista
 `;
 
   // =======================================================
-  // 18. FUNÇÃO EMAIL
+  // 19. FUNÇÃO DE E-MAIL
   // =======================================================
 
   async function enviarEmail({
@@ -1896,7 +2252,9 @@ Falar com um especialista
     assunto,
     html,
   }) {
-    if (!resendConfigurado) {
+    if (
+      !resendConfigurado
+    ) {
       throw new Error(
         "RESEND_API_KEY não configurada."
       );
@@ -1927,7 +2285,9 @@ Falar com um especialista
                 emailRemetente,
 
               to:
-                Array.isArray(para)
+                Array.isArray(
+                  para
+                )
                   ? para
                   : [para],
 
@@ -1951,7 +2311,8 @@ Falar com um especialista
     if (!resposta.ok) {
       throw new Error(
         data?.message ||
-        data?.error?.message ||
+        data?.error
+          ?.message ||
         data?.error ||
         `Erro ao enviar e-mail. HTTP ${resposta.status}`
       );
@@ -1961,18 +2322,20 @@ Falar com um especialista
   }
 
   // =======================================================
-  // 19. ENVIOS
+  // 20. ENVIOS
   // =======================================================
 
-  let envioFinder = null;
-  let envioLead = null;
+  let envioFinder =
+    null;
 
-  let erroFinder = null;
-  let erroLead = null;
+  let envioLead =
+    null;
 
-  // =======================================================
-  // FINDER
-  // =======================================================
+  let erroFinder =
+    null;
+
+  let erroLead =
+    null;
 
   if (
     resendConfigurado
@@ -2008,10 +2371,6 @@ Falar com um especialista
       "RESEND_API_KEY não configurada.";
   }
 
-  // =======================================================
-  // PARTICIPANTE
-  // =======================================================
-
   const emailLeadValido =
     Boolean(
       emailLead &&
@@ -2020,9 +2379,14 @@ Falar com um especialista
       )
     );
 
+  const consentimentoEmail =
+    responsavel.consentimentoEmail !==
+    false;
+
   if (
     resendConfigurado &&
-    emailLeadValido
+    emailLeadValido &&
+    consentimentoEmail
   ) {
     try {
       envioLead =
@@ -2056,6 +2420,11 @@ Falar com um especialista
     erroLead =
       "RESEND_API_KEY não configurada.";
   } else if (
+    !consentimentoEmail
+  ) {
+    erroLead =
+      "Participante não autorizou o envio.";
+  } else if (
     emailLead &&
     !emailLeadValido
   ) {
@@ -2064,79 +2433,72 @@ Falar com um especialista
   }
 
   // =======================================================
-  // 20. RESULTADO FINAL
+  // 21. RESULTADO FINAL
   // =======================================================
-
-  /*
-   * Para o aplicativo, o principal é preservar o diagnóstico.
-   *
-   * Se o banco salvou:
-   * retorna 200 mesmo se o Resend estiver sem configuração.
-   *
-   * Se o banco não salvou:
-   * retornamos 500 para não fingir que o registro foi armazenado.
-   */
 
   if (!registroSalvo) {
     console.error(
       "[enviar-relatorio] FINALIZADO COM ERRO DE BANCO"
     );
 
-    return res.status(500).json({
-      sucesso: false,
+    return res
+      .status(500)
+      .json({
+        sucesso: false,
 
-      etapa:
-        "salvar_banco",
+        etapa:
+          "salvar_banco",
 
-      error:
-        "O diagnóstico foi gerado, mas não foi possível salvá-lo no banco.",
+        error:
+          "O diagnóstico foi gerado, mas não foi possível salvá-lo no banco.",
 
-      banco: {
-        salvo:
-          false,
+        banco: {
+          salvo: false,
+          erro:
+            erroBanco,
+        },
 
-        erro:
-          erroBanco,
-      },
+        finder: {
+          configurado:
+            resendConfigurado,
 
-      finder: {
-        configurado:
-          resendConfigurado,
+          enviado:
+            Boolean(
+              envioFinder
+            ),
 
-        enviado:
-          Boolean(
-            envioFinder
-          ),
+          email:
+            emailFinder,
 
-        email:
-          emailFinder,
+          erro:
+            erroFinder,
+        },
 
-        erro:
-          erroFinder,
-      },
+        lead: {
+          solicitado:
+            Boolean(
+              emailLead
+            ),
 
-      lead: {
-        solicitado:
-          Boolean(
-            emailLead
-          ),
+          consentimento:
+            consentimentoEmail,
 
-        emailValido:
-          emailLeadValido,
+          emailValido:
+            emailLeadValido,
 
-        enviado:
-          Boolean(
-            envioLead
-          ),
+          enviado:
+            Boolean(
+              envioLead
+            ),
 
-        email:
-          emailLead ||
-          null,
+          email:
+            emailLead ||
+            null,
 
-        erro:
-          erroLead,
-      },
-    });
+          erro:
+            erroLead,
+        },
+      });
   }
 
   console.log(
@@ -2152,19 +2514,24 @@ Falar com um especialista
         : "Diagnóstico salvo com sucesso. E-mails não enviados porque o Resend ainda não está configurado.",
 
     banco: {
-      salvo:
-        true,
+      salvo: true,
 
       id:
         registroSalvo?.id ||
         null,
 
       criadoEm:
-        registroSalvo?.criado_em ||
+        registroSalvo
+          ?.criado_em ||
         null,
 
-      erro:
-        null,
+      areasSalvas:
+        areas.length,
+
+      respostasSalvas:
+        respostasNormalizadas.length,
+
+      erro: null,
     },
 
     finder: {
@@ -2192,6 +2559,9 @@ Falar com um especialista
         Boolean(
           emailLead
         ),
+
+      consentimento:
+        consentimentoEmail,
 
       emailValido:
         emailLeadValido,
