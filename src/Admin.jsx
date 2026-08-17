@@ -2473,6 +2473,7 @@ function DetalheDiagnostico({
     resultado.oportunidadesConsultoria ||
     [];
 
+  // COMPLEMENTO — inteligência tributária
   const inteligenciaTributaria =
     resultado.inteligenciaTributaria ||
     null;
@@ -3078,7 +3079,8 @@ function DetalheDiagnostico({
                       inteligenciaTributaria.faturamentoFaixa || "-"
                     }`,
                     `Confiabilidade: ${
-                      inteligenciaTributaria.confiabilidade || "Referencial"
+                      inteligenciaTributaria.confiabilidade ||
+                      "Referencial"
                     }`,
                   ]}
                 />
