@@ -1184,3 +1184,1117 @@ Antes de responder verifique:
           "proximaAcaoComercial",
         ],
       },
+      // =====================================================
+      // VISÃO DO GRUPO EMPRESARIAL
+      // =====================================================
+
+      visaoGrupo: {
+        type: "object",
+        additionalProperties: false,
+
+        properties: {
+          resumo: {
+            type: "string",
+          },
+
+          sinergias: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+
+          riscosCompartilhados: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+
+          oportunidadesCompartilhadas: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+        },
+
+        required: [
+          "resumo",
+          "sinergias",
+          "riscosCompartilhados",
+          "oportunidadesCompartilhadas",
+        ],
+      },
+
+      // =====================================================
+      // LACUNAS DO DIAGNÓSTICO
+      // =====================================================
+
+      lacunasDiagnostico: {
+        type: "array",
+
+        items: {
+          type: "object",
+          additionalProperties: false,
+
+          properties: {
+            tema: {
+              type: "string",
+            },
+
+            motivo: {
+              type: "string",
+            },
+
+            perguntasSugeridas: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+
+          required: [
+            "tema",
+            "motivo",
+            "perguntasSugeridas",
+          ],
+        },
+      },
+
+      // =====================================================
+      // OPORTUNIDADES DE CONSULTORIA
+      // =====================================================
+
+      oportunidadesConsultoria: {
+        type: "array",
+
+        items: {
+          type: "object",
+          additionalProperties: false,
+
+          properties: {
+            servico: {
+              type: "string",
+            },
+
+            motivo: {
+              type: "string",
+            },
+
+            evidencia: {
+              type: "string",
+            },
+          },
+
+          required: [
+            "servico",
+            "motivo",
+            "evidencia",
+          ],
+        },
+      },
+    },
+
+    // =======================================================
+    // TODOS OS CAMPOS DEVEM SER DEVOLVIDOS
+    // =======================================================
+
+    required: [
+      "areas",
+      "diagnosticoGeral",
+      "plano90Dias",
+      "quickWins",
+      "kpisRecomendados",
+      "perguntasAprofundamento",
+      "visaoConsultor",
+      "visaoComercial",
+      "visaoGrupo",
+      "lacunasDiagnostico",
+      "oportunidadesConsultoria",
+    ],
+  };
+
+  // =========================================================
+  // CHAMADA DA OPENAI
+  // =========================================================
+
+  try {
+    const modelo =
+      process.env.OPENAI_DIAGNOSTIC_MODEL ||
+      process.env.OPENAI_MODEL ||
+      "gpt-5.6";
+
+    const response = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+
+        body: JSON.stringify({
+          model: modelo,
+
+          reasoning: {
+            effort: "medium",
+          },
+
+          max_output_tokens: 14000,
+
+          input: [
+            {
+              role: "system",
+
+              content: systemPrompt,
+            },
+
+            {
+              role: "user",
+
+              content: `
+Analise o diagnóstico empresarial abaixo.
+
+Produza uma análise específica para este negócio.
+
+Priorize evidências concretas.
+
+Cruze as respostas entre si.
+
+Não invente informações ausentes.
+
+Não trate hipótese como fato.
+
+O relatório será utilizado internamente pelos consultores da Finder.
+
+Além do diagnóstico técnico, produza:
+
+- plano de ação de 90 dias;
+- quick wins;
+- KPIs;
+- perguntas para aprofundamento;
+- visão do consultor;
+- visão comercial.
+
+CONTEXTO:
+
+${JSON.stringify(contexto, null, 2)}
+`,
+            },
+          ],
+
+          text: {
+            format: {
+              type: "json_schema",
+
+              name:
+                "diagnostico_empresarial_expandido",
+
+              strict: true,
+
+              schema,
+            },
+          },
+        }),
+      }
+    );
+
+    const data =
+      await response.json();
+
+    if (!response.ok) {
+      console.error(
+        "Erro OpenAI diagnóstico:",
+        JSON.stringify(
+          data,
+          null,
+          2
+        )
+      );
+
+      return res
+        .status(response.status)
+        .json({
+          sucesso: false,
+
+          error:
+            data?.error?.message ||
+            "Erro ao gerar diagnóstico.",
+        });
+    }
+
+    // =========================================================
+    // EXTRAIR CONTEÚDO
+    // =========================================================
+
+    const texto =
+      extrairOutputText(data);
+
+    if (!texto) {
+      console.error(
+        "Resposta sem conteúdo:",
+        JSON.stringify(
+          data,
+          null,
+          2
+        )
+      );
+
+      return res
+        .status(502)
+        .json({
+          sucesso: false,
+
+          error:
+            "A inteligência artificial não retornou conteúdo para o diagnóstico.",
+        });
+    }
+
+    let resultado;
+
+    try {
+      resultado =
+        JSON.parse(texto);
+
+    } catch (error) {
+      console.error(
+        "Erro ao converter JSON:",
+        error
+      );
+
+      console.error(
+        "Texto recebido:",
+        texto
+      );
+
+      return res
+        .status(502)
+        .json({
+          sucesso: false,
+
+          error:
+            "A inteligência artificial retornou um diagnóstico em formato inválido.",
+        });
+    }
+        /*
+    =========================================================
+    NORMALIZAÇÃO DOS DADOS
+    =========================================================
+
+    Nesta etapa:
+
+    1. preservamos os scores calculados pelo aplicativo;
+    2. limitamos arrays excessivamente longos;
+    3. garantimos estruturas válidas para o frontend;
+    4. normalizamos os novos campos do dossiê administrativo;
+    5. evitamos que valores inesperados da IA quebrem o relatório.
+    =========================================================
+    */
+
+    // =====================================================
+    // ÁREAS
+    // =====================================================
+
+    resultado.areas =
+      Array.isArray(resultado.areas)
+        ? resultado.areas.map((area) => ({
+            ...area,
+
+            score:
+              Number.isFinite(
+                Number(area?.score)
+              )
+                ? Number(area.score)
+                : null,
+
+            nivel:
+              [
+                "bom",
+                "atencao",
+                "alto",
+                "critico",
+              ].includes(area?.nivel)
+                ? area.nivel
+                : nivelScore(
+                    area?.score
+                  ),
+
+            prioridade:
+              Number.isFinite(
+                Number(area?.prioridade)
+              )
+                ? Math.min(
+                    5,
+                    Math.max(
+                      1,
+                      Number(
+                        area.prioridade
+                      )
+                    )
+                  )
+                : 3,
+
+            resumo:
+              area?.resumo || "",
+
+            achados:
+              limitarArray(
+                area?.achados,
+                8
+              ),
+
+            causasProvaveis:
+              limitarArray(
+                area?.causasProvaveis,
+                8
+              ),
+
+            riscos:
+              limitarArray(
+                area?.riscos,
+                8
+              ),
+
+            recomendacoes:
+              limitarArray(
+                area?.recomendacoes,
+                8
+              ),
+          }))
+        : [];
+
+    // =====================================================
+    // DIAGNÓSTICO GERAL
+    // =====================================================
+
+    if (
+      !resultado.diagnosticoGeral ||
+      typeof resultado.diagnosticoGeral !==
+        "object"
+    ) {
+      resultado.diagnosticoGeral = {};
+    }
+
+    const scoreGeralOriginal =
+      Number(scoreGeral);
+
+    resultado.diagnosticoGeral = {
+      ...resultado.diagnosticoGeral,
+
+      /*
+      O score calculado pelo aplicativo tem prioridade.
+
+      A IA não deve substituir o cálculo matemático
+      já realizado pelo frontend.
+      */
+
+      scoreGeral:
+        Number.isFinite(
+          scoreGeralOriginal
+        )
+          ? scoreGeralOriginal
+          : Number.isFinite(
+                Number(
+                  resultado
+                    .diagnosticoGeral
+                    ?.scoreGeral
+                )
+              )
+            ? Number(
+                resultado
+                  .diagnosticoGeral
+                  .scoreGeral
+              )
+            : null,
+
+      nivelGeral:
+        [
+          "bom",
+          "atencao",
+          "alto",
+          "critico",
+        ].includes(
+          resultado
+            .diagnosticoGeral
+            ?.nivelGeral
+        )
+          ? resultado
+              .diagnosticoGeral
+              .nivelGeral
+          : nivelScore(
+              Number.isFinite(
+                scoreGeralOriginal
+              )
+                ? scoreGeralOriginal
+                : resultado
+                    .diagnosticoGeral
+                    ?.scoreGeral
+            ),
+
+      doresSelecionadas:
+        Array.isArray(
+          resultado
+            .diagnosticoGeral
+            ?.doresSelecionadas
+        ) &&
+        resultado
+          .diagnosticoGeral
+          .doresSelecionadas
+          .length
+          ? resultado
+              .diagnosticoGeral
+              .doresSelecionadas
+          : dores,
+
+      leituraDasDores:
+        resultado
+          .diagnosticoGeral
+          ?.leituraDasDores ||
+        "",
+
+      dorPrincipal:
+        resultado
+          .diagnosticoGeral
+          ?.dorPrincipal ||
+        dorPrincipalFinal,
+
+      leituraDaDor:
+        resultado
+          .diagnosticoGeral
+          ?.leituraDaDor ||
+        "",
+
+      alertaEstrategico:
+        resultado
+          .diagnosticoGeral
+          ?.alertaEstrategico ||
+        "",
+
+      causasProvaveis:
+        limitarArray(
+          resultado
+            .diagnosticoGeral
+            ?.causasProvaveis,
+          8
+        ),
+
+      impactos:
+        limitarArray(
+          resultado
+            .diagnosticoGeral
+            ?.impactos,
+          8
+        ),
+
+      principaisDores:
+        limitarArray(
+          resultado
+            .diagnosticoGeral
+            ?.principaisDores,
+          8
+        ),
+
+      pontosFortes:
+        limitarArray(
+          resultado
+            .diagnosticoGeral
+            ?.pontosFortes,
+          8
+        ),
+
+      prioridadesImediatas:
+        limitarArray(
+          resultado
+            .diagnosticoGeral
+            ?.prioridadesImediatas,
+          8
+        ),
+
+      oportunidades:
+        limitarArray(
+          resultado
+            .diagnosticoGeral
+            ?.oportunidades,
+          8
+        ),
+
+      proximosPassos:
+        limitarArray(
+          resultado
+            .diagnosticoGeral
+            ?.proximosPassos,
+          8
+        ),
+
+      resumoExecutivo:
+        resultado
+          .diagnosticoGeral
+          ?.resumoExecutivo ||
+        "",
+    };
+
+    // =====================================================
+    // PLANO DE 90 DIAS
+    // =====================================================
+
+    const normalizarFase =
+      (fase) => ({
+        objetivo:
+          fase?.objetivo || "",
+
+        acoes:
+          limitarArray(
+            fase?.acoes,
+            8
+          ),
+
+        resultadoEsperado:
+          fase?.resultadoEsperado ||
+          "",
+
+        indicadores:
+          limitarArray(
+            fase?.indicadores,
+            6
+          ),
+      });
+
+    resultado.plano90Dias = {
+      fase0a30:
+        normalizarFase(
+          resultado
+            .plano90Dias
+            ?.fase0a30
+        ),
+
+      fase31a60:
+        normalizarFase(
+          resultado
+            .plano90Dias
+            ?.fase31a60
+        ),
+
+      fase61a90:
+        normalizarFase(
+          resultado
+            .plano90Dias
+            ?.fase61a90
+        ),
+    };
+
+    // =====================================================
+    // QUICK WINS
+    // =====================================================
+
+    const esforcosPermitidos = [
+      "baixo",
+      "medio",
+      "alto",
+    ];
+
+    resultado.quickWins =
+      Array.isArray(
+        resultado.quickWins
+      )
+        ? resultado.quickWins
+            .slice(0, 8)
+            .map((item) => ({
+              acao:
+                item?.acao || "",
+
+              motivo:
+                item?.motivo || "",
+
+              impactoEsperado:
+                item
+                  ?.impactoEsperado ||
+                "",
+
+              esforco:
+                esforcosPermitidos.includes(
+                  item?.esforco
+                )
+                  ? item.esforco
+                  : "medio",
+
+              dependencias:
+                limitarArray(
+                  item?.dependencias,
+                  5
+                ),
+            }))
+        : [];
+
+    // =====================================================
+    // KPIs RECOMENDADOS
+    // =====================================================
+
+    resultado.kpisRecomendados =
+      Array.isArray(
+        resultado.kpisRecomendados
+      )
+        ? resultado
+            .kpisRecomendados
+            .slice(0, 10)
+            .map((item) => ({
+              indicador:
+                item?.indicador || "",
+
+              oQueMede:
+                item?.oQueMede || "",
+
+              formaCalculo:
+                item?.formaCalculo ||
+                "",
+
+              frequencia:
+                item?.frequencia || "",
+
+              metaSugerida:
+                item?.metaSugerida ||
+                "Definir após levantamento da linha de base.",
+            }))
+        : [];
+
+    // =====================================================
+    // PERGUNTAS PARA APROFUNDAMENTO
+    // =====================================================
+
+    resultado.perguntasAprofundamento =
+      Array.isArray(
+        resultado
+          .perguntasAprofundamento
+      )
+        ? resultado
+            .perguntasAprofundamento
+            .slice(0, 12)
+            .map((item) => ({
+              pergunta:
+                item?.pergunta || "",
+
+              motivo:
+                item?.motivo || "",
+
+              validar:
+                item?.validar || "",
+            }))
+        : [];
+
+    // =====================================================
+    // VISÃO DO CONSULTOR
+    // =====================================================
+
+    resultado.visaoConsultor = {
+      diagnosticoCentral:
+        resultado
+          .visaoConsultor
+          ?.diagnosticoCentral ||
+        "",
+
+      evidenciaMaisForte:
+        resultado
+          .visaoConsultor
+          ?.evidenciaMaisForte ||
+        "",
+
+      hipotesePrincipal:
+        resultado
+          .visaoConsultor
+          ?.hipotesePrincipal ||
+        "",
+
+      validarPrimeiro:
+        resultado
+          .visaoConsultor
+          ?.validarPrimeiro ||
+        "",
+
+      naoFazerAgora:
+        resultado
+          .visaoConsultor
+          ?.naoFazerAgora ||
+        "",
+
+      pontosCegos:
+        limitarArray(
+          resultado
+            .visaoConsultor
+            ?.pontosCegos,
+          8
+        ),
+
+      dadosDocumentosSolicitar:
+        limitarArray(
+          resultado
+            .visaoConsultor
+            ?.dadosDocumentosSolicitar,
+          10
+        ),
+    };
+
+    // =====================================================
+    // VISÃO COMERCIAL
+    // =====================================================
+
+    const potenciaisPermitidos = [
+      "baixo",
+      "medio",
+      "alto",
+      "imediato",
+    ];
+
+    resultado.visaoComercial = {
+      potencialLead:
+        potenciaisPermitidos.includes(
+          resultado
+            .visaoComercial
+            ?.potencialLead
+        )
+          ? resultado
+              .visaoComercial
+              .potencialLead
+          : "medio",
+
+      justificativa:
+        resultado
+          .visaoComercial
+          ?.justificativa ||
+        "",
+
+      servicosAderentes:
+        Array.isArray(
+          resultado
+            .visaoComercial
+            ?.servicosAderentes
+        )
+          ? resultado
+              .visaoComercial
+              .servicosAderentes
+              .slice(0, 8)
+              .map((item) => ({
+                servico:
+                  item?.servico ||
+                  "",
+
+                problemaQuePodeAjudar:
+                  item
+                    ?.problemaQuePodeAjudar ||
+                  "",
+
+                evidencia:
+                  item?.evidencia ||
+                  "",
+              }))
+          : [],
+
+      argumentoAbordagem:
+        resultado
+          .visaoComercial
+          ?.argumentoAbordagem ||
+        "",
+
+      objecoesProvaveis:
+        limitarArray(
+          resultado
+            .visaoComercial
+            ?.objecoesProvaveis,
+          8
+        ),
+
+      proximaAcaoComercial:
+        resultado
+          .visaoComercial
+          ?.proximaAcaoComercial ||
+        "",
+    };
+
+    // =====================================================
+    // VISÃO DO GRUPO
+    // =====================================================
+
+    resultado.visaoGrupo = {
+      resumo:
+        resultado
+          .visaoGrupo
+          ?.resumo ||
+        "",
+
+      sinergias:
+        limitarArray(
+          resultado
+            .visaoGrupo
+            ?.sinergias,
+          8
+        ),
+
+      riscosCompartilhados:
+        limitarArray(
+          resultado
+            .visaoGrupo
+            ?.riscosCompartilhados,
+          8
+        ),
+
+      oportunidadesCompartilhadas:
+        limitarArray(
+          resultado
+            .visaoGrupo
+            ?.oportunidadesCompartilhadas,
+          8
+        ),
+    };
+
+    // =====================================================
+    // LACUNAS DO DIAGNÓSTICO
+    // =====================================================
+
+    resultado.lacunasDiagnostico =
+      Array.isArray(
+        resultado
+          .lacunasDiagnostico
+      )
+        ? resultado
+            .lacunasDiagnostico
+            .slice(0, 10)
+            .map((item) => ({
+              tema:
+                item?.tema || "",
+
+              motivo:
+                item?.motivo || "",
+
+              perguntasSugeridas:
+                limitarArray(
+                  item
+                    ?.perguntasSugeridas,
+                  5
+                ),
+            }))
+        : [];
+
+    // =====================================================
+    // OPORTUNIDADES DE CONSULTORIA
+    // =====================================================
+
+    resultado.oportunidadesConsultoria =
+      Array.isArray(
+        resultado
+          .oportunidadesConsultoria
+      )
+        ? resultado
+            .oportunidadesConsultoria
+            .slice(0, 10)
+            .map((item) => ({
+              servico:
+                item?.servico || "",
+
+              motivo:
+                item?.motivo || "",
+
+              evidencia:
+                item?.evidencia || "",
+            }))
+        : [];
+        /*
+    =========================================================
+    RETORNO FINAL
+    =========================================================
+
+    COMPATIBILIDADE:
+
+    O App.jsx atual já consome diretamente:
+
+    - data.areas
+    - data.diagnosticoGeral
+    - data.visaoGrupo
+    - data.lacunasDiagnostico
+    - data.oportunidadesConsultoria
+
+    Esses campos precisam continuar disponíveis.
+
+    O novo Dossiê Consultivo Finder adiciona:
+
+    - data.plano90Dias
+    - data.quickWins
+    - data.kpisRecomendados
+    - data.perguntasAprofundamento
+    - data.visaoConsultor
+    - data.visaoComercial
+
+    Também mantemos "resultado" com a estrutura completa.
+    =========================================================
+    */
+
+    return res.status(200).json({
+      sucesso: true,
+
+      modelo,
+
+      // =====================================================
+      // CAMPOS JÁ UTILIZADOS PELO APP.JSX
+      // NÃO REMOVER
+      // =====================================================
+
+      areas:
+        Array.isArray(
+          resultado.areas
+        )
+          ? resultado.areas
+          : [],
+
+      diagnosticoGeral:
+        resultado.diagnosticoGeral ||
+        null,
+
+      visaoGrupo:
+        resultado.visaoGrupo ||
+        null,
+
+      lacunasDiagnostico:
+        Array.isArray(
+          resultado
+            .lacunasDiagnostico
+        )
+          ? resultado
+              .lacunasDiagnostico
+          : [],
+
+      oportunidadesConsultoria:
+        Array.isArray(
+          resultado
+            .oportunidadesConsultoria
+        )
+          ? resultado
+              .oportunidadesConsultoria
+          : [],
+
+      // =====================================================
+      // NOVOS CAMPOS DO DOSSIÊ ADMINISTRATIVO
+      // =====================================================
+
+      plano90Dias:
+        resultado.plano90Dias ||
+        null,
+
+      quickWins:
+        Array.isArray(
+          resultado.quickWins
+        )
+          ? resultado.quickWins
+          : [],
+
+      kpisRecomendados:
+        Array.isArray(
+          resultado
+            .kpisRecomendados
+        )
+          ? resultado
+              .kpisRecomendados
+          : [],
+
+      perguntasAprofundamento:
+        Array.isArray(
+          resultado
+            .perguntasAprofundamento
+        )
+          ? resultado
+              .perguntasAprofundamento
+          : [],
+
+      visaoConsultor:
+        resultado.visaoConsultor ||
+        null,
+
+      visaoComercial:
+        resultado.visaoComercial ||
+        null,
+
+      // =====================================================
+      // CONTEXTO INTERPRETADO
+      // =====================================================
+
+      contextoInterpretado: {
+        descricaoNegocio:
+          descricaoNegocio ||
+          "",
+
+        negocioInterpretado:
+          negocioInterpretado ||
+          null,
+
+        atividadesSelecionadas:
+          Array.isArray(
+            atividadesSelecionadas
+          )
+            ? atividadesSelecionadas
+            : [],
+
+        atividadePredominante:
+          atividadePredominante ||
+          null,
+
+        doresSelecionadas:
+          dores,
+
+        dorPrincipal:
+          dorPrincipalFinal,
+
+        objetivo90Dias:
+          dor90DiasFinal,
+
+        impactosDor:
+          impactosDorFinal,
+
+        segmento:
+          segmento ||
+          "",
+
+        categoria:
+          categoria ||
+          "",
+
+        faturamento:
+          faturamento ||
+          "",
+
+        colaboradores:
+          colaboradores ||
+          "",
+
+        regime:
+          regime ||
+          "",
+      },
+
+      // =====================================================
+      // CÓPIA COMPLETA DO RESULTADO DA IA
+      // =====================================================
+
+      resultado,
+    });
+
+  // =========================================================
+  // ERRO GERAL
+  // =========================================================
+
+  } catch (error) {
+    console.error(
+      "Erro geral diagnóstico:",
+      error
+    );
+
+    return res
+      .status(500)
+      .json({
+        sucesso: false,
+
+        error:
+          "Erro interno ao gerar o diagnóstico.",
+      });
+  }
+}
