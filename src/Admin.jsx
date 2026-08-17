@@ -1,18 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+
 import {
   Search,
   Building2,
   User,
-  Calendar,
   ArrowLeft,
   LogOut,
   RefreshCcw,
   AlertTriangle,
   ChevronRight,
-  Activity,
-  FileText,
   Target,
+  Download,
 } from "lucide-react";
 
 const NAVY = "#17233D";
@@ -27,6 +26,10 @@ const BODY_FONT =
 
 const DISPLAY_FONT =
   "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
+
+// =========================================================
+// FUNÇÕES AUXILIARES
+// =========================================================
 
 function formatarData(valor) {
   if (!valor) return "-";
@@ -100,6 +103,12 @@ function normalizarLista(valor) {
   return Array.isArray(valor) ? valor : [];
 }
 
+function juntarLista(valor) {
+  return Array.isArray(valor)
+    ? valor.filter(Boolean).join(" | ")
+    : "";
+}
+
 function Card({ children, style = {} }) {
   return (
     <div
@@ -129,20 +138,37 @@ function Botao({
       onClick={onClick}
       disabled={disabled}
       style={{
-        border: secundario ? "1px solid #D8DEEA" : "none",
-        background: secundario ? WHITE : CORAL,
-        color: secundario ? NAVY : WHITE,
+        border: secundario
+          ? "1px solid #D8DEEA"
+          : "none",
+
+        background: secundario
+          ? WHITE
+          : CORAL,
+
+        color: secundario
+          ? NAVY
+          : WHITE,
+
         borderRadius: 10,
         padding: "10px 14px",
         fontFamily: BODY_FONT,
         fontSize: 13,
         fontWeight: 700,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
+
+        cursor: disabled
+          ? "not-allowed"
+          : "pointer",
+
+        opacity: disabled
+          ? 0.55
+          : 1,
+
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
         gap: 7,
+
         ...style,
       }}
     >
@@ -151,16 +177,29 @@ function Botao({
   );
 }
 
+// =========================================================
+// LOGIN
+// =========================================================
+
 function LoginAdmin({ onLogin }) {
-  const [token, setToken] = useState("");
-  const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
+  const [token, setToken] =
+    useState("");
+
+  const [erro, setErro] =
+    useState("");
+
+  const [carregando, setCarregando] =
+    useState(false);
 
   async function entrar() {
-    const valor = token.trim();
+    const valor =
+      token.trim();
 
     if (!valor) {
-      setErro("Digite a senha administrativa.");
+      setErro(
+        "Digite a senha administrativa."
+      );
+
       return;
     }
 
@@ -168,20 +207,29 @@ function LoginAdmin({ onLogin }) {
     setErro("");
 
     try {
-      const resposta = await fetch(
-        "/api/listar-diagnosticos?limite=1",
-        {
-          headers: {
-            Authorization: `Bearer ${valor}`,
-          },
-        }
-      );
+      const resposta =
+        await fetch(
+          "/api/listar-diagnosticos?limite=1",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${valor}`,
+            },
+          }
+        );
 
-      const data = await resposta.json().catch(() => null);
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
 
-      if (!resposta.ok || !data?.sucesso) {
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
         throw new Error(
-          data?.error || "Senha administrativa inválida."
+          data?.error ||
+          "Senha administrativa inválida."
         );
       }
 
@@ -191,11 +239,13 @@ function LoginAdmin({ onLogin }) {
       );
 
       onLogin(valor);
+
     } catch (error) {
       setErro(
         error?.message ||
-          "Não foi possível acessar o painel."
+        "Não foi possível acessar o painel."
       );
+
     } finally {
       setCarregando(false);
     }
@@ -254,8 +304,8 @@ function LoginAdmin({ onLogin }) {
             margin: "0 0 22px",
           }}
         >
-          Área restrita da Finder para consulta dos
-          diagnósticos empresariais realizados.
+          Área restrita da Finder para consulta
+          dos diagnósticos empresariais realizados.
         </p>
 
         <label
@@ -274,18 +324,26 @@ function LoginAdmin({ onLogin }) {
           type="password"
           value={token}
           onChange={(e) => {
-            setToken(e.target.value);
+            setToken(
+              e.target.value
+            );
+
             setErro("");
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") entrar();
+            if (
+              e.key === "Enter"
+            ) {
+              entrar();
+            }
           }}
           autoComplete="current-password"
           placeholder="Digite o ADMIN_TOKEN"
           style={{
             width: "100%",
             boxSizing: "border-box",
-            border: "1px solid #D8DEEA",
+            border:
+              "1px solid #D8DEEA",
             borderRadius: 10,
             padding: "12px 13px",
             fontFamily: BODY_FONT,
@@ -326,56 +384,107 @@ function LoginAdmin({ onLogin }) {
   );
 }
 
+// =========================================================
+// LISTA DE DIAGNÓSTICOS
+// =========================================================
+
 function ListaDiagnosticos({
   token,
   onAbrir,
   onLogout,
 }) {
-  const [diagnosticos, setDiagnosticos] =
-    useState([]);
+  const [
+    diagnosticos,
+    setDiagnosticos,
+  ] = useState([]);
 
-  const [busca, setBusca] = useState("");
-  const [buscaAplicada, setBuscaAplicada] =
-    useState("");
+  const [
+    busca,
+    setBusca,
+  ] = useState("");
 
-  const [total, setTotal] = useState(0);
-  const [carregando, setCarregando] =
-    useState(true);
+  const [
+    buscaAplicada,
+    setBuscaAplicada,
+  ] = useState("");
 
-  const [erro, setErro] = useState("");
+  const [
+    total,
+    setTotal,
+  ] = useState(0);
 
-  async function carregar(termo = "") {
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    exportando,
+    setExportando,
+  ] = useState(false);
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  // =======================================================
+  // CARREGAR LISTA
+  // =======================================================
+
+  async function carregar(
+    termo = ""
+  ) {
     setCarregando(true);
     setErro("");
 
     try {
-      const params = new URLSearchParams();
+      const params =
+        new URLSearchParams();
 
-      params.set("limite", "100");
-      params.set("offset", "0");
+      params.set(
+        "limite",
+        "100"
+      );
 
-      if (termo.trim()) {
+      params.set(
+        "offset",
+        "0"
+      );
+
+      if (
+        termo.trim()
+      ) {
         params.set(
           "busca",
           termo.trim()
         );
       }
 
-      const resposta = await fetch(
-        `/api/listar-diagnosticos?${params.toString()}`,
-        {
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-          },
-        }
-      );
+      const resposta =
+        await fetch(
+          `/api/listar-diagnosticos?${params.toString()}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
 
       const data =
-        await resposta.json().catch(() => null);
+        await resposta
+          .json()
+          .catch(() => null);
 
-      if (!resposta.ok || !data?.sucesso) {
-        if (resposta.status === 401) {
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        if (
+          resposta.status ===
+          401
+        ) {
           throw new Error(
             "Sua sessão administrativa expirou."
           );
@@ -383,24 +492,30 @@ function ListaDiagnosticos({
 
         throw new Error(
           data?.error ||
-            "Não foi possível carregar os diagnósticos."
+          "Não foi possível carregar os diagnósticos."
         );
       }
 
       setDiagnosticos(
-        Array.isArray(data.diagnosticos)
+        Array.isArray(
+          data.diagnosticos
+        )
           ? data.diagnosticos
           : []
       );
 
       setTotal(
-        Number(data.total) || 0
+        Number(
+          data.total
+        ) || 0
       );
+
     } catch (error) {
       setErro(
         error?.message ||
-          "Erro ao carregar diagnósticos."
+        "Erro ao carregar diagnósticos."
       );
+
     } finally {
       setCarregando(false);
     }
@@ -411,9 +526,16 @@ function ListaDiagnosticos({
   }, []);
 
   function pesquisar() {
-    const termo = busca.trim();
-    setBuscaAplicada(termo);
-    carregar(termo);
+    const termo =
+      busca.trim();
+
+    setBuscaAplicada(
+      termo
+    );
+
+    carregar(
+      termo
+    );
   }
 
   function limparBusca() {
@@ -422,22 +544,802 @@ function ListaDiagnosticos({
     carregar("");
   }
 
-  const mediaScore = useMemo(() => {
-    const scores = diagnosticos
-      .map((d) => Number(d.score))
-      .filter(Number.isFinite);
+  // =======================================================
+  // SCORE MÉDIO
+  // =======================================================
 
-    if (!scores.length) {
-      return null;
+  const mediaScore =
+    useMemo(() => {
+      const scores =
+        diagnosticos
+          .map(
+            (d) =>
+              Number(
+                d.score
+              )
+          )
+          .filter(
+            Number.isFinite
+          );
+
+      if (!scores.length) {
+        return null;
+      }
+
+      return Math.round(
+        scores.reduce(
+          (
+            acc,
+            valor
+          ) =>
+            acc + valor,
+          0
+        ) /
+        scores.length
+      );
+    }, [diagnosticos]);
+
+  // =======================================================
+  // EXPORTAR EXCEL
+  // =======================================================
+
+  async function exportarExcel() {
+    if (exportando) {
+      return;
     }
 
-    return Math.round(
-      scores.reduce(
-        (acc, valor) => acc + valor,
-        0
-      ) / scores.length
-    );
-  }, [diagnosticos]);
+    setExportando(true);
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/exportar-diagnosticos",
+          {
+            method: "GET",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso ||
+        !Array.isArray(
+          data.diagnosticos
+        )
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar os dados para exportação."
+        );
+      }
+
+      const registros =
+        data.diagnosticos;
+
+      if (
+        registros.length === 0
+      ) {
+        throw new Error(
+          "Não existem diagnósticos para exportar."
+        );
+      }
+
+      // ===================================================
+      // ABA 1 - DIAGNÓSTICOS
+      // ===================================================
+
+      const abaDiagnosticos =
+        registros.map(
+          (item) => {
+            const participante =
+              item.participante ||
+              {};
+
+            const empresa =
+              item.empresa ||
+              {};
+
+            const dores =
+              Array.isArray(
+                item.dores
+              )
+                ? item.dores
+                : [];
+
+            const doresEstruturadas =
+              item.doresEstruturadas ||
+              {};
+
+            const negocio =
+              item.negocioInterpretado ||
+              {};
+
+            const resultado =
+              item.resultado ||
+              {};
+
+            const diagnosticoGeral =
+              resultado.diagnosticoGeral ||
+              {};
+
+            return {
+              "ID":
+                item.id ||
+                "",
+
+              "Data":
+                item.criadoEm
+                  ? new Date(
+                      item.criadoEm
+                    ).toLocaleString(
+                      "pt-BR"
+                    )
+                  : "",
+
+              "Empresa":
+                empresa.razaoSocial ||
+                "",
+
+              "CNPJ":
+                formatarCnpj(
+                  empresa.cnpj ||
+                  ""
+                ),
+
+              "Responsável":
+                participante.nome ||
+                "",
+
+              "Cargo":
+                participante.cargo ||
+                "",
+
+              "Telefone":
+                participante.telefone ||
+                "",
+
+              "E-mail":
+                participante.email ||
+                "",
+
+              "Descrição do negócio":
+                empresa.descricaoNegocio ||
+                "",
+
+              "Segmento":
+                empresa.segmento ||
+                "",
+
+              "Subsegmento":
+                empresa.subsegmento ||
+                "",
+
+              "Score":
+                item.score ??
+                "",
+
+              "Dores declaradas":
+                dores.join(
+                  " | "
+                ),
+
+              "Dor principal":
+                doresEstruturadas
+                  .principal ||
+                dores[0] ||
+                "",
+
+              "Objetivo 90 dias":
+                doresEstruturadas
+                  .objetivo90Dias ||
+                "",
+
+              "Impactos da dor":
+                juntarLista(
+                  doresEstruturadas
+                    .impactos
+                ),
+
+              "Modelo de negócio":
+                negocio.modeloNegocio ||
+                negocio.modeloOperacional ||
+                "",
+
+              "Como gera receita":
+                negocio.comoGeraReceita ||
+                "",
+
+              "Resumo executivo":
+                diagnosticoGeral
+                  .resumoExecutivo ||
+                "",
+
+              "Alerta estratégico":
+                diagnosticoGeral
+                  .alertaEstrategico ||
+                "",
+
+              "Leitura das dores":
+                diagnosticoGeral
+                  .leituraDasDores ||
+                diagnosticoGeral
+                  .leituraDaDor ||
+                "",
+
+              "Principais dores IA":
+                juntarLista(
+                  diagnosticoGeral
+                    .principaisDores
+                ),
+
+              "Causas prováveis":
+                juntarLista(
+                  diagnosticoGeral
+                    .causasProvaveis
+                ),
+
+              "Impactos":
+                juntarLista(
+                  diagnosticoGeral
+                    .impactos
+                ),
+
+              "Pontos fortes":
+                juntarLista(
+                  diagnosticoGeral
+                    .pontosFortes
+                ),
+
+              "Prioridades imediatas":
+                juntarLista(
+                  diagnosticoGeral
+                    .prioridadesImediatas
+                ),
+
+              "Oportunidades":
+                juntarLista(
+                  diagnosticoGeral
+                    .oportunidades
+                ),
+
+              "Próximos passos":
+                juntarLista(
+                  diagnosticoGeral
+                    .proximosPassos
+                ),
+            };
+          }
+        );
+
+      // ===================================================
+      // ABA 2 - PERGUNTAS E RESPOSTAS
+      // ===================================================
+
+      const abaPerguntas = [];
+
+      registros.forEach(
+        (item) => {
+          const participante =
+            item.participante ||
+            {};
+
+          const empresa =
+            item.empresa ||
+            {};
+
+          const perguntas =
+            Array.isArray(
+              item.perguntasRespostas
+            )
+              ? item.perguntasRespostas
+              : [];
+
+          perguntas.forEach(
+            (
+              pergunta,
+              index
+            ) => {
+              abaPerguntas.push({
+                "ID Diagnóstico":
+                  item.id ||
+                  "",
+
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
+                  empresa.razaoSocial ||
+                  "",
+
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Responsável":
+                  participante.nome ||
+                  "",
+
+                "Nº":
+                  index + 1,
+
+                "Área":
+                  pergunta.area ||
+                  "",
+
+                "Área ID":
+                  pergunta.areaId ||
+                  "",
+
+                "Tema":
+                  pergunta.tema ||
+                  "",
+
+                "Pergunta":
+                  pergunta.pergunta ||
+                  "",
+
+                "Resposta":
+                  pergunta.resposta ||
+                  "",
+
+                "Peso":
+                  pergunta.peso ??
+                  "",
+
+                "Importância":
+                  pergunta.importancia ??
+                  "",
+
+                "Motivo":
+                  pergunta.motivo ||
+                  "",
+
+                "Risco avaliado":
+                  pergunta.riscoAvaliado ||
+                  "",
+              });
+            }
+          );
+        }
+      );
+
+      // ===================================================
+      // ABA 3 - ANÁLISE POR ÁREA
+      // ===================================================
+
+      const abaAreas = [];
+
+      registros.forEach(
+        (item) => {
+          const empresa =
+            item.empresa ||
+            {};
+
+          const areas =
+            Array.isArray(
+              item.areas
+            )
+              ? item.areas
+              : [];
+
+          areas.forEach(
+            (area) => {
+              abaAreas.push({
+                "ID Diagnóstico":
+                  item.id ||
+                  "",
+
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
+                  empresa.razaoSocial ||
+                  "",
+
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Área":
+                  area.area ||
+                  "",
+
+                "Score":
+                  area.score ??
+                  "",
+
+                "Nível":
+                  area.nivel ||
+                  "",
+
+                "Prioridade":
+                  area.prioridade ??
+                  "",
+
+                "Resumo":
+                  area.resumo ||
+                  "",
+
+                "Achados":
+                  juntarLista(
+                    area.achados
+                  ),
+
+                "Causas prováveis":
+                  juntarLista(
+                    area.causasProvaveis
+                  ),
+
+                "Riscos":
+                  juntarLista(
+                    area.riscos
+                  ),
+
+                "Recomendações":
+                  juntarLista(
+                    area.recomendacoes
+                  ),
+              });
+            }
+          );
+        }
+      );
+
+      // ===================================================
+      // ABA 4 - DORES E OBJETIVOS
+      // ===================================================
+
+      const abaDores = [];
+
+      registros.forEach(
+        (item) => {
+          const empresa =
+            item.empresa ||
+            {};
+
+          const participante =
+            item.participante ||
+            {};
+
+          const estruturadas =
+            item.doresEstruturadas ||
+            {};
+
+          const dores =
+            Array.isArray(
+              estruturadas.selecionadas
+            )
+              ? estruturadas.selecionadas
+
+              : Array.isArray(
+                  item.dores
+                )
+                ? item.dores
+
+                : [];
+
+          // Mesmo se não houver dor,
+          // mantém uma linha com o diagnóstico.
+          if (
+            dores.length === 0
+          ) {
+            abaDores.push({
+              "ID Diagnóstico":
+                item.id ||
+                "",
+
+              "Data":
+                item.criadoEm
+                  ? new Date(
+                      item.criadoEm
+                    ).toLocaleString(
+                      "pt-BR"
+                    )
+                  : "",
+
+              "Empresa":
+                empresa.razaoSocial ||
+                "",
+
+              "CNPJ":
+                formatarCnpj(
+                  empresa.cnpj ||
+                  ""
+                ),
+
+              "Responsável":
+                participante.nome ||
+                "",
+
+              "Dor Nº":
+                "",
+
+              "Dor":
+                "",
+
+              "Dor principal":
+                estruturadas.principal ||
+                "",
+
+              "Objetivo 90 dias":
+                estruturadas
+                  .objetivo90Dias ||
+                "",
+
+              "Impactos":
+                juntarLista(
+                  estruturadas
+                    .impactos
+                ),
+            });
+
+            return;
+          }
+
+          dores.forEach(
+            (
+              dor,
+              index
+            ) => {
+              abaDores.push({
+                "ID Diagnóstico":
+                  item.id ||
+                  "",
+
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
+                  empresa.razaoSocial ||
+                  "",
+
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Responsável":
+                  participante.nome ||
+                  "",
+
+                "Dor Nº":
+                  index + 1,
+
+                "Dor":
+                  dor,
+
+                "Dor principal":
+                  estruturadas.principal ||
+                  dores[0] ||
+                  "",
+
+                "Objetivo 90 dias":
+                  estruturadas
+                    .objetivo90Dias ||
+                  "",
+
+                "Impactos":
+                  juntarLista(
+                    estruturadas
+                      .impactos
+                  ),
+              });
+            }
+          );
+        }
+      );
+
+      // ===================================================
+      // CRIAR ARQUIVO EXCEL
+      // ===================================================
+
+      const workbook =
+        XLSX.utils.book_new();
+
+      const wsDiagnosticos =
+        XLSX.utils.json_to_sheet(
+          abaDiagnosticos
+        );
+
+      const wsPerguntas =
+        XLSX.utils.json_to_sheet(
+          abaPerguntas
+        );
+
+      const wsAreas =
+        XLSX.utils.json_to_sheet(
+          abaAreas
+        );
+
+      const wsDores =
+        XLSX.utils.json_to_sheet(
+          abaDores
+        );
+
+      // ===================================================
+      // LARGURA DAS COLUNAS
+      // ===================================================
+
+      wsDiagnosticos["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 30 },
+        { wch: 60 },
+        { wch: 35 },
+        { wch: 50 },
+        { wch: 10 },
+        { wch: 50 },
+        { wch: 40 },
+        { wch: 60 },
+        { wch: 60 },
+        { wch: 40 },
+        { wch: 60 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+      ];
+
+      wsPerguntas["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 8 },
+        { wch: 28 },
+        { wch: 16 },
+        { wch: 35 },
+        { wch: 90 },
+        { wch: 18 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 70 },
+        { wch: 70 },
+      ];
+
+      wsAreas["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 28 },
+        { wch: 10 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 80 },
+        { wch: 90 },
+        { wch: 90 },
+        { wch: 90 },
+        { wch: 90 },
+      ];
+
+      wsDores["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 10 },
+        { wch: 45 },
+        { wch: 45 },
+        { wch: 70 },
+        { wch: 70 },
+      ];
+
+      // ===================================================
+      // ADICIONAR ABAS
+      // ===================================================
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsDiagnosticos,
+        "Diagnósticos"
+      );
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsPerguntas,
+        "Perguntas Respostas"
+      );
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsAreas,
+        "Análise por Área"
+      );
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsDores,
+        "Dores e Objetivos"
+      );
+
+      // ===================================================
+      // DOWNLOAD
+      // ===================================================
+
+      const agora =
+        new Date();
+
+      const dataArquivo =
+        agora
+          .toISOString()
+          .slice(
+            0,
+            10
+          );
+
+      const nomeArquivo =
+        `diagnosticos-finder-${dataArquivo}.xlsx`;
+
+      XLSX.writeFile(
+        workbook,
+        nomeArquivo
+      );
+
+    } catch (error) {
+      console.error(
+        "Erro exportação Excel:",
+        error
+      );
+
+      setErro(
+        error?.message ||
+        "Não foi possível gerar o Excel."
+      );
+
+    } finally {
+      setExportando(false);
+    }
+  }
+
+  // =======================================================
+  // RENDER LISTA
+  // =======================================================
 
   return (
     <div
@@ -460,15 +1362,18 @@ function ListaDiagnosticos({
             maxWidth: 1320,
             margin: "0 auto",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+            justifyContent:
+              "space-between",
+            alignItems:
+              "center",
             gap: 18,
           }}
         >
           <div
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems:
+                "center",
               gap: 18,
             }}
           >
@@ -478,8 +1383,10 @@ function ListaDiagnosticos({
               style={{
                 maxWidth: 150,
                 maxHeight: 45,
-                objectFit: "contain",
-                background: WHITE,
+                objectFit:
+                  "contain",
+                background:
+                  WHITE,
                 padding: 5,
                 borderRadius: 7,
               }}
@@ -489,7 +1396,8 @@ function ListaDiagnosticos({
               <h1
                 style={{
                   margin: 0,
-                  fontFamily: DISPLAY_FONT,
+                  fontFamily:
+                    DISPLAY_FONT,
                   fontSize: 24,
                 }}
               >
@@ -498,7 +1406,8 @@ function ListaDiagnosticos({
 
               <p
                 style={{
-                  margin: "3px 0 0",
+                  margin:
+                    "3px 0 0",
                   fontSize: 11,
                   opacity: 0.7,
                 }}
@@ -511,19 +1420,37 @@ function ListaDiagnosticos({
           <button
             onClick={onLogout}
             style={{
-              background: "transparent",
+              background:
+                "transparent",
+
               border:
                 "1px solid rgba(255,255,255,.30)",
-              color: WHITE,
-              borderRadius: 9,
-              padding: "8px 11px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
+
+              color:
+                WHITE,
+
+              borderRadius:
+                9,
+
+              padding:
+                "8px 11px",
+
+              cursor:
+                "pointer",
+
+              display:
+                "flex",
+
+              alignItems:
+                "center",
+
               gap: 6,
             }}
           >
-            <LogOut size={15} />
+            <LogOut
+              size={15}
+            />
+
             Sair
           </button>
         </div>
@@ -533,16 +1460,25 @@ function ListaDiagnosticos({
         style={{
           maxWidth: 1320,
           margin: "0 auto",
-          padding: "26px 22px 50px",
+          padding:
+            "26px 22px 50px",
         }}
       >
+        {/* ================================================= */}
+        {/* CARDS RESUMO */}
+        {/* ================================================= */}
+
         <div
           style={{
             display: "grid",
+
             gridTemplateColumns:
               "repeat(auto-fit,minmax(190px,1fr))",
+
             gap: 12,
-            marginBottom: 20,
+
+            marginBottom:
+              20,
           }}
         >
           <Card>
@@ -604,10 +1540,15 @@ function ListaDiagnosticos({
                 fontWeight: 800,
               }}
             >
-              {mediaScore ?? "-"}
+              {mediaScore ??
+                "-"}
             </div>
           </Card>
         </div>
+
+        {/* ================================================= */}
+        {/* BUSCA + EXPORTAÇÃO */}
+        {/* ================================================= */}
 
         <Card
           style={{
@@ -623,15 +1564,19 @@ function ListaDiagnosticos({
           >
             <div
               style={{
-                flex: "1 1 360px",
-                position: "relative",
+                flex:
+                  "1 1 360px",
+
+                position:
+                  "relative",
               }}
             >
               <Search
                 size={16}
                 color={MUTED}
                 style={{
-                  position: "absolute",
+                  position:
+                    "absolute",
                   top: 12,
                   left: 12,
                 }}
@@ -639,38 +1584,68 @@ function ListaDiagnosticos({
 
               <input
                 value={busca}
-                onChange={(e) =>
-                  setBusca(e.target.value)
+                onChange={(
+                  e
+                ) =>
+                  setBusca(
+                    e.target
+                      .value
+                  )
                 }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                onKeyDown={(
+                  e
+                ) => {
+                  if (
+                    e.key ===
+                    "Enter"
+                  ) {
                     pesquisar();
                   }
                 }}
                 placeholder="Buscar empresa, CNPJ, nome, e-mail, segmento..."
                 style={{
-                  width: "100%",
-                  boxSizing: "border-box",
+                  width:
+                    "100%",
+
+                  boxSizing:
+                    "border-box",
+
                   border:
                     "1px solid #D8DEEA",
-                  borderRadius: 9,
+
+                  borderRadius:
+                    9,
+
                   padding:
                     "10px 12px 10px 36px",
-                  fontFamily: BODY_FONT,
-                  fontSize: 13,
+
+                  fontFamily:
+                    BODY_FONT,
+
+                  fontSize:
+                    13,
                 }}
               />
             </div>
 
-            <Botao onClick={pesquisar}>
-              <Search size={14} />
+            <Botao
+              onClick={
+                pesquisar
+              }
+            >
+              <Search
+                size={14}
+              />
+
               Buscar
             </Botao>
 
             {buscaAplicada && (
               <Botao
                 secundario
-                onClick={limparBusca}
+                onClick={
+                  limparBusca
+                }
               >
                 Limpar
               </Botao>
@@ -679,234 +1654,386 @@ function ListaDiagnosticos({
             <Botao
               secundario
               onClick={() =>
-                carregar(buscaAplicada)
+                carregar(
+                  buscaAplicada
+                )
               }
             >
-              <RefreshCcw size={14} />
+              <RefreshCcw
+                size={14}
+              />
+
               Atualizar
+            </Botao>
+
+            <Botao
+              secundario
+              onClick={
+                exportarExcel
+              }
+              disabled={
+                exportando
+              }
+              style={{
+                borderColor:
+                  "#0F6E56",
+
+                color:
+                  "#0F6E56",
+              }}
+            >
+              <Download
+                size={14}
+              />
+
+              {exportando
+                ? "Gerando Excel..."
+                : "Exportar Excel"}
             </Botao>
           </div>
         </Card>
 
+        {/* ================================================= */}
+        {/* ERRO */}
+        {/* ================================================= */}
+
         {erro && (
           <div
             style={{
-              background: "#FAECE7",
-              color: "#993C1D",
-              padding: 13,
-              borderRadius: 10,
-              marginBottom: 14,
-              display: "flex",
-              gap: 8,
-              alignItems: "flex-start",
+              background:
+                "#FAECE7",
+
+              color:
+                "#993C1D",
+
+              padding:
+                13,
+
+              borderRadius:
+                10,
+
+              marginBottom:
+                14,
+
+              display:
+                "flex",
+
+              gap:
+                8,
+
+              alignItems:
+                "flex-start",
             }}
           >
             <AlertTriangle
               size={17}
-              style={{ flexShrink: 0 }}
+              style={{
+                flexShrink: 0,
+              }}
             />
 
-            <div>{erro}</div>
+            <div>
+              {erro}
+            </div>
           </div>
         )}
+
+        {/* ================================================= */}
+        {/* LISTA */}
+        {/* ================================================= */}
 
         {carregando ? (
           <Card>
             Carregando diagnósticos...
           </Card>
-        ) : diagnosticos.length === 0 ? (
+
+        ) : diagnosticos.length ===
+          0 ? (
           <Card>
             Nenhum diagnóstico encontrado.
           </Card>
+
         ) : (
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
+              flexDirection:
+                "column",
               gap: 10,
             }}
           >
-            {diagnosticos.map((item) => {
-              const score =
-                scoreInfo(item.score);
+            {diagnosticos.map(
+              (item) => {
+                const score =
+                  scoreInfo(
+                    item.score
+                  );
 
-              const dores =
-                normalizarLista(
-                  item.dores
-                );
+                const dores =
+                  normalizarLista(
+                    item.dores
+                  );
 
-              return (
-                <button
-                  key={item.id}
-                  onClick={() =>
-                    onAbrir(item.id)
-                  }
-                  style={{
-                    width: "100%",
-                    background: WHITE,
-                    border:
-                      "1px solid #E2E6EE",
-                    borderRadius: 14,
-                    padding: 16,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    display: "grid",
-                    gridTemplateColumns:
-                      "minmax(250px,2fr) minmax(180px,1.2fr) 90px 34px",
-                    gap: 15,
-                    alignItems: "center",
-                    fontFamily: BODY_FONT,
-                    color: NAVY,
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 800,
-                        marginBottom: 4,
-                      }}
-                    >
-                      {item.razaoSocial ||
-                        "Empresa não informada"}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: 11.5,
-                        color: MUTED,
-                        display: "flex",
-                        gap: 9,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span>
-                        {formatarCnpj(
-                          item.cnpj
-                        )}
-                      </span>
-
-                      {item.segmento && (
-                        <span>
-                          {item.segmento}
-                        </span>
-                      )}
-                    </div>
-
-                    {dores.length > 0 && (
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 5,
-                          flexWrap: "wrap",
-                          marginTop: 8,
-                        }}
-                      >
-                        {dores
-                          .slice(0, 3)
-                          .map(
-                            (
-                              dor,
-                              index
-                            ) => (
-                              <span
-                                key={`${dor}-${index}`}
-                                style={{
-                                  fontSize: 9.5,
-                                  background:
-                                    "#FFF3EF",
-                                  color:
-                                    "#993C1D",
-                                  borderRadius: 20,
-                                  padding:
-                                    "3px 7px",
-                                }}
-                              >
-                                {dor}
-                              </span>
-                            )
-                          )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {item.nome ||
-                        "Participante não informado"}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: 10.5,
-                        color: MUTED,
-                        marginTop: 3,
-                      }}
-                    >
-                      {item.email || "-"}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: 10.5,
-                        color: MUTED,
-                        marginTop: 5,
-                      }}
-                    >
-                      {formatarData(
-                        item.criadoEm
-                      )}
-                    </div>
-                  </div>
-
-                  <div
+                return (
+                  <button
+                    key={
+                      item.id
+                    }
+                    onClick={() =>
+                      onAbrir(
+                        item.id
+                      )
+                    }
                     style={{
-                      textAlign: "center",
+                      width:
+                        "100%",
+
+                      background:
+                        WHITE,
+
+                      border:
+                        "1px solid #E2E6EE",
+
+                      borderRadius:
+                        14,
+
+                      padding:
+                        16,
+
+                      textAlign:
+                        "left",
+
+                      cursor:
+                        "pointer",
+
+                      display:
+                        "grid",
+
+                      gridTemplateColumns:
+                        "minmax(250px,2fr) minmax(180px,1.2fr) 90px 34px",
+
+                      gap:
+                        15,
+
+                      alignItems:
+                        "center",
+
+                      fontFamily:
+                        BODY_FONT,
+
+                      color:
+                        NAVY,
                     }}
                   >
-                    <div
-                      style={{
-                        background:
-                          score.bg,
-                        color:
-                          score.color,
-                        borderRadius: 12,
-                        padding:
-                          "8px 6px",
-                      }}
-                    >
-                      <strong
+                    <div>
+                      <div
                         style={{
-                          fontSize: 19,
+                          fontSize:
+                            14,
+
+                          fontWeight:
+                            800,
+
+                          marginBottom:
+                            4,
                         }}
                       >
-                        {item.score ??
-                          "-"}
-                      </strong>
+                        {item.razaoSocial ||
+                          "Empresa não informada"}
+                      </div>
 
                       <div
                         style={{
-                          fontSize: 8.5,
-                          marginTop: 1,
+                          fontSize:
+                            11.5,
+
+                          color:
+                            MUTED,
+
+                          display:
+                            "flex",
+
+                          gap:
+                            9,
+
+                          flexWrap:
+                            "wrap",
                         }}
                       >
-                        {score.label}
+                        <span>
+                          {formatarCnpj(
+                            item.cnpj
+                          )}
+                        </span>
+
+                        {item.segmento && (
+                          <span>
+                            {
+                              item.segmento
+                            }
+                          </span>
+                        )}
+                      </div>
+
+                      {dores.length >
+                        0 && (
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            gap:
+                              5,
+
+                            flexWrap:
+                              "wrap",
+
+                            marginTop:
+                              8,
+                          }}
+                        >
+                          {dores
+                            .slice(
+                              0,
+                              3
+                            )
+                            .map(
+                              (
+                                dor,
+                                index
+                              ) => (
+                                <span
+                                  key={`${dor}-${index}`}
+                                  style={{
+                                    fontSize:
+                                      9.5,
+
+                                    background:
+                                      "#FFF3EF",
+
+                                    color:
+                                      "#993C1D",
+
+                                    borderRadius:
+                                      20,
+
+                                    padding:
+                                      "3px 7px",
+                                  }}
+                                >
+                                  {
+                                    dor
+                                  }
+                                </span>
+                              )
+                            )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize:
+                            12,
+
+                          fontWeight:
+                            700,
+                        }}
+                      >
+                        {item.nome ||
+                          "Participante não informado"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            10.5,
+
+                          color:
+                            MUTED,
+
+                          marginTop:
+                            3,
+                        }}
+                      >
+                        {item.email ||
+                          "-"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            10.5,
+
+                          color:
+                            MUTED,
+
+                          marginTop:
+                            5,
+                        }}
+                      >
+                        {formatarData(
+                          item.criadoEm
+                        )}
                       </div>
                     </div>
-                  </div>
 
-                  <ChevronRight
-                    size={20}
-                    color={MUTED}
-                  />
-                </button>
-              );
-            })}
+                    <div
+                      style={{
+                        textAlign:
+                          "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background:
+                            score.bg,
+
+                          color:
+                            score.color,
+
+                          borderRadius:
+                            12,
+
+                          padding:
+                            "8px 6px",
+                        }}
+                      >
+                        <strong
+                          style={{
+                            fontSize:
+                              19,
+                          }}
+                        >
+                          {item.score ??
+                            "-"}
+                        </strong>
+
+                        <div
+                          style={{
+                            fontSize:
+                              8.5,
+
+                            marginTop:
+                              1,
+                          }}
+                        >
+                          {
+                            score.label
+                          }
+                        </div>
+                      </div>
+                    </div>
+
+                    <ChevronRight
+                      size={20}
+                      color={MUTED}
+                    />
+                  </button>
+                );
+              }
+            )}
           </div>
         )}
       </main>
@@ -914,19 +2041,29 @@ function ListaDiagnosticos({
   );
 }
 
+// =========================================================
+// DETALHE DO DIAGNÓSTICO
+// =========================================================
+
 function DetalheDiagnostico({
   token,
   id,
   onVoltar,
 }) {
-  const [item, setItem] =
-    useState(null);
+  const [
+    item,
+    setItem,
+  ] = useState(null);
 
-  const [carregando, setCarregando] =
-    useState(true);
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
 
-  const [erro, setErro] =
-    useState("");
+  const [
+    erro,
+    setErro,
+  ] = useState("");
 
   useEffect(() => {
     async function carregar() {
@@ -958,32 +2095,35 @@ function DetalheDiagnostico({
         ) {
           throw new Error(
             data?.error ||
-              "Não foi possível abrir o diagnóstico."
+            "Não foi possível abrir o diagnóstico."
           );
         }
 
         setItem(
           data.diagnostico
         );
+
       } catch (error) {
         setErro(
           error?.message ||
-            "Erro ao abrir diagnóstico."
+          "Erro ao abrir diagnóstico."
         );
+
       } finally {
         setCarregando(false);
       }
     }
 
     carregar();
-  }, [id]);
+  }, [id, token]);
 
   if (carregando) {
     return (
       <div
         style={{
           padding: 30,
-          fontFamily: BODY_FONT,
+          fontFamily:
+            BODY_FONT,
         }}
       >
         Carregando diagnóstico...
@@ -991,31 +2131,55 @@ function DetalheDiagnostico({
     );
   }
 
-  if (erro || !item) {
+  if (
+    erro ||
+    !item
+  ) {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: BG,
-          padding: 24,
-          fontFamily: BODY_FONT,
+          minHeight:
+            "100vh",
+
+          background:
+            BG,
+
+          padding:
+            24,
+
+          fontFamily:
+            BODY_FONT,
         }}
       >
         <Botao
           secundario
-          onClick={onVoltar}
+          onClick={
+            onVoltar
+          }
         >
-          <ArrowLeft size={15} />
+          <ArrowLeft
+            size={15}
+          />
+
           Voltar
         </Botao>
 
         <div
           style={{
-            marginTop: 16,
-            background: "#FAECE7",
-            color: "#993C1D",
-            padding: 15,
-            borderRadius: 10,
+            marginTop:
+              16,
+
+            background:
+              "#FAECE7",
+
+            color:
+              "#993C1D",
+
+            padding:
+              15,
+
+            borderRadius:
+              10,
           }}
         >
           {erro ||
@@ -1026,13 +2190,16 @@ function DetalheDiagnostico({
   }
 
   const participante =
-    item.participante || {};
+    item.participante ||
+    {};
 
   const empresa =
-    item.empresa || {};
+    item.empresa ||
+    {};
 
   const resultado =
-    item.resultado || {};
+    item.resultado ||
+    {};
 
   const diagnosticoGeral =
     resultado.diagnosticoGeral ||
@@ -1046,52 +2213,93 @@ function DetalheDiagnostico({
   const areas =
     normalizarLista(
       resultado.areas
-    );
+    ).length
+      ? normalizarLista(
+          resultado.areas
+        )
+      : normalizarLista(
+          item.areas
+        );
 
   const dores =
-    normalizarLista(item.dores);
+    normalizarLista(
+      item.dores
+    );
 
   const score =
-    scoreInfo(item.score);
+    scoreInfo(
+      item.score
+    );
 
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: BG,
-        fontFamily: BODY_FONT,
-        color: NAVY,
+        minHeight:
+          "100vh",
+
+        background:
+          BG,
+
+        fontFamily:
+          BODY_FONT,
+
+        color:
+          NAVY,
       }}
     >
       <header
         style={{
-          background: NAVY,
-          padding: "17px 24px",
-          color: WHITE,
+          background:
+            NAVY,
+
+          padding:
+            "17px 24px",
+
+          color:
+            WHITE,
         }}
       >
         <div
           style={{
-            maxWidth: 1180,
-            margin: "0 auto",
-            display: "flex",
+            maxWidth:
+              1180,
+
+            margin:
+              "0 auto",
+
+            display:
+              "flex",
+
             justifyContent:
               "space-between",
-            alignItems: "center",
+
+            alignItems:
+              "center",
+
+            gap:
+              15,
           }}
         >
           <Botao
             secundario
-            onClick={onVoltar}
+            onClick={
+              onVoltar
+            }
           >
-            <ArrowLeft size={15} />
+            <ArrowLeft
+              size={15}
+            />
+
             Diagnósticos
           </Botao>
 
           <span
             style={{
-              fontSize: 11,
-              opacity: 0.75,
+              fontSize:
+                11,
+
+              opacity:
+                0.75,
             }}
           >
             {formatarData(
@@ -1103,27 +2311,45 @@ function DetalheDiagnostico({
 
       <main
         style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: "24px 20px 60px",
+          maxWidth:
+            1180,
+
+          margin:
+            "0 auto",
+
+          padding:
+            "24px 20px 60px",
         }}
       >
         <div
           style={{
-            display: "grid",
+            display:
+              "grid",
+
             gridTemplateColumns:
               "minmax(0,1fr) 170px",
-            gap: 14,
-            marginBottom: 16,
+
+            gap:
+              14,
+
+            marginBottom:
+              16,
           }}
         >
           <Card>
             <div
               style={{
-                fontSize: 11,
-                color: CORAL,
-                fontWeight: 800,
-                marginBottom: 6,
+                fontSize:
+                  11,
+
+                color:
+                  CORAL,
+
+                fontWeight:
+                  800,
+
+                marginBottom:
+                  6,
               }}
             >
               DIAGNÓSTICO EMPRESARIAL
@@ -1133,8 +2359,12 @@ function DetalheDiagnostico({
               style={{
                 fontFamily:
                   DISPLAY_FONT,
-                fontSize: 28,
-                margin: "0 0 7px",
+
+                fontSize:
+                  28,
+
+                margin:
+                  "0 0 7px",
               }}
             >
               {empresa.razaoSocial ||
@@ -1143,9 +2373,14 @@ function DetalheDiagnostico({
 
             <div
               style={{
-                color: MUTED,
-                fontSize: 12,
-                lineHeight: 1.6,
+                color:
+                  MUTED,
+
+                fontSize:
+                  12,
+
+                lineHeight:
+                  1.6,
               }}
             >
               {formatarCnpj(
@@ -1166,26 +2401,37 @@ function DetalheDiagnostico({
             style={{
               background:
                 score.bg,
-              textAlign: "center",
+
+              textAlign:
+                "center",
             }}
           >
             <div
               style={{
-                fontSize: 38,
-                fontWeight: 900,
+                fontSize:
+                  38,
+
+                fontWeight:
+                  900,
+
                 color:
                   score.color,
               }}
             >
-              {item.score ?? "-"}
+              {item.score ??
+                "-"}
             </div>
 
             <div
               style={{
-                fontSize: 11,
+                fontSize:
+                  11,
+
                 color:
                   score.color,
-                fontWeight: 700,
+
+                fontWeight:
+                  700,
               }}
             >
               {score.label}
@@ -1195,11 +2441,17 @@ function DetalheDiagnostico({
 
         <div
           style={{
-            display: "grid",
+            display:
+              "grid",
+
             gridTemplateColumns:
               "repeat(auto-fit,minmax(230px,1fr))",
-            gap: 12,
-            marginBottom: 18,
+
+            gap:
+              12,
+
+            marginBottom:
+              18,
           }}
         >
           <Card>
@@ -1217,13 +2469,19 @@ function DetalheDiagnostico({
                 {participante.nome ||
                   "-"}
               </strong>
+
               <br />
+
               {participante.cargo ||
                 "-"}
+
               <br />
+
               {participante.email ||
                 "-"}
+
               <br />
+
               {participante.telefone ||
                 "-"}
             </p>
@@ -1258,12 +2516,18 @@ function DetalheDiagnostico({
             {dores.length ? (
               <ul
                 style={{
-                  paddingLeft: 18,
-                  marginBottom: 0,
+                  paddingLeft:
+                    18,
+
+                  marginBottom:
+                    0,
                 }}
               >
                 {dores.map(
-                  (dor, index) => (
+                  (
+                    dor,
+                    index
+                  ) => (
                     <li
                       key={`${dor}-${index}`}
                     >
@@ -1280,30 +2544,44 @@ function DetalheDiagnostico({
           </Card>
         </div>
 
-        {diagnosticoGeral.resumoExecutivo && (
+        {diagnosticoGeral
+          .resumoExecutivo && (
           <>
-            <h2 style={tituloSecao}>
+            <h2
+              style={
+                tituloSecao
+              }
+            >
               Resumo executivo
             </h2>
 
             <Card>
               <p
                 style={{
-                  margin: 0,
-                  lineHeight: 1.65,
+                  margin:
+                    0,
+
+                  lineHeight:
+                    1.65,
                 }}
               >
                 {
-                  diagnosticoGeral.resumoExecutivo
+                  diagnosticoGeral
+                    .resumoExecutivo
                 }
               </p>
             </Card>
           </>
         )}
 
-        {diagnosticoGeral.alertaEstrategico && (
+        {diagnosticoGeral
+          .alertaEstrategico && (
           <>
-            <h2 style={tituloSecao}>
+            <h2
+              style={
+                tituloSecao
+              }
+            >
               Alerta estratégico
             </h2>
 
@@ -1311,51 +2589,74 @@ function DetalheDiagnostico({
               style={{
                 background:
                   "#FAEEDA",
+
                 color:
                   "#70410A",
               }}
             >
               {
-                diagnosticoGeral.alertaEstrategico
+                diagnosticoGeral
+                  .alertaEstrategico
               }
             </Card>
           </>
         )}
 
-        <h2 style={tituloSecao}>
+        <h2
+          style={
+            tituloSecao
+          }
+        >
           Diagnóstico por área
         </h2>
 
-        {areas.length === 0 ? (
+        {areas.length ===
+        0 ? (
           <Card>
-            Nenhuma análise por área
-            registrada.
+            Nenhuma análise por área registrada.
           </Card>
         ) : (
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
+              display:
+                "flex",
+
+              flexDirection:
+                "column",
+
+              gap:
+                12,
             }}
           >
             {areas.map(
-              (area, index) => {
+              (
+                area,
+                index
+              ) => {
                 const info =
                   scoreInfo(
                     area.score
                   );
 
                 return (
-                  <Card key={index}>
+                  <Card
+                    key={
+                      index
+                    }
+                  >
                     <div
                       style={{
                         display:
                           "flex",
+
                         justifyContent:
                           "space-between",
-                        gap: 15,
-                        marginBottom: 10,
+
+                        gap:
+                          15,
+
+                        marginBottom:
+                          10,
                       }}
                     >
                       <div>
@@ -1373,6 +2674,7 @@ function DetalheDiagnostico({
                           style={{
                             fontSize:
                               10,
+
                             color:
                               MUTED,
                           }}
@@ -1386,12 +2688,16 @@ function DetalheDiagnostico({
                         style={{
                           background:
                             info.bg,
+
                           color:
                             info.color,
+
                           padding:
                             "7px 10px",
+
                           borderRadius:
                             10,
+
                           fontWeight:
                             800,
                         }}
@@ -1416,9 +2722,12 @@ function DetalheDiagnostico({
                       style={{
                         display:
                           "grid",
+
                         gridTemplateColumns:
                           "repeat(auto-fit,minmax(210px,1fr))",
-                        gap: 10,
+
+                        gap:
+                          10,
                       }}
                     >
                       <ListaInterna
@@ -1456,44 +2765,83 @@ function DetalheDiagnostico({
           </div>
         )}
 
-        <h2 style={tituloSecao}>
+        <h2
+          style={
+            tituloSecao
+          }
+        >
           Perguntas e respostas
         </h2>
 
         <Card
           style={{
-            padding: 0,
-            overflowX: "auto",
+            padding:
+              0,
+
+            overflowX:
+              "auto",
           }}
         >
           <table
             style={{
-              width: "100%",
+              width:
+                "100%",
+
               borderCollapse:
                 "collapse",
-              minWidth: 720,
+
+              minWidth:
+                820,
             }}
           >
             <thead>
               <tr>
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Área
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Tema
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Pergunta
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Resposta
                 </th>
 
-                <th style={thStyle}>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
                   Peso
+                </th>
+
+                <th
+                  style={
+                    thStyle
+                  }
+                >
+                  Importância
                 </th>
               </tr>
             </thead>
@@ -1505,23 +2853,33 @@ function DetalheDiagnostico({
                     pergunta,
                     index
                   ) => (
-                    <tr key={index}>
+                    <tr
+                      key={
+                        index
+                      }
+                    >
                       <td
-                        style={tdStyle}
+                        style={
+                          tdStyle
+                        }
                       >
                         {pergunta.area ||
                           "-"}
                       </td>
 
                       <td
-                        style={tdStyle}
+                        style={
+                          tdStyle
+                        }
                       >
                         {pergunta.tema ||
                           "-"}
                       </td>
 
                       <td
-                        style={tdStyle}
+                        style={
+                          tdStyle
+                        }
                       >
                         {pergunta.pergunta ||
                           "-"}
@@ -1530,6 +2888,7 @@ function DetalheDiagnostico({
                       <td
                         style={{
                           ...tdStyle,
+
                           fontWeight:
                             800,
                         }}
@@ -1539,9 +2898,20 @@ function DetalheDiagnostico({
                       </td>
 
                       <td
-                        style={tdStyle}
+                        style={
+                          tdStyle
+                        }
                       >
-                        {pergunta.peso ||
+                        {pergunta.peso ??
+                          "-"}
+                      </td>
+
+                      <td
+                        style={
+                          tdStyle
+                        }
+                      >
+                        {pergunta.importancia ??
                           "-"}
                       </td>
                     </tr>
@@ -1550,15 +2920,15 @@ function DetalheDiagnostico({
               ) : (
                 <tr>
                   <td
-                    colSpan="5"
+                    colSpan="6"
                     style={{
                       ...tdStyle,
+
                       textAlign:
                         "center",
                     }}
                   >
-                    Nenhuma pergunta
-                    armazenada.
+                    Nenhuma pergunta armazenada.
                   </td>
                 </tr>
               )}
@@ -1570,26 +2940,42 @@ function DetalheDiagnostico({
   );
 }
 
+// =========================================================
+// LISTA INTERNA
+// =========================================================
+
 function ListaInterna({
   titulo,
   itens,
 }) {
   const lista =
-    normalizarLista(itens);
+    normalizarLista(
+      itens
+    );
 
   return (
     <div
       style={{
-        background: "#F7F8FB",
-        borderRadius: 9,
-        padding: 11,
+        background:
+          "#F7F8FB",
+
+        borderRadius:
+          9,
+
+        padding:
+          11,
       }}
     >
       <strong
         style={{
-          display: "block",
-          fontSize: 11,
-          marginBottom: 6,
+          display:
+            "block",
+
+          fontSize:
+            11,
+
+          marginBottom:
+            6,
         }}
       >
         {titulo}
@@ -1598,15 +2984,29 @@ function ListaInterna({
       {lista.length ? (
         <ul
           style={{
-            margin: 0,
-            paddingLeft: 17,
-            fontSize: 11.5,
-            lineHeight: 1.5,
+            margin:
+              0,
+
+            paddingLeft:
+              17,
+
+            fontSize:
+              11.5,
+
+            lineHeight:
+              1.5,
           }}
         >
           {lista.map(
-            (item, index) => (
-              <li key={index}>
+            (
+              item,
+              index
+            ) => (
+              <li
+                key={
+                  index
+                }
+              >
                 {item}
               </li>
             )
@@ -1615,8 +3015,11 @@ function ListaInterna({
       ) : (
         <span
           style={{
-            fontSize: 11,
-            color: MUTED,
+            fontSize:
+              11,
+
+            color:
+              MUTED,
           }}
         >
           Sem informação.
@@ -1626,17 +3029,25 @@ function ListaInterna({
   );
 }
 
-export default function Admin() {
-  const [token, setToken] =
-    useState(
-      () =>
-        sessionStorage.getItem(
-          "finder_admin_token"
-        ) || ""
-    );
+// =========================================================
+// COMPONENTE PRINCIPAL
+// =========================================================
 
-  const [diagnosticoId, setDiagnosticoId] =
-    useState(null);
+export default function Admin() {
+  const [
+    token,
+    setToken,
+  ] = useState(
+    () =>
+      sessionStorage.getItem(
+        "finder_admin_token"
+      ) || ""
+  );
+
+  const [
+    diagnosticoId,
+    setDiagnosticoId,
+  ] = useState(null);
 
   function sair() {
     sessionStorage.removeItem(
@@ -1644,24 +3055,38 @@ export default function Admin() {
     );
 
     setToken("");
-    setDiagnosticoId(null);
+    setDiagnosticoId(
+      null
+    );
   }
 
   if (!token) {
     return (
       <LoginAdmin
-        onLogin={setToken}
+        onLogin={
+          setToken
+        }
       />
     );
   }
 
-  if (diagnosticoId) {
+  if (
+    diagnosticoId
+  ) {
     return (
       <DetalheDiagnostico
-        token={token}
-        id={diagnosticoId}
+        token={
+          token
+        }
+
+        id={
+          diagnosticoId
+        }
+
         onVoltar={() =>
-          setDiagnosticoId(null)
+          setDiagnosticoId(
+            null
+          )
         }
       />
     );
@@ -1669,32 +3094,69 @@ export default function Admin() {
 
   return (
     <ListaDiagnosticos
-      token={token}
-      onAbrir={setDiagnosticoId}
-      onLogout={sair}
+      token={
+        token
+      }
+
+      onAbrir={
+        setDiagnosticoId
+      }
+
+      onLogout={
+        sair
+      }
     />
   );
 }
 
+// =========================================================
+// ESTILOS
+// =========================================================
+
 const tituloSecao = {
-  fontFamily: DISPLAY_FONT,
-  fontSize: 20,
-  margin: "25px 0 10px",
+  fontFamily:
+    DISPLAY_FONT,
+
+  fontSize:
+    20,
+
+  margin:
+    "25px 0 10px",
 };
 
 const thStyle = {
-  background: ICE,
-  padding: "10px 9px",
-  textAlign: "left",
-  color: NAVY,
-  fontSize: 11,
+  background:
+    ICE,
+
+  padding:
+    "10px 9px",
+
+  textAlign:
+    "left",
+
+  color:
+    NAVY,
+
+  fontSize:
+    11,
+
+  whiteSpace:
+    "nowrap",
 };
 
 const tdStyle = {
   borderBottom:
     "1px solid #E5E8EE",
-  padding: "10px 9px",
-  fontSize: 11.5,
-  lineHeight: 1.45,
-  verticalAlign: "top",
+
+  padding:
+    "10px 9px",
+
+  fontSize:
+    11.5,
+
+  lineHeight:
+    1.45,
+
+  verticalAlign:
+    "top",
 };
