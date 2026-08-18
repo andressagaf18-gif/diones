@@ -2,18 +2,12 @@ import { neon } from "@neondatabase/serverless";
 
 const sql = neon(process.env.DATABASE_URL);
 
-// =========================================================
-// AUTORIZAÇÃO DO ADMIN
-// =========================================================
-
 function autorizado(req) {
   const adminToken =
     process.env.ADMIN_TOKEN ||
     process.env.ADMIN_PASSWORD ||
     "";
 
-  // Mantém compatibilidade com o sistema atual.
-  // Depois vamos endurecer a autenticação do Admin.
   if (!adminToken) {
     return true;
   }
@@ -35,33 +29,13 @@ function autorizado(req) {
   );
 }
 
-// =========================================================
-// FUNÇÕES AUXILIARES
-// =========================================================
-
-function normalizarTexto(
-  valor,
-  limite = 180
-) {
-  if (
-    valor === null ||
-    valor === undefined
-  ) {
-    return "";
-  }
-
-  return String(valor)
-    .trim()
-    .slice(0, limite);
+function normalizarTexto(valor, limite = 180) {
+  if (valor === null || valor === undefined) return "";
+  return String(valor).trim().slice(0, limite);
 }
 
-function numeroSeguro(
-  valor,
-  padrao = 50,
-  maximo = 200
-) {
-  const numero =
-    Number(valor);
+function numeroSeguro(valor, padrao = 50, maximo = 200) {
+  const numero = Number(valor);
 
   if (!Number.isFinite(numero)) {
     return padrao;
@@ -76,15 +50,10 @@ function numeroSeguro(
   );
 }
 
-// =========================================================
-// GARANTE QUE A TABELA EXISTE
-// =========================================================
-
 async function garantirTabela() {
   await sql`
     CREATE TABLE IF NOT EXISTS diagnostico_leads (
       id TEXT PRIMARY KEY,
-
       session_id TEXT NOT NULL UNIQUE,
 
       origem TEXT NOT NULL DEFAULT 'direto',
@@ -112,55 +81,81 @@ async function garantirTabela() {
       progresso_percentual INTEGER NOT NULL DEFAULT 0,
 
       diagnostico_id TEXT NOT NULL DEFAULT '',
-
       nota_satisfacao INTEGER,
-
       intencao TEXT NOT NULL DEFAULT '',
 
       responsavel_finder TEXT NOT NULL DEFAULT '',
 
-      primeiro_acesso TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      score_comercial INTEGER NOT NULL DEFAULT 0,
+      prioridade_comercial TEXT NOT NULL DEFAULT '',
+      temperatura_comercial TEXT NOT NULL DEFAULT '',
+      proxima_acao TEXT NOT NULL DEFAULT '',
+      prazo_atendimento TEXT NOT NULL DEFAULT '',
+      motivos_prioridade JSONB NOT NULL DEFAULT '[]'::jsonb,
 
+      primeiro_acesso TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       ultima_atividade TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_status_diag
-    ON diagnostico_leads (
-      status_diagnostico
-    )
+    ON diagnostico_leads (status_diagnostico)
   `;
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_status_comercial
-    ON diagnostico_leads (
-      status_comercial
-    )
+    ON diagnostico_leads (status_comercial)
   `;
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_origem
-    ON diagnostico_leads (
-      origem
-    )
+    ON diagnostico_leads (origem)
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS score_comercial INTEGER NOT NULL DEFAULT 0
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS prioridade_comercial TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS temperatura_comercial TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS proxima_acao TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS prazo_atendimento TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS motivos_prioridade JSONB NOT NULL DEFAULT '[]'::jsonb
   `;
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_updated_at
-    ON diagnostico_leads (
-      updated_at DESC
-    )
+    ON diagnostico_leads (updated_at DESC)
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_prioridade
+    ON diagnostico_leads (prioridade_comercial)
   `;
 }
-
-// =========================================================
-// TEMPERATURA COMERCIAL
-// =========================================================
 
 function temperaturaLead(lead) {
   const nota =
@@ -173,7 +168,6 @@ function temperaturaLead(lead) {
       lead.intencao || ""
     );
 
-  // Interesse direto em contratação
   if (
     intencao ===
     "Quero saber quanto custaria implementar as melhorias"
@@ -181,7 +175,6 @@ function temperaturaLead(lead) {
     return "MUITO_ALTA";
   }
 
-  // Interesse em solução
   if (
     intencao ===
     "Quero saber como resolver"
@@ -189,16 +182,14 @@ function temperaturaLead(lead) {
     return "ALTA";
   }
 
-  // Diagnóstico concluído + boa avaliação
   if (
     lead.status_diagnostico ===
-      "CONCLUIDO" &&
+    "CONCLUIDO" &&
     nota >= 4
   ) {
     return "ALTA";
   }
 
-  // Diagnóstico concluído
   if (
     lead.status_diagnostico ===
     "CONCLUIDO"
@@ -206,7 +197,6 @@ function temperaturaLead(lead) {
     return "MEDIA";
   }
 
-  // Pessoa ainda preenchendo
   if (
     lead.status_diagnostico ===
     "EM_PREENCHIMENTO"
@@ -216,10 +206,6 @@ function temperaturaLead(lead) {
 
   return "BAIXA";
 }
-
-// =========================================================
-// PADRONIZA RETORNO DO LEAD
-// =========================================================
 
 function mapearLead(lead) {
   return {
@@ -277,6 +263,26 @@ function mapearLead(lead) {
     responsavelFinder:
       lead.responsavel_finder,
 
+    scoreComercial:
+      Number(lead.score_comercial) || 0,
+
+    prioridadeComercial:
+      lead.prioridade_comercial || "",
+
+    temperaturaComercial:
+      lead.temperatura_comercial || "",
+
+    proximaAcao:
+      lead.proxima_acao || "",
+
+    prazoAtendimento:
+      lead.prazo_atendimento || "",
+
+    motivosPrioridade:
+      Array.isArray(lead.motivos_prioridade)
+        ? lead.motivos_prioridade
+        : [],
+
     primeiroAcesso:
       lead.primeiro_acesso,
 
@@ -290,78 +296,45 @@ function mapearLead(lead) {
       lead.updated_at,
 
     temperatura:
+      lead.temperatura_comercial ||
       temperaturaLead(
         lead
       ),
   };
 }
 
-// =========================================================
-// HANDLER
-// =========================================================
-
-export default async function handler(
-  req,
-  res
-) {
-  // =====================================================
-  // SOMENTE GET
-  // =====================================================
-
+export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader(
       "Allow",
       "GET"
     );
 
-    return res
-      .status(405)
-      .json({
-        sucesso: false,
-
-        error:
-          "Método não permitido.",
-      });
+    return res.status(405).json({
+      sucesso: false,
+      error:
+        "Método não permitido.",
+    });
   }
 
   try {
-    // =====================================================
-    // AUTORIZAÇÃO
-    // =====================================================
-
     if (!autorizado(req)) {
-      return res
-        .status(401)
-        .json({
-          sucesso: false,
-
-          error:
-            "Não autorizado.",
-        });
+      return res.status(401).json({
+        sucesso: false,
+        error:
+          "Não autorizado.",
+      });
     }
 
-    // =====================================================
-    // BANCO
-    // =====================================================
-
-    if (
-      !process.env.DATABASE_URL
-    ) {
-      return res
-        .status(500)
-        .json({
-          sucesso: false,
-
-          error:
-            "DATABASE_URL não configurada.",
-        });
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({
+        sucesso: false,
+        error:
+          "DATABASE_URL não configurada.",
+      });
     }
 
     await garantirTabela();
-
-    // =====================================================
-    // FILTROS
-    // =====================================================
 
     const busca =
       normalizarTexto(
@@ -393,6 +366,12 @@ export default async function handler(
         180
       );
 
+    const prioridadeComercial =
+      normalizarTexto(
+        req.query?.prioridadeComercial,
+        10
+      ).toUpperCase();
+
     const limite =
       numeroSeguro(
         req.query?.limite,
@@ -400,126 +379,106 @@ export default async function handler(
         300
       );
 
-    // =====================================================
-    // CONSULTA
-    // =====================================================
+    const linhas = await sql`
+      SELECT
+        id,
+        session_id,
 
-    const linhas =
-      await sql`
-        SELECT
-          id,
+        origem,
+        campanha,
+        promoter,
 
-          session_id,
+        status_diagnostico,
+        status_comercial,
 
-          origem,
-          campanha,
-          promoter,
+        nome,
+        email,
+        telefone,
+        cnpj,
+        razao_social,
 
-          status_diagnostico,
-          status_comercial,
+        etapa_atual,
+        progresso_percentual,
 
-          nome,
-          email,
-          telefone,
+        diagnostico_id,
+        nota_satisfacao,
+        intencao,
 
-          cnpj,
-          razao_social,
+        responsavel_finder,
 
-          etapa_atual,
-          progresso_percentual,
+        score_comercial,
+        prioridade_comercial,
+        temperatura_comercial,
+        proxima_acao,
+        prazo_atendimento,
+        motivos_prioridade,
 
-          diagnostico_id,
+        primeiro_acesso,
+        ultima_atividade,
 
-          nota_satisfacao,
-          intencao,
+        created_at,
+        updated_at
 
-          responsavel_finder,
+      FROM diagnostico_leads
 
-          primeiro_acesso,
-          ultima_atividade,
+      WHERE
+        (
+          ${busca} = ''
+          OR nome ILIKE ${`%${busca}%`}
+          OR email ILIKE ${`%${busca}%`}
+          OR telefone ILIKE ${`%${busca}%`}
+          OR cnpj ILIKE ${`%${busca}%`}
+          OR razao_social ILIKE ${`%${busca}%`}
+          OR campanha ILIKE ${`%${busca}%`}
+        )
 
-          created_at,
-          updated_at
+        AND (
+          ${origem} = ''
+          OR origem = ${origem}
+        )
 
-        FROM diagnostico_leads
+        AND (
+          ${statusDiagnostico} = ''
+          OR status_diagnostico =
+            ${statusDiagnostico}
+        )
 
-        WHERE
-          (
-            ${busca} = ''
+        AND (
+          ${statusComercial} = ''
+          OR status_comercial =
+            ${statusComercial}
+        )
 
-            OR nome
-              ILIKE
-              ${`%${busca}%`}
+        AND (
+          ${responsavelFinder} = ''
+          OR responsavel_finder =
+            ${responsavelFinder}
+        )
 
-            OR email
-              ILIKE
-              ${`%${busca}%`}
+        AND (
+          ${prioridadeComercial} = ''
+          OR prioridade_comercial =
+            ${prioridadeComercial}
+        )
 
-            OR telefone
-              ILIKE
-              ${`%${busca}%`}
+      ORDER BY
+        CASE prioridade_comercial
+          WHEN 'A' THEN 1
+          WHEN 'B' THEN 2
+          WHEN 'C' THEN 3
+          WHEN 'D' THEN 4
+          ELSE 5
+        END,
+        score_comercial DESC,
+        ultima_atividade DESC
 
-            OR cnpj
-              ILIKE
-              ${`%${busca}%`}
-
-            OR razao_social
-              ILIKE
-              ${`%${busca}%`}
-
-            OR campanha
-              ILIKE
-              ${`%${busca}%`}
-          )
-
-          AND (
-            ${origem} = ''
-
-            OR origem =
-              ${origem}
-          )
-
-          AND (
-            ${statusDiagnostico} = ''
-
-            OR status_diagnostico =
-              ${statusDiagnostico}
-          )
-
-          AND (
-            ${statusComercial} = ''
-
-            OR status_comercial =
-              ${statusComercial}
-          )
-
-          AND (
-            ${responsavelFinder} = ''
-
-            OR responsavel_finder =
-              ${responsavelFinder}
-          )
-
-        ORDER BY
-          ultima_atividade DESC
-
-        LIMIT ${limite}
-      `;
-
-    // =====================================================
-    // PADRONIZA LEADS
-    // =====================================================
+      LIMIT ${limite}
+    `;
 
     const leads =
       Array.isArray(linhas)
-        ? linhas.map(
-            mapearLead
-          )
+        ? linhas.map(mapearLead)
         : [];
-
-    // =====================================================
-    // INDICADORES
-    // =====================================================
 
     const total =
       leads.length;
@@ -552,10 +511,6 @@ export default async function handler(
           "CONCLUIDO"
       ).length;
 
-    // =====================================================
-    // ORIGENS
-    // =====================================================
-
     const origens =
       leads.reduce(
         (acc, lead) => {
@@ -564,19 +519,12 @@ export default async function handler(
             "direto";
 
           acc[chave] =
-            (
-              acc[chave] ||
-              0
-            ) + 1;
+            (acc[chave] || 0) + 1;
 
           return acc;
         },
         {}
       );
-
-    // =====================================================
-    // CAMPANHAS
-    // =====================================================
 
     const campanhas =
       leads.reduce(
@@ -586,56 +534,66 @@ export default async function handler(
             "sem_campanha";
 
           acc[chave] =
-            (
-              acc[chave] ||
-              0
-            ) + 1;
+            (acc[chave] || 0) + 1;
 
           return acc;
         },
         {}
       );
 
-    // =====================================================
-    // RESPOSTA
-    // =====================================================
+    return res.status(200).json({
+      sucesso: true,
 
-    return res
-      .status(200)
-      .json({
-        sucesso: true,
+      resumo: {
+        total,
+        acessaram,
+        emPreenchimento,
+        naoConcluidos,
+        concluidos,
 
-        resumo: {
-          total,
+        prioridadeA:
+          leads.filter(
+            (lead) =>
+              lead.prioridadeComercial === "A"
+          ).length,
 
-          acessaram,
+        prioridadeB:
+          leads.filter(
+            (lead) =>
+              lead.prioridadeComercial === "B"
+          ).length,
 
-          emPreenchimento,
+        prioridadeC:
+          leads.filter(
+            (lead) =>
+              lead.prioridadeComercial === "C"
+          ).length,
 
-          naoConcluidos,
+        prioridadeD:
+          leads.filter(
+            (lead) =>
+              lead.prioridadeComercial === "D"
+          ).length,
 
-          concluidos,
-
-          taxaConclusao:
-            total > 0
-              ? Number(
+        taxaConclusao:
+          total > 0
+            ? Number(
+                (
                   (
-                    (
-                      concluidos /
-                      total
-                    ) *
-                    100
-                  ).toFixed(1)
-                )
-              : 0,
-        },
+                    concluidos /
+                    total
+                  ) * 100
+                ).toFixed(1)
+              )
+            : 0,
+      },
 
-        origens,
+      origens,
 
-        campanhas,
+      campanhas,
 
-        leads,
-      });
+      leads,
+    });
 
   } catch (error) {
     console.error(
@@ -643,13 +601,10 @@ export default async function handler(
       error
     );
 
-    return res
-      .status(500)
-      .json({
-        sucesso: false,
-
-        error:
-          "Não foi possível listar os leads.",
-      });
+    return res.status(500).json({
+      sucesso: false,
+      error:
+        "Não foi possível listar os leads.",
+    });
   }
 }
