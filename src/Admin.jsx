@@ -2288,6 +2288,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [busca, setBusca] = useState("");
   const [origem, setOrigem] = useState("");
   const [statusDiagnostico, setStatusDiagnostico] = useState("");
+  const [prioridadeComercial, setPrioridadeComercial] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
 
@@ -2303,6 +2304,10 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
       if (origem) params.set("origem", origem);
       if (statusDiagnostico) {
         params.set("statusDiagnostico", statusDiagnostico);
+      }
+
+      if (prioridadeComercial) {
+        params.set("prioridadeComercial", prioridadeComercial);
       }
 
       const resposta = await fetch(
@@ -2363,7 +2368,72 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
       MEDIA: "Média",
       BAIXA: "Baixa",
     };
-    return mapa[lead.temperatura] || lead.temperatura || "-";
+
+    const valor =
+      lead.temperaturaComercial ||
+      lead.temperatura;
+
+    return mapa[valor] || valor || "-";
+  }
+
+  function prioridadeInfo(prioridade) {
+    const mapa = {
+      A: {
+        label: "Prioridade A",
+        descricao: "Atendimento imediato",
+        bg: "#FCEBEB",
+        color: "#791F1F",
+      },
+      B: {
+        label: "Prioridade B",
+        descricao: "Alta",
+        bg: "#FAEEDA",
+        color: "#854F0B",
+      },
+      C: {
+        label: "Prioridade C",
+        descricao: "Acompanhar",
+        bg: "#FFF3EF",
+        color: "#993C1D",
+      },
+      D: {
+        label: "Prioridade D",
+        descricao: "Nutrição",
+        bg: "#EEF0F5",
+        color: MUTED,
+      },
+    };
+
+    return (
+      mapa[prioridade] || {
+        label: "Não classificado",
+        descricao: "",
+        bg: "#EEF0F5",
+        color: MUTED,
+      }
+    );
+  }
+
+  function textoProximaAcao(valor) {
+    const mapa = {
+      CONTATO_COMERCIAL: "Contato comercial",
+      AGENDAR_REUNIAO: "Agendar reunião",
+      FOLLOW_UP_CONSULTIVO: "Follow-up consultivo",
+      NUTRICAO: "Nutrição",
+    };
+
+    return mapa[valor] || valor || "-";
+  }
+
+  function textoPrazo(valor) {
+    const mapa = {
+      "2_HORAS": "Até 2 horas",
+      "24_HORAS": "Até 24 horas",
+      "3_DIAS": "Até 3 dias",
+      NUTRICAO: "Sem urgência",
+    };
+
+    return mapa[valor] || valor || "-";
   }
 
   return (
@@ -2414,6 +2484,35 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
           <div style={{ color: MUTED, fontSize: 10 }}>TAXA DE CONCLUSÃO</div>
           <div style={{ fontSize: 29, fontWeight: 900 }}>
             {resumo.taxaConclusao ?? 0}%
+          </div>
+        </Card>
+
+        <Card
+          style={{
+            background: "#FCEBEB",
+            borderColor: "#F0C5C5",
+          }}
+        >
+          <Flame size={18} color="#791F1F" />
+          <div style={{ color: "#791F1F", fontSize: 10, marginTop: 8 }}>
+            PRIORIDADE A
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900, color: "#791F1F" }}>
+            {resumo.prioridadeA ?? 0}
+          </div>
+        </Card>
+
+        <Card
+          style={{
+            background: "#FAEEDA",
+            borderColor: "#E9D3A5",
+          }}
+        >
+          <div style={{ color: "#854F0B", fontSize: 10 }}>
+            PRIORIDADE B
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900, color: "#854F0B" }}>
+            {resumo.prioridadeB ?? 0}
           </div>
         </Card>
       </div>
@@ -2467,6 +2566,23 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
             <option value="CONCLUIDO">Concluído</option>
           </select>
 
+          <select
+            value={prioridadeComercial}
+            onChange={(e) => setPrioridadeComercial(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todas as prioridades</option>
+            <option value="A">Prioridade A</option>
+            <option value="B">Prioridade B</option>
+            <option value="C">Prioridade C</option>
+            <option value="D">Prioridade D</option>
+          </select>
+
           <Botao onClick={carregarLeads}>
             <Search size={14} /> Filtrar
           </Botao>
@@ -2477,6 +2593,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
               setBusca("");
               setOrigem("");
               setStatusDiagnostico("");
+              setPrioridadeComercial("");
               setTimeout(carregarLeads, 0);
             }}
           >
@@ -2503,6 +2620,38 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
         </div>
       )}
 
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          gap: 12,
+          margin: "18px 0 10px",
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              fontFamily: DISPLAY_FONT,
+              fontSize: 20,
+              margin: 0,
+            }}
+          >
+            Fila de atendimento
+          </h2>
+
+          <p
+            style={{
+              margin: "4px 0 0",
+              color: MUTED,
+              fontSize: 10.5,
+            }}
+          >
+            Ordenada automaticamente por prioridade comercial e score.
+          </p>
+        </div>
+      </div>
+
       {carregando ? (
         <Card>Carregando leads...</Card>
       ) : leads.length === 0 ? (
@@ -2522,7 +2671,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "minmax(230px,1.7fr) minmax(130px,.8fr) minmax(170px,1fr) minmax(150px,.8fr)",
+                      "minmax(220px,1.5fr) minmax(130px,.75fr) minmax(170px,1fr) minmax(190px,1.1fr) minmax(150px,.8fr)",
                     gap: 14,
                     alignItems: "center",
                   }}
@@ -2584,6 +2733,70 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                     <div style={{ fontSize: 10, color: MUTED, marginTop: 5 }}>
                       {progresso}% · última atividade {formatarData(lead.ultimaAtividade)}
                     </div>
+                  </div>
+
+                  <div>
+                    {(() => {
+                      const info =
+                        prioridadeInfo(
+                          lead.prioridadeComercial
+                        );
+
+                      return (
+                        <>
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              flexDirection: "column",
+                              background: info.bg,
+                              color: info.color,
+                              borderRadius: 9,
+                              padding: "6px 8px",
+                              minWidth: 95,
+                            }}
+                          >
+                            <strong style={{ fontSize: 10.5 }}>
+                              {info.label}
+                            </strong>
+
+                            <span style={{ fontSize: 9, marginTop: 2 }}>
+                              {info.descricao}
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: MUTED,
+                              marginTop: 7,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            Score comercial:{" "}
+                            <strong style={{ color: NAVY }}>
+                              {lead.scoreComercial ?? 0}/100
+                            </strong>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: MUTED,
+                              marginTop: 4,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {textoProximaAcao(
+                              lead.proximaAcao
+                            )}
+                            {" · "}
+                            {textoPrazo(
+                              lead.prazoAtendimento
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <div>
