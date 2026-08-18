@@ -17,6 +17,9 @@ import {
   CheckCircle2,
   Clock3,
   Flame,
+  UserPlus,
+  Gauge,
+  Save,
 } from "lucide-react";
 
 const NAVY = "#17233D";
@@ -2289,6 +2292,9 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [origem, setOrigem] = useState("");
   const [statusDiagnostico, setStatusDiagnostico] = useState("");
   const [prioridadeComercial, setPrioridadeComercial] = useState("");
+  const [responsaveis, setResponsaveis] = useState([]);
+  const [atribuindoLeadId, setAtribuindoLeadId] = useState("");
+  const [selecoesResponsavel, setSelecoesResponsavel] = useState({});
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
 
@@ -2336,8 +2342,120 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
     }
   }
 
+  async function carregarResponsaveis() {
+    try {
+      const resposta = await fetch(
+        "/api/listar-responsaveis",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar os responsáveis."
+        );
+      }
+
+      setResponsaveis(
+        Array.isArray(
+          data.responsaveis
+        )
+          ? data.responsaveis
+          : []
+      );
+    } catch (error) {
+      console.warn(
+        "[CRM] Erro ao carregar responsáveis:",
+        error
+      );
+    }
+  }
+
+  async function atribuirLead(
+    leadId,
+    responsavelId
+  ) {
+    if (
+      !leadId ||
+      !responsavelId
+    ) {
+      return;
+    }
+
+    setAtribuindoLeadId(
+      leadId
+    );
+
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/atribuir-lead",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              leadId,
+              responsavelId,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível atribuir o lead."
+        );
+      }
+
+      await Promise.all([
+        carregarLeads(),
+        carregarResponsaveis(),
+      ]);
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao atribuir lead."
+      );
+    } finally {
+      setAtribuindoLeadId(
+        ""
+      );
+    }
+  }
+
   useEffect(() => {
     carregarLeads();
+    carregarResponsaveis();
   }, []);
 
   const origensDisponiveis = useMemo(() => {
@@ -2434,6 +2552,23 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
     };
 
     return mapa[valor] || valor || "-";
+  }
+
+  function nomeResponsavel(id) {
+    if (!id) {
+      return "Não atribuído";
+    }
+
+    const encontrado =
+      responsaveis.find(
+        (item) =>
+          item.id === id
+      );
+
+    return (
+      encontrado?.nome ||
+      "Responsável não encontrado"
+    );
   }
 
   return (
@@ -2671,7 +2806,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "minmax(220px,1.5fr) minmax(130px,.75fr) minmax(170px,1fr) minmax(190px,1.1fr) minmax(150px,.8fr)",
+                      "minmax(220px,1.5fr) minmax(130px,.75fr) minmax(170px,1fr) minmax(190px,1.1fr) minmax(190px,1.05fr) minmax(150px,.8fr)",
                     gap: 14,
                     alignItems: "center",
                   }}
@@ -2802,6 +2937,130 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                   <div>
                     <div
                       style={{
+                        fontSize: 9.5,
+                        color: MUTED,
+                        fontWeight: 800,
+                        marginBottom: 5,
+                      }}
+                    >
+                      RESPONSÁVEL FINDER
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                        color: NAVY,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {nomeResponsavel(
+                        lead.responsavelFinder
+                      )}
+                    </div>
+
+                    <select
+                      value={
+                        selecoesResponsavel[
+                          lead.leadId
+                        ] ||
+                        lead.responsavelFinder ||
+                        ""
+                      }
+                      onChange={(e) =>
+                        setSelecoesResponsavel(
+                          (atual) => ({
+                            ...atual,
+
+                            [lead.leadId]:
+                              e.target.value,
+                          })
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "7px 8px",
+                        background: WHITE,
+                        fontSize: 10,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <option value="">
+                        Não atribuído
+                      </option>
+
+                      {responsaveis.map(
+                        (responsavel) => (
+                          <option
+                            key={
+                              responsavel.id
+                            }
+                            value={
+                              responsavel.id
+                            }
+                          >
+                            {responsavel.nome}
+                            {" · "}
+                            {
+                              responsavel.leadsAbertos
+                            }
+                            {" abertos"}
+                          </option>
+                        )
+                      )}
+                    </select>
+
+                    <button
+                      type="button"
+                      disabled={
+                        atribuindoLeadId ===
+                        lead.leadId
+                      }
+                      onClick={() =>
+                        atribuirLead(
+                          lead.leadId,
+                          selecoesResponsavel[
+                            lead.leadId
+                          ] ||
+                            lead.responsavelFinder
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        border: 0,
+                        borderRadius: 8,
+                        padding: "7px 8px",
+                        background: NAVY,
+                        color: WHITE,
+                        fontSize: 9.8,
+                        fontWeight: 800,
+                        cursor:
+                          atribuindoLeadId ===
+                          lead.leadId
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          atribuindoLeadId ===
+                          lead.leadId
+                            ? 0.6
+                            : 1,
+                      }}
+                    >
+                      {atribuindoLeadId ===
+                      lead.leadId
+                        ? "Atribuindo..."
+                        : lead.responsavelFinder
+                        ? "Reatribuir"
+                        : "Atribuir"}
+                    </button>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
                         display: "flex",
                         alignItems: "center",
                         gap: 5,
@@ -2842,6 +3101,727 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// =========================================================
+// EQUIPE / CAPACIDADE
+// =========================================================
+
+function EquipeCapacidade({
+  token,
+}) {
+  const [
+    responsaveis,
+    setResponsaveis,
+  ] = useState([]);
+
+  const [
+    nome,
+    setNome,
+  ] = useState("");
+
+  const [
+    email,
+    setEmail,
+  ] = useState("");
+
+  const [
+    telefone,
+    setTelefone,
+  ] = useState("");
+
+  const [
+    capacidadeDiaria,
+    setCapacidadeDiaria,
+  ] = useState("3");
+
+  const [
+    areas,
+    setAreas,
+  ] = useState([]);
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    salvando,
+    setSalvando,
+  ] = useState(false);
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  const [
+    sucesso,
+    setSucesso,
+  ] = useState("");
+
+  const areasDisponiveis = [
+    "Tributário",
+    "Financeiro",
+    "Contábil/Fiscal",
+    "Operacional",
+    "Gestão",
+    "Comercial",
+    "RH",
+    "Tecnologia",
+  ];
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/listar-responsaveis",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar a equipe."
+        );
+      }
+
+      setResponsaveis(
+        Array.isArray(
+          data.responsaveis
+        )
+          ? data.responsaveis
+          : []
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar equipe."
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregar();
+  }, []);
+
+  function alternarArea(
+    area
+  ) {
+    setAreas(
+      (atuais) =>
+        atuais.includes(area)
+          ? atuais.filter(
+              (item) =>
+                item !== area
+            )
+          : [
+              ...atuais,
+              area,
+            ]
+    );
+  }
+
+  async function salvar() {
+    if (!nome.trim()) {
+      setErro(
+        "Informe o nome do responsável."
+      );
+
+      return;
+    }
+
+    setSalvando(true);
+    setErro("");
+    setSucesso("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/salvar-responsavel",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              nome:
+                nome.trim(),
+
+              email:
+                email.trim(),
+
+              telefone:
+                telefone.trim(),
+
+              areas,
+
+              capacidadeDiaria:
+                Number(
+                  capacidadeDiaria
+                ) || 0,
+
+              ativo:
+                true,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível salvar o responsável."
+        );
+      }
+
+      setNome("");
+      setEmail("");
+      setTelefone("");
+      setCapacidadeDiaria("3");
+      setAreas([]);
+
+      setSucesso(
+        "Responsável salvo com sucesso."
+      );
+
+      await carregar();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao salvar responsável."
+      );
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(320px,.9fr) minmax(0,1.5fr)",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        <Card>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 14,
+            }}
+          >
+            <UserPlus
+              size={18}
+              color={CORAL}
+            />
+
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize: 19,
+                }}
+              >
+                Novo responsável
+              </h2>
+
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: MUTED,
+                  marginTop: 2,
+                }}
+              >
+                Cadastre quem poderá receber leads.
+              </div>
+            </div>
+          </div>
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Nome
+          </label>
+
+          <input
+            value={nome}
+            onChange={(e) =>
+              setNome(
+                e.target.value
+              )
+            }
+            placeholder="Ex.: Diones"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 10,
+            }}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            E-mail
+          </label>
+
+          <input
+            value={email}
+            onChange={(e) =>
+              setEmail(
+                e.target.value
+              )
+            }
+            placeholder="email@finder.com.br"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 10,
+            }}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Telefone
+          </label>
+
+          <input
+            value={telefone}
+            onChange={(e) =>
+              setTelefone(
+                e.target.value
+              )
+            }
+            placeholder="41999999999"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 10,
+            }}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Capacidade diária
+          </label>
+
+          <input
+            type="number"
+            min="0"
+            max="50"
+            value={capacidadeDiaria}
+            onChange={(e) =>
+              setCapacidadeDiaria(
+                e.target.value
+              )
+            }
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 12,
+            }}
+          />
+
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 7,
+            }}
+          >
+            Áreas de atuação
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              marginBottom: 14,
+            }}
+          >
+            {areasDisponiveis.map(
+              (area) => {
+                const ativa =
+                  areas.includes(
+                    area
+                  );
+
+                return (
+                  <button
+                    key={area}
+                    type="button"
+                    onClick={() =>
+                      alternarArea(
+                        area
+                      )
+                    }
+                    style={{
+                      border:
+                        ativa
+                          ? `1px solid ${CORAL}`
+                          : "1px solid #D8DEEA",
+                      background:
+                        ativa
+                          ? "#FFF3EF"
+                          : WHITE,
+                      color:
+                        ativa
+                          ? "#993C1D"
+                          : NAVY,
+                      borderRadius: 20,
+                      padding: "6px 9px",
+                      fontSize: 9.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {area}
+                  </button>
+                );
+              }
+            )}
+          </div>
+
+          {erro && (
+            <div
+              style={{
+                background: "#FAECE7",
+                color: "#993C1D",
+                borderRadius: 9,
+                padding: 9,
+                fontSize: 10.5,
+                marginBottom: 10,
+              }}
+            >
+              {erro}
+            </div>
+          )}
+
+          {sucesso && (
+            <div
+              style={{
+                background: "#E1F5EE",
+                color: "#0F6E56",
+                borderRadius: 9,
+                padding: 9,
+                fontSize: 10.5,
+                marginBottom: 10,
+              }}
+            >
+              {sucesso}
+            </div>
+          )}
+
+          <Botao
+            onClick={salvar}
+            disabled={salvando}
+            style={{
+              width: "100%",
+            }}
+          >
+            <Save size={14} />
+
+            {salvando
+              ? "Salvando..."
+              : "Salvar responsável"}
+          </Botao>
+        </Card>
+
+        <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent:
+                "space-between",
+              alignItems:
+                "center",
+              marginBottom: 10,
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize: 20,
+                }}
+              >
+                Equipe disponível
+              </h2>
+
+              <p
+                style={{
+                  margin:
+                    "3px 0 0",
+                  fontSize: 10.5,
+                  color: MUTED,
+                }}
+              >
+                Capacidade configurada e carga atual por responsável.
+              </p>
+            </div>
+
+            <Botao
+              secundario
+              onClick={carregar}
+            >
+              <RefreshCcw
+                size={14}
+              />
+
+              Atualizar
+            </Botao>
+          </div>
+
+          {carregando ? (
+            <Card>
+              Carregando equipe...
+            </Card>
+          ) : responsaveis.length ===
+            0 ? (
+            <Card>
+              Nenhum responsável cadastrado.
+            </Card>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(230px,1fr))",
+                gap: 10,
+              }}
+            >
+              {responsaveis.map(
+                (
+                  responsavel
+                ) => (
+                  <Card
+                    key={
+                      responsavel.id
+                    }
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        gap: 10,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div>
+                        <strong
+                          style={{
+                            fontSize: 13.5,
+                          }}
+                        >
+                          {responsavel.nome}
+                        </strong>
+
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 10,
+                            marginTop: 3,
+                          }}
+                        >
+                          {responsavel.email ||
+                            "-"}
+                        </div>
+                      </div>
+
+                      <Gauge
+                        size={19}
+                        color={CORAL}
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "1fr 1fr",
+                        gap: 8,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          background:
+                            "#F7F8FB",
+                          borderRadius: 9,
+                          padding: 9,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color: MUTED,
+                          }}
+                        >
+                          CAPACIDADE/DIA
+                        </div>
+
+                        <strong
+                          style={{
+                            fontSize: 17,
+                          }}
+                        >
+                          {
+                            responsavel.capacidadeDiaria
+                          }
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          background:
+                            "#F7F8FB",
+                          borderRadius: 9,
+                          padding: 9,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color: MUTED,
+                          }}
+                        >
+                          LEADS ABERTOS
+                        </div>
+
+                        <strong
+                          style={{
+                            fontSize: 17,
+                          }}
+                        >
+                          {
+                            responsavel.leadsAbertos
+                          }
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 5,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {normalizarLista(
+                        responsavel.areas
+                      ).map(
+                        (
+                          area
+                        ) => (
+                          <span
+                            key={area}
+                            style={{
+                              background:
+                                "#FFF3EF",
+                              color:
+                                "#993C1D",
+                              borderRadius:
+                                20,
+                              padding:
+                                "3px 7px",
+                              fontSize:
+                                9,
+                            }}
+                          >
+                            {area}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </Card>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -4329,21 +5309,38 @@ function ListaInterna({
 
 export default function Admin() {
   const [token, setToken] = useState(
-    () => sessionStorage.getItem("finder_admin_token") || ""
+    () =>
+      sessionStorage.getItem(
+        "finder_admin_token"
+      ) || ""
   );
 
-  const [diagnosticoId, setDiagnosticoId] = useState(null);
-  const [aba, setAba] = useState("leads");
+  const [
+    diagnosticoId,
+    setDiagnosticoId,
+  ] = useState(null);
+
+  const [
+    aba,
+    setAba,
+  ] = useState("leads");
 
   function sair() {
-    sessionStorage.removeItem("finder_admin_token");
+    sessionStorage.removeItem(
+      "finder_admin_token"
+    );
+
     setToken("");
     setDiagnosticoId(null);
     setAba("leads");
   }
 
   if (!token) {
-    return <LoginAdmin onLogin={setToken} />;
+    return (
+      <LoginAdmin
+        onLogin={setToken}
+      />
+    );
   }
 
   if (diagnosticoId) {
@@ -4351,38 +5348,271 @@ export default function Admin() {
       <DetalheDiagnostico
         token={token}
         id={diagnosticoId}
-        onVoltar={() => setDiagnosticoId(null)}
+        onVoltar={() =>
+          setDiagnosticoId(
+            null
+          )
+        }
       />
     );
   }
 
-  if (aba === "diagnosticos") {
+  if (
+    aba ===
+    "diagnosticos"
+  ) {
     return (
       <div>
         <div
           style={{
-            background: "#101A2F",
-            padding: "9px 22px",
+            background:
+              "#101A2F",
+            padding:
+              "9px 22px",
             display: "flex",
-            justifyContent: "center",
+            justifyContent:
+              "center",
             gap: 8,
-            fontFamily: BODY_FONT,
+            fontFamily:
+              BODY_FONT,
+            flexWrap: "wrap",
           }}
         >
-          <Botao secundario onClick={() => setAba("leads")}>
-            <Users size={14} /> Leads / CRM
+          <Botao
+            secundario
+            onClick={() =>
+              setAba("leads")
+            }
+          >
+            <Users size={14} />
+            Leads / CRM
           </Botao>
 
-          <Botao onClick={() => setAba("diagnosticos")}>
-            <Building2 size={14} /> Diagnósticos
+          <Botao
+            onClick={() =>
+              setAba(
+                "diagnosticos"
+              )
+            }
+          >
+            <Building2 size={14} />
+            Diagnósticos
+          </Botao>
+
+          <Botao
+            secundario
+            onClick={() =>
+              setAba("equipe")
+            }
+          >
+            <UserPlus size={14} />
+            Equipe / Capacidade
           </Botao>
         </div>
 
         <ListaDiagnosticos
           token={token}
-          onAbrir={setDiagnosticoId}
+          onAbrir={
+            setDiagnosticoId
+          }
           onLogout={sair}
         />
+      </div>
+    );
+  }
+
+  if (
+    aba ===
+    "equipe"
+  ) {
+    return (
+      <div
+        style={{
+          minHeight:
+            "100vh",
+          background:
+            BG,
+          fontFamily:
+            BODY_FONT,
+          color:
+            NAVY,
+        }}
+      >
+        <header
+          style={{
+            background:
+              NAVY,
+            color:
+              WHITE,
+            padding:
+              "18px 28px",
+          }}
+        >
+          <div
+            style={{
+              maxWidth:
+                1320,
+              margin:
+                "0 auto",
+              display:
+                "flex",
+              justifyContent:
+                "space-between",
+              alignItems:
+                "center",
+              gap:
+                18,
+            }}
+          >
+            <div
+              style={{
+                display:
+                  "flex",
+                alignItems:
+                  "center",
+                gap:
+                  18,
+              }}
+            >
+              <img
+                src="/finder-logo.png"
+                alt="Finder of Solutions"
+                style={{
+                  maxWidth:
+                    150,
+                  maxHeight:
+                    45,
+                  objectFit:
+                    "contain",
+                  background:
+                    WHITE,
+                  padding:
+                    5,
+                  borderRadius:
+                    7,
+                }}
+              />
+
+              <div>
+                <h1
+                  style={{
+                    margin:
+                      0,
+                    fontFamily:
+                      DISPLAY_FONT,
+                    fontSize:
+                      24,
+                  }}
+                >
+                  Equipe / Capacidade
+                </h1>
+
+                <p
+                  style={{
+                    margin:
+                      "3px 0 0",
+                    fontSize:
+                      11,
+                    opacity:
+                      0.7,
+                  }}
+                >
+                  Gestão de responsáveis e capacidade de atendimento
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={sair}
+              style={{
+                background:
+                  "transparent",
+                border:
+                  "1px solid rgba(255,255,255,.30)",
+                color:
+                  WHITE,
+                borderRadius:
+                  9,
+                padding:
+                  "8px 11px",
+                cursor:
+                  "pointer",
+                display:
+                  "flex",
+                alignItems:
+                  "center",
+                gap:
+                  6,
+              }}
+            >
+              <LogOut size={15} />
+              Sair
+            </button>
+          </div>
+        </header>
+
+        <div
+          style={{
+            background:
+              "#101A2F",
+            padding:
+              "9px 22px",
+            display:
+              "flex",
+            justifyContent:
+              "center",
+            gap:
+              8,
+            flexWrap:
+              "wrap",
+          }}
+        >
+          <Botao
+            secundario
+            onClick={() =>
+              setAba("leads")
+            }
+          >
+            <Users size={14} />
+            Leads / CRM
+          </Botao>
+
+          <Botao
+            secundario
+            onClick={() =>
+              setAba(
+                "diagnosticos"
+              )
+            }
+          >
+            <Building2 size={14} />
+            Diagnósticos
+          </Botao>
+
+          <Botao
+            onClick={() =>
+              setAba("equipe")
+            }
+          >
+            <UserPlus size={14} />
+            Equipe / Capacidade
+          </Botao>
+        </div>
+
+        <main
+          style={{
+            maxWidth:
+              1320,
+            margin:
+              "0 auto",
+            padding:
+              "26px 22px 50px",
+          }}
+        >
+          <EquipeCapacidade
+            token={token}
+          />
+        </main>
       </div>
     );
   }
@@ -4390,55 +5620,95 @@ export default function Admin() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: BG,
-        fontFamily: BODY_FONT,
-        color: NAVY,
+        minHeight:
+          "100vh",
+        background:
+          BG,
+        fontFamily:
+          BODY_FONT,
+        color:
+          NAVY,
       }}
     >
       <header
         style={{
-          background: NAVY,
-          color: WHITE,
-          padding: "18px 28px",
+          background:
+            NAVY,
+          color:
+            WHITE,
+          padding:
+            "18px 28px",
         }}
       >
         <div
           style={{
-            maxWidth: 1320,
-            margin: "0 auto",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 18,
+            maxWidth:
+              1320,
+            margin:
+              "0 auto",
+            display:
+              "flex",
+            justifyContent:
+              "space-between",
+            alignItems:
+              "center",
+            gap:
+              18,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <div
+            style={{
+              display:
+                "flex",
+              alignItems:
+                "center",
+              gap:
+                18,
+            }}
+          >
             <img
               src="/finder-logo.png"
               alt="Finder of Solutions"
               style={{
-                maxWidth: 150,
-                maxHeight: 45,
-                objectFit: "contain",
-                background: WHITE,
-                padding: 5,
-                borderRadius: 7,
+                maxWidth:
+                  150,
+                maxHeight:
+                  45,
+                objectFit:
+                  "contain",
+                background:
+                  WHITE,
+                padding:
+                  5,
+                borderRadius:
+                  7,
               }}
             />
 
             <div>
               <h1
                 style={{
-                  margin: 0,
-                  fontFamily: DISPLAY_FONT,
-                  fontSize: 24,
+                  margin:
+                    0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize:
+                    24,
                 }}
               >
                 Leads / CRM
               </h1>
 
-              <p style={{ margin: "3px 0 0", fontSize: 11, opacity: 0.7 }}>
+              <p
+                style={{
+                  margin:
+                    "3px 0 0",
+                  fontSize:
+                    11,
+                  opacity:
+                    0.7,
+                }}
+              >
                 Funil do diagnóstico empresarial
               </p>
             </div>
@@ -4447,50 +5717,95 @@ export default function Admin() {
           <button
             onClick={sair}
             style={{
-              background: "transparent",
-              border: "1px solid rgba(255,255,255,.30)",
-              color: WHITE,
-              borderRadius: 9,
-              padding: "8px 11px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
+              background:
+                "transparent",
+              border:
+                "1px solid rgba(255,255,255,.30)",
+              color:
+                WHITE,
+              borderRadius:
+                9,
+              padding:
+                "8px 11px",
+              cursor:
+                "pointer",
+              display:
+                "flex",
+              alignItems:
+                "center",
+              gap:
+                6,
             }}
           >
-            <LogOut size={15} /> Sair
+            <LogOut size={15} />
+            Sair
           </button>
         </div>
       </header>
 
       <div
         style={{
-          background: "#101A2F",
-          padding: "9px 22px",
-          display: "flex",
-          justifyContent: "center",
-          gap: 8,
+          background:
+            "#101A2F",
+          padding:
+            "9px 22px",
+          display:
+            "flex",
+          justifyContent:
+            "center",
+          gap:
+            8,
+          flexWrap:
+            "wrap",
         }}
       >
-        <Botao onClick={() => setAba("leads")}>
-          <Users size={14} /> Leads / CRM
+        <Botao
+          onClick={() =>
+            setAba("leads")
+          }
+        >
+          <Users size={14} />
+          Leads / CRM
         </Botao>
 
-        <Botao secundario onClick={() => setAba("diagnosticos")}>
-          <Building2 size={14} /> Diagnósticos
+        <Botao
+          secundario
+          onClick={() =>
+            setAba(
+              "diagnosticos"
+            )
+          }
+        >
+          <Building2 size={14} />
+          Diagnósticos
+        </Botao>
+
+        <Botao
+          secundario
+          onClick={() =>
+            setAba("equipe")
+          }
+        >
+          <UserPlus size={14} />
+          Equipe / Capacidade
         </Botao>
       </div>
 
       <main
         style={{
-          maxWidth: 1320,
-          margin: "0 auto",
-          padding: "26px 22px 50px",
+          maxWidth:
+            1320,
+          margin:
+            "0 auto",
+          padding:
+            "26px 22px 50px",
         }}
       >
         <LeadsCRM
           token={token}
-          onAbrirDiagnostico={setDiagnosticoId}
+          onAbrirDiagnostico={
+            setDiagnosticoId
+          }
         />
       </main>
     </div>
