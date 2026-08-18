@@ -2317,7 +2317,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
       }
 
       const resposta = await fetch(
-        `/api/listar-leads?${params.toString()}`,
+        `/api/crm?action=listar-leads&${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -2345,7 +2345,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   async function carregarResponsaveis() {
     try {
       const resposta = await fetch(
-        "/api/listar-responsaveis",
+        "/api/crm?action=listar-responsaveis",
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -2403,7 +2403,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
     try {
       const resposta =
         await fetch(
-          "/api/atribuir-lead",
+          "/api/crm?action=atribuir-lead",
           {
             method: "POST",
 
@@ -3180,7 +3180,7 @@ function EquipeCapacidade({
     try {
       const resposta =
         await fetch(
-          "/api/listar-responsaveis",
+          "/api/crm?action=listar-responsaveis",
           {
             headers: {
               Authorization:
@@ -3258,7 +3258,7 @@ function EquipeCapacidade({
     try {
       const resposta =
         await fetch(
-          "/api/salvar-responsavel",
+          "/api/crm?action=salvar-responsavel",
           {
             method: "POST",
 
