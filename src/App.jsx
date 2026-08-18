@@ -1423,6 +1423,117 @@ export default function DiagnosticoPrototipo() {
     }
   }
 
+  async function criarAtendimentosDepartamentoCRM({
+    diagnosticoId,
+    areas,
+  } = {}) {
+    const idDiagnostico =
+      String(
+        diagnosticoId ||
+        ""
+      ).trim();
+
+    const identificadorLead =
+      leadId ||
+      "";
+
+    if (!idDiagnostico) {
+      console.warn(
+        "[CRM] Atendimentos por departamento não criados: diagnóstico sem ID."
+      );
+
+      return null;
+    }
+
+    const areasValidas =
+      Array.isArray(areas)
+        ? areas.filter(
+            (item) =>
+              item &&
+              item.area
+          )
+        : [];
+
+    if (
+      areasValidas.length === 0
+    ) {
+      console.warn(
+        "[CRM] Atendimentos por departamento não criados: nenhuma área elegível."
+      );
+
+      return null;
+    }
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=criar-atendimentos",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              diagnosticoId:
+                idDiagnostico,
+
+              leadId:
+                identificadorLead,
+
+              areas:
+                areasValidas,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        console.warn(
+          "[CRM] Não foi possível criar atendimentos por departamento:",
+          data
+        );
+
+        return null;
+      }
+
+      console.info(
+        "[CRM] Atendimentos por departamento criados:",
+        {
+          diagnosticoId:
+            idDiagnostico,
+
+          total:
+            data.total || 0,
+
+          areas:
+            areasValidas.map(
+              (item) =>
+                item.area
+            ),
+        }
+      );
+
+      return data;
+    } catch (erro) {
+      console.warn(
+        "[CRM] Erro ao criar atendimentos por departamento:",
+        erro
+      );
+
+      return null;
+    }
+  }
+
   function progressoDoDiagnostico() {
     const progressoBase = {
       intro: 0,
@@ -2445,37 +2556,160 @@ export default function DiagnosticoPrototipo() {
       // sem alterar o relatório já existente.
       // ===================================================
 
-      await classificarLeadCRM({
-        scoreDiagnostico:
-          score,
+      const areasParaAtendimento =
+        areasComScore
+          .map((area) => {
+            const diagnosticoArea =
+              iaResultado?.areas?.[
+                area.label
+              ] ||
+              {};
 
-        nivelDiagnostico:
-          tierGeral?.label ||
-          "",
-
-        faturamentoAnual:
-          faturamento?.anual ||
-          0,
-
-        dores:
-          [
-            ...(
+            const oportunidades =
               Array.isArray(
-                doresSelecionadas
+                diagnosticoArea
+                  ?.oportunidades
               )
-                ? doresSelecionadas
-                : []
-            ),
+                ? diagnosticoArea
+                    .oportunidades
+                : Array.isArray(
+                    diagnosticoArea
+                      ?.oportunidadesConsultoria
+                  )
+                ? diagnosticoArea
+                    .oportunidadesConsultoria
+                : [];
 
-            ...(
+            const riscos =
               Array.isArray(
-                impactosDor
+                diagnosticoArea
+                  ?.riscos
               )
-                ? impactosDor
-                : []
-            ),
-          ],
-      });
+                ? diagnosticoArea
+                    .riscos
+                : [];
+
+            const recomendacoes =
+              Array.isArray(
+                diagnosticoArea
+                  ?.recomendacoes
+              )
+                ? diagnosticoArea
+                    .recomendacoes
+                : [];
+
+            const planoAcao =
+              Array.isArray(
+                diagnosticoArea
+                  ?.planoAcao
+              )
+                ? diagnosticoArea
+                    .planoAcao
+                : [];
+
+            const orientacaoTecnica =
+              diagnosticoArea
+                ?.orientacaoTecnica ||
+              diagnosticoArea
+                ?.resumo ||
+              "";
+
+            const possuiSinalDeAtuacao =
+              area.score < 80 ||
+              oportunidades.length > 0 ||
+              riscos.length > 0 ||
+              recomendacoes.length > 0 ||
+              planoAcao.length > 0;
+
+            if (
+              !possuiSinalDeAtuacao
+            ) {
+              return null;
+            }
+
+            return {
+              area:
+                area.label,
+
+              score:
+                area.score,
+
+              nivel:
+                tierDe(
+                  area.score
+                ).label,
+
+              oportunidades,
+
+              riscos,
+
+              recomendacoes,
+
+              planoAcao,
+
+              orientacaoTecnica,
+            };
+          })
+          .filter(Boolean);
+
+      // ===================================================
+      // CRM — PROCESSOS PÓS-DIAGNÓSTICO
+      // ===================================================
+      //
+      // Rodam em paralelo para não aumentar desnecessariamente
+      // o tempo de conclusão do cliente:
+      //
+      // 1. classificação comercial do lead;
+      // 2. criação dos atendimentos por departamento.
+      //
+      // O relatório atual do cliente permanece inalterado.
+      // ===================================================
+
+      await Promise.allSettled([
+        classificarLeadCRM({
+          scoreDiagnostico:
+            score,
+
+          nivelDiagnostico:
+            tierGeral?.label ||
+            "",
+
+          faturamentoAnual:
+            faturamento?.anual ||
+            0,
+
+          dores:
+            [
+              ...(
+                Array.isArray(
+                  doresSelecionadas
+                )
+                  ? doresSelecionadas
+                  : []
+              ),
+
+              ...(
+                Array.isArray(
+                  impactosDor
+                )
+                  ? impactosDor
+                  : []
+              ),
+            ],
+        }),
+
+        criarAtendimentosDepartamentoCRM({
+          diagnosticoId:
+            idSalvo
+              ? String(
+                  idSalvo
+                )
+              : "",
+
+          areas:
+            areasParaAtendimento,
+        }),
+      ]);
 
       setEnvioRelatorio("sent");
     } catch (error) {
