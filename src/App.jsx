@@ -1291,6 +1291,138 @@ export default function DiagnosticoPrototipo() {
     }
   }
 
+  async function classificarLeadCRM({
+    scoreDiagnostico,
+    nivelDiagnostico,
+    faturamentoAnual,
+    dores,
+    notaSatisfacao,
+    intencao,
+  } = {}) {
+    const identificadorLead =
+      leadId ||
+      "";
+
+    const identificadorSessao =
+      sessionIdLead ||
+      sessionStorage.getItem(
+        "finder_diagnostico_session_id"
+      ) ||
+      "";
+
+    if (
+      !identificadorLead &&
+      !identificadorSessao
+    ) {
+      console.warn(
+        "[CRM] Classificação comercial ignorada: lead não identificado."
+      );
+
+      return null;
+    }
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/classificar-lead",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              leadId:
+                identificadorLead,
+
+              sessionId:
+                identificadorSessao,
+
+              scoreDiagnostico:
+                Number(
+                  scoreDiagnostico
+                ) || 0,
+
+              nivelDiagnostico:
+                nivelDiagnostico ||
+                "",
+
+              faturamentoAnual:
+                Number(
+                  faturamentoAnual
+                ) || 0,
+
+              dores:
+                Array.isArray(
+                  dores
+                )
+                  ? dores
+                  : [],
+
+              notaSatisfacao:
+                notaSatisfacao ??
+                undefined,
+
+              intencao:
+                intencao ??
+                undefined,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        console.warn(
+          "[CRM] Não foi possível classificar o lead:",
+          data
+        );
+
+        return null;
+      }
+
+      console.info(
+        "[CRM] Lead classificado:",
+        {
+          scoreComercial:
+            data.scoreComercial,
+
+          prioridade:
+            data.prioridade,
+
+          temperatura:
+            data.temperatura,
+
+          prazoAtendimento:
+            data.prazoAtendimento,
+
+          proximaAcao:
+            data.proximaAcao,
+
+          motivos:
+            data.motivos,
+        }
+      );
+
+      return data;
+    } catch (erro) {
+      console.warn(
+        "[CRM] Erro na classificação comercial:",
+        erro
+      );
+
+      return null;
+    }
+  }
+
   function progressoDoDiagnostico() {
     const progressoBase = {
       intro: 0,
@@ -2298,6 +2430,51 @@ export default function DiagnosticoPrototipo() {
           idSalvo
             ? String(idSalvo)
             : "",
+      });
+
+      // ===================================================
+      // CRM — CLASSIFICAÇÃO COMERCIAL AUTOMÁTICA
+      // ===================================================
+      //
+      // A classificação acontece somente depois que:
+      // 1. o diagnóstico foi gerado;
+      // 2. o relatório foi salvo;
+      // 3. o lead foi marcado como CONCLUÍDO.
+      //
+      // Assim o atendimento pode ser ordenado por prioridade
+      // sem alterar o relatório já existente.
+      // ===================================================
+
+      await classificarLeadCRM({
+        scoreDiagnostico:
+          score,
+
+        nivelDiagnostico:
+          tierGeral?.label ||
+          "",
+
+        faturamentoAnual:
+          faturamento?.anual ||
+          0,
+
+        dores:
+          [
+            ...(
+              Array.isArray(
+                doresSelecionadas
+              )
+                ? doresSelecionadas
+                : []
+            ),
+
+            ...(
+              Array.isArray(
+                impactosDor
+              )
+                ? impactosDor
+                : []
+            ),
+          ],
       });
 
       setEnvioRelatorio("sent");
