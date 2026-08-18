@@ -111,6 +111,64 @@ function normalizarLista(valor) {
   return Array.isArray(valor) ? valor : [];
 }
 
+function areaCanonica(valor = "") {
+  const texto = String(valor || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+  const mapa = {
+    financeiro: "financeiro",
+    financeiropfpj: "financeiro",
+
+    contabilfiscal: "contabilidade",
+    contabilidade: "contabilidade",
+
+    tributario: "tributario",
+
+    operacional: "operacional",
+
+    gestao: "gestao",
+
+    comercial: "comercial",
+    comercialvendas: "comercial",
+
+    rh: "rh",
+    recursoshumanos: "rh",
+    pessoas: "rh",
+
+    tecnologia: "tecnologia",
+
+    administrativo: "administrativo",
+
+    marketing: "marketing",
+
+    juridico: "juridico",
+  };
+
+  return mapa[texto] || texto;
+}
+
+function responsavelCompativelComArea(responsavel, area) {
+  const areaAlvo = areaCanonica(area);
+
+  const areasResponsavel =
+    normalizarLista(
+      responsavel?.areas
+    );
+
+  if (!areasResponsavel.length) {
+    return false;
+  }
+
+  return areasResponsavel.some(
+    (item) =>
+      areaCanonica(item) ===
+      areaAlvo
+  );
+}
+
 function juntarLista(valor) {
   return Array.isArray(valor)
     ? valor.filter(Boolean).join(" | ")
@@ -3143,6 +3201,25 @@ function EquipeCapacidade({
   ] = useState([]);
 
   const [
+    perfil,
+    setPerfil,
+  ] = useState("ESPECIALISTA");
+
+  const [
+    permissoes,
+    setPermissoes,
+  ] = useState({
+    verRelatorioPropriaArea: true,
+    verRespostasPropriaArea: true,
+    inserirObservacoes: true,
+    alterarStatusAtendimento: true,
+    verDiagnosticoCompleto: false,
+    verEstrategiaComercial: false,
+    verValoresPropostas: false,
+    verOutrosDepartamentos: false,
+  });
+
+  const [
     carregando,
     setCarregando,
   ] = useState(true);
@@ -3163,14 +3240,52 @@ function EquipeCapacidade({
   ] = useState("");
 
   const areasDisponiveis = [
+    "Marketing",
+    "Jurídico",
+    "Contábil/Fiscal",
     "Tributário",
     "Financeiro",
-    "Contábil/Fiscal",
-    "Operacional",
+    "Administrativo",
     "Gestão",
-    "Comercial",
+    "Operacional",
     "RH",
+    "Comercial",
     "Tecnologia",
+  ];
+
+  const permissoesDisponiveis = [
+    {
+      id: "verRelatorioPropriaArea",
+      label: "Ver relatório da própria área",
+    },
+    {
+      id: "verRespostasPropriaArea",
+      label: "Ver respostas da própria área",
+    },
+    {
+      id: "inserirObservacoes",
+      label: "Inserir observações",
+    },
+    {
+      id: "alterarStatusAtendimento",
+      label: "Alterar status do atendimento",
+    },
+    {
+      id: "verDiagnosticoCompleto",
+      label: "Ver diagnóstico completo",
+    },
+    {
+      id: "verEstrategiaComercial",
+      label: "Ver estratégia comercial",
+    },
+    {
+      id: "verValoresPropostas",
+      label: "Ver valores e propostas",
+    },
+    {
+      id: "verOutrosDepartamentos",
+      label: "Ver outros departamentos",
+    },
   ];
 
   async function carregar() {
@@ -3287,6 +3402,10 @@ function EquipeCapacidade({
                   capacidadeDiaria
                 ) || 0,
 
+              perfil,
+
+              permissoes,
+
               ativo:
                 true,
             }),
@@ -3313,6 +3432,17 @@ function EquipeCapacidade({
       setTelefone("");
       setCapacidadeDiaria("3");
       setAreas([]);
+      setPerfil("ESPECIALISTA");
+      setPermissoes({
+        verRelatorioPropriaArea: true,
+        verRespostasPropriaArea: true,
+        inserirObservacoes: true,
+        alterarStatusAtendimento: true,
+        verDiagnosticoCompleto: false,
+        verEstrategiaComercial: false,
+        verValoresPropostas: false,
+        verOutrosDepartamentos: false,
+      });
 
       setSucesso(
         "Responsável salvo com sucesso."
@@ -3500,6 +3630,59 @@ function EquipeCapacidade({
             }}
           />
 
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Perfil
+          </label>
+
+          <select
+            value={perfil}
+            onChange={(e) => {
+              const novoPerfil =
+                e.target.value;
+
+              setPerfil(
+                novoPerfil
+              );
+
+              if (novoPerfil === "ADMIN") {
+                setPermissoes({
+                  verRelatorioPropriaArea: true,
+                  verRespostasPropriaArea: true,
+                  inserirObservacoes: true,
+                  alterarStatusAtendimento: true,
+                  verDiagnosticoCompleto: true,
+                  verEstrategiaComercial: true,
+                  verValoresPropostas: true,
+                  verOutrosDepartamentos: true,
+                });
+              }
+            }}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 12,
+              background: WHITE,
+            }}
+          >
+            <option value="ESPECIALISTA">
+              Especialista
+            </option>
+
+            <option value="ADMIN">
+              Administrador
+            </option>
+          </select>
+
           <div
             style={{
               fontSize: 10.5,
@@ -3558,6 +3741,61 @@ function EquipeCapacidade({
                   </button>
                 );
               }
+            )}
+          </div>
+
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 7,
+            }}
+          >
+            Permissões
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr",
+              gap: 6,
+              marginBottom: 14,
+            }}
+          >
+            {permissoesDisponiveis.map(
+              (item) => (
+                <label
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    fontSize: 10.5,
+                    color: NAVY,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(
+                      permissoes[item.id]
+                    )}
+                    onChange={(e) =>
+                      setPermissoes(
+                        (atuais) => ({
+                          ...atuais,
+                          [item.id]:
+                            e.target.checked,
+                        })
+                      )
+                    }
+                  />
+
+                  <span>
+                    {item.label}
+                  </span>
+                </label>
+              )
             )}
           </div>
 
@@ -3700,6 +3938,29 @@ function EquipeCapacidade({
 
                         <div
                           style={{
+                            display: "inline-block",
+                            marginTop: 5,
+                            background:
+                              responsavel.perfil === "ADMIN"
+                                ? "#EEF3FF"
+                                : "#FFF3EF",
+                            color:
+                              responsavel.perfil === "ADMIN"
+                                ? "#31589C"
+                                : "#993C1D",
+                            borderRadius: 20,
+                            padding: "3px 7px",
+                            fontSize: 8.5,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {responsavel.perfil === "ADMIN"
+                            ? "ADMIN"
+                            : "ESPECIALISTA"}
+                        </div>
+
+                        <div
+                          style={{
                             color: MUTED,
                             fontSize: 10,
                             marginTop: 3,
@@ -3822,6 +4083,1318 @@ function EquipeCapacidade({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// =========================================================
+// ATENDIMENTOS POR DEPARTAMENTO
+// =========================================================
+
+function AtendimentosDepartamento({
+  token,
+  onAbrirDiagnostico,
+}) {
+  const [
+    atendimentos,
+    setAtendimentos,
+  ] = useState([]);
+
+  const [
+    responsaveis,
+    setResponsaveis,
+  ] = useState([]);
+
+  const [
+    leads,
+    setLeads,
+  ] = useState([]);
+
+  const [
+    busca,
+    setBusca,
+  ] = useState("");
+
+  const [
+    areaFiltro,
+    setAreaFiltro,
+  ] = useState("");
+
+  const [
+    statusFiltro,
+    setStatusFiltro,
+  ] = useState("");
+
+  const [
+    responsavelFiltro,
+    setResponsavelFiltro,
+  ] = useState("");
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    salvandoId,
+    setSalvandoId,
+  ] = useState("");
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  const [
+    edicoes,
+    setEdicoes,
+  ] = useState({});
+
+  async function carregarTudo() {
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const [
+        respAtendimentos,
+        respResponsaveis,
+        respLeads,
+      ] =
+        await Promise.all([
+          fetch(
+            "/api/crm?action=listar-atendimentos",
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          ),
+
+          fetch(
+            "/api/crm?action=listar-responsaveis",
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          ),
+
+          fetch(
+            "/api/crm?action=listar-leads&limite=300",
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          ),
+        ]);
+
+      const [
+        dataAtendimentos,
+        dataResponsaveis,
+        dataLeads,
+      ] =
+        await Promise.all([
+          respAtendimentos
+            .json()
+            .catch(() => null),
+
+          respResponsaveis
+            .json()
+            .catch(() => null),
+
+          respLeads
+            .json()
+            .catch(() => null),
+        ]);
+
+      if (
+        !respAtendimentos.ok ||
+        !dataAtendimentos?.sucesso
+      ) {
+        throw new Error(
+          dataAtendimentos?.error ||
+          "Não foi possível carregar os atendimentos."
+        );
+      }
+
+      if (
+        !respResponsaveis.ok ||
+        !dataResponsaveis?.sucesso
+      ) {
+        throw new Error(
+          dataResponsaveis?.error ||
+          "Não foi possível carregar os responsáveis."
+        );
+      }
+
+      setAtendimentos(
+        Array.isArray(
+          dataAtendimentos.atendimentos
+        )
+          ? dataAtendimentos.atendimentos
+          : []
+      );
+
+      setResponsaveis(
+        Array.isArray(
+          dataResponsaveis.responsaveis
+        )
+          ? dataResponsaveis.responsaveis
+          : []
+      );
+
+      setLeads(
+        Array.isArray(
+          dataLeads?.leads
+        )
+          ? dataLeads.leads
+          : []
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar atendimentos."
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregarTudo();
+  }, []);
+
+  const mapaLeads = useMemo(() => {
+    const mapa = {};
+
+    leads.forEach(
+      (lead) => {
+        if (
+          lead.diagnosticoId
+        ) {
+          mapa[
+            String(
+              lead.diagnosticoId
+            )
+          ] = lead;
+        }
+
+        if (lead.leadId) {
+          mapa[
+            String(
+              lead.leadId
+            )
+          ] = lead;
+        }
+      }
+    );
+
+    return mapa;
+  }, [leads]);
+
+  const areasDisponiveis =
+    useMemo(
+      () =>
+        [
+          ...new Set(
+            atendimentos
+              .map(
+                (item) =>
+                  item.area
+              )
+              .filter(Boolean)
+          ),
+        ].sort(),
+      [atendimentos]
+    );
+
+  function statusAtendimentoLabel(
+    status
+  ) {
+    const mapa = {
+      NAO_INICIADO:
+        "Não iniciado",
+
+      EM_ANALISE:
+        "Em análise",
+
+      REUNIAO_AGENDADA:
+        "Reunião agendada",
+
+      EM_ATENDIMENTO:
+        "Em atendimento",
+
+      PLANO_APRESENTADO:
+        "Plano apresentado",
+
+      CONCLUIDO:
+        "Concluído",
+    };
+
+    return (
+      mapa[status] ||
+      status ||
+      "-"
+    );
+  }
+
+  function statusAtendimentoCor(
+    status
+  ) {
+    if (
+      status === "CONCLUIDO"
+    ) {
+      return {
+        bg: "#E1F5EE",
+        color: "#0F6E56",
+      };
+    }
+
+    if (
+      status === "EM_ATENDIMENTO" ||
+      status === "EM_ANALISE"
+    ) {
+      return {
+        bg: "#FAEEDA",
+        color: "#854F0B",
+      };
+    }
+
+    if (
+      status === "REUNIAO_AGENDADA" ||
+      status === "PLANO_APRESENTADO"
+    ) {
+      return {
+        bg: "#EEF3FF",
+        color: "#31589C",
+      };
+    }
+
+    return {
+      bg: "#EEF0F5",
+      color: MUTED,
+    };
+  }
+
+  function editar(
+    id,
+    campo,
+    valor
+  ) {
+    setEdicoes(
+      (atuais) => ({
+        ...atuais,
+
+        [id]: {
+          ...(atuais[id] || {}),
+          [campo]: valor,
+        },
+      })
+    );
+  }
+
+  async function salvarAtendimento(
+    atendimento
+  ) {
+    setSalvandoId(
+      atendimento.id
+    );
+
+    setErro("");
+
+    try {
+      const alteracoes =
+        edicoes[
+          atendimento.id
+        ] ||
+        {};
+
+      const resposta =
+        await fetch(
+          "/api/crm?action=atualizar-atendimento",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              atendimentoId:
+                atendimento.id,
+
+              responsavelId:
+                alteracoes.responsavelId ??
+                atendimento.responsavelId ??
+                "",
+
+              statusAtendimento:
+                alteracoes.statusAtendimento ??
+                atendimento.statusAtendimento,
+
+              observacoesEspecialista:
+                alteracoes.observacoesEspecialista ??
+                atendimento.observacoesEspecialista ??
+                "",
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível atualizar o atendimento."
+        );
+      }
+
+      setEdicoes(
+        (atuais) => {
+          const copia = {
+            ...atuais,
+          };
+
+          delete copia[
+            atendimento.id
+          ];
+
+          return copia;
+        }
+      );
+
+      await carregarTudo();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao atualizar atendimento."
+      );
+    } finally {
+      setSalvandoId("");
+    }
+  }
+
+  const filtrados =
+    atendimentos.filter(
+      (atendimento) => {
+        const lead =
+          mapaLeads[
+            String(
+              atendimento.diagnosticoId ||
+              atendimento.leadId ||
+              ""
+            )
+          ] ||
+          mapaLeads[
+            String(
+              atendimento.leadId ||
+              ""
+            )
+          ] ||
+          {};
+
+        const termo =
+          busca
+            .trim()
+            .toLowerCase();
+
+        const bateBusca =
+          !termo ||
+          [
+            atendimento.area,
+            atendimento.nivelArea,
+            atendimento.responsavelNome,
+            atendimento.diagnosticoId,
+            atendimento.leadId,
+            lead.razaoSocial,
+            lead.nome,
+            lead.cnpj,
+            lead.telefone,
+          ]
+            .filter(Boolean)
+            .some(
+              (valor) =>
+                String(valor)
+                  .toLowerCase()
+                  .includes(termo)
+            );
+
+        const bateArea =
+          !areaFiltro ||
+          atendimento.area ===
+            areaFiltro;
+
+        const bateStatus =
+          !statusFiltro ||
+          atendimento.statusAtendimento ===
+            statusFiltro;
+
+        const bateResponsavel =
+          !responsavelFiltro ||
+          atendimento.responsavelId ===
+            responsavelFiltro;
+
+        return (
+          bateBusca &&
+          bateArea &&
+          bateStatus &&
+          bateResponsavel
+        );
+      }
+    );
+
+  const resumo = {
+    total:
+      atendimentos.length,
+
+    naoIniciado:
+      atendimentos.filter(
+        (item) =>
+          item.statusAtendimento ===
+          "NAO_INICIADO"
+      ).length,
+
+    emAndamento:
+      atendimentos.filter(
+        (item) =>
+          [
+            "EM_ANALISE",
+            "REUNIAO_AGENDADA",
+            "EM_ATENDIMENTO",
+            "PLANO_APRESENTADO",
+          ].includes(
+            item.statusAtendimento
+          )
+      ).length,
+
+    concluidos:
+      atendimentos.filter(
+        (item) =>
+          item.statusAtendimento ===
+          "CONCLUIDO"
+      ).length,
+  };
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit,minmax(180px,1fr))",
+          gap: 12,
+          marginBottom: 18,
+        }}
+      >
+        <Card>
+          <Target
+            size={18}
+            color={CORAL}
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            ATENDIMENTOS
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.total}
+          </div>
+        </Card>
+
+        <Card>
+          <Clock3
+            size={18}
+            color={MUTED}
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            NÃO INICIADOS
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.naoIniciado}
+          </div>
+        </Card>
+
+        <Card>
+          <Activity
+            size={18}
+            color="#854F0B"
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            EM ANDAMENTO
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.emAndamento}
+          </div>
+        </Card>
+
+        <Card>
+          <CheckCircle2
+            size={18}
+            color="#0F6E56"
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            CONCLUÍDOS
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.concluidos}
+          </div>
+        </Card>
+      </div>
+
+      <Card
+        style={{
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+          }}
+        >
+          <input
+            value={busca}
+            onChange={(e) =>
+              setBusca(
+                e.target.value
+              )
+            }
+            placeholder="Buscar empresa, especialista, área, diagnóstico..."
+            style={{
+              flex: "1 1 300px",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              fontFamily:
+                BODY_FONT,
+            }}
+          />
+
+          <select
+            value={areaFiltro}
+            onChange={(e) =>
+              setAreaFiltro(
+                e.target.value
+              )
+            }
+            style={{
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todas as áreas
+            </option>
+
+            {areasDisponiveis.map(
+              (area) => (
+                <option
+                  key={area}
+                  value={area}
+                >
+                  {area}
+                </option>
+              )
+            )}
+          </select>
+
+          <select
+            value={statusFiltro}
+            onChange={(e) =>
+              setStatusFiltro(
+                e.target.value
+              )
+            }
+            style={{
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todos os status
+            </option>
+
+            <option value="NAO_INICIADO">
+              Não iniciado
+            </option>
+
+            <option value="EM_ANALISE">
+              Em análise
+            </option>
+
+            <option value="REUNIAO_AGENDADA">
+              Reunião agendada
+            </option>
+
+            <option value="EM_ATENDIMENTO">
+              Em atendimento
+            </option>
+
+            <option value="PLANO_APRESENTADO">
+              Plano apresentado
+            </option>
+
+            <option value="CONCLUIDO">
+              Concluído
+            </option>
+          </select>
+
+          <select
+            value={responsavelFiltro}
+            onChange={(e) =>
+              setResponsavelFiltro(
+                e.target.value
+              )
+            }
+            style={{
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todos os especialistas
+            </option>
+
+            {responsaveis.map(
+              (responsavel) => (
+                <option
+                  key={
+                    responsavel.id
+                  }
+                  value={
+                    responsavel.id
+                  }
+                >
+                  {responsavel.nome}
+                </option>
+              )
+            )}
+          </select>
+
+          <Botao
+            secundario
+            onClick={
+              carregarTudo
+            }
+          >
+            <RefreshCcw
+              size={14}
+            />
+
+            Atualizar
+          </Botao>
+        </div>
+      </Card>
+
+      {erro && (
+        <div
+          style={{
+            background:
+              "#FAECE7",
+            color:
+              "#993C1D",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          {erro}
+        </div>
+      )}
+
+      {carregando ? (
+        <Card>
+          Carregando atendimentos...
+        </Card>
+      ) : filtrados.length === 0 ? (
+        <Card>
+          Nenhum atendimento encontrado.
+        </Card>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          {filtrados.map(
+            (atendimento) => {
+              const lead =
+                mapaLeads[
+                  String(
+                    atendimento.diagnosticoId ||
+                    atendimento.leadId ||
+                    ""
+                  )
+                ] ||
+                mapaLeads[
+                  String(
+                    atendimento.leadId ||
+                    ""
+                  )
+                ] ||
+                {};
+
+              const infoScore =
+                scoreInfo(
+                  atendimento.scoreArea
+                );
+
+              const infoStatus =
+                statusAtendimentoCor(
+                  atendimento.statusAtendimento
+                );
+
+              const edicao =
+                edicoes[
+                  atendimento.id
+                ] ||
+                {};
+
+              const responsaveisCompativeis =
+                responsaveis.filter(
+                  (responsavel) =>
+                    responsavelCompativelComArea(
+                      responsavel,
+                      atendimento.area
+                    )
+                );
+
+              return (
+                <Card
+                  key={
+                    atendimento.id
+                  }
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(220px,1.3fr) 120px minmax(180px,.9fr) minmax(220px,1fr)",
+                      gap: 14,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          color: CORAL,
+                          fontSize: 9.5,
+                          fontWeight: 900,
+                          letterSpacing: 0.5,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {
+                          atendimento.area
+                        }
+                      </div>
+
+                      <strong
+                        style={{
+                          fontSize: 14,
+                        }}
+                      >
+                        {lead.razaoSocial ||
+                          lead.nome ||
+                          `Diagnóstico ${atendimento.diagnosticoId}`}
+                      </strong>
+
+                      <div
+                        style={{
+                          color: MUTED,
+                          fontSize: 10.5,
+                          marginTop: 4,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {lead.cnpj
+                          ? formatarCnpj(
+                              lead.cnpj
+                            )
+                          : ""}
+
+                        {lead.nome
+                          ? ` · ${lead.nome}`
+                          : ""}
+
+                        {lead.telefone
+                          ? ` · ${lead.telefone}`
+                          : ""}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "wrap",
+                          marginTop: 8,
+                        }}
+                      >
+                        <span
+                          style={{
+                            background:
+                              infoStatus.bg,
+                            color:
+                              infoStatus.color,
+                            borderRadius: 20,
+                            padding:
+                              "4px 8px",
+                            fontSize: 9,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {statusAtendimentoLabel(
+                            atendimento.statusAtendimento
+                          )}
+                        </span>
+
+                        {atendimento.nivelArea && (
+                          <span
+                            style={{
+                              background:
+                                infoScore.bg,
+                              color:
+                                infoScore.color,
+                              borderRadius:
+                                20,
+                              padding:
+                                "4px 8px",
+                              fontSize: 9,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {
+                              atendimento.nivelArea
+                            }
+                          </span>
+                        )}
+                      </div>
+
+                      {atendimento.diagnosticoId && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onAbrirDiagnostico(
+                              atendimento.diagnosticoId
+                            )
+                          }
+                          style={{
+                            marginTop: 10,
+                            background:
+                              "transparent",
+                            border: 0,
+                            color: CORAL,
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            padding: 0,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Abrir diagnóstico completo →
+                        </button>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        textAlign: "center",
+                        background:
+                          infoScore.bg,
+                        color:
+                          infoScore.color,
+                        borderRadius: 12,
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 28,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {atendimento.scoreArea ??
+                          "-"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          marginTop: 2,
+                        }}
+                      >
+                        SCORE DA ÁREA
+                      </div>
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          fontWeight: 800,
+                          marginBottom: 5,
+                        }}
+                      >
+                        ESPECIALISTA
+                      </div>
+
+                      <select
+                        value={
+                          edicao.responsavelId ??
+                          atendimento.responsavelId ??
+                          ""
+                        }
+                        onChange={(e) =>
+                          editar(
+                            atendimento.id,
+                            "responsavelId",
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 8,
+                          padding:
+                            "8px 9px",
+                          background: WHITE,
+                          fontSize: 10.5,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <option value="">
+                          Não atribuído
+                        </option>
+
+                        {responsaveisCompativeis.map(
+                          (responsavel) => (
+                            <option
+                              key={
+                                responsavel.id
+                              }
+                              value={
+                                responsavel.id
+                              }
+                            >
+                              {
+                                responsavel.nome
+                              }
+                              {" · "}
+                              {
+                                responsavel.leadsAbertos
+                              }
+                              {" abertos"}
+                            </option>
+                          )
+                        )}
+                      </select>
+
+                      {responsaveisCompativeis.length === 0 && (
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            color: "#993C1D",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          Nenhum integrante da equipe está cadastrado para esta área.
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          fontWeight: 800,
+                          margin:
+                            "10px 0 5px",
+                        }}
+                      >
+                        STATUS DO ATENDIMENTO
+                      </div>
+
+                      <select
+                        value={
+                          edicao.statusAtendimento ??
+                          atendimento.statusAtendimento ??
+                          "NAO_INICIADO"
+                        }
+                        onChange={(e) =>
+                          editar(
+                            atendimento.id,
+                            "statusAtendimento",
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 8,
+                          padding:
+                            "8px 9px",
+                          background: WHITE,
+                          fontSize: 10.5,
+                        }}
+                      >
+                        <option value="NAO_INICIADO">
+                          Não iniciado
+                        </option>
+
+                        <option value="EM_ANALISE">
+                          Em análise
+                        </option>
+
+                        <option value="REUNIAO_AGENDADA">
+                          Reunião agendada
+                        </option>
+
+                        <option value="EM_ATENDIMENTO">
+                          Em atendimento
+                        </option>
+
+                        <option value="PLANO_APRESENTADO">
+                          Plano apresentado
+                        </option>
+
+                        <option value="CONCLUIDO">
+                          Concluído
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          fontWeight: 800,
+                          marginBottom: 5,
+                        }}
+                      >
+                        OBSERVAÇÕES DO ESPECIALISTA
+                      </div>
+
+                      <textarea
+                        value={
+                          edicao.observacoesEspecialista ??
+                          atendimento.observacoesEspecialista ??
+                          ""
+                        }
+                        onChange={(e) =>
+                          editar(
+                            atendimento.id,
+                            "observacoesEspecialista",
+                            e.target.value
+                          )
+                        }
+                        rows={4}
+                        placeholder="Registre validações, observações da reunião e próximos passos..."
+                        style={{
+                          width: "100%",
+                          boxSizing:
+                            "border-box",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 8,
+                          padding:
+                            "9px 10px",
+                          fontFamily:
+                            BODY_FONT,
+                          fontSize: 10.5,
+                          resize: "vertical",
+                        }}
+                      />
+
+                      <Botao
+                        onClick={() =>
+                          salvarAtendimento(
+                            atendimento
+                          )
+                        }
+                        disabled={
+                          salvandoId ===
+                          atendimento.id
+                        }
+                        style={{
+                          width: "100%",
+                          marginTop: 8,
+                        }}
+                      >
+                        <Save
+                          size={13}
+                        />
+
+                        {salvandoId ===
+                        atendimento.id
+                          ? "Salvando..."
+                          : "Salvar atendimento"}
+                      </Botao>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit,minmax(220px,1fr))",
+                      gap: 10,
+                      marginTop: 14,
+                    }}
+                  >
+                    <ListaInterna
+                      titulo="Oportunidades"
+                      itens={
+                        atendimento.oportunidades
+                      }
+                    />
+
+                    <ListaInterna
+                      titulo="Riscos"
+                      itens={
+                        atendimento.riscos
+                      }
+                    />
+
+                    <ListaInterna
+                      titulo="Recomendações"
+                      itens={
+                        atendimento.recomendacoes
+                      }
+                    />
+
+                    <ListaInterna
+                      titulo="Plano de ação"
+                      itens={
+                        atendimento.planoAcao
+                      }
+                    />
+                  </div>
+
+                  {atendimento.orientacaoTecnica && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        background:
+                          "#EEF3FF",
+                        borderLeft:
+                          "4px solid #31589C",
+                        borderRadius: 10,
+                        padding: 12,
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          fontSize: 10.5,
+                          marginBottom: 5,
+                          color: "#31589C",
+                        }}
+                      >
+                        ORIENTAÇÃO TÉCNICA PARA O ESPECIALISTA
+                      </strong>
+
+                      <div
+                        style={{
+                          fontSize: 11.5,
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        {
+                          atendimento.orientacaoTecnica
+                        }
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            }
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -5335,6 +6908,174 @@ export default function Admin() {
     setAba("leads");
   }
 
+  function BarraAbas() {
+    return (
+      <div
+        style={{
+          background: "#101A2F",
+          padding: "9px 22px",
+          display: "flex",
+          justifyContent: "center",
+          gap: 8,
+          fontFamily: BODY_FONT,
+          flexWrap: "wrap",
+        }}
+      >
+        <Botao
+          secundario={aba !== "leads"}
+          onClick={() =>
+            setAba("leads")
+          }
+        >
+          <Users size={14} />
+          Leads / CRM
+        </Botao>
+
+        <Botao
+          secundario={
+            aba !==
+            "diagnosticos"
+          }
+          onClick={() =>
+            setAba(
+              "diagnosticos"
+            )
+          }
+        >
+          <Building2
+            size={14}
+          />
+          Diagnósticos
+        </Botao>
+
+        <Botao
+          secundario={
+            aba !==
+            "atendimentos"
+          }
+          onClick={() =>
+            setAba(
+              "atendimentos"
+            )
+          }
+        >
+          <Target size={14} />
+          Atendimentos
+        </Botao>
+
+        <Botao
+          secundario={
+            aba !==
+            "equipe"
+          }
+          onClick={() =>
+            setAba("equipe")
+          }
+        >
+          <UserPlus size={14} />
+          Equipe / Capacidade
+        </Botao>
+      </div>
+    );
+  }
+
+  function Cabecalho({
+    titulo,
+    subtitulo,
+  }) {
+    return (
+      <header
+        style={{
+          background: NAVY,
+          color: WHITE,
+          padding: "18px 28px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            display: "flex",
+            justifyContent:
+              "space-between",
+            alignItems:
+              "center",
+            gap: 18,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems:
+                "center",
+              gap: 18,
+            }}
+          >
+            <img
+              src="/finder-logo.png"
+              alt="Finder of Solutions"
+              style={{
+                maxWidth: 150,
+                maxHeight: 45,
+                objectFit:
+                  "contain",
+                background: WHITE,
+                padding: 5,
+                borderRadius: 7,
+              }}
+            />
+
+            <div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize: 24,
+                }}
+              >
+                {titulo}
+              </h1>
+
+              <p
+                style={{
+                  margin:
+                    "3px 0 0",
+                  fontSize: 11,
+                  opacity: 0.7,
+                }}
+              >
+                {subtitulo}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={sair}
+            style={{
+              background:
+                "transparent",
+              border:
+                "1px solid rgba(255,255,255,.30)",
+              color: WHITE,
+              borderRadius: 9,
+              padding:
+                "8px 11px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems:
+                "center",
+              gap: 6,
+            }}
+          >
+            <LogOut size={15} />
+            Sair
+          </button>
+        </div>
+      </header>
+    );
+  }
+
   if (!token) {
     return (
       <LoginAdmin
@@ -5363,52 +7104,7 @@ export default function Admin() {
   ) {
     return (
       <div>
-        <div
-          style={{
-            background:
-              "#101A2F",
-            padding:
-              "9px 22px",
-            display: "flex",
-            justifyContent:
-              "center",
-            gap: 8,
-            fontFamily:
-              BODY_FONT,
-            flexWrap: "wrap",
-          }}
-        >
-          <Botao
-            secundario
-            onClick={() =>
-              setAba("leads")
-            }
-          >
-            <Users size={14} />
-            Leads / CRM
-          </Botao>
-
-          <Botao
-            onClick={() =>
-              setAba(
-                "diagnosticos"
-              )
-            }
-          >
-            <Building2 size={14} />
-            Diagnósticos
-          </Botao>
-
-          <Botao
-            secundario
-            onClick={() =>
-              setAba("equipe")
-            }
-          >
-            <UserPlus size={14} />
-            Equipe / Capacidade
-          </Botao>
-        </div>
+        <BarraAbas />
 
         <ListaDiagnosticos
           token={token}
@@ -5423,188 +7119,67 @@ export default function Admin() {
 
   if (
     aba ===
+    "atendimentos"
+  ) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: BG,
+          fontFamily: BODY_FONT,
+          color: NAVY,
+        }}
+      >
+        <Cabecalho
+          titulo="Atendimentos"
+          subtitulo="Execução consultiva por departamento"
+        />
+
+        <BarraAbas />
+
+        <main
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            padding:
+              "26px 22px 50px",
+          }}
+        >
+          <AtendimentosDepartamento
+            token={token}
+            onAbrirDiagnostico={
+              setDiagnosticoId
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
+  if (
+    aba ===
     "equipe"
   ) {
     return (
       <div
         style={{
-          minHeight:
-            "100vh",
-          background:
-            BG,
-          fontFamily:
-            BODY_FONT,
-          color:
-            NAVY,
+          minHeight: "100vh",
+          background: BG,
+          fontFamily: BODY_FONT,
+          color: NAVY,
         }}
       >
-        <header
-          style={{
-            background:
-              NAVY,
-            color:
-              WHITE,
-            padding:
-              "18px 28px",
-          }}
-        >
-          <div
-            style={{
-              maxWidth:
-                1320,
-              margin:
-                "0 auto",
-              display:
-                "flex",
-              justifyContent:
-                "space-between",
-              alignItems:
-                "center",
-              gap:
-                18,
-            }}
-          >
-            <div
-              style={{
-                display:
-                  "flex",
-                alignItems:
-                  "center",
-                gap:
-                  18,
-              }}
-            >
-              <img
-                src="/finder-logo.png"
-                alt="Finder of Solutions"
-                style={{
-                  maxWidth:
-                    150,
-                  maxHeight:
-                    45,
-                  objectFit:
-                    "contain",
-                  background:
-                    WHITE,
-                  padding:
-                    5,
-                  borderRadius:
-                    7,
-                }}
-              />
+        <Cabecalho
+          titulo="Equipe / Capacidade"
+          subtitulo="Especialidades, permissões e capacidade de atendimento"
+        />
 
-              <div>
-                <h1
-                  style={{
-                    margin:
-                      0,
-                    fontFamily:
-                      DISPLAY_FONT,
-                    fontSize:
-                      24,
-                  }}
-                >
-                  Equipe / Capacidade
-                </h1>
-
-                <p
-                  style={{
-                    margin:
-                      "3px 0 0",
-                    fontSize:
-                      11,
-                    opacity:
-                      0.7,
-                  }}
-                >
-                  Gestão de responsáveis e capacidade de atendimento
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={sair}
-              style={{
-                background:
-                  "transparent",
-                border:
-                  "1px solid rgba(255,255,255,.30)",
-                color:
-                  WHITE,
-                borderRadius:
-                  9,
-                padding:
-                  "8px 11px",
-                cursor:
-                  "pointer",
-                display:
-                  "flex",
-                alignItems:
-                  "center",
-                gap:
-                  6,
-              }}
-            >
-              <LogOut size={15} />
-              Sair
-            </button>
-          </div>
-        </header>
-
-        <div
-          style={{
-            background:
-              "#101A2F",
-            padding:
-              "9px 22px",
-            display:
-              "flex",
-            justifyContent:
-              "center",
-            gap:
-              8,
-            flexWrap:
-              "wrap",
-          }}
-        >
-          <Botao
-            secundario
-            onClick={() =>
-              setAba("leads")
-            }
-          >
-            <Users size={14} />
-            Leads / CRM
-          </Botao>
-
-          <Botao
-            secundario
-            onClick={() =>
-              setAba(
-                "diagnosticos"
-              )
-            }
-          >
-            <Building2 size={14} />
-            Diagnósticos
-          </Botao>
-
-          <Botao
-            onClick={() =>
-              setAba("equipe")
-            }
-          >
-            <UserPlus size={14} />
-            Equipe / Capacidade
-          </Botao>
-        </div>
+        <BarraAbas />
 
         <main
           style={{
-            maxWidth:
-              1320,
-            margin:
-              "0 auto",
+            maxWidth: 1320,
+            margin: "0 auto",
             padding:
               "26px 22px 50px",
           }}
@@ -5620,183 +7195,23 @@ export default function Admin() {
   return (
     <div
       style={{
-        minHeight:
-          "100vh",
-        background:
-          BG,
-        fontFamily:
-          BODY_FONT,
-        color:
-          NAVY,
+        minHeight: "100vh",
+        background: BG,
+        fontFamily: BODY_FONT,
+        color: NAVY,
       }}
     >
-      <header
-        style={{
-          background:
-            NAVY,
-          color:
-            WHITE,
-          padding:
-            "18px 28px",
-        }}
-      >
-        <div
-          style={{
-            maxWidth:
-              1320,
-            margin:
-              "0 auto",
-            display:
-              "flex",
-            justifyContent:
-              "space-between",
-            alignItems:
-              "center",
-            gap:
-              18,
-          }}
-        >
-          <div
-            style={{
-              display:
-                "flex",
-              alignItems:
-                "center",
-              gap:
-                18,
-            }}
-          >
-            <img
-              src="/finder-logo.png"
-              alt="Finder of Solutions"
-              style={{
-                maxWidth:
-                  150,
-                maxHeight:
-                  45,
-                objectFit:
-                  "contain",
-                background:
-                  WHITE,
-                padding:
-                  5,
-                borderRadius:
-                  7,
-              }}
-            />
+      <Cabecalho
+        titulo="Leads / CRM"
+        subtitulo="Funil do diagnóstico empresarial"
+      />
 
-            <div>
-              <h1
-                style={{
-                  margin:
-                    0,
-                  fontFamily:
-                    DISPLAY_FONT,
-                  fontSize:
-                    24,
-                }}
-              >
-                Leads / CRM
-              </h1>
-
-              <p
-                style={{
-                  margin:
-                    "3px 0 0",
-                  fontSize:
-                    11,
-                  opacity:
-                    0.7,
-                }}
-              >
-                Funil do diagnóstico empresarial
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={sair}
-            style={{
-              background:
-                "transparent",
-              border:
-                "1px solid rgba(255,255,255,.30)",
-              color:
-                WHITE,
-              borderRadius:
-                9,
-              padding:
-                "8px 11px",
-              cursor:
-                "pointer",
-              display:
-                "flex",
-              alignItems:
-                "center",
-              gap:
-                6,
-            }}
-          >
-            <LogOut size={15} />
-            Sair
-          </button>
-        </div>
-      </header>
-
-      <div
-        style={{
-          background:
-            "#101A2F",
-          padding:
-            "9px 22px",
-          display:
-            "flex",
-          justifyContent:
-            "center",
-          gap:
-            8,
-          flexWrap:
-            "wrap",
-        }}
-      >
-        <Botao
-          onClick={() =>
-            setAba("leads")
-          }
-        >
-          <Users size={14} />
-          Leads / CRM
-        </Botao>
-
-        <Botao
-          secundario
-          onClick={() =>
-            setAba(
-              "diagnosticos"
-            )
-          }
-        >
-          <Building2 size={14} />
-          Diagnósticos
-        </Botao>
-
-        <Botao
-          secundario
-          onClick={() =>
-            setAba("equipe")
-          }
-        >
-          <UserPlus size={14} />
-          Equipe / Capacidade
-        </Botao>
-      </div>
+      <BarraAbas />
 
       <main
         style={{
-          maxWidth:
-            1320,
-          margin:
-            "0 auto",
+          maxWidth: 1320,
+          margin: "0 auto",
           padding:
             "26px 22px 50px",
         }}
