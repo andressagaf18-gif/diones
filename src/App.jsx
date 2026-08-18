@@ -1097,7 +1097,7 @@ export default function DiagnosticoPrototipo() {
 
         const resposta =
           await fetch(
-            "/api/iniciar-diagnostico",
+            "/api/crm?action=iniciar",
             {
               method: "POST",
 
@@ -1237,7 +1237,7 @@ export default function DiagnosticoPrototipo() {
     try {
       const resposta =
         await fetch(
-          "/api/atualizar-lead",
+          "/api/crm?action=atualizar",
           {
             method: "POST",
 
@@ -1324,7 +1324,7 @@ export default function DiagnosticoPrototipo() {
     try {
       const resposta =
         await fetch(
-          "/api/classificar-lead",
+          "/api/crm?action=classificar",
           {
             method: "POST",
 
