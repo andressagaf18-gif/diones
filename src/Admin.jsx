@@ -5423,6 +5423,26 @@ function DetalheDiagnostico({
     setErro,
   ] = useState("");
 
+  const [
+    abaRelatorio,
+    setAbaRelatorio,
+  ] = useState("administracao");
+
+  const [
+    atendimentosEquipe,
+    setAtendimentosEquipe,
+  ] = useState([]);
+
+  const [
+    areaEquipe,
+    setAreaEquipe,
+  ] = useState("");
+
+  const [
+    carregandoEquipe,
+    setCarregandoEquipe,
+  ] = useState(false);
+
   useEffect(() => {
     async function carregar() {
       setCarregando(true);
@@ -5474,6 +5494,83 @@ function DetalheDiagnostico({
 
     carregar();
   }, [id, token]);
+
+  useEffect(() => {
+    async function carregarAtendimentosEquipe() {
+      if (
+        abaRelatorio !== "equipe" ||
+        !id
+      ) {
+        return;
+      }
+
+      setCarregandoEquipe(true);
+
+      try {
+        const resposta =
+          await fetch(
+            `/api/crm?action=listar-atendimentos&diagnosticoId=${encodeURIComponent(
+              id
+            )}`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          );
+
+        const data =
+          await resposta
+            .json()
+            .catch(() => null);
+
+        if (
+          !resposta.ok ||
+          !data?.sucesso
+        ) {
+          throw new Error(
+            data?.error ||
+            "Não foi possível carregar os atendimentos da equipe."
+          );
+        }
+
+        const lista =
+          Array.isArray(
+            data.atendimentos
+          )
+            ? data.atendimentos
+            : [];
+
+        setAtendimentosEquipe(
+          lista
+        );
+
+        if (
+          !areaEquipe &&
+          lista.length
+        ) {
+          setAreaEquipe(
+            lista[0].area ||
+            ""
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "[Admin] Erro ao carregar relatório da equipe:",
+          error
+        );
+      } finally {
+        setCarregandoEquipe(false);
+      }
+    }
+
+    carregarAtendimentosEquipe();
+  }, [
+    abaRelatorio,
+    id,
+    token,
+  ]);
 
   if (carregando) {
     return (
@@ -5628,6 +5725,52 @@ function DetalheDiagnostico({
   const score =
     scoreInfo(
       item.score
+    );
+
+  const areasEquipeDisponiveis =
+    [
+      ...new Set(
+        atendimentosEquipe
+          .map(
+            (atendimento) =>
+              atendimento.area
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+  const atendimentoEquipeSelecionado =
+    atendimentosEquipe.find(
+      (atendimento) =>
+        atendimento.area ===
+        areaEquipe
+    ) ||
+    atendimentosEquipe[0] ||
+    null;
+
+  const perguntasEquipe =
+    perguntas.filter(
+      (pergunta) =>
+        areaCanonica(
+          pergunta.area
+        ) ===
+        areaCanonica(
+          atendimentoEquipeSelecionado?.area
+        )
+    );
+
+  const areaClientePorNome =
+    areas.reduce(
+      (acc, area) => {
+        if (area?.area) {
+          acc[
+            area.area
+          ] = area;
+        }
+
+        return acc;
+      },
+      {}
     );
 
   return (
@@ -5838,6 +5981,68 @@ function DetalheDiagnostico({
           </Card>
         </div>
 
+        <Card
+          style={{
+            padding: 10,
+            marginBottom: 18,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <Botao
+              secundario={
+                abaRelatorio !==
+                "administracao"
+              }
+              onClick={() =>
+                setAbaRelatorio(
+                  "administracao"
+                )
+              }
+            >
+              <Building2 size={14} />
+              Relatório Administração
+            </Botao>
+
+            <Botao
+              secundario={
+                abaRelatorio !==
+                "cliente"
+              }
+              onClick={() =>
+                setAbaRelatorio(
+                  "cliente"
+                )
+              }
+            >
+              <User size={14} />
+              Relatório Cliente
+            </Botao>
+
+            <Botao
+              secundario={
+                abaRelatorio !==
+                "equipe"
+              }
+              onClick={() =>
+                setAbaRelatorio(
+                  "equipe"
+                )
+              }
+            >
+              <Users size={14} />
+              Relatório Equipe
+            </Botao>
+          </div>
+        </Card>
+
+        {abaRelatorio === "administracao" && (
+          <>
         <div
           style={{
             display:
@@ -6782,6 +6987,904 @@ function DetalheDiagnostico({
             </tbody>
           </table>
         </Card>
+          </>
+        )}
+
+        {abaRelatorio === "cliente" && (
+          <div>
+            <div
+              style={{
+                marginBottom: 18,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  color: CORAL,
+                  fontWeight: 900,
+                  letterSpacing: 0.7,
+                  marginBottom: 5,
+                }}
+              >
+                RELATÓRIO CONSULTIVO
+              </div>
+
+              <h2
+                style={{
+                  ...tituloSecao,
+                  marginTop: 0,
+                  fontSize: 24,
+                }}
+              >
+                Visão completa para apresentação ao cliente
+              </h2>
+
+              <p
+                style={{
+                  margin: "0 0 12px",
+                  color: MUTED,
+                  fontSize: 12,
+                  lineHeight: 1.55,
+                }}
+              >
+                Esta visão apresenta o diagnóstico técnico e consultivo,
+                sem informações comerciais ou estratégicas internas da Finder.
+              </p>
+            </div>
+
+            {diagnosticoGeral
+              .resumoExecutivo && (
+              <BlocoDossie titulo="Visão executiva" destaque>
+                <p
+                  style={{
+                    margin: 0,
+                    lineHeight: 1.65,
+                    fontSize: 12.5,
+                  }}
+                >
+                  {
+                    diagnosticoGeral
+                      .resumoExecutivo
+                  }
+                </p>
+              </BlocoDossie>
+            )}
+
+            {diagnosticoGeral
+              .alertaEstrategico && (
+              <BlocoDossie titulo="Ponto de atenção estratégico">
+                <p
+                  style={{
+                    margin: 0,
+                    lineHeight: 1.6,
+                    fontSize: 12.5,
+                  }}
+                >
+                  {
+                    diagnosticoGeral
+                      .alertaEstrategico
+                  }
+                </p>
+              </BlocoDossie>
+            )}
+
+            <h2
+              style={
+                tituloSecao
+              }
+            >
+              Análise por departamento
+            </h2>
+
+            {areas.length === 0 ? (
+              <Card>
+                Nenhuma análise por área registrada.
+              </Card>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection:
+                    "column",
+                  gap: 12,
+                }}
+              >
+                {areas.map(
+                  (
+                    area,
+                    index
+                  ) => {
+                    const info =
+                      scoreInfo(
+                        area.score
+                      );
+
+                    return (
+                      <Card
+                        key={
+                          `${area.area}-${index}`
+                        }
+                      >
+                        <div
+                          style={{
+                            display:
+                              "flex",
+                            justifyContent:
+                              "space-between",
+                            gap: 12,
+                            alignItems:
+                              "flex-start",
+                            marginBottom: 10,
+                          }}
+                        >
+                          <div>
+                            <h3
+                              style={{
+                                margin:
+                                  "0 0 3px",
+                              }}
+                            >
+                              {area.area ||
+                                "Área"}
+                            </h3>
+
+                            <div
+                              style={{
+                                fontSize:
+                                  10,
+                                color:
+                                  MUTED,
+                              }}
+                            >
+                              {area.nivel ||
+                                info.label}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              background:
+                                info.bg,
+                              color:
+                                info.color,
+                              borderRadius:
+                                10,
+                              padding:
+                                "7px 10px",
+                              fontWeight:
+                                900,
+                            }}
+                          >
+                            {area.score ??
+                              "-"}
+                          </div>
+                        </div>
+
+                        {area.resumo && (
+                          <p
+                            style={{
+                              lineHeight:
+                                1.55,
+                              margin:
+                                "0 0 10px",
+                              fontSize:
+                                12,
+                            }}
+                          >
+                            {area.resumo}
+                          </p>
+                        )}
+
+                        <div
+                          style={{
+                            display:
+                              "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit,minmax(220px,1fr))",
+                            gap: 10,
+                          }}
+                        >
+                          <ListaInterna
+                            titulo="Pontos identificados"
+                            itens={
+                              area.achados
+                            }
+                          />
+
+                          <ListaInterna
+                            titulo="Riscos"
+                            itens={
+                              area.riscos
+                            }
+                          />
+
+                          <ListaInterna
+                            titulo="Recomendações"
+                            itens={
+                              area.recomendacoes
+                            }
+                          />
+                        </div>
+                      </Card>
+                    );
+                  }
+                )}
+              </div>
+            )}
+
+            <BlocoDossie titulo="Plano de melhoria — 90 dias" destaque>
+              <Plano90Dias
+                plano={
+                  plano90Dias
+                }
+              />
+            </BlocoDossie>
+
+            {listaFlexivel(
+              quickWins
+            ).length > 0 && (
+              <BlocoDossie titulo="Ações de curto prazo">
+                <ListaDossie
+                  itens={
+                    quickWins
+                  }
+                />
+              </BlocoDossie>
+            )}
+
+            {listaFlexivel(
+              kpisRecomendados
+            ).length > 0 && (
+              <BlocoDossie titulo="Indicadores recomendados">
+                <ListaDossie
+                  itens={
+                    kpisRecomendados
+                  }
+                />
+              </BlocoDossie>
+            )}
+
+            {inteligenciaTributaria?.disponivel && (
+              <>
+                <h2 style={tituloSecao}>
+                  Inteligência tributária
+                </h2>
+
+                <Card>
+                  <div
+                    style={{
+                      display:
+                        "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit,minmax(190px,1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        background:
+                          "#F7F8FB",
+                        borderRadius:
+                          10,
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          marginBottom: 4,
+                        }}
+                      >
+                        FATURAMENTO DE REFERÊNCIA
+                      </div>
+
+                      <strong
+                        style={{
+                          fontSize: 18,
+                        }}
+                      >
+                        {Number(
+                          inteligenciaTributaria
+                            .faturamentoMensalReferencia
+                        ).toLocaleString(
+                          "pt-BR",
+                          {
+                            style:
+                              "currency",
+                            currency:
+                              "BRL",
+                            maximumFractionDigits:
+                              0,
+                          }
+                        )}
+                      </strong>
+                    </div>
+
+                    <div
+                      style={{
+                        background:
+                          "#FFF3EF",
+                        borderRadius:
+                          10,
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color:
+                            "#993C1D",
+                          marginBottom: 4,
+                        }}
+                      >
+                        CARGA TRIBUTÁRIA ESTIMADA
+                      </div>
+
+                      <strong
+                        style={{
+                          fontSize: 22,
+                          color:
+                            "#993C1D",
+                        }}
+                      >
+                        {Number(
+                          inteligenciaTributaria
+                            .cargaTributariaEstimada
+                        ).toLocaleString(
+                          "pt-BR",
+                          {
+                            minimumFractionDigits:
+                              2,
+                            maximumFractionDigits:
+                              2,
+                          }
+                        )}
+                        %
+                      </strong>
+                    </div>
+
+                    <div
+                      style={{
+                        background:
+                          "#F7F8FB",
+                        borderRadius:
+                          10,
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          marginBottom: 4,
+                        }}
+                      >
+                        TRIBUTOS MENSAIS ESTIMADOS
+                      </div>
+
+                      <strong
+                        style={{
+                          fontSize: 18,
+                        }}
+                      >
+                        {Number(
+                          inteligenciaTributaria
+                            .tributosMensaisEstimados
+                        ).toLocaleString(
+                          "pt-BR",
+                          {
+                            style:
+                              "currency",
+                            currency:
+                              "BRL",
+                            maximumFractionDigits:
+                              0,
+                          }
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      background:
+                        NAVY,
+                      color: WHITE,
+                      borderRadius: 10,
+                      padding: 14,
+                    }}
+                  >
+                    <strong
+                      style={{
+                        display:
+                          "block",
+                        marginBottom: 6,
+                      }}
+                    >
+                      Reforma Tributária
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.6,
+                        color:
+                          "#E5EAF3",
+                      }}
+                    >
+                      {inteligenciaTributaria
+                        .reforma
+                        ?.tratamentoSetorial ||
+                        inteligenciaTributaria
+                          .reforma
+                          ?.status ||
+                        "Impacto setorial em avaliação."}
+                    </div>
+                  </div>
+
+                  <p
+                    style={{
+                      margin:
+                        "12px 0 0",
+                      color: MUTED,
+                      fontSize: 10,
+                      lineHeight: 1.45,
+                      fontStyle:
+                        "italic",
+                    }}
+                  >
+                    Os valores tributários apresentados são estimativas gerenciais e
+                    devem ser validados com dados fiscais e contábeis completos antes
+                    de qualquer decisão definitiva.
+                  </p>
+                </Card>
+              </>
+            )}
+          </div>
+        )}
+
+        {abaRelatorio === "equipe" && (
+          <div>
+            <div
+              style={{
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  color: CORAL,
+                  fontSize: 11,
+                  fontWeight: 900,
+                  letterSpacing: 0.7,
+                  marginBottom: 5,
+                }}
+              >
+                RELATÓRIO TÉCNICO
+              </div>
+
+              <h2
+                style={{
+                  ...tituloSecao,
+                  marginTop: 0,
+                  fontSize: 24,
+                }}
+              >
+                Visão por departamento
+              </h2>
+
+              <p
+                style={{
+                  margin:
+                    "0 0 12px",
+                  color: MUTED,
+                  fontSize: 12,
+                  lineHeight: 1.55,
+                }}
+              >
+                Selecione o departamento para visualizar apenas as informações
+                técnicas necessárias ao especialista responsável.
+              </p>
+            </div>
+
+            {carregandoEquipe ? (
+              <Card>
+                Carregando relatório da equipe...
+              </Card>
+            ) : atendimentosEquipe.length === 0 ? (
+              <Card>
+                Este diagnóstico ainda não possui atendimentos departamentais vinculados.
+              </Card>
+            ) : (
+              <>
+                <Card
+                  style={{
+                    marginBottom: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(220px,1fr) minmax(220px,1fr)",
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          marginBottom: 5,
+                        }}
+                      >
+                        DEPARTAMENTO
+                      </label>
+
+                      <select
+                        value={
+                          atendimentoEquipeSelecionado?.area ||
+                          areaEquipe
+                        }
+                        onChange={(e) =>
+                          setAreaEquipe(
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 9,
+                          padding:
+                            "10px 11px",
+                          background:
+                            WHITE,
+                        }}
+                      >
+                        {areasEquipeDisponiveis.map(
+                          (area) => (
+                            <option
+                              key={area}
+                              value={area}
+                            >
+                              {area}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          marginBottom: 5,
+                        }}
+                      >
+                        RESPONSÁVEL
+                      </div>
+
+                      <div
+                        style={{
+                          minHeight: 40,
+                          display: "flex",
+                          alignItems: "center",
+                          padding:
+                            "0 11px",
+                          border:
+                            "1px solid #E3E7EF",
+                          borderRadius: 9,
+                          background:
+                            "#F7F8FB",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {atendimentoEquipeSelecionado
+                          ?.responsavelNome ||
+                          "Não atribuído"}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {atendimentoEquipeSelecionado && (
+                  <>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "minmax(0,1fr) 150px",
+                        gap: 12,
+                        marginBottom: 14,
+                      }}
+                    >
+                      <Card>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: CORAL,
+                            fontWeight: 900,
+                            marginBottom: 5,
+                          }}
+                        >
+                          {
+                            atendimentoEquipeSelecionado.area
+                          }
+                        </div>
+
+                        <h3
+                          style={{
+                            margin:
+                              "0 0 6px",
+                            fontSize: 18,
+                          }}
+                        >
+                          {empresa.razaoSocial ||
+                            "Empresa"}
+                        </h3>
+
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 11,
+                          }}
+                        >
+                          {atendimentoEquipeSelecionado
+                            .nivelArea ||
+                            "-"}
+                          {" · "}
+                          {atendimentoEquipeSelecionado
+                            .statusAtendimento ||
+                            "NAO_INICIADO"}
+                        </div>
+                      </Card>
+
+                      <Card
+                        style={{
+                          textAlign:
+                            "center",
+                          background:
+                            scoreInfo(
+                              atendimentoEquipeSelecionado
+                                .scoreArea
+                            ).bg,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 30,
+                            fontWeight: 900,
+                            color:
+                              scoreInfo(
+                                atendimentoEquipeSelecionado
+                                  .scoreArea
+                              ).color,
+                          }}
+                        >
+                          {atendimentoEquipeSelecionado
+                            .scoreArea ??
+                            "-"}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color:
+                              scoreInfo(
+                                atendimentoEquipeSelecionado
+                                  .scoreArea
+                              ).color,
+                            fontWeight: 800,
+                          }}
+                        >
+                          SCORE DA ÁREA
+                        </div>
+                      </Card>
+                    </div>
+
+                    {areaClientePorNome[
+                      atendimentoEquipeSelecionado.area
+                    ]?.resumo && (
+                      <BlocoDossie titulo="Situação identificada" destaque>
+                        <p
+                          style={{
+                            margin: 0,
+                            lineHeight: 1.6,
+                            fontSize: 12.5,
+                          }}
+                        >
+                          {
+                            areaClientePorNome[
+                              atendimentoEquipeSelecionado.area
+                            ].resumo
+                          }
+                        </p>
+                      </BlocoDossie>
+                    )}
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit,minmax(220px,1fr))",
+                        gap: 10,
+                        marginBottom: 16,
+                      }}
+                    >
+                      <ListaInterna
+                        titulo="Oportunidades da área"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .oportunidades
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Riscos"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .riscos
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Recomendações"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .recomendacoes
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Plano de ação"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .planoAcao
+                        }
+                      />
+                    </div>
+
+                    {atendimentoEquipeSelecionado
+                      .orientacaoTecnica && (
+                      <BlocoDossie titulo="Orientação técnica para o especialista">
+                        <p
+                          style={{
+                            margin: 0,
+                            lineHeight: 1.6,
+                            fontSize: 12,
+                          }}
+                        >
+                          {
+                            atendimentoEquipeSelecionado
+                              .orientacaoTecnica
+                          }
+                        </p>
+                      </BlocoDossie>
+                    )}
+
+                    <h2
+                      style={
+                        tituloSecao
+                      }
+                    >
+                      Perguntas e respostas da área
+                    </h2>
+
+                    <Card
+                      style={{
+                        padding: 0,
+                        overflowX:
+                          "auto",
+                      }}
+                    >
+                      <table
+                        style={{
+                          width:
+                            "100%",
+                          borderCollapse:
+                            "collapse",
+                          minWidth: 720,
+                        }}
+                      >
+                        <thead>
+                          <tr>
+                            <th
+                              style={
+                                thStyle
+                              }
+                            >
+                              Tema
+                            </th>
+
+                            <th
+                              style={
+                                thStyle
+                              }
+                            >
+                              Pergunta
+                            </th>
+
+                            <th
+                              style={
+                                thStyle
+                              }
+                            >
+                              Resposta
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {perguntasEquipe.length ? (
+                            perguntasEquipe.map(
+                              (
+                                pergunta,
+                                index
+                              ) => (
+                                <tr
+                                  key={
+                                    index
+                                  }
+                                >
+                                  <td
+                                    style={
+                                      tdStyle
+                                    }
+                                  >
+                                    {pergunta.tema ||
+                                      "-"}
+                                  </td>
+
+                                  <td
+                                    style={
+                                      tdStyle
+                                    }
+                                  >
+                                    {pergunta.pergunta ||
+                                      "-"}
+                                  </td>
+
+                                  <td
+                                    style={{
+                                      ...tdStyle,
+                                      fontWeight:
+                                        800,
+                                    }}
+                                  >
+                                    {pergunta.resposta ||
+                                      "-"}
+                                  </td>
+                                </tr>
+                              )
+                            )
+                          ) : (
+                            <tr>
+                              <td
+                                colSpan="3"
+                                style={{
+                                  ...tdStyle,
+                                  textAlign:
+                                    "center",
+                                }}
+                              >
+                                Nenhuma pergunta específica armazenada para esta área.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </Card>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
