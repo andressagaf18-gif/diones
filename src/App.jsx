@@ -142,7 +142,7 @@ const AREAS_PF = [
   { id: "aposentadoria", label: "Aposentadoria", Icon: Target },
   { id: "investimentos", label: "Investimentos", Icon: TrendingUp },
   { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
-  { id: "protecao", label: "Proteção financeira", Icon: ShieldCheck },
+  { id: "protecao", label: "Proteção financeira", Icon: Shield },
   { id: "organizacao", label: "Organização / Planejamento", Icon: ClipboardList },
 ];
 
