@@ -1214,6 +1214,26 @@ export default function DiagnosticoPrototipo() {
   const [aposentadoriaPF, setAposentadoriaPF] = useState("");
   const [dependentesPF, setDependentesPF] = useState("");
 
+  const [nomeGrupo, setNomeGrupo] = useState("");
+  const [funcaoEmpresasGrupo, setFuncaoEmpresasGrupo] = useState("");
+  const [sociosComunsGrupo, setSociosComunsGrupo] = useState("");
+  const [financeiroCentralizadoGrupo, setFinanceiroCentralizadoGrupo] = useState("");
+  const [pessoasCompartilhadasGrupo, setPessoasCompartilhadasGrupo] = useState("");
+  const [operacoesIntercompanyGrupo, setOperacoesIntercompanyGrupo] = useState("");
+  const [governancaGrupo, setGovernancaGrupo] = useState("");
+
+  const [speConstituida, setSpeConstituida] = useState("");
+  const [nomeProjetoSPE, setNomeProjetoSPE] = useState("");
+  const [finalidadeSPE, setFinalidadeSPE] = useState("");
+  const [sociosSPE, setSociosSPE] = useState("");
+  const [valorProjetoSPE, setValorProjetoSPE] = useState("");
+  const [aportesSPE, setAportesSPE] = useState("");
+  const [financiamentoSPE, setFinanciamentoSPE] = useState("");
+  const [prazoSPE, setPrazoSPE] = useState("");
+  const [receitaPrevistaSPE, setReceitaPrevistaSPE] = useState("");
+  const [custosPrevistosSPE, setCustosPrevistosSPE] = useState("");
+  const [faseProjetoSPE, setFaseProjetoSPE] = useState("");
+
   const [perguntasDinamicas, setPerguntasDinamicas] = useState([]);
   const [negocioInterpretado, setNegocioInterpretado] = useState(null);
   const [gerandoPerguntas, setGerandoPerguntas] = useState(false);
@@ -1260,12 +1280,17 @@ export default function DiagnosticoPrototipo() {
   const trilhaSPEAtiva =
     estruturaNegocio === "spe";
 
-  // Estruturas consultivas/patrimoniais não dependem de CNPJ
-  // para gerar perguntas e diagnóstico.
+  // Regras de CNPJ por estrutura:
+  // PF e avaliação de Holding não exigem CNPJ.
+  // Holding existente e Grupo exigem CNPJ.
+  // SPE exige CNPJ apenas quando já estiver constituída.
   const fluxoSemCnpj =
     trilhaPFAtiva ||
-    trilhaHoldingAtiva ||
-    trilhaSPEAtiva;
+    avaliarHoldingAtiva ||
+    (
+      trilhaSPEAtiva &&
+      speConstituida !== "sim"
+    );
 
   const areasDaEstrutura =
     trilhaPFAtiva
@@ -1334,6 +1359,32 @@ export default function DiagnosticoPrototipo() {
     patrimonioAproximado: patrimonioHolding,
     receitasPatrimoniais: receitasHolding,
     situacaoSucessoria: sucessaoHolding,
+  };
+
+  const perfilGrupo = {
+    ativo: trilhaGrupoAtiva,
+    nomeGrupo,
+    funcaoEmpresas: funcaoEmpresasGrupo,
+    sociosComuns: sociosComunsGrupo,
+    financeiroCentralizado: financeiroCentralizadoGrupo,
+    pessoasCompartilhadas: pessoasCompartilhadasGrupo,
+    operacoesIntercompany: operacoesIntercompanyGrupo,
+    governanca: governancaGrupo,
+  };
+
+  const perfilSPE = {
+    ativo: trilhaSPEAtiva,
+    constituida: speConstituida,
+    nomeProjeto: nomeProjetoSPE,
+    finalidade: finalidadeSPE,
+    sociosInvestidores: sociosSPE,
+    valorProjeto: valorProjetoSPE,
+    aportes: aportesSPE,
+    financiamento: financiamentoSPE,
+    prazo: prazoSPE,
+    receitaPrevista: receitaPrevistaSPE,
+    custosPrevistos: custosPrevistosSPE,
+    faseProjeto: faseProjetoSPE,
   };
 
   const atividadesSelecionadasObjetos = cnaesEmpresa.filter((atividade) =>
@@ -2289,10 +2340,14 @@ export default function DiagnosticoPrototipo() {
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
+        grupo: perfilGrupo,
+        spe: perfilSPE,
       },
 
       holding: perfilHolding,
       pessoaFisica: perfilPF,
+      grupo: perfilGrupo,
+      spe: perfilSPE,
       doresSelecionadas,
       dorPrincipal: doresSelecionadas[0] || "",
       dor90Dias,
@@ -2681,8 +2736,20 @@ export default function DiagnosticoPrototipo() {
       atividadePredominante,
       descricaoNegocio: descricaoNegocio.trim(),
       estruturaNegocio,
+
+      contextoEstrutura: {
+        estruturaNegocio,
+        holding: perfilHolding,
+        pessoaFisica: perfilPF,
+        grupo: perfilGrupo,
+        spe: perfilSPE,
+      },
+
       holding: perfilHolding,
       pessoaFisica: perfilPF,
+      grupo: perfilGrupo,
+      spe: perfilSPE,
+
       instrucoesEspeciais: trilhaHoldingAtiva
         ? [
             "Tratar a holding como estrutura especializada, e não como simples empresa de serviços.",
@@ -3258,7 +3325,11 @@ export default function DiagnosticoPrototipo() {
             razao:
               trilhaPFAtiva
                 ? nome || "Pessoa Física"
-                : "Avaliação de Holding",
+                : avaliarHoldingAtiva
+                ? `Avaliação de Holding — ${nome || "Participante"}`
+                : trilhaSPEAtiva
+                ? nomeProjetoSPE || "SPE em estruturação"
+                : nome || "Participante",
 
             nomeFantasia: "",
             cnpj: "",
@@ -3271,12 +3342,20 @@ export default function DiagnosticoPrototipo() {
             categoria:
               trilhaPFAtiva
                 ? "Pessoa Física"
-                : "Avaliação de Holding",
+                : avaliarHoldingAtiva
+                ? "Avaliação de Holding"
+                : trilhaSPEAtiva
+                ? "SPE"
+                : "Diagnóstico",
 
             segmento:
               trilhaPFAtiva
                 ? "Pessoa Física / Consultoria Financeira"
-                : "Holding / Estrutura Patrimonial",
+                : avaliarHoldingAtiva
+                ? "Holding / Estrutura Patrimonial"
+                : trilhaSPEAtiva
+                ? "SPE / Projeto específico"
+                : "",
 
             porte: "",
             endereco: {},
@@ -3306,6 +3385,8 @@ export default function DiagnosticoPrototipo() {
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
+        grupo: perfilGrupo,
+        spe: perfilSPE,
         doresSelecionadas,
         dorPrincipal: doresSelecionadas[0] || "",
         dor90Dias,
@@ -3317,6 +3398,8 @@ export default function DiagnosticoPrototipo() {
           estruturaNegocio,
           holding: perfilHolding,
           pessoaFisica: perfilPF,
+          grupo: perfilGrupo,
+          spe: perfilSPE,
         },
 
         // Resultado principal
@@ -3457,12 +3540,20 @@ export default function DiagnosticoPrototipo() {
           telefone || "",
 
         cnpj:
-          empresaPrincipal?.cnpjDigits ||
-          "",
+          fluxoSemCnpj
+            ? ""
+            : empresaPrincipal?.cnpjDigits || "",
 
         razaoSocial:
-          empresaPrincipal?.razao ||
-          "",
+          trilhaPFAtiva
+            ? nome || "Pessoa Física"
+            : avaliarHoldingAtiva
+            ? `Avaliação de Holding — ${nome || "Participante"}`
+            : trilhaSPEAtiva && speConstituida !== "sim"
+            ? nomeProjetoSPE || "SPE em estruturação"
+            : trilhaGrupoAtiva
+            ? nomeGrupo || empresaPrincipal?.razao || "Grupo empresarial"
+            : empresaPrincipal?.razao || "",
 
         diagnosticoId:
           idSalvo
@@ -3475,6 +3566,8 @@ export default function DiagnosticoPrototipo() {
           estruturaNegocio,
           holding: perfilHolding,
           pessoaFisica: perfilPF,
+          grupo: perfilGrupo,
+          spe: perfilSPE,
         },
       });
 
@@ -3684,6 +3777,26 @@ export default function DiagnosticoPrototipo() {
     setInvestimentosPF("");
     setAposentadoriaPF("");
     setDependentesPF("");
+
+    setNomeGrupo("");
+    setFuncaoEmpresasGrupo("");
+    setSociosComunsGrupo("");
+    setFinanceiroCentralizadoGrupo("");
+    setPessoasCompartilhadasGrupo("");
+    setOperacoesIntercompanyGrupo("");
+    setGovernancaGrupo("");
+
+    setSpeConstituida("");
+    setNomeProjetoSPE("");
+    setFinalidadeSPE("");
+    setSociosSPE("");
+    setValorProjetoSPE("");
+    setAportesSPE("");
+    setFinanciamentoSPE("");
+    setPrazoSPE("");
+    setReceitaPrevistaSPE("");
+    setCustosPrevistosSPE("");
+    setFaseProjetoSPE("");
 
     setPerguntasDinamicas([]);
     setNegocioInterpretado(null);
@@ -4469,6 +4582,30 @@ export default function DiagnosticoPrototipo() {
                             setAposentadoriaPF("");
                             setDependentesPF("");
                           }
+
+                          if (item.id !== "grupo") {
+                            setNomeGrupo("");
+                            setFuncaoEmpresasGrupo("");
+                            setSociosComunsGrupo("");
+                            setFinanceiroCentralizadoGrupo("");
+                            setPessoasCompartilhadasGrupo("");
+                            setOperacoesIntercompanyGrupo("");
+                            setGovernancaGrupo("");
+                          }
+
+                          if (item.id !== "spe") {
+                            setSpeConstituida("");
+                            setNomeProjetoSPE("");
+                            setFinalidadeSPE("");
+                            setSociosSPE("");
+                            setValorProjetoSPE("");
+                            setAportesSPE("");
+                            setFinanciamentoSPE("");
+                            setPrazoSPE("");
+                            setReceitaPrevistaSPE("");
+                            setCustosPrevistosSPE("");
+                            setFaseProjetoSPE("");
+                          }
                         }}
                         style={{
                           ...chipStyle(
@@ -4484,6 +4621,51 @@ export default function DiagnosticoPrototipo() {
                     );
                   })}
                 </div>
+
+                {trilhaGrupoAtiva && (
+                  <div style={{ background: "#F7F8FB", border: "1px solid #E3E7EF", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+                      <Building2 size={16} color={CORAL} />
+                      <strong style={{ fontSize: 13, color: NAVY }}>Contexto do grupo empresarial</strong>
+                    </div>
+                    <p style={{ fontSize: 10.7, color: MUTED, margin: "0 0 13px", lineHeight: 1.5 }}>
+                      Registre como o grupo funciona antes de informar os CNPJs. Isso melhora a análise de governança, caixa consolidado e operações entre empresas.
+                    </p>
+
+                    <label style={labelStyle}>Nome do grupo</label>
+                    <input value={nomeGrupo} onChange={(e) => setNomeGrupo(e.target.value)} placeholder="Ex.: Grupo Finder" style={{ ...inputStyle, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Qual é a função de cada empresa?</label>
+                    <textarea value={funcaoEmpresasGrupo} onChange={(e) => setFuncaoEmpresasGrupo(e.target.value)}
+                      placeholder="Ex.: indústria fabrica; comercial vende; holding concentra participações."
+                      rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Os sócios são os mesmos nas empresas?</label>
+                    <textarea value={sociosComunsGrupo} onChange={(e) => setSociosComunsGrupo(e.target.value)}
+                      placeholder="Ex.: mesmos sócios e percentuais; ou composições diferentes."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Financeiro / caixa é centralizado?</label>
+                    <textarea value={financeiroCentralizadoGrupo} onChange={(e) => setFinanceiroCentralizadoGrupo(e.target.value)}
+                      placeholder="Ex.: tesouraria central; cada empresa possui caixa próprio."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Há funcionários, despesas ou estruturas compartilhadas?</label>
+                    <textarea value={pessoasCompartilhadasGrupo} onChange={(e) => setPessoasCompartilhadasGrupo(e.target.value)}
+                      placeholder="Ex.: administrativo, comercial, aluguel, veículos, TI."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Existem operações entre as próprias empresas?</label>
+                    <textarea value={operacoesIntercompanyGrupo} onChange={(e) => setOperacoesIntercompanyGrupo(e.target.value)}
+                      placeholder="Ex.: mútuos, repasses, serviços, vendas, rateios ou adiantamentos."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Como as decisões do grupo são tomadas?</label>
+                    <textarea value={governancaGrupo} onChange={(e) => setGovernancaGrupo(e.target.value)}
+                      placeholder="Ex.: fundador centraliza; reunião de sócios; conselho; sem rotina formal."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }} />
+                  </div>
+                )}
 
                 {trilhaPFAtiva && (
                   <div
@@ -4604,6 +4786,69 @@ export default function DiagnosticoPrototipo() {
                         />
                       </>
                     )}
+                  </div>
+                )}
+
+                {trilhaSPEAtiva && (
+                  <div style={{ background: "#F7F8FB", border: "1px solid #E3E7EF", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+                      <Target size={16} color={CORAL} />
+                      <strong style={{ fontSize: 13, color: NAVY }}>Contexto da SPE / empreendimento</strong>
+                    </div>
+
+                    <label style={labelStyle}>A SPE já está constituída?</label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 12 }}>
+                      {[["sim", "Sim, já possui CNPJ"], ["nao", "Ainda não / em estruturação"]].map(([id, label]) => (
+                        <button key={id} type="button" onClick={() => setSpeConstituida(id)} style={chipStyle(speConstituida === id)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <label style={labelStyle}>Nome do projeto / empreendimento</label>
+                    <input value={nomeProjetoSPE} onChange={(e) => setNomeProjetoSPE(e.target.value)}
+                      placeholder="Ex.: Residencial Alameda" style={{ ...inputStyle, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Qual é a finalidade da SPE?</label>
+                    <textarea value={finalidadeSPE} onChange={(e) => setFinalidadeSPE(e.target.value)}
+                      placeholder="Ex.: desenvolver e comercializar empreendimento imobiliário específico."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Sócios / investidores</label>
+                    <textarea value={sociosSPE} onChange={(e) => setSociosSPE(e.target.value)}
+                      placeholder="Ex.: 3 sócios, percentuais e papel de cada um."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Valor aproximado do projeto</label>
+                    <input value={valorProjetoSPE} onChange={(e) => setValorProjetoSPE(e.target.value)}
+                      placeholder="Ex.: R$ 8 milhões" style={{ ...inputStyle, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Aportes realizados / previstos</label>
+                    <textarea value={aportesSPE} onChange={(e) => setAportesSPE(e.target.value)}
+                      placeholder="Ex.: R$ 1,5 milhão aportado; novas chamadas conforme cronograma."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Financiamento / capital de terceiros</label>
+                    <textarea value={financiamentoSPE} onChange={(e) => setFinanciamentoSPE(e.target.value)}
+                      placeholder="Ex.: financiamento bancário previsto; investidores; sem financiamento."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Prazo do projeto</label>
+                    <input value={prazoSPE} onChange={(e) => setPrazoSPE(e.target.value)}
+                      placeholder="Ex.: 30 meses" style={{ ...inputStyle, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Receita prevista</label>
+                    <input value={receitaPrevistaSPE} onChange={(e) => setReceitaPrevistaSPE(e.target.value)}
+                      placeholder="Ex.: VGV / receita estimada de R$ 12 milhões" style={{ ...inputStyle, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Custos previstos</label>
+                    <input value={custosPrevistosSPE} onChange={(e) => setCustosPrevistosSPE(e.target.value)}
+                      placeholder="Ex.: custo estimado de R$ 7,2 milhões" style={{ ...inputStyle, marginBottom: 10 }} />
+
+                    <label style={labelStyle}>Fase atual</label>
+                    <textarea value={faseProjetoSPE} onChange={(e) => setFaseProjetoSPE(e.target.value)}
+                      placeholder="Ex.: estruturação, aprovação, obras, vendas, conclusão ou encerramento."
+                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }} />
                   </div>
                 )}
 
@@ -4832,15 +5077,36 @@ export default function DiagnosticoPrototipo() {
                     (
                       trilhaPFAtiva &&
                       objetivosPF.length === 0
+                    ) ||
+                    (
+                      trilhaGrupoAtiva &&
+                      (
+                        !nomeGrupo.trim() ||
+                        !funcaoEmpresasGrupo.trim()
+                      )
+                    ) ||
+                    (
+                      trilhaSPEAtiva &&
+                      (
+                        !speConstituida ||
+                        !nomeProjetoSPE.trim() ||
+                        !finalidadeSPE.trim()
+                      )
                     )
                   }
-                  onClick={() =>
-                    setStep(
-                      fluxoSemCnpj
-                        ? "dor"
-                        : "cnpj"
-                    )
-                  }
+                  onClick={() => {
+                    if (trilhaPFAtiva || avaliarHoldingAtiva) {
+                      setStep("dor");
+                      return;
+                    }
+
+                    if (trilhaSPEAtiva && speConstituida !== "sim") {
+                      setStep("dor");
+                      return;
+                    }
+
+                    setStep("cnpj");
+                  }}
                 >
                   Continuar
                   <ArrowRight size={16} />
@@ -4859,8 +5125,8 @@ export default function DiagnosticoPrototipo() {
                     margin: "6px 0 4px",
                   }}
                 >
-                  {trilhaHoldingAtiva
-                    ? "CNPJ da holding ou empresa-base"
+                  {estruturaNegocio === "holding"
+                    ? "CNPJ da holding"
                     : estruturaNegocio === "grupo"
                     ? "CNPJs do grupo empresarial"
                     : estruturaNegocio === "spe"
@@ -4876,8 +5142,8 @@ export default function DiagnosticoPrototipo() {
                     lineHeight: 1.5,
                   }}
                 >
-                  {trilhaHoldingAtiva
-                    ? "Informe o CNPJ da holding, caso ela já exista. Se você está avaliando constituir uma holding, informe o CNPJ da principal empresa relacionada ao patrimônio ou ao grupo."
+                  {estruturaNegocio === "holding"
+                    ? "Informe o CNPJ da holding existente. Os dados cadastrais serão cruzados com patrimônio, participações, receitas, governança e sucessão."
                     : estruturaNegocio === "grupo"
                     ? `Adicione a empresa-base e, se necessário, outras empresas do grupo. Você pode adicionar até ${MAX_EMPRESAS} CNPJs.`
                     : "Adicione o CNPJ que será a base do diagnóstico."}
@@ -6227,7 +6493,24 @@ export default function DiagnosticoPrototipo() {
 
           {step !== "intro" && step !== "resultado" && step !== "analisando" && (
             <button onClick={() => {
-              const back = { cnpj: "cadastro", porte: "cnpj", dor: "porte", checklist: "dor" };
+              const back = {
+                estrutura: "cadastro",
+                cnpj: "estrutura",
+                porte: "cnpj",
+                dor:
+                  trilhaPFAtiva ||
+                  avaliarHoldingAtiva ||
+                  (
+                    trilhaSPEAtiva &&
+                    speConstituida !== "sim"
+                  )
+                    ? "estrutura"
+                    : "porte",
+                gerandoPerguntas: "dor",
+                confirmarNegocio: "dor",
+                checklist: "dor",
+              };
+
               setStep(back[step] || "intro");
             }} style={{
               position: "absolute", top: 26, left: 26, background: "none", border: "none",
