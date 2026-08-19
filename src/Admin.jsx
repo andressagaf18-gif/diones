@@ -3549,6 +3549,42 @@ function EquipeCapacidade({
     "RH",
     "Comercial",
     "Tecnologia",
+
+    // Estruturas patrimoniais / societárias
+    "Patrimônio",
+    "Participações societárias",
+    "Imóveis",
+    "Receitas patrimoniais",
+    "Governança",
+    "Sucessão",
+    "Proteção patrimonial",
+    "Custos da estrutura",
+
+    // Grupo empresarial
+    "Estrutura do grupo",
+    "Financeiro consolidado",
+    "Operações intercompany",
+    "Pessoas compartilhadas",
+    "Operações do grupo",
+
+    // SPE
+    "Projeto / empreendimento",
+    "Sócios e investidores",
+    "Aportes e capital",
+    "Contratos",
+    "Riscos do projeto",
+    "Saída / encerramento",
+
+    // Pessoa física
+    "Organização financeira",
+    "Fluxo financeiro pessoal",
+    "Endividamento",
+    "Reserva e segurança",
+    "Investimentos",
+    "Aposentadoria",
+    "Proteção familiar",
+    "Tributário PF",
+    "Objetivos",
   ];
 
   const permissoesDisponiveis = [
@@ -4429,6 +4465,11 @@ function AtendimentosDepartamento({
   ] = useState("");
 
   const [
+    oportunidadeFiltro,
+    setOportunidadeFiltro,
+  ] = useState("");
+
+  const [
     carregando,
     setCarregando,
   ] = useState(true);
@@ -4678,6 +4719,25 @@ function AtendimentosDepartamento({
     };
   }
 
+  function statusOportunidadeLabel(status) {
+    const mapa = {
+      NAO_ANALISADA: "Não analisada",
+      EM_ANALISE: "Em análise",
+      OPORTUNIDADE_IDENTIFICADA: "Oportunidade identificada",
+      PROPOSTA: "Proposta",
+      CONTRATADO: "Contratado",
+      SEM_OPORTUNIDADE: "Sem oportunidade",
+    };
+    return mapa[status] || status || "Não analisada";
+  }
+
+  function statusOportunidadeCor(status) {
+    if (status === "CONTRATADO") return { bg: "#E1F5EE", color: "#0F6E56" };
+    if (status === "OPORTUNIDADE_IDENTIFICADA" || status === "PROPOSTA") return { bg: "#FFF3EF", color: "#993C1D" };
+    if (status === "EM_ANALISE") return { bg: "#FAEEDA", color: "#854F0B" };
+    return { bg: "#EEF0F5", color: MUTED };
+  }
+
   function editar(
     id,
     campo,
@@ -4737,6 +4797,11 @@ function AtendimentosDepartamento({
               statusAtendimento:
                 alteracoes.statusAtendimento ??
                 atendimento.statusAtendimento,
+
+              statusOportunidade:
+                alteracoes.statusOportunidade ??
+                atendimento.statusOportunidade ??
+                "NAO_ANALISADA",
 
               observacoesEspecialista:
                 alteracoes.observacoesEspecialista ??
@@ -4846,11 +4911,17 @@ function AtendimentosDepartamento({
           atendimento.responsavelId ===
             responsavelFiltro;
 
+        const bateOportunidade =
+          !oportunidadeFiltro ||
+          (atendimento.statusOportunidade || "NAO_ANALISADA") ===
+            oportunidadeFiltro;
+
         return (
           bateBusca &&
           bateArea &&
           bateStatus &&
-          bateResponsavel
+          bateResponsavel &&
+          bateOportunidade
         );
       }
     );
@@ -5113,6 +5184,29 @@ function AtendimentosDepartamento({
           </select>
 
           <select
+            value={oportunidadeFiltro}
+            onChange={(e) =>
+              setOportunidadeFiltro(
+                e.target.value
+              )
+            }
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todas as oportunidades</option>
+            <option value="NAO_ANALISADA">Não analisada</option>
+            <option value="EM_ANALISE">Em análise</option>
+            <option value="OPORTUNIDADE_IDENTIFICADA">Oportunidade identificada</option>
+            <option value="PROPOSTA">Proposta</option>
+            <option value="CONTRATADO">Contratado</option>
+            <option value="SEM_OPORTUNIDADE">Sem oportunidade</option>
+          </select>
+
+          <select
             value={responsavelFiltro}
             onChange={(e) =>
               setResponsavelFiltro(
@@ -5324,6 +5418,27 @@ function AtendimentosDepartamento({
                         >
                           {statusAtendimentoLabel(
                             atendimento.statusAtendimento
+                          )}
+                        </span>
+
+                        <span
+                          style={{
+                            background:
+                              statusOportunidadeCor(
+                                atendimento.statusOportunidade || "NAO_ANALISADA"
+                              ).bg,
+                            color:
+                              statusOportunidadeCor(
+                                atendimento.statusOportunidade || "NAO_ANALISADA"
+                              ).color,
+                            borderRadius: 20,
+                            padding: "4px 8px",
+                            fontSize: 9,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {statusOportunidadeLabel(
+                            atendimento.statusOportunidade || "NAO_ANALISADA"
                           )}
                         </span>
 
@@ -5542,6 +5657,47 @@ function AtendimentosDepartamento({
                           Concluído
                         </option>
                       </select>
+
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          fontWeight: 800,
+                          margin: "10px 0 5px",
+                        }}
+                      >
+                        STATUS DA OPORTUNIDADE
+                      </div>
+
+                      <select
+                        value={
+                          edicao.statusOportunidade ??
+                          atendimento.statusOportunidade ??
+                          "NAO_ANALISADA"
+                        }
+                        onChange={(e) =>
+                          editar(
+                            atendimento.id,
+                            "statusOportunidade",
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          border: "1px solid #D8DEEA",
+                          borderRadius: 8,
+                          padding: "8px 9px",
+                          background: WHITE,
+                          fontSize: 10.5,
+                        }}
+                      >
+                        <option value="NAO_ANALISADA">Não analisada</option>
+                        <option value="EM_ANALISE">Em análise</option>
+                        <option value="OPORTUNIDADE_IDENTIFICADA">Oportunidade identificada</option>
+                        <option value="PROPOSTA">Proposta</option>
+                        <option value="CONTRATADO">Contratado</option>
+                        <option value="SEM_OPORTUNIDADE">Sem oportunidade</option>
+                      </select>
                     </div>
 
                     <div>
@@ -5716,6 +5872,16 @@ function ResumoEstruturaSelecionada({
     contexto?.pessoaFisica ||
     {};
 
+  const grupo =
+    perfil?.grupo ||
+    contexto?.grupo ||
+    {};
+
+  const spe =
+    perfil?.spe ||
+    contexto?.spe ||
+    {};
+
   function Linha({
     titulo,
     valor,
@@ -5863,7 +6029,36 @@ function ResumoEstruturaSelecionada({
           borderLeft: `4px solid ${CORAL}`,
         }}
       >
-        <strong>Estrutura selecionada: Grupo empresarial</strong>
+        <h3 style={{ margin: "0 0 4px" }}>
+          Contexto preenchido — Grupo empresarial
+        </h3>
+
+        <p
+          style={{
+            margin: "0 0 12px",
+            color: MUTED,
+            fontSize: 10.5,
+          }}
+        >
+          Estrutura, governança e relações entre as empresas consideradas no diagnóstico.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Linha titulo="NOME DO GRUPO" valor={grupo.nomeGrupo} />
+          <Linha titulo="FUNÇÃO DAS EMPRESAS" valor={grupo.funcaoEmpresas} />
+          <Linha titulo="SÓCIOS / COMPOSIÇÃO" valor={grupo.sociosComuns} />
+          <Linha titulo="FINANCEIRO CENTRALIZADO" valor={grupo.financeiroCentralizado} />
+          <Linha titulo="PESSOAS / CUSTOS COMPARTILHADOS" valor={grupo.pessoasCompartilhadas} />
+          <Linha titulo="OPERAÇÕES INTERCOMPANY" valor={grupo.operacoesIntercompany} />
+          <Linha titulo="GOVERNANÇA" valor={grupo.governanca} />
+        </div>
       </Card>
     );
   }
@@ -5876,7 +6071,40 @@ function ResumoEstruturaSelecionada({
           borderLeft: `4px solid ${CORAL}`,
         }}
       >
-        <strong>Estrutura selecionada: SPE</strong>
+        <h3 style={{ margin: "0 0 4px" }}>
+          Contexto preenchido — SPE / Projeto
+        </h3>
+
+        <p
+          style={{
+            margin: "0 0 12px",
+            color: MUTED,
+            fontSize: 10.5,
+          }}
+        >
+          Premissas do projeto utilizadas para análise financeira, societária, tributária e de riscos.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Linha titulo="CONSTITUÍDA?" valor={spe.constituida} />
+          <Linha titulo="PROJETO / EMPREENDIMENTO" valor={spe.nomeProjeto} />
+          <Linha titulo="FINALIDADE" valor={spe.finalidade} />
+          <Linha titulo="SÓCIOS / INVESTIDORES" valor={spe.sociosInvestidores} />
+          <Linha titulo="VALOR DO PROJETO" valor={spe.valorProjeto} />
+          <Linha titulo="APORTES" valor={spe.aportes} />
+          <Linha titulo="FINANCIAMENTO" valor={spe.financiamento} />
+          <Linha titulo="PRAZO" valor={spe.prazo} />
+          <Linha titulo="RECEITA PREVISTA" valor={spe.receitaPrevista} />
+          <Linha titulo="CUSTOS PREVISTOS" valor={spe.custosPrevistos} />
+          <Linha titulo="FASE ATUAL" valor={spe.faseProjeto} />
+        </div>
       </Card>
     );
   }
@@ -6146,9 +6374,55 @@ function DetalheDiagnostico({
     item?.dadosCompletos?.perfil ||
     {};
 
+  // Diagnóstico V2 completo. O Admin continua exibindo o mesmo
+  // relatório visual, mas passa a consumir os novos motores.
+  const resultadoCompleto =
+    resultado.resultadoCompleto ||
+    {};
+
   const diagnosticoGeral =
     resultado.diagnosticoGeral ||
-    {};
+    {
+      resumoExecutivo:
+        resultadoCompleto.leituraExecutiva ||
+        "",
+
+      principaisDores:
+        resultadoCompleto.doresPrincipais ||
+        [],
+
+      pontosFortes:
+        resultadoCompleto.pontosFortes ||
+        [],
+
+      prioridadesImediatas:
+        resultadoCompleto.prioridades ||
+        [],
+
+      oportunidades:
+        resultadoCompleto.recomendacoes ||
+        [],
+
+      causasProvaveis:
+        resultadoCompleto.causasProvaveis ||
+        [],
+
+      impactos:
+        resultadoCompleto.impactos ||
+        [],
+
+      proximosPassos:
+        resultadoCompleto.proximosPassos ||
+        [],
+
+      alertaEstrategico:
+        Array.isArray(
+          resultadoCompleto.riscosPrioritarios
+        ) &&
+        resultadoCompleto.riscosPrioritarios.length
+          ? resultadoCompleto.riscosPrioritarios[0]
+          : "",
+    };
 
   // =====================================================
   // DOSSIÊ CONSULTIVO FINDER
@@ -6156,35 +6430,72 @@ function DetalheDiagnostico({
 
   const plano90Dias =
     resultado.plano90Dias ||
+    resultadoCompleto.plano90Dias ||
     null;
 
   const quickWins =
-    resultado.quickWins ||
-    [];
+    (
+      Array.isArray(
+        resultado.quickWins
+      ) &&
+      resultado.quickWins.length
+        ? resultado.quickWins
+        : resultadoCompleto.quickWins
+    ) || [];
 
   const kpisRecomendados =
-    resultado.kpisRecomendados ||
-    [];
+    (
+      Array.isArray(
+        resultado.kpisRecomendados
+      ) &&
+      resultado.kpisRecomendados.length
+        ? resultado.kpisRecomendados
+        : resultadoCompleto.indicadores
+    ) || [];
 
   const perguntasAprofundamento =
-    resultado.perguntasAprofundamento ||
-    [];
+    (
+      Array.isArray(
+        resultado.perguntasAprofundamento
+      ) &&
+      resultado.perguntasAprofundamento.length
+        ? resultado.perguntasAprofundamento
+        : resultadoCompleto.informacoesFaltantes
+    ) || [];
+
+  const visaoAdministracaoV2 =
+    resultadoCompleto.visaoAdministracao ||
+    {};
 
   const visaoConsultor =
     resultado.visaoConsultor ||
+    visaoAdministracaoV2.aprofundamentos ||
     null;
 
   const visaoComercial =
     resultado.visaoComercial ||
+    visaoAdministracaoV2.oportunidades ||
     null;
 
   const lacunasDiagnostico =
-    resultado.lacunasDiagnostico ||
-    [];
+    (
+      Array.isArray(
+        resultado.lacunasDiagnostico
+      ) &&
+      resultado.lacunasDiagnostico.length
+        ? resultado.lacunasDiagnostico
+        : resultadoCompleto.informacoesFaltantes
+    ) || [];
 
   const oportunidadesConsultoria =
-    resultado.oportunidadesConsultoria ||
-    [];
+    (
+      Array.isArray(
+        resultado.oportunidadesConsultoria
+      ) &&
+      resultado.oportunidadesConsultoria.length
+        ? resultado.oportunidadesConsultoria
+        : visaoAdministracaoV2.oportunidades
+    ) || [];
 
   // COMPLEMENTO — inteligência tributária
   const inteligenciaTributaria =
@@ -6196,16 +6507,209 @@ function DetalheDiagnostico({
       item.perguntasRespostas
     );
 
-  const areas =
+  const areasV2 =
+    normalizarLista(
+      resultadoCompleto.eixos
+    ).map(
+      (eixo) => ({
+        area:
+          eixo.label ||
+          eixo.id ||
+          "Área",
+
+        areaId:
+          eixo.id ||
+          "",
+
+        score:
+          eixo.score,
+
+        nivel:
+          eixo.nivel ||
+          "",
+
+        resumo:
+          normalizarLista(
+            eixo.achados
+          ).join(" "),
+
+        achados:
+          normalizarLista(
+            eixo.achados
+          ),
+
+        causasProvaveis:
+          [],
+
+        riscos:
+          normalizarLista(
+            eixo.riscos
+          ),
+
+        pontosFortes:
+          normalizarLista(
+            eixo.pontosFortes
+          ),
+
+        recomendacoes:
+          normalizarLista(
+            eixo.recomendacoes
+          ),
+      })
+    );
+
+  const areasLegadas =
     normalizarLista(
       resultado.areas
-    ).length
-      ? normalizarLista(
-          resultado.areas
+    );
+
+  const mapaAreasV2 =
+    areasV2.reduce(
+      (acc, area) => {
+        const chaves = [
+          area.areaId,
+          area.area,
+          areaCanonica(
+            area.area
+          ),
+        ].filter(Boolean);
+
+        chaves.forEach(
+          (chave) => {
+            acc[
+              String(chave)
+            ] = area;
+          }
+        );
+
+        return acc;
+      },
+      {}
+    );
+
+  // Mescla o score calculado no frontend com o conteúdo consultivo
+  // produzido pelo novo motor. O conteúdo V2 tem prioridade.
+  const areasMescladas =
+    areasLegadas.length
+      ? areasLegadas.map(
+          (areaAntiga) => {
+            const chaveId =
+              areaAntiga.areaId ||
+              areaAntiga.id ||
+              "";
+
+            const chaveNome =
+              areaAntiga.area ||
+              "";
+
+            const areaV2 =
+              mapaAreasV2[
+                chaveId
+              ] ||
+              mapaAreasV2[
+                chaveNome
+              ] ||
+              mapaAreasV2[
+                areaCanonica(
+                  chaveNome
+                )
+              ] ||
+              null;
+
+            if (!areaV2) {
+              return areaAntiga;
+            }
+
+            return {
+              ...areaAntiga,
+              ...areaV2,
+
+              // preserva score do questionário quando houver
+              score:
+                areaAntiga.score ??
+                areaV2.score,
+
+              nivel:
+                areaV2.nivel ||
+                areaAntiga.nivel ||
+                "",
+
+              resumo:
+                areaV2.resumo ||
+                areaAntiga.resumo ||
+                "",
+
+              achados:
+                normalizarLista(
+                  areaV2.achados
+                ).length
+                  ? areaV2.achados
+                  : normalizarLista(
+                      areaAntiga.achados
+                    ),
+
+              riscos:
+                normalizarLista(
+                  areaV2.riscos
+                ).length
+                  ? areaV2.riscos
+                  : normalizarLista(
+                      areaAntiga.riscos
+                    ),
+
+              pontosFortes:
+                normalizarLista(
+                  areaV2.pontosFortes
+                ).length
+                  ? areaV2.pontosFortes
+                  : normalizarLista(
+                      areaAntiga.pontosFortes
+                    ),
+
+              recomendacoes:
+                normalizarLista(
+                  areaV2.recomendacoes
+                ).length
+                  ? areaV2.recomendacoes
+                  : normalizarLista(
+                      areaAntiga.recomendacoes
+                    ),
+            };
+          }
         )
+      : areasV2.length
+      ? areasV2
       : normalizarLista(
           item.areas
         );
+
+  // Inclui eixos V2 que não existiam no formato antigo.
+  const idsMesclados =
+    new Set(
+      areasMescladas
+        .map(
+          (area) =>
+            area.areaId ||
+            area.id ||
+            area.area
+        )
+        .filter(Boolean)
+        .map(String)
+    );
+
+  const areas =
+    [
+      ...areasMescladas,
+      ...areasV2.filter(
+        (area) =>
+          !idsMesclados.has(
+            String(
+              area.areaId ||
+              area.area
+            )
+          )
+      ),
+    ];
 
   const dores =
     normalizarLista(
@@ -6257,11 +6761,136 @@ function DetalheDiagnostico({
     perguntas.filter(
       (pergunta) =>
         areaCanonica(
-          pergunta.area
+          pergunta.area ||
+          pergunta.areaId
         ) ===
         areaCanonica(
           atendimentoEquipeSelecionado?.area
         )
+    );
+
+  function labelsDiagnosticoEstrutura(
+    estrutura
+  ) {
+    if (
+      estrutura ===
+      "pessoa_fisica"
+    ) {
+      return {
+        titulo:
+          "Diagnóstico da vida financeira",
+        achados:
+          "O que suas respostas mostram",
+        causas:
+          "Fatores que explicam o cenário",
+        riscos:
+          "Pontos de atenção",
+        fortes:
+          "Pontos positivos",
+        recomendacoes:
+          "Próximos passos recomendados",
+      };
+    }
+
+    if (
+      estrutura ===
+      "holding"
+    ) {
+      return {
+        titulo:
+          "Diagnóstico patrimonial por frente",
+        achados:
+          "Achados patrimoniais",
+        causas:
+          "Fatores estruturais",
+        riscos:
+          "Riscos / pontos de atenção",
+        fortes:
+          "Pontos fortes da estrutura",
+        recomendacoes:
+          "Recomendações patrimoniais",
+      };
+    }
+
+    if (
+      estrutura ===
+      "avaliar_holding"
+    ) {
+      return {
+        titulo:
+          "Avaliação por fator de viabilidade",
+        achados:
+          "O que identificamos",
+        causas:
+          "Fatores relevantes",
+        riscos:
+          "Pontos contrários / atenção",
+        fortes:
+          "Fatores favoráveis",
+        recomendacoes:
+          "Próximas validações",
+      };
+    }
+
+    if (
+      estrutura ===
+      "grupo"
+    ) {
+      return {
+        titulo:
+          "Diagnóstico consolidado do grupo",
+        achados:
+          "Achados do grupo",
+        causas:
+          "Origem / causas prováveis",
+        riscos:
+          "Riscos do grupo",
+        fortes:
+          "Pontos fortes",
+        recomendacoes:
+          "Recomendações para o grupo",
+      };
+    }
+
+    if (
+      estrutura ===
+      "spe"
+    ) {
+      return {
+        titulo:
+          "Diagnóstico do projeto / SPE",
+        achados:
+          "Achados do projeto",
+        causas:
+          "Fatores que afetam o projeto",
+        riscos:
+          "Riscos do projeto",
+        fortes:
+          "Pontos favoráveis",
+        recomendacoes:
+          "Ações recomendadas",
+      };
+    }
+
+    return {
+      titulo:
+        "Diagnóstico por área",
+      achados:
+        "Achados",
+      causas:
+        "Causas prováveis",
+      riscos:
+        "Riscos",
+      fortes:
+        "Pontos fortes",
+      recomendacoes:
+        "Recomendações",
+    };
+  }
+
+  const labelsDiagnostico =
+    labelsDiagnosticoEstrutura(
+      estruturaAtual
     );
 
   const areaClientePorNome =
@@ -6271,12 +6900,39 @@ function DetalheDiagnostico({
           acc[
             area.area
           ] = area;
+
+          acc[
+            areaCanonica(
+              area.area
+            )
+          ] = area;
+        }
+
+        if (area?.areaId) {
+          acc[
+            area.areaId
+          ] = area;
         }
 
         return acc;
       },
       {}
     );
+
+  const areaEquipeDiagnostico =
+    atendimentoEquipeSelecionado
+      ? (
+          areaClientePorNome[
+            atendimentoEquipeSelecionado.area
+          ] ||
+          areaClientePorNome[
+            areaCanonica(
+              atendimentoEquipeSelecionado.area
+            )
+          ] ||
+          null
+        )
+      : null;
 
   return (
     <div
@@ -6401,9 +7057,14 @@ function DetalheDiagnostico({
             >
               {estruturaAtual === "pessoa_fisica"
                 ? "DIAGNÓSTICO FINANCEIRO PESSOAL"
-                : estruturaAtual === "holding" ||
-                  estruturaAtual === "avaliar_holding"
+                : estruturaAtual === "avaliar_holding"
+                ? "AVALIAÇÃO DE VIABILIDADE DE HOLDING"
+                : estruturaAtual === "holding"
                 ? "DIAGNÓSTICO PATRIMONIAL / HOLDING"
+                : estruturaAtual === "grupo"
+                ? "DIAGNÓSTICO DO GRUPO EMPRESARIAL"
+                : estruturaAtual === "spe"
+                ? "DIAGNÓSTICO DA SPE"
                 : "DIAGNÓSTICO EMPRESARIAL"}
             </div>
 
@@ -6423,7 +7084,16 @@ function DetalheDiagnostico({
                 ? participante.nome ||
                   "Pessoa Física"
                 : estruturaAtual === "avaliar_holding"
-                ? "Avaliação de Holding"
+                ? empresa.razaoSocial ||
+                  "Avaliação de Holding"
+                : estruturaAtual === "grupo"
+                ? perfilDiagnostico?.grupo?.nomeGrupo ||
+                  empresa.razaoSocial ||
+                  "Grupo empresarial"
+                : estruturaAtual === "spe"
+                ? perfilDiagnostico?.spe?.nomeProjeto ||
+                  empresa.razaoSocial ||
+                  "SPE"
                 : empresa.razaoSocial ||
                   "Empresa"}
             </h1>
@@ -6660,12 +7330,18 @@ function DetalheDiagnostico({
             <h3>
               {estruturaAtual ===
               "pessoa_fisica"
-                ? "Contexto"
+                ? "Contexto pessoal"
                 : estruturaAtual ===
                     "holding" ||
                   estruturaAtual ===
                     "avaliar_holding"
                 ? "Estrutura patrimonial"
+                : estruturaAtual ===
+                    "grupo"
+                ? "Contexto do grupo"
+                : estruturaAtual ===
+                    "spe"
+                ? "Contexto do projeto"
                 : "Negócio"}
             </h3>
 
@@ -6742,6 +7418,101 @@ function DetalheDiagnostico({
                     .resumoExecutivo
                 }
               </p>
+            </Card>
+          </>
+        )}
+
+        {estruturaAtual === "avaliar_holding" &&
+          resultadoCompleto?.viabilidadeHolding && (
+          <>
+            <h2 style={tituloSecao}>
+              Viabilidade preliminar da Holding
+            </h2>
+
+            <Card
+              style={{
+                borderLeft: `4px solid ${CORAL}`,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "170px minmax(0,1fr)",
+                  gap: 14,
+                  alignItems: "start",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 9.5,
+                      color: MUTED,
+                      fontWeight: 800,
+                      marginBottom: 4,
+                    }}
+                  >
+                    NÍVEL
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 20,
+                      color: NAVY,
+                    }}
+                  >
+                    {resultadoCompleto
+                      .viabilidadeHolding
+                      .nivel ||
+                      "DADOS_INSUFICIENTES"}
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(200px,1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <ListaInterna
+                    titulo="Fatores favoráveis"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .fatoresFavoraveis
+                    }
+                  />
+
+                  <ListaInterna
+                    titulo="Fatores contrários / atenção"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .fatoresContrarios
+                    }
+                  />
+
+                  <ListaInterna
+                    titulo="Dados necessários"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .dadosNecessarios
+                    }
+                  />
+
+                  <ListaInterna
+                    titulo="Estruturas possíveis"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .estruturasPossiveis
+                    }
+                  />
+                </div>
+              </div>
             </Card>
           </>
         )}
@@ -7142,7 +7913,7 @@ function DetalheDiagnostico({
             tituloSecao
           }
         >
-          Diagnóstico por área
+          {labelsDiagnostico.titulo}
         </h2>
 
         {areas.length ===
@@ -7265,28 +8036,58 @@ function DetalheDiagnostico({
                       }}
                     >
                       <ListaInterna
-                        titulo="Achados"
+                        titulo={
+                          labelsDiagnostico
+                            .achados
+                        }
                         itens={
                           area.achados
                         }
                       />
 
-                      <ListaInterna
-                        titulo="Causas prováveis"
-                        itens={
-                          area.causasProvaveis
-                        }
-                      />
+                      {normalizarLista(
+                        area.causasProvaveis
+                      ).length > 0 && (
+                        <ListaInterna
+                          titulo={
+                            labelsDiagnostico
+                              .causas
+                          }
+                          itens={
+                            area.causasProvaveis
+                          }
+                        />
+                      )}
 
                       <ListaInterna
-                        titulo="Riscos"
+                        titulo={
+                          labelsDiagnostico
+                            .riscos
+                        }
                         itens={
                           area.riscos
                         }
                       />
 
+                      {normalizarLista(
+                        area.pontosFortes
+                      ).length > 0 && (
+                        <ListaInterna
+                          titulo={
+                            labelsDiagnostico
+                              .fortes
+                          }
+                          itens={
+                            area.pontosFortes
+                          }
+                        />
+                      )}
+
                       <ListaInterna
-                        titulo="Recomendações"
+                        titulo={
+                          labelsDiagnostico
+                            .recomendacoes
+                        }
                         itens={
                           area.recomendacoes
                         }
@@ -7330,7 +8131,16 @@ function DetalheDiagnostico({
               marginBottom: 5,
             }}
           >
-            Dossiê consultivo
+            {estruturaAtual === "pessoa_fisica"
+              ? "Plano consultivo pessoal"
+              : estruturaAtual === "holding" ||
+                estruturaAtual === "avaliar_holding"
+              ? "Dossiê patrimonial e sucessório"
+              : estruturaAtual === "grupo"
+              ? "Dossiê consolidado do grupo"
+              : estruturaAtual === "spe"
+              ? "Dossiê do projeto / SPE"
+              : "Dossiê consultivo"}
           </h2>
 
           <p
@@ -7346,7 +8156,10 @@ function DetalheDiagnostico({
           </p>
         </div>
 
-        <BlocoDossie titulo="Plano de ação — 90 dias" destaque>
+        <BlocoDossie
+          titulo={`Plano de ação — 30 / 60 / 90 dias · ${estruturaAtualLabel}`}
+          destaque
+        >
           <Plano90Dias plano={plano90Dias} />
         </BlocoDossie>
 
@@ -7766,6 +8579,17 @@ function DetalheDiagnostico({
                             }
                           />
 
+                          {normalizarLista(
+                            area.pontosFortes
+                          ).length > 0 && (
+                            <ListaInterna
+                              titulo="Pontos fortes"
+                              itens={
+                                area.pontosFortes
+                              }
+                            />
+                          )}
+
                           <ListaInterna
                             titulo="Recomendações"
                             itens={
@@ -7780,7 +8604,10 @@ function DetalheDiagnostico({
               </div>
             )}
 
-            <BlocoDossie titulo="Plano de melhoria — 90 dias" destaque>
+            <BlocoDossie
+              titulo={`Plano de melhoria — 30 / 60 / 90 dias · ${estruturaAtualLabel}`}
+              destaque
+            >
               <Plano90Dias
                 plano={
                   plano90Dias
@@ -8301,10 +9128,24 @@ function DetalheDiagnostico({
                       />
 
                       <ListaInterna
+                        titulo="Pontos fortes"
+                        itens={
+                          areaEquipeDiagnostico
+                            ?.pontosFortes
+                        }
+                      />
+
+                      <ListaInterna
                         titulo="Recomendações"
                         itens={
-                          atendimentoEquipeSelecionado
-                            .recomendacoes
+                          normalizarLista(
+                            atendimentoEquipeSelecionado
+                              .recomendacoes
+                          ).length
+                            ? atendimentoEquipeSelecionado
+                                .recomendacoes
+                            : areaEquipeDiagnostico
+                                ?.recomendacoes
                         }
                       />
 
@@ -8540,7 +9381,7 @@ function ListaInterna({
               MUTED,
           }}
         >
-          Sem informação.
+          Não identificado neste eixo.
         </span>
       )}
     </div>
