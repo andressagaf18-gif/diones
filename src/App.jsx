@@ -142,7 +142,7 @@ const AREAS_PF = [
   { id: "aposentadoria", label: "Aposentadoria", Icon: Target },
   { id: "investimentos", label: "Investimentos", Icon: TrendingUp },
   { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
-  { id: "protecao", label: "Proteção financeira", Icon: Shield },
+  { id: "protecao", label: "Proteção financeira", Icon: Scale },
   { id: "organizacao", label: "Organização / Planejamento", Icon: ClipboardList },
 ];
 
@@ -1172,11 +1172,28 @@ export default function DiagnosticoPrototipo() {
     ? dores
     : areasSugeridas.slice(0, MAX_DORES);
 
+  function labelAreaAtual(id) {
+    const origem =
+      trilhaHoldingAtiva
+        ? AREAS_HOLDING
+        : trilhaPFAtiva
+        ? AREAS_PF
+        : AREAS;
+
+    return (
+      origem.find(
+        (item) =>
+          item.id === id
+      )?.label ||
+      areaLabel(id)
+    );
+  }
+
   const gruposEstaticos = areasDoDiagnostico
     .filter((id) => CHECKLISTS[id])
     .map((id) => ({
       id,
-      label: areaLabel(id),
+      label: labelAreaAtual(id),
       subtemas: checklistEnxuto(CHECKLISTS[id]),
     }));
 
@@ -1189,7 +1206,7 @@ export default function DiagnosticoPrototipo() {
 
       return {
         id,
-        label: areaLabel(id),
+        label: labelAreaAtual(id),
         subtemas: temas.map((tema) => ({
           tema,
           dica: `Aprofundar ${tema.toLowerCase()} considerando o modelo real do negócio.`,
@@ -1862,17 +1879,46 @@ export default function DiagnosticoPrototipo() {
   ]);
 
   useEffect(() => {
-    if (step !== "analisando" || !empresaPrincipal || gruposSelecionados.length === 0) return;
+    if (
+      step !== "analisando" ||
+      (
+        !trilhaPFAtiva &&
+        !empresaPrincipal
+      ) ||
+      gruposSelecionados.length === 0
+    ) {
+      return;
+    }
 
     let cancelado = false;
     const labels = gruposSelecionados.map((g) => g.label);
-    const msgs = [
-      `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
-      `Analisando as áreas: ${labels.join(", ")}`,
-      "Cruzando respostas com o contexto do segmento",
-      "Estimando carga tributária de referência",
-      "Calculando índice de maturidade por departamento",
-    ];
+    const msgs =
+      trilhaPFAtiva
+        ? [
+            `Objetivos: ${
+              objetivosPF
+                .map(
+                  (id) =>
+                    OBJETIVOS_PF.find(
+                      (item) =>
+                        item.id === id
+                    )?.label
+                )
+                .filter(Boolean)
+                .join(", ")
+            }`,
+            `Analisando: ${labels.join(", ")}`,
+            "Cruzando respostas com renda, gastos, reserva e prioridades",
+            "Organizando riscos e oportunidades financeiras",
+            "Montando próximos passos personalizados",
+          ]
+        : [
+            `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
+            `Analisando as áreas: ${labels.join(", ")}`,
+            "Cruzando respostas com o contexto do segmento",
+            "Estimando carga tributária de referência",
+            "Calculando índice de maturidade por departamento",
+          ];
 
     setMsgIdx(0);
     const interval = setInterval(
@@ -1882,22 +1928,60 @@ export default function DiagnosticoPrototipo() {
 
     const payload = {
       responsavel: { nome, cargo, telefone, email },
-      segmento: segmentoPredominante,
-      categoria: categoriaPrincipal,
-      codigoQuestionario,
+      segmento:
+        trilhaPFAtiva
+          ? "Pessoa Física / Consultoria Financeira"
+          : segmentoPredominante,
+
+      categoria:
+        trilhaPFAtiva
+          ? (
+              objetivosPF
+                .map(
+                  (id) =>
+                    OBJETIVOS_PF.find(
+                      (item) =>
+                        item.id === id
+                    )?.label
+                )
+                .filter(Boolean)
+                .join(" + ") ||
+              "Pessoa Física"
+            )
+          : categoriaPrincipal,
+
+      codigoQuestionario:
+        trilhaPFAtiva
+          ? "PF_CONSULTORIA"
+          : codigoQuestionario,
       cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
       cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
       atividadesSelecionadas: atividadesSelecionadasObjetos,
       atividadePredominante,
-      empresas: empresas.map((e) => ({
-        razao: e.razao,
-        categoria: e.categoria,
-        segmento: e.segmento,
-        cnae: e.cnae,
-      })),
-      faturamento: faturamento?.label,
-      colaboradores,
-      regime,
+      empresas:
+        trilhaPFAtiva
+          ? []
+          : empresas.map((e) => ({
+              razao: e.razao,
+              categoria: e.categoria,
+              segmento: e.segmento,
+              cnae: e.cnae,
+            })),
+
+      faturamento:
+        trilhaPFAtiva
+          ? ""
+          : faturamento?.label,
+
+      colaboradores:
+        trilhaPFAtiva
+          ? ""
+          : colaboradores,
+
+      regime:
+        trilhaPFAtiva
+          ? ""
+          : regime,
       observacao,
       descricaoNegocio,
       negocioInterpretado,
@@ -2052,17 +2136,26 @@ export default function DiagnosticoPrototipo() {
   }
 
   async function gerarPerguntasPersonalizadas() {
-    if (!empresaPrincipal) {
+    if (
+      !trilhaPFAtiva &&
+      !empresaPrincipal
+    ) {
       showToast("Adicione pelo menos um CNPJ.");
       return;
     }
 
-    if (descricaoNegocio.trim().length < 20) {
+    if (
+      !trilhaPFAtiva &&
+      descricaoNegocio.trim().length < 20
+    ) {
       showToast("Descreva brevemente o que o negócio realmente faz.");
       return;
     }
 
-    if (!atividadePredominante) {
+    if (
+      !trilhaPFAtiva &&
+      !atividadePredominante
+    ) {
       showToast("Selecione a atividade predominante.");
       return;
     }
@@ -2581,7 +2674,15 @@ export default function DiagnosticoPrototipo() {
 
 
   async function enviarRelatorioPorEmail() {
-    if (!empresaPrincipal || relatorioEnviadoRef.current) return;
+    if (
+      (
+        !trilhaPFAtiva &&
+        !empresaPrincipal
+      ) ||
+      relatorioEnviadoRef.current
+    ) {
+      return;
+    }
 
     const respostasDetalhadas = gruposSelecionados.map((g) => ({
   area: g.label,
@@ -2669,20 +2770,35 @@ export default function DiagnosticoPrototipo() {
         email,
         consentimentoEmail,
       },
-      empresa: {
-        razao: empresaPrincipal.razao,
-        nomeFantasia: empresaPrincipal.nomeFantasia || "",
-        cnpj: empresaPrincipal.cnpjDigits || "",
-        cnae: empresaPrincipal.cnae || "",
-        cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
-        cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
-        atividadesSelecionadas: atividadesSelecionadasObjetos,
-        atividadePredominante,
-        categoria: categoriaPrincipal,
-        segmento: segmentoPredominante,
-        porte: empresaPrincipal.porte || "",
-        endereco: empresaPrincipal.endereco || {},
-      },
+      empresa: trilhaPFAtiva
+        ? {
+            razao: nome || "Pessoa Física",
+            nomeFantasia: "",
+            cnpj: "",
+            cnae: "",
+            cnaePrincipal: null,
+            cnaesSecundarios: [],
+            atividadesSelecionadas: [],
+            atividadePredominante: null,
+            categoria: "Pessoa Física",
+            segmento: "Pessoa Física / Consultoria Financeira",
+            porte: "",
+            endereco: {},
+          }
+        : {
+            razao: empresaPrincipal?.razao || "",
+            nomeFantasia: empresaPrincipal?.nomeFantasia || "",
+            cnpj: empresaPrincipal?.cnpjDigits || "",
+            cnae: empresaPrincipal?.cnae || "",
+            cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
+            cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
+            atividadesSelecionadas: atividadesSelecionadasObjetos,
+            atividadePredominante,
+            categoria: categoriaPrincipal,
+            segmento: segmentoPredominante,
+            porte: empresaPrincipal?.porte || "",
+            endereco: empresaPrincipal?.endereco || {},
+          },
       perfil: {
         faturamento: faturamento?.label || "",
         colaboradores: colaboradores || "",
@@ -3259,7 +3375,9 @@ export default function DiagnosticoPrototipo() {
     const pontosFortesExecutivos = pontosFortesIa.slice(0, 3);
 
     const mensagemWhatsApp = encodeURIComponent(
-      `Olá! Fiz o Diagnóstico Empresarial Finder.\n\nEmpresa: ${empresaPrincipal?.razao || ""}\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nO resultado fez sentido para mim e gostaria de conversar com um especialista para entender as prioridades e os próximos passos.`
+      trilhaPFAtiva
+        ? `Olá! Fiz o Diagnóstico Financeiro Pessoal Finder.\n\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nGostaria de conversar com um especialista para entender minhas prioridades e os próximos passos.`
+        : `Olá! Fiz o Diagnóstico Empresarial Finder.\n\nEmpresa: ${empresaPrincipal?.razao || ""}\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nO resultado fez sentido para mim e gostaria de conversar com um especialista para entender as prioridades e os próximos passos.`
     );
 
     const whatsappEspecialista = `https://wa.me/5541989049616?text=${mensagemWhatsApp}`;
@@ -3271,7 +3389,11 @@ export default function DiagnosticoPrototipo() {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Diagnóstico Executivo Finder - ${escaparHtml(empresaPrincipal.razao)}</title>
+<title>Diagnóstico Finder - ${escaparHtml(
+  trilhaPFAtiva
+    ? nome || "Pessoa Física"
+    : empresaPrincipal?.razao || "Empresa"
+)}</title>
 <style>
   @page { size: A4; margin: 14mm; }
   * { box-sizing: border-box; }
@@ -3335,9 +3457,32 @@ export default function DiagnosticoPrototipo() {
   <section class="capa">
     <img src="${logoUrl}" alt="Finder of Solutions" class="logo" />
     <div class="marca">Finder of Solutions</div>
-    <h1>Diagnóstico Executivo Empresarial</h1>
-    <p class="empresa">${escaparHtml(empresaPrincipal.razao)}</p>
-    <p class="meta">${escaparHtml(categoriaPrincipal)} · ${escaparHtml(atividadePredominante?.descricao || empresaPrincipal.cnae || "")}</p>
+    <h1>${trilhaPFAtiva ? "Diagnóstico Financeiro Pessoal" : "Diagnóstico Executivo Empresarial"}</h1>
+    <p class="empresa">${escaparHtml(
+      trilhaPFAtiva
+        ? nome || "Pessoa Física"
+        : empresaPrincipal?.razao || "Empresa"
+    )}</p>
+    <p class="meta">${
+      trilhaPFAtiva
+        ? escaparHtml(
+            objetivosPF
+              .map(
+                (id) =>
+                  OBJETIVOS_PF.find(
+                    (item) =>
+                      item.id === id
+                  )?.label
+              )
+              .filter(Boolean)
+              .join(" · ")
+          )
+        : `${escaparHtml(categoriaPrincipal)} · ${escaparHtml(
+            atividadePredominante?.descricao ||
+            empresaPrincipal?.cnae ||
+            ""
+          )}`
+    }</p>
   </section>
 
   <h2>Seu resultado</h2>
@@ -3353,10 +3498,30 @@ export default function DiagnosticoPrototipo() {
     </div>
   </div>
 
-  <h2>O que entendemos sobre o seu negócio</h2>
+  <h2>${trilhaPFAtiva ? "O que entendemos sobre sua vida financeira" : "O que entendemos sobre o seu negócio"}</h2>
   <div class="box">
-    <strong>${escaparHtml(negocioInterpretado?.subsegmento || negocioInterpretado?.segmento || categoriaPrincipal)}</strong>
-    <p>${escaparHtml(descricaoNegocio || "Descrição do negócio não informada.")}</p>
+    <strong>${escaparHtml(
+      trilhaPFAtiva
+        ? objetivosPF
+            .map(
+              (id) =>
+                OBJETIVOS_PF.find(
+                  (item) =>
+                    item.id === id
+                )?.label
+            )
+            .filter(Boolean)
+            .join(" · ") ||
+          "Consultoria financeira pessoal"
+        : negocioInterpretado?.subsegmento ||
+          negocioInterpretado?.segmento ||
+          categoriaPrincipal
+    )}</strong>
+    <p>${escaparHtml(
+      trilhaPFAtiva
+        ? `Renda informada: ${rendaMensalPF || "não informada"} · Gastos informados: ${gastosMensaisPF || "não informados"} · Reserva: ${reservaPF || "não informada"}`
+        : descricaoNegocio || "Descrição do negócio não informada."
+    )}</p>
     ${negocioInterpretado?.modeloOperacional ? `<p><strong>Modelo operacional:</strong> ${escaparHtml(negocioInterpretado.modeloOperacional)}</p>` : ""}
     ${trilhaHoldingAtiva ? `<p><strong>Estrutura especial:</strong> Holding / avaliação de holding</p>` : ""}
     ${trilhaHoldingAtiva && tiposHolding.length ? `<p><strong>Perfil informado:</strong> ${escaparHtml(tiposHolding.map((id) => TIPOS_HOLDING.find((t) => t.id === id)?.label || id).join(" · "))}</p>` : ""}
@@ -4944,7 +5109,11 @@ export default function DiagnosticoPrototipo() {
                   Checklist — {gruposSelecionados.map((g) => g.label).join(", ")}
                 </p>
                 <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
-                  {todasPerguntas.length} perguntas · personalizadas para {negocioInterpretado?.subsegmento || categoriaPrincipal}
+                  {todasPerguntas.length} perguntas · personalizadas para {
+                    trilhaPFAtiva
+                      ? "seus objetivos financeiros"
+                      : negocioInterpretado?.subsegmento || categoriaPrincipal
+                  }
                   {atividadePredominante?.descricao
                     ? ` · atividade-base: ${atividadePredominante.descricao}`
                     : empresaPrincipal?.cnae
@@ -4994,13 +5163,26 @@ export default function DiagnosticoPrototipo() {
               </div>
             )}
 
-            {step === "analisando" && empresaPrincipal && gruposSelecionados.length > 0 && (
+            {step === "analisando" &&
+              (trilhaPFAtiva || empresaPrincipal) &&
+              gruposSelecionados.length > 0 && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
                 <Loader2 size={34} color={CORAL} className="spin" />
                 <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: 0 }}>A IA está analisando</p>
                 <p style={{ fontSize: 12.5, color: MUTED, minHeight: 18, margin: 0, padding: "0 10px" }}>
                   {[
-                    `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
+                    trilhaPFAtiva
+                      ? `Objetivos: ${objetivosPF
+                          .map(
+                            (id) =>
+                              OBJETIVOS_PF.find(
+                                (item) =>
+                                  item.id === id
+                              )?.label
+                          )
+                          .filter(Boolean)
+                          .join(", ")}`
+                      : `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
                     `Analisando as áreas: ${gruposSelecionados.map((g) => g.label).join(", ")}`,
                     "Cruzando respostas com o contexto do segmento",
                     "Estimando carga tributária de referência",
@@ -5010,7 +5192,10 @@ export default function DiagnosticoPrototipo() {
               </div>
             )}
 
-            {step === "resultado" && empresaPrincipal && gruposSelecionados.length > 0 && areaMaisFraca && (
+            {step === "resultado" &&
+              (trilhaPFAtiva || empresaPrincipal) &&
+              gruposSelecionados.length > 0 &&
+              areaMaisFraca && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
                 <div style={{ background: tierDe(areaMaisFraca.score).bg, borderRadius: 14, padding: 14, marginBottom: 16, display: "flex", gap: 10 }}>
@@ -5026,19 +5211,48 @@ export default function DiagnosticoPrototipo() {
                 </div>
 
                 <p style={{ fontSize: 12, color: MUTED, textAlign: "center", margin: "0 0 4px", fontWeight: 700 }}>
-                  {empresaPrincipal.razao}
+                  {trilhaPFAtiva
+                    ? nome
+                    : empresaPrincipal?.razao}
                 </p>
                 <p style={{ fontSize: 11, color: "#9AA3B5", textAlign: "center", margin: "0 0 17px", lineHeight: 1.4 }}>
-                  {categoriaPrincipal} · {colaboradores} colaboradores · {gruposSelecionados.map((g) => g.label).join(", ")}
+                  {trilhaPFAtiva
+                    ? `Pessoa Física · ${gruposSelecionados.map((g) => g.label).join(", ")}`
+                    : `${categoriaPrincipal} · ${colaboradores} colaboradores · ${gruposSelecionados.map((g) => g.label).join(", ")}`}
                 </p>
 
-                <p style={sectionTitleStyle}>O que entendemos sobre o seu negócio</p>
+                <p style={sectionTitleStyle}>
+                  {trilhaPFAtiva
+                    ? "O que entendemos sobre sua vida financeira"
+                    : "O que entendemos sobre o seu negócio"}
+                </p>
                 <div style={{ background: "#F7F8FB", borderRadius: 12, padding: 13, marginBottom: 14, border: "1px solid #E6E9EF" }}>
                   <p style={{ fontSize: 11.8, color: NAVY, margin: 0, lineHeight: 1.55 }}>
-                    <strong>{negocioInterpretado?.subsegmento || negocioInterpretado?.segmento || categoriaPrincipal}</strong>
-                    {negocioInterpretado?.modeloOperacional ? ` — ${negocioInterpretado.modeloOperacional}` : ""}.
+                    <strong>
+                      {trilhaPFAtiva
+                        ? (
+                            objetivosPF
+                              .map(
+                                (id) =>
+                                  OBJETIVOS_PF.find(
+                                    (item) =>
+                                      item.id === id
+                                  )?.label
+                              )
+                              .filter(Boolean)
+                              .join(" · ") ||
+                            "Consultoria financeira pessoal"
+                          )
+                        : negocioInterpretado?.subsegmento ||
+                          negocioInterpretado?.segmento ||
+                          categoriaPrincipal}
+                    </strong>
+                    {!trilhaPFAtiva &&
+                      negocioInterpretado?.modeloOperacional
+                        ? ` — ${negocioInterpretado.modeloOperacional}`
+                        : ""}.
                   </p>
-                  {descricaoNegocio && (
+                  {!trilhaPFAtiva && descricaoNegocio && (
                     <p style={{ fontSize: 11.2, color: MUTED, margin: "7px 0 0", lineHeight: 1.5 }}>
                       Com base no que você informou, entendemos sua operação como: {descricaoNegocio}.
                     </p>
