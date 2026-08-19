@@ -317,6 +317,57 @@ async function prepararSchema() {
   `;
 
   await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS status_oportunidade
+    TEXT NOT NULL DEFAULT 'NAO_ANALISADA'
+  `;
+
+  await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS proxima_acao
+    TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS proximo_contato
+    TIMESTAMPTZ
+  `;
+
+  await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS ultimo_acionamento
+    TIMESTAMPTZ
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS crm_atendimento_historico (
+      id TEXT PRIMARY KEY,
+      atendimento_id TEXT NOT NULL,
+      diagnostico_id TEXT NOT NULL DEFAULT '',
+      lead_id TEXT NOT NULL DEFAULT '',
+      tipo_evento TEXT NOT NULL DEFAULT 'ACIONAMENTO',
+      tipo_acionamento TEXT NOT NULL DEFAULT '',
+      resultado TEXT NOT NULL DEFAULT '',
+      descricao TEXT NOT NULL DEFAULT '',
+      status_anterior TEXT NOT NULL DEFAULT '',
+      status_novo TEXT NOT NULL DEFAULT '',
+      oportunidade_anterior TEXT NOT NULL DEFAULT '',
+      oportunidade_nova TEXT NOT NULL DEFAULT '',
+      proxima_acao TEXT NOT NULL DEFAULT '',
+      proximo_contato TIMESTAMPTZ,
+      responsavel_id TEXT NOT NULL DEFAULT '',
+      responsavel_nome TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_crm_atendimento_historico_atendimento
+    ON crm_atendimento_historico (atendimento_id, created_at DESC)
+  `;
+
+  await sql`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_atendimentos_diag_area
     ON crm_atendimentos_departamento (diagnostico_id, area)
   `;
@@ -1855,6 +1906,47 @@ function statusAtendimentoValido(valor) {
     : null;
 }
 
+function statusOportunidadeValido(valor) {
+  const permitidos = [
+    "NAO_ANALISADA",
+    "EM_ANALISE",
+    "OPORTUNIDADE_IDENTIFICADA",
+    "PROPOSTA",
+    "CONTRATADO",
+    "SEM_OPORTUNIDADE",
+  ];
+
+  const status =
+    texto(valor, 60)
+      .toUpperCase();
+
+  return permitidos.includes(status)
+    ? status
+    : null;
+}
+
+function tipoAcionamentoValido(valor) {
+  const permitidos = [
+    "WHATSAPP",
+    "LIGACAO",
+    "EMAIL",
+    "REUNIAO",
+    "VIDEOCONFERENCIA",
+    "PROPOSTA",
+    "ANALISE_INTERNA",
+    "DOCUMENTOS",
+    "OUTRO",
+  ];
+
+  const tipo =
+    texto(valor, 60)
+      .toUpperCase();
+
+  return permitidos.includes(tipo)
+    ? tipo
+    : "OUTRO";
+}
+
 function normalizarArray(valor) {
   if (!Array.isArray(valor)) {
     return [];
@@ -2224,6 +2316,22 @@ async function criarAtendimentosDepartamento(
           statusAtendimento:
             item.status_atendimento,
 
+          statusOportunidade:
+            item.status_oportunidade ||
+            "NAO_ANALISADA",
+
+          proximaAcao:
+            item.proxima_acao ||
+            "",
+
+          proximoContato:
+            item.proximo_contato ||
+            null,
+
+          ultimoAcionamento:
+            item.ultimo_acionamento ||
+            null,
+
           oportunidades:
             Array.isArray(
               item.oportunidades
@@ -2319,6 +2427,12 @@ async function listarAtendimentosDepartamento(
       50
     ).toUpperCase();
 
+  const statusOportunidade =
+    texto(
+      req.query?.statusOportunidade,
+      60
+    ).toUpperCase();
+
   const linhas =
     await sql`
       SELECT
@@ -2332,6 +2446,10 @@ async function listarAtendimentosDepartamento(
 
         a.responsavel_id,
         a.status_atendimento,
+        a.status_oportunidade,
+        a.proxima_acao,
+        a.proximo_contato,
+        a.ultimo_acionamento,
 
         a.oportunidades,
         a.riscos,
@@ -2395,6 +2513,12 @@ async function listarAtendimentosDepartamento(
           ${statusAtendimento} = ''
           OR a.status_atendimento =
             ${statusAtendimento}
+        )
+
+        AND (
+          ${statusOportunidade} = ''
+          OR a.status_oportunidade =
+            ${statusOportunidade}
         )
 
       ORDER BY
@@ -2593,6 +2717,49 @@ async function atualizarAtendimentoDepartamento(
     });
   }
 
+  const statusOportunidade =
+    body.statusOportunidade !== undefined
+      ? statusOportunidadeValido(
+          body.statusOportunidade
+        )
+      : (
+          atual.status_oportunidade ||
+          "NAO_ANALISADA"
+        );
+
+  if (
+    body.statusOportunidade !== undefined &&
+    !statusOportunidade
+  ) {
+    return res.status(400).json({
+      sucesso: false,
+      error:
+        "statusOportunidade inválido.",
+    });
+  }
+
+  const proximaAcao =
+    body.proximaAcao !== undefined
+      ? texto(
+          body.proximaAcao,
+          1200
+        )
+      : (
+          atual.proxima_acao ||
+          ""
+        );
+
+  const proximoContato =
+    body.proximoContato !== undefined
+      ? (
+          body.proximoContato
+            ? new Date(
+                body.proximoContato
+              )
+            : null
+        )
+      : atual.proximo_contato;
+
   const responsavelId =
     body.responsavelId !== undefined
       ? texto(
@@ -2620,6 +2787,15 @@ async function atualizarAtendimentoDepartamento(
         status_atendimento =
           ${statusAtendimento},
 
+        status_oportunidade =
+          ${statusOportunidade},
+
+        proxima_acao =
+          ${proximaAcao},
+
+        proximo_contato =
+          ${proximoContato},
+
         observacoes_especialista =
           ${observacoesEspecialista},
 
@@ -2634,6 +2810,95 @@ async function atualizarAtendimentoDepartamento(
 
   const atendimento =
     linhas?.[0];
+
+  const mudouStatus =
+    String(
+      atual.status_atendimento ||
+      ""
+    ) !==
+    String(
+      statusAtendimento ||
+      ""
+    );
+
+  const mudouOportunidade =
+    String(
+      atual.status_oportunidade ||
+      "NAO_ANALISADA"
+    ) !==
+    String(
+      statusOportunidade ||
+      "NAO_ANALISADA"
+    );
+
+  const mudouResponsavel =
+    String(
+      atual.responsavel_id ||
+      ""
+    ) !==
+    String(
+      responsavelId ||
+      ""
+    );
+
+  if (
+    mudouStatus ||
+    mudouOportunidade ||
+    mudouResponsavel
+  ) {
+    let responsavelNome = "";
+
+    if (responsavelId) {
+      const respNome =
+        await sql`
+          SELECT nome
+          FROM crm_responsaveis
+          WHERE id = ${responsavelId}
+          LIMIT 1
+        `;
+
+      responsavelNome =
+        respNome?.[0]?.nome ||
+        "";
+    }
+
+    await sql`
+      INSERT INTO crm_atendimento_historico (
+        id,
+        atendimento_id,
+        diagnostico_id,
+        lead_id,
+        tipo_evento,
+        descricao,
+        status_anterior,
+        status_novo,
+        oportunidade_anterior,
+        oportunidade_nova,
+        proxima_acao,
+        proximo_contato,
+        responsavel_id,
+        responsavel_nome,
+        created_at
+      )
+      VALUES (
+        ${gerarId("hist")},
+        ${atendimentoId},
+        ${atual.diagnostico_id || ""},
+        ${atual.lead_id || ""},
+        'ALTERACAO',
+        'Atendimento atualizado.',
+        ${atual.status_atendimento || ""},
+        ${statusAtendimento || ""},
+        ${atual.status_oportunidade || "NAO_ANALISADA"},
+        ${statusOportunidade || "NAO_ANALISADA"},
+        ${proximaAcao},
+        ${proximoContato},
+        ${responsavelId},
+        ${responsavelNome},
+        NOW()
+      )
+    `;
+  }
 
   return res.status(200).json({
     sucesso: true,
@@ -2665,6 +2930,22 @@ async function atualizarAtendimentoDepartamento(
             statusAtendimento:
               atendimento.status_atendimento,
 
+            statusOportunidade:
+              atendimento.status_oportunidade ||
+              "NAO_ANALISADA",
+
+            proximaAcao:
+              atendimento.proxima_acao ||
+              "",
+
+            proximoContato:
+              atendimento.proximo_contato ||
+              null,
+
+            ultimoAcionamento:
+              atendimento.ultimo_acionamento ||
+              null,
+
             observacoesEspecialista:
               atendimento.observacoes_especialista,
 
@@ -2672,6 +2953,263 @@ async function atualizarAtendimentoDepartamento(
               atendimento.updated_at,
           }
         : null,
+  });
+}
+
+// =========================================================
+// AÇÃO: REGISTRAR ACIONAMENTO
+// =========================================================
+
+async function registrarAcionamento(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) {
+    return;
+  }
+
+  const body = req.body || {};
+  const atendimentoId =
+    texto(body.atendimentoId, 140);
+
+  if (!atendimentoId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "atendimentoId é obrigatório.",
+    });
+  }
+
+  const encontrados =
+    await sql`
+      SELECT *
+      FROM crm_atendimentos_departamento
+      WHERE id = ${atendimentoId}
+      LIMIT 1
+    `;
+
+  const atendimento = encontrados?.[0];
+
+  if (!atendimento) {
+    return res.status(404).json({
+      sucesso: false,
+      error: "Atendimento não encontrado.",
+    });
+  }
+
+  const tipoAcionamento =
+    tipoAcionamentoValido(
+      body.tipoAcionamento
+    );
+
+  const resultado =
+    texto(body.resultado, 800);
+
+  const descricao =
+    texto(
+      body.descricao ||
+      body.observacao,
+      8000
+    );
+
+  const proximaAcao =
+    texto(body.proximaAcao, 1200);
+
+  const proximoContato =
+    body.proximoContato
+      ? new Date(body.proximoContato)
+      : null;
+
+  const responsavelId =
+    texto(
+      body.responsavelId ||
+      atendimento.responsavel_id,
+      140
+    );
+
+  let responsavelNome =
+    texto(body.responsavelNome, 180);
+
+  if (!responsavelNome && responsavelId) {
+    const r =
+      await sql`
+        SELECT nome
+        FROM crm_responsaveis
+        WHERE id = ${responsavelId}
+        LIMIT 1
+      `;
+    responsavelNome =
+      r?.[0]?.nome || "";
+  }
+
+  const statusNovo =
+    body.statusAtendimento
+      ? statusAtendimentoValido(
+          body.statusAtendimento
+        )
+      : atendimento.status_atendimento;
+
+  const oportunidadeNova =
+    body.statusOportunidade
+      ? statusOportunidadeValido(
+          body.statusOportunidade
+        )
+      : (
+          atendimento.status_oportunidade ||
+          "NAO_ANALISADA"
+        );
+
+  if (!statusNovo) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "statusAtendimento inválido.",
+    });
+  }
+
+  if (!oportunidadeNova) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "statusOportunidade inválido.",
+    });
+  }
+
+  const historicoId =
+    gerarId("hist");
+
+  await sql`
+    INSERT INTO crm_atendimento_historico (
+      id,
+      atendimento_id,
+      diagnostico_id,
+      lead_id,
+      tipo_evento,
+      tipo_acionamento,
+      resultado,
+      descricao,
+      status_anterior,
+      status_novo,
+      oportunidade_anterior,
+      oportunidade_nova,
+      proxima_acao,
+      proximo_contato,
+      responsavel_id,
+      responsavel_nome,
+      created_at
+    )
+    VALUES (
+      ${historicoId},
+      ${atendimentoId},
+      ${atendimento.diagnostico_id || ""},
+      ${atendimento.lead_id || ""},
+      'ACIONAMENTO',
+      ${tipoAcionamento},
+      ${resultado},
+      ${descricao},
+      ${atendimento.status_atendimento || ""},
+      ${statusNovo},
+      ${atendimento.status_oportunidade || "NAO_ANALISADA"},
+      ${oportunidadeNova},
+      ${proximaAcao},
+      ${proximoContato},
+      ${responsavelId},
+      ${responsavelNome},
+      NOW()
+    )
+  `;
+
+  await sql`
+    UPDATE crm_atendimentos_departamento
+    SET
+      status_atendimento =
+        ${statusNovo},
+      status_oportunidade =
+        ${oportunidadeNova},
+      proxima_acao =
+        ${proximaAcao},
+      proximo_contato =
+        ${proximoContato},
+      ultimo_acionamento =
+        NOW(),
+      updated_at =
+        NOW()
+    WHERE id =
+      ${atendimentoId}
+  `;
+
+  return res.status(200).json({
+    sucesso: true,
+    historicoId,
+  });
+}
+
+// =========================================================
+// AÇÃO: LISTAR HISTÓRICO
+// =========================================================
+
+async function listarHistoricoAtendimento(req, res) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) {
+    return;
+  }
+
+  const atendimentoId =
+    texto(
+      req.query?.atendimentoId,
+      140
+    );
+
+  if (!atendimentoId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "atendimentoId é obrigatório.",
+    });
+  }
+
+  const linhas =
+    await sql`
+      SELECT *
+      FROM crm_atendimento_historico
+      WHERE atendimento_id =
+        ${atendimentoId}
+      ORDER BY created_at DESC
+      LIMIT 300
+    `;
+
+  return res.status(200).json({
+    sucesso: true,
+    historico:
+      (linhas || []).map(
+        (item) => ({
+          id: item.id,
+          atendimentoId: item.atendimento_id,
+          diagnosticoId: item.diagnostico_id,
+          leadId: item.lead_id,
+          tipoEvento: item.tipo_evento,
+          tipoAcionamento: item.tipo_acionamento,
+          resultado: item.resultado,
+          descricao: item.descricao,
+          statusAnterior: item.status_anterior,
+          statusNovo: item.status_novo,
+          oportunidadeAnterior: item.oportunidade_anterior,
+          oportunidadeNova: item.oportunidade_nova,
+          proximaAcao: item.proxima_acao,
+          proximoContato: item.proximo_contato,
+          responsavelId: item.responsavel_id,
+          responsavelNome: item.responsavel_nome,
+          criadoEm: item.created_at,
+        })
+      ),
   });
 }
 
@@ -3405,6 +3943,18 @@ export default async function handler(req, res) {
           res
         );
 
+      case "registrar-acionamento":
+        return registrarAcionamento(
+          req,
+          res
+        );
+
+      case "listar-historico":
+        return listarHistoricoAtendimento(
+          req,
+          res
+        );
+
       default:
         return res.status(400).json({
           sucesso: false,
@@ -3423,6 +3973,8 @@ export default async function handler(req, res) {
             "criar-atendimentos",
             "listar-atendimentos",
             "atualizar-atendimento",
+            "registrar-acionamento",
+            "listar-historico",
           ],
         });
     }
