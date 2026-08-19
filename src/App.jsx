@@ -1,1178 +1,593 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
+
 import {
-  QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
-  CalendarCheck, RotateCcw, Megaphone, Scale, Calculator, Wallet,
-  ClipboardList, Target, Settings2, Building2, Sparkles, Users, TrendingUp,
-  AlertTriangle, Percent, Cpu, Flame, X, Plus, User,
+  Search,
+  Building2,
+  ArrowLeft,
+  LogOut,
+  RefreshCcw,
+  AlertTriangle,
+  ChevronRight,
+  Target,
+  Download,
+  Users,
+  Activity,
+  CheckCircle2,
+  Clock3,
+  Flame,
+  UserPlus,
+  Gauge,
+  Save,
 } from "lucide-react";
 
 const NAVY = "#17233D";
-const ICE = "#E9EDF5";
 const CORAL = "#FF6B4A";
 const MUTED = "#5B667A";
+const ICE = "#E9EDF5";
 const WHITE = "#FFFFFF";
-const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
-const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-const MAX_DORES = 3;
-const MAX_EMPRESAS = 4;
+const BG = "#F3F5F8";
 
-const AREAS = [
-  { id: "marketing", label: "Marketing", Icon: Megaphone },
-  { id: "juridico", label: "Jurídico", Icon: Scale },
-  { id: "contabilidade", label: "Contábil / Fiscal", Icon: Calculator },
-  { id: "financeiro", label: "Financeiro PF/PJ", Icon: Wallet },
-  { id: "administrativo", label: "Administrativo", Icon: ClipboardList },
-  { id: "gestao", label: "Gestão", Icon: Target },
-  { id: "operacional", label: "Operacional", Icon: Settings2 },
-  { id: "rh", label: "Recursos Humanos", Icon: Users },
-  { id: "comercial", label: "Comercial / Vendas", Icon: TrendingUp },
-  { id: "tecnologia", label: "Tecnologia", Icon: Cpu },
-];
+const BODY_FONT =
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
-const COMPANIES = [
-  { segmento: "Serviço", razao: "Alfa Consultoria e Serviços Ltda", cnae: "70.20-4-00 — Consultoria em gestão empresarial", porte: "Microempresa" },
-  { segmento: "Comércio", razao: "Boa Vista Comércio Varejista Ltda", cnae: "47.81-4-00 — Comércio varejista de vestuário", porte: "Empresa de pequeno porte" },
-  { segmento: "Indústria", razao: "Metaltech Indústria e Fundição Ltda", cnae: "24.51-2-00 — Fundição de ferro e aço", porte: "Médio porte" },
-  { segmento: "Serviço", razao: "Nexo Tecnologia e Sistemas Ltda", cnae: "62.01-5-01 — Desenvolvimento de software", porte: "Microempresa" },
-  { segmento: "Comércio", razao: "Sabor e Cia Distribuidora de Alimentos", cnae: "46.37-1-01 — Comércio atacadista de alimentos", porte: "Empresa de pequeno porte" },
-  { segmento: "Indústria", razao: "Fort Metalúrgica e Estruturas Ltda", cnae: "25.11-0-00 — Fabricação de estruturas metálicas", porte: "Médio porte" },
-];
-
-const FATURAMENTOS = [
-  { id: "f1", label: "Até R$ 30 mil/mês", anual: 216000 },
-  { id: "f2", label: "R$ 30 mil a R$ 100 mil/mês", anual: 780000 },
-  { id: "f3", label: "R$ 100 mil a R$ 400 mil/mês", anual: 3000000 },
-  { id: "f4", label: "R$ 400 mil a R$ 1,5 mi/mês", anual: 11400000 },
-  { id: "f5", label: "Acima de R$ 1,5 mi/mês", anual: 24000000 },
-];
-const COLABORADORES = ["Até 5", "6 a 20", "21 a 50", "51 a 200", "Mais de 200"];
-const REGIMES = ["Simples Nacional", "Lucro Presumido", "Lucro Real", "Não sei"];
+const DISPLAY_FONT =
+  "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 
 // =========================================================
-// TRILHA ESPECIALIZADA — HOLDING
+// FUNÇÕES AUXILIARES
 // =========================================================
-const ESTRUTURAS_NEGOCIO = [
-  { id: "operacional", label: "Empresa operacional" },
-  { id: "holding", label: "Holding" },
-  { id: "grupo", label: "Grupo empresarial" },
-  { id: "spe", label: "SPE" },
-  { id: "avaliar_holding", label: "Quero avaliar se uma holding faz sentido" },
-  { id: "pessoa_fisica", label: "Pessoa Física / Consultoria pessoal" },
-];
 
-const TIPOS_HOLDING = [
-  {
-    id: "patrimonial",
-    label: "Patrimonial / Imobiliária",
-    descricao: "Organização e administração de imóveis, participações e outros ativos patrimoniais.",
-  },
-  {
-    id: "familiar",
-    label: "Familiar / Sucessória",
-    descricao: "Estrutura voltada à organização familiar, sucessão, governança e continuidade patrimonial.",
-  },
-  {
-    id: "participacoes",
-    label: "Participações societárias",
-    descricao: "Concentração de quotas ou ações de outras empresas e organização das participações.",
-  },
-  {
-    id: "controle",
-    label: "Controle empresarial",
-    descricao: "Estrutura para centralizar controle, governança e decisões sobre empresas do grupo.",
-  },
-  {
-    id: "pura",
-    label: "Holding pura",
-    descricao: "Sociedade cuja atividade predominante é participar de outras sociedades.",
-  },
-  {
-    id: "mista",
-    label: "Holding mista",
-    descricao: "Além de participações societárias, também exerce outras atividades econômicas.",
-  },
-  {
-    id: "nao_sei",
-    label: "Não sei / quero avaliação",
-    descricao: "A Finder avalia finalidade, patrimônio, receitas, sucessão e estrutura antes de recomendar um modelo.",
-  },
-];
+function formatarData(valor) {
+  if (!valor) return "-";
 
-const OBJETIVOS_HOLDING = [
-  "Organizar patrimônio",
-  "Planejar sucessão familiar",
-  "Centralizar participações societárias",
-  "Administrar imóveis e receitas de locação",
-  "Melhorar governança do grupo",
-  "Avaliar eficiência tributária",
-  "Preparar compra, venda ou integralização de bens",
-  "Ainda não sei — quero uma avaliação",
-];
-
-const OBJETIVOS_PF = [
-  { id: "financeiro", label: "Organização financeira" },
-  { id: "aposentadoria", label: "Planejamento de aposentadoria" },
-  { id: "investimentos", label: "Investimentos" },
-  { id: "dividas", label: "Dívidas e reorganização financeira" },
-  { id: "patrimonio", label: "Organização patrimonial" },
-  { id: "renda", label: "Aumentar capacidade de poupança" },
-  { id: "protecao", label: "Proteção financeira" },
-  { id: "nao_sei", label: "Não sei por onde começar" },
-];
-
-const DORES_PF = [
-  "Não consigo organizar minhas finanças",
-  "Gasto mais do que gostaria",
-  "Não consigo formar reserva de emergência",
-  "Tenho dívidas ou parcelas pesando no orçamento",
-  "Não sei quanto preciso guardar para aposentadoria",
-  "Não sei se meus investimentos estão adequados",
-  "Tenho dinheiro parado ou mal distribuído",
-  "Tenho medo de investir errado",
-  "Não sei quanto posso investir por mês",
-  "Quero organizar meu patrimônio",
-  "Tenho dependentes e quero melhorar minha proteção financeira",
-  "Minha renda varia muito ao longo do mês",
-  "Não sei qual deve ser minha prioridade agora",
-  "Outro",
-];
-
-const AREAS_PF = [
-  { id: "organizacao_financeira", label: "Organização financeira", Icon: Wallet },
-  { id: "fluxo_pessoal", label: "Fluxo financeiro pessoal", Icon: TrendingUp },
-  { id: "endividamento", label: "Endividamento", Icon: AlertTriangle },
-  { id: "reserva_seguranca", label: "Reserva e segurança", Icon: Target },
-  { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
-  { id: "investimentos", label: "Investimentos", Icon: TrendingUp },
-  { id: "aposentadoria", label: "Aposentadoria", Icon: CalendarCheck },
-  { id: "protecao_familiar", label: "Proteção familiar", Icon: Scale },
-  { id: "tributario_pf", label: "Tributário PF", Icon: Calculator },
-  { id: "sucessao", label: "Sucessão", Icon: Users },
-  { id: "objetivos", label: "Objetivos financeiros", Icon: ClipboardList },
-];
-
-const AREAS_AVALIAR_HOLDING = [
-  { id: "objetivos", label: "Objetivos da estrutura", Icon: Target },
-  { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
-  { id: "imoveis", label: "Imóveis", Icon: Building2 },
-  { id: "participacoes", label: "Participações societárias", Icon: Users },
-  { id: "receitas", label: "Receitas patrimoniais", Icon: Wallet },
-  { id: "familia_sucessao", label: "Família e sucessão", Icon: Users },
-  { id: "tributario", label: "Tributário patrimonial", Icon: Calculator },
-  { id: "financiamentos", label: "Financiamentos e obrigações", Icon: Wallet },
-  { id: "custos_viabilidade", label: "Custos e viabilidade", Icon: Percent },
-];
-
-const AREAS_GRUPO = [
-  { id: "estrutura_grupo", label: "Estrutura do grupo", Icon: Building2 },
-  { id: "governanca", label: "Governança", Icon: Target },
-  { id: "financeiro_consolidado", label: "Financeiro consolidado", Icon: Wallet },
-  { id: "intercompany", label: "Operações intercompany", Icon: Settings2 },
-  { id: "tributario", label: "Tributário", Icon: Calculator },
-  { id: "contabil_fiscal", label: "Contábil / Fiscal", Icon: ClipboardList },
-  { id: "pessoas_compartilhadas", label: "Pessoas compartilhadas", Icon: Users },
-  { id: "operacoes", label: "Operações do grupo", Icon: Settings2 },
-  { id: "tecnologia", label: "Tecnologia e dados", Icon: Cpu },
-];
-
-const AREAS_SPE = [
-  { id: "projeto", label: "Projeto / empreendimento", Icon: Target },
-  { id: "socios_investidores", label: "Sócios e investidores", Icon: Users },
-  { id: "aportes", label: "Aportes e capital", Icon: Wallet },
-  { id: "financeiro", label: "Financeiro", Icon: Wallet },
-  { id: "contratos", label: "Contratos", Icon: Scale },
-  { id: "tributario", label: "Tributário", Icon: Calculator },
-  { id: "governanca", label: "Governança", Icon: ClipboardList },
-  { id: "riscos", label: "Riscos do projeto", Icon: AlertTriangle },
-  { id: "encerramento", label: "Saída / encerramento", Icon: CalendarCheck },
-];
-
-// Estimativa simplificada de carga tributária — referência, não é cálculo fiscal real.
-const SIMPLES_FAIXAS = [180000, 360000, 720000, 1800000, 3600000, 4800000];
-const SIMPLES_ALIQUOTAS = {
-  "Comércio": [4.0, 7.3, 9.5, 10.7, 14.3, 19.0],
-  "Indústria": [4.5, 7.8, 10.0, 11.2, 14.7, 19.5],
-  "Serviço": [6.0, 11.2, 13.5, 16.0, 21.0, 33.0],
-};
-const PRESUMIDO_ALIQUOTAS = { "Comércio": 11, "Indústria": 11, "Serviço": 16 };
-const REAL_ALIQUOTAS = { "Comércio": 20, "Indústria": 20, "Serviço": 24 };
-
-function estimarAliquota(regime, segmento, anual) {
-  const segmentoNormalizado = normalizarSegmentoTributario(segmento);
-
-  if (regime === "Simples Nacional") {
-    const aliquotas = SIMPLES_ALIQUOTAS[segmentoNormalizado];
-    if (!aliquotas) return null;
-
-    const faixaIdx = SIMPLES_FAIXAS.findIndex((teto) => anual <= teto);
-    const idx = faixaIdx === -1 ? aliquotas.length - 1 : faixaIdx;
-    return aliquotas[idx];
+  try {
+    return new Date(valor).toLocaleString("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  } catch {
+    return String(valor);
   }
-
-  if (regime === "Lucro Presumido") {
-    return PRESUMIDO_ALIQUOTAS[segmentoNormalizado] ?? null;
-  }
-
-  if (regime === "Lucro Real") {
-    return REAL_ALIQUOTAS[segmentoNormalizado] ?? null;
-  }
-
-  return null;
 }
 
+function formatarCnpj(valor = "") {
+  const digits = String(valor).replace(/\D/g, "");
 
-// =========================================================
-// INTELIGÊNCIA TRIBUTÁRIA
-// =========================================================
-//
-// IMPORTANTE:
-// - a carga abaixo é uma ESTIMATIVA GERENCIAL;
-// - não substitui apuração fiscal;
-// - o faturamento usado é o valor de referência da faixa
-//   escolhida no formulário;
-// - o impacto da Reforma Tributária é preliminar e deve ser
-//   validado com os dados reais da empresa.
-// =========================================================
+  if (digits.length !== 14) {
+    return valor || "-";
+  }
 
-function moedaTributaria(valor) {
-  const numero = Number(valor);
+  return digits.replace(
+    /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+    "$1.$2.$3/$4-$5"
+  );
+}
+
+function scoreInfo(score) {
+  const numero = Number(score);
 
   if (!Number.isFinite(numero)) {
-    return "-";
+    return {
+      label: "Sem score",
+      color: MUTED,
+      bg: "#EEF0F5",
+    };
   }
 
-  return numero.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  });
-}
-
-function percentualTributario(valor) {
-  const numero = Number(valor);
-
-  if (!Number.isFinite(numero)) {
-    return "-";
+  if (numero >= 80) {
+    return {
+      label: "Bom",
+      color: "#0F6E56",
+      bg: "#E1F5EE",
+    };
   }
 
-  return `${numero.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}%`;
-}
-
-function obterImpactoReformaTributaria({
-  regime,
-  segmento,
-  categoria,
-}) {
-  const segmentoTributario =
-    normalizarSegmentoTributario(segmento);
-
-  const resultado = {
-    status: "A avaliar",
-    tratamentoSetorial:
-      "Aplicação preliminar da regra geral do IBS/CBS. O enquadramento definitivo depende da atividade efetivamente exercida e da classificação tributária das operações.",
-
-    fase2026:
-      regime === "Simples Nacional"
-        ? "Para optantes do Simples Nacional, 2026 permanece como período sem alteração material do recolhimento de IBS/CBS; os efeitos operacionais e de opção ganham relevância a partir de 2027."
-        : "Em 2026, a fase de teste utiliza 0,9% de CBS e 0,1% de IBS para contribuintes do regime regular, observadas as regras de compensação, dispensa e obrigações acessórias.",
-
-    fatoresFavoraveis: [],
-    fatoresAtencao: [],
-    pontosValidar: [
-      "Confirmar a atividade efetivamente exercida e o enquadramento legal de cada receita.",
-      "Validar o regime tributário atual e o perfil B2B/B2C da carteira.",
-      "Mapear compras, despesas e investimentos potencialmente geradores de créditos.",
-      "Simular preço, margem e fluxo de caixa antes de concluir aumento ou redução de carga.",
-    ],
-
-    oportunidadeFinder:
-      "Realizar simulação tributária individualizada comparando a carga atual com cenários da Reforma Tributária.",
-  };
-
-  if (categoria === "Contabilidade") {
-    resultado.status =
-      "Moderado · requer simulação";
-
-    resultado.tratamentoSetorial =
-      "Serviços de contabilistas podem se enquadrar na redução de 30% das alíquotas de IBS e CBS prevista para determinadas profissões regulamentadas, desde que atendidos os requisitos legais. A redução incide sobre IBS/CBS, e não sobre a carga tributária total da empresa.";
-
-    resultado.fatoresFavoraveis.push(
-      "Possibilidade de tratamento diferenciado com redução das alíquotas de IBS/CBS, sujeito ao enquadramento legal."
-    );
-
-    resultado.fatoresAtencao.push(
-      "Escritórios contábeis tendem a possuir estrutura relevante de folha, que não gera crédito como uma aquisição comum de bens e serviços."
-    );
-
-    resultado.fatoresAtencao.push(
-      "A composição B2B da carteira pode alterar a percepção comercial do novo imposto, pois clientes contribuintes podem valorizar a geração de créditos."
-    );
-  } else if (categoria === "Advocacia") {
-    resultado.status =
-      "Moderado · requer simulação";
-
-    resultado.tratamentoSetorial =
-      "Serviços de advocacia podem se enquadrar na redução de 30% das alíquotas de IBS e CBS prevista para determinadas profissões regulamentadas, observados os requisitos legais.";
-
-    resultado.fatoresFavoraveis.push(
-      "Possibilidade de redução setorial das alíquotas de IBS/CBS, quando atendidas as condições legais."
-    );
-
-    resultado.fatoresAtencao.push(
-      "A estrutura intensiva em mão de obra pode limitar o volume de créditos aproveitáveis."
-    );
-  } else if (categoria === "Saúde / Clínica") {
-    resultado.status =
-      "Relevante · validar enquadramento";
-
-    resultado.tratamentoSetorial =
-      "Diversos serviços de saúde possuem tratamento diferenciado com redução de 60% das alíquotas de IBS e CBS, mas é necessário confirmar se os serviços efetivamente prestados estão na lista legal aplicável.";
-
-    resultado.fatoresFavoraveis.push(
-      "Possibilidade de redução setorial relevante das alíquotas de IBS/CBS para serviços de saúde enquadrados."
-    );
-
-    resultado.fatoresAtencao.push(
-      "A classificação do serviço e a composição das receitas devem ser validadas antes de aplicar qualquer redução."
-    );
-  } else if (
-    categoria === "Imobiliária / Atividades Imobiliárias"
-  ) {
-    resultado.status =
-      "Alto · exige análise específica";
-
-    resultado.tratamentoSetorial =
-      "Operações imobiliárias possuem regras específicas na Reforma Tributária. Locação, venda, intermediação e administração não devem ser tratadas como uma única operação para fins de projeção.";
-
-    resultado.fatoresAtencao.push(
-      "Separar receitas de locação, venda, administração, intermediação e demais serviços antes da simulação."
-    );
-  } else if (segmentoTributario === "Indústria") {
-    resultado.status =
-      "Moderado · depende dos créditos";
-
-    resultado.tratamentoSetorial =
-      "Na indústria, o efeito líquido tende a depender fortemente do volume de insumos, serviços, energia, ativos e demais aquisições que gerem créditos de IBS/CBS.";
-
-    resultado.fatoresFavoraveis.push(
-      "Maior potencial de créditos sobre aquisições vinculadas à atividade empresarial, conforme as regras aplicáveis."
-    );
-
-    resultado.fatoresAtencao.push(
-      "Preço, estoque, compras, benefícios atuais e cadeia de fornecedores precisam ser simulados em conjunto."
-    );
-  } else if (segmentoTributario === "Comércio") {
-    resultado.status =
-      "Moderado · depende da cadeia";
-
-    resultado.tratamentoSetorial =
-      "No comércio, a análise deve considerar créditos sobre aquisições, composição de estoque, perfil dos fornecedores, margem e destino das vendas.";
-
-    resultado.fatoresFavoraveis.push(
-      "Aquisições de mercadorias podem gerar créditos relevantes quando atendidos os requisitos do novo sistema."
-    );
-
-    resultado.fatoresAtencao.push(
-      "Empresas com venda predominante ao consumidor final podem ter maior sensibilidade de preço do que operações B2B."
-    );
-  } else {
-    resultado.status =
-      "Moderado · requer simulação";
-
-    resultado.tratamentoSetorial =
-      "Empresas de serviços precisam avaliar especialmente a relação entre receita, folha, despesas creditáveis, perfil B2B/B2C e eventual tratamento diferenciado previsto para a atividade.";
-
-    resultado.fatoresAtencao.push(
-      "Negócios intensivos em mão de obra podem apresentar menor proporção de despesas geradoras de créditos."
-    );
-
-    resultado.fatoresFavoraveis.push(
-      "Em operações B2B, a geração de créditos ao cliente pode alterar a análise de preço e competitividade."
-    );
+  if (numero >= 60) {
+    return {
+      label: "Atenção",
+      color: "#854F0B",
+      bg: "#FAEEDA",
+    };
   }
 
-  if (regime === "Simples Nacional") {
-    resultado.pontosValidar.unshift(
-      "Simular a permanência do IBS/CBS dentro do Simples versus eventual recolhimento pelas regras do regime regular quando a legislação permitir a opção."
-    );
+  if (numero >= 40) {
+    return {
+      label: "Crítico",
+      color: "#993C1D",
+      bg: "#FAECE7",
+    };
   }
-
-  return resultado;
-}
-
-function montarInteligenciaTributaria({
-  regime,
-  segmento,
-  categoria,
-  faturamento,
-}) {
-  const anualReferencia =
-    Number(faturamento?.anual);
-
-  const aliquotaEstimada =
-    regime &&
-    regime !== "Não sei" &&
-    Number.isFinite(anualReferencia)
-      ? estimarAliquota(
-          regime,
-          segmento,
-          anualReferencia
-        )
-      : null;
-
-  const mensalReferencia =
-    Number.isFinite(anualReferencia)
-      ? anualReferencia / 12
-      : null;
-
-  const tributosAnuaisEstimados =
-    aliquotaEstimada !== null &&
-    Number.isFinite(anualReferencia)
-      ? anualReferencia *
-        (aliquotaEstimada / 100)
-      : null;
-
-  const tributosMensaisEstimados =
-    tributosAnuaisEstimados !== null
-      ? tributosAnuaisEstimados / 12
-      : null;
 
   return {
-    disponivel:
-      aliquotaEstimada !== null &&
-      Number.isFinite(mensalReferencia),
-
-    faturamentoFaixa:
-      faturamento?.label || "",
-
-    faturamentoMensalReferencia:
-      mensalReferencia,
-
-    faturamentoAnualReferencia:
-      Number.isFinite(anualReferencia)
-        ? anualReferencia
-        : null,
-
-    tributosMensaisEstimados,
-    tributosAnuaisEstimados,
-
-    cargaTributariaEstimada:
-      aliquotaEstimada,
-
-    regime:
-      regime || "",
-
-    segmento:
-      segmento || "",
-
-    categoria:
-      categoria || "",
-
-    criterio:
-      "Estimativa gerencial baseada na faixa de faturamento informada, no regime tributário e no segmento. Não representa apuração fiscal efetiva.",
-
-    confiabilidade:
-      "Referencial",
-
-    reforma:
-      obterImpactoReformaTributaria({
-        regime,
-        segmento,
-        categoria,
-      }),
+    label: "Emergencial",
+    color: "#791F1F",
+    bg: "#FCEBEB",
   };
 }
 
-// Modelo de maturidade: Sim = 5, Parcialmente = 3, Não = 0 (invertido para perguntas de risco).
-function pesoResposta(q, r) {
-  if (!r) return 0;
-  if (q.invert) { if (r === "sim") return 0; if (r === "nao") return 5; return 3; }
-  if (r === "sim") return 5; if (r === "nao") return 0; return 3;
-}
-function tierDe(score) {
-  if (score >= 95) return { label: "Excelente", color: "#0F6E56", bg: "#E1F5EE" };
-  if (score >= 80) return { label: "Muito bom", color: "#185FA5", bg: "#E6F1FB" };
-  if (score >= 60) return { label: "Atenção", color: "#854F0B", bg: "#FAEEDA" };
-  if (score >= 40) return { label: "Crítico", color: "#993C1D", bg: "#FAECE7" };
-  return { label: "Emergencial", color: "#791F1F", bg: "#FCEBEB" };
-}
-// Contexto por categoria: adapta o checklist ao CNAE identificado.
-const CATEGORY_CONTEXT = {
-  "Contabilidade": {
-    cliente: "cliente da carteira contábil",
-    oferta: "abertura, troca de contabilidade, BPO e consultoria",
-    operacao: "entregas contábeis, fiscais e trabalhistas",
-    unidadeRentabilidade: "cliente, carteira ou responsável",
-    capacidade: "capacidade da equipe por carteira e período",
-    documentoFiscal: "NFS-e e documentos fiscais dos clientes",
-  },
-  "Advocacia": {
-    cliente: "cliente ou processo",
-    oferta: "consultas, contratos e serviços jurídicos",
-    operacao: "prazos, processos e entregas jurídicas",
-    unidadeRentabilidade: "cliente, processo ou área jurídica",
-    capacidade: "capacidade da equipe por processo e prazo",
-    documentoFiscal: "notas de serviço e retenções aplicáveis",
-  },
-  "Saúde / Clínica": {
-    cliente: "paciente",
-    oferta: "consultas, procedimentos e tratamentos",
-    operacao: "agenda, atendimento e execução dos procedimentos",
-    unidadeRentabilidade: "procedimento, profissional ou unidade",
-    capacidade: "ocupação da agenda e capacidade dos profissionais",
-    documentoFiscal: "notas de serviço e retenções aplicáveis à clínica",
-  },
-  "Tecnologia": {
-    cliente: "cliente ou conta",
-    oferta: "projetos, licenças, SaaS e serviços de tecnologia",
-    operacao: "desenvolvimento, suporte e entrega de projetos",
-    unidadeRentabilidade: "projeto, contrato ou cliente",
-    capacidade: "capacidade do time por sprint, projeto ou contrato",
-    documentoFiscal: "notas de serviço e tributação das receitas de tecnologia",
-  },
-  "Construção Civil": {
-    cliente: "cliente, obra ou contrato",
-    oferta: "obras, reformas e serviços de construção",
-    operacao: "obras, medições, compras e execução em campo",
-    unidadeRentabilidade: "obra, contrato ou centro de custo",
-    capacidade: "capacidade de execução por equipe e obra",
-    documentoFiscal: "notas, retenções e documentos vinculados às obras",
-  },
-  "Comércio": {
-    cliente: "cliente",
-    oferta: "produtos e linhas comercializadas",
-    operacao: "compra, estoque, venda e entrega",
-    unidadeRentabilidade: "produto, categoria, loja ou canal",
-    capacidade: "giro e capacidade de reposição de estoque",
-    documentoFiscal: "NF-e/NFC-e, NCM, CST e tributação das mercadorias",
-  },
-  "E-commerce": {
-    cliente: "cliente do e-commerce",
-    oferta: "produtos, kits e campanhas online",
-    operacao: "pedido, pagamento, separação, expedição e pós-venda",
-    unidadeRentabilidade: "SKU, campanha, canal ou pedido",
-    capacidade: "capacidade de separação, expedição e reposição",
-    documentoFiscal: "NF-e, NCM, CST e tributação das vendas online",
-  },
-  "Indústria": {
-    cliente: "cliente industrial",
-    oferta: "produtos, projetos e linhas fabricadas",
-    operacao: "PCP, produção, qualidade, estoque e expedição",
-    unidadeRentabilidade: "produto, ordem de produção ou centro de custo",
-    capacidade: "capacidade produtiva por máquina, linha ou turno",
-    documentoFiscal: "NF-e, NCM, CST, créditos e tributação industrial",
-  },
-  "Transporte / Logística": {
-    cliente: "embarcador ou cliente",
-    oferta: "fretes, rotas e serviços logísticos",
-    operacao: "roteirização, coleta, transporte e entrega",
-    unidadeRentabilidade: "rota, veículo, contrato ou cliente",
-    capacidade: "capacidade da frota e ocupação por rota",
-    documentoFiscal: "CT-e, MDF-e e tributação dos serviços de transporte",
-  },
-  "Alimentação": {
-    cliente: "cliente",
-    oferta: "pratos, produtos e canais de venda",
-    operacao: "compras, estoque, produção, atendimento e entrega",
-    unidadeRentabilidade: "produto, prato, canal ou unidade",
-    capacidade: "capacidade de produção e atendimento",
-    documentoFiscal: "documentos fiscais e tributação das vendas de alimentação",
-  },
-  "Imobiliária / Atividades Imobiliárias": {
-    cliente: "proprietário, comprador ou locatário",
-    oferta: "locação, venda e administração de imóveis",
-    operacao: "captação, atendimento, contratos e gestão dos imóveis",
-    unidadeRentabilidade: "imóvel, contrato ou carteira",
-    capacidade: "capacidade de atendimento e gestão da carteira",
-    documentoFiscal: "notas de serviço e tributação das receitas imobiliárias",
-  },
-  "Serviços Profissionais": {
-    cliente: "cliente",
-    oferta: "serviços e projetos profissionais",
-    operacao: "prospecção, execução e entrega dos serviços",
-    unidadeRentabilidade: "cliente, projeto ou profissional",
-    capacidade: "capacidade da equipe por cliente e projeto",
-    documentoFiscal: "notas de serviço e tributação das receitas",
-  },
-};
-
-const CATEGORY_AREA_FALLBACK = {
-  "Contabilidade": ["administrativo", "comercial", "financeiro", "tecnologia", "rh"],
-  "Advocacia": ["comercial", "administrativo", "financeiro", "juridico", "tecnologia"],
-  "Saúde / Clínica": ["financeiro", "comercial", "administrativo", "marketing", "tecnologia"],
-  "Tecnologia": ["comercial", "financeiro", "marketing", "tecnologia", "gestao"],
-  "Construção Civil": ["financeiro", "operacional", "administrativo", "juridico", "gestao"],
-  "Comércio": ["financeiro", "operacional", "comercial", "marketing", "contabilidade"],
-  "E-commerce": ["marketing", "comercial", "financeiro", "operacional", "tecnologia"],
-  "Indústria": ["operacional", "financeiro", "administrativo", "gestao", "contabilidade"],
-  "Transporte / Logística": ["operacional", "financeiro", "administrativo", "gestao", "tecnologia"],
-  "Alimentação": ["operacional", "financeiro", "marketing", "rh", "administrativo"],
-  "Imobiliária / Atividades Imobiliárias": ["comercial", "financeiro", "marketing", "juridico", "administrativo"],
-  "Serviços Profissionais": ["comercial", "financeiro", "marketing", "administrativo", "gestao"],
-};
-
-function categoriaContexto(categoria) {
-  return CATEGORY_CONTEXT[categoria] || CATEGORY_CONTEXT["Serviços Profissionais"];
+function normalizarLista(valor) {
+  return Array.isArray(valor) ? valor : [];
 }
 
-function textoCategoria(q, categoria) {
-  const c = categoriaContexto(categoria);
-  const templates = {
-    m1: `Você conhece o custo de aquisição de cada ${c.cliente}?`,
-    m2: `Existe um funil mapeado para ${c.oferta}, do primeiro contato ao fechamento?`,
-    m3: `Você mede o retorno das campanhas usadas para vender ${c.oferta}?`,
-    m7: `Sua base de ${c.cliente} está segmentada para relacionamento, recompra ou novas ofertas?`,
-    m8: `Existe um pós-venda estruturado após a entrega de ${c.oferta}?`,
-    c4: `A emissão e o tratamento de ${c.documentoFiscal} passam por revisão periódica?`,
-    c5: `A empresa revisa créditos, benefícios e oportunidades tributárias relacionados a ${c.documentoFiscal}?`,
-    f3a: `Você sabe quanto precisa faturar com ${c.oferta} para cobrir os custos mensais?`,
-    f7a: `A margem e o resultado são acompanhados por ${c.unidadeRentabilidade}?`,
-    f9a: `A empresa conhece o custo e a rentabilidade por ${c.unidadeRentabilidade}?`,
-    a1: `Existem procedimentos escritos para as rotinas críticas de ${c.operacao}?`,
-    a5: `As responsabilidades sobre ${c.operacao} estão claramente definidas entre os responsáveis?`,
-    a7: `A empresa usa sistema estruturado para controlar ${c.operacao}?`,
-    g3: `Os principais indicadores de ${c.operacao} são acompanhados com regularidade?`,
-    g5: `As decisões sobre ${c.operacao} são tomadas com base em dados confiáveis?`,
-    o1: `Os principais gargalos de ${c.operacao} estão mapeados?`,
-    o2: `Os prazos de ${c.operacao} são medidos e acompanhados?`,
-    o3: `${c.capacidade.charAt(0).toUpperCase() + c.capacidade.slice(1)} é conhecida com precisão?`,
-    o7: `Existe controle de qualidade formal para ${c.operacao}?`,
-    v1: `Os leads e oportunidades de ${c.oferta} são registrados e acompanhados em CRM?`,
-    v2: `Existe processo comercial definido para vender ${c.oferta}?`,
-    v3: `A conversão das oportunidades de ${c.oferta} é acompanhada por etapa?`,
-    v4: `Existe padrão de follow-up para oportunidades de ${c.oferta}?`,
-    v7: `Existe previsão de vendas confiável para ${c.oferta}?`,
-    v8: `O ticket médio de ${c.oferta} é acompanhado?`,
-    t1: `Os sistemas usados em ${c.operacao} estão integrados ou centralizados?`,
-    t2: `Existe dashboard para acompanhar indicadores de ${c.operacao}?`,
-    t3: `Os dados de ${c.operacao} estão centralizados e acessíveis aos responsáveis?`,
-  };
-  return templates[q.id];
-}
+function estruturaDiagnostico(item = {}) {
+  const direto =
+    item.estruturaNegocio ||
+    item.estrutura_negocio ||
+    item?.perfil?.estruturaNegocio ||
+    item?.perfil?.estrutura_negocio ||
+    item?.resultado?.estruturaNegocio ||
+    item?.resultado?.estrutura_negocio ||
+    "";
 
-function riscoCategoria(q, categoria) {
-  const c = categoriaContexto(categoria);
-  const templates = {
-    m1: `O custo de aquisição de ${c.cliente} não é conhecido`,
-    m2: `Não há funil estruturado para ${c.oferta}`,
-    m3: `O retorno das campanhas de ${c.oferta} não é medido`,
-    m7: `A base de ${c.cliente} não está segmentada`,
-    m8: `Falta pós-venda estruturado após ${c.oferta}`,
-    c4: `Pode haver falhas na emissão ou tratamento de ${c.documentoFiscal}`,
-    c5: `Créditos ou oportunidades tributárias podem não estar sendo revisados`,
-    f3a: `O faturamento mínimo necessário para cobrir custos não é conhecido`,
-    f7a: `Resultado e margem por ${c.unidadeRentabilidade} não são acompanhados`,
-    f9a: `Custo e rentabilidade por ${c.unidadeRentabilidade} não são conhecidos`,
-    a1: `As rotinas críticas de ${c.operacao} não estão documentadas`,
-    a5: `Responsabilidades sobre ${c.operacao} podem estar pouco claras`,
-    a7: `O controle de ${c.operacao} depende de ferramentas pouco estruturadas`,
-    g3: `Indicadores de ${c.operacao} não são acompanhados regularmente`,
-    g5: `Decisões sobre ${c.operacao} podem depender mais de percepção do que dados`,
-    o1: `Os gargalos de ${c.operacao} não estão mapeados`,
-    o2: `Os prazos de ${c.operacao} não são monitorados`,
-    o3: `${c.capacidade.charAt(0).toUpperCase() + c.capacidade.slice(1)} não é conhecida`,
-    o7: `Não há controle formal de qualidade em ${c.operacao}`,
-    v1: `Oportunidades de ${c.oferta} podem se perder sem CRM`,
-    v2: `Não há processo comercial estruturado para ${c.oferta}`,
-    v3: `A conversão de ${c.oferta} não é conhecida por etapa`,
-    v4: `Não há padrão de follow-up para ${c.oferta}`,
-    v7: `Não há previsão de vendas confiável para ${c.oferta}`,
-    v8: `O ticket médio de ${c.oferta} não é acompanhado`,
-    t1: `Os sistemas de ${c.operacao} podem estar fragmentados`,
-    t2: `Não há dashboard de indicadores de ${c.operacao}`,
-    t3: `Os dados de ${c.operacao} podem estar dispersos`,
-  };
-  return templates[q.id];
-}
+  if (direto) {
+    return String(direto);
+  }
 
-function textoDe(q, segmento, categoria) {
-  return (
-    q.porCategoria?.[categoria]?.text ||
-    textoCategoria(q, categoria) ||
-    q.porSegmento?.[segmento]?.text ||
-    q.text
-  );
-}
+  const segmento =
+    String(
+      item.segmento ||
+      item?.empresa?.segmento ||
+      ""
+    ).toLowerCase();
 
-function riscoDe(q, segmento, categoria) {
-  return (
-    q.porCategoria?.[categoria]?.risco ||
-    riscoCategoria(q, categoria) ||
-    q.porSegmento?.[segmento]?.risco ||
-    q.risco
-  );
-}
+  const razao =
+    String(
+      item.razaoSocial ||
+      item?.empresa?.razaoSocial ||
+      ""
+    ).toLowerCase();
 
-// No evento usamos 5 perguntas por área: 2 do primeiro subtema, 2 do segundo e 1 do terceiro.
-function checklistEnxuto(subtemas) {
-  const quantidade = [2, 2, 1];
-  return subtemas.map((sub, idx) => ({
-    ...sub,
-    perguntas: sub.perguntas.slice(0, quantidade[idx] || 1),
-  }));
-}
-
-// Cada área tem 3 subtemas, cada um com 3 perguntas.
-
-const DORES_EVENTO = [
-  "Vendas abaixo do esperado",
-  "Margem ou lucro baixo",
-  "Falta de dinheiro em caixa",
-  "Impostos elevados",
-  "Processos desorganizados",
-  "Dependência excessiva do proprietário",
-  "Dificuldade com equipe",
-  "Falta de informações para decidir",
-  "Sistemas ou tecnologia insuficientes",
-  "Outro",
-];
-
-const DORES_HOLDING = [
-  "Patrimônio desorganizado entre pessoa física e jurídica",
-  "Sucessão familiar ainda não planejada",
-  "Imóveis ou participações sem estrutura definida",
-  "Dúvida se a holding atual ainda faz sentido",
-  "Carga tributária sobre aluguéis, imóveis ou participações",
-  "Risco de conflito entre sócios ou herdeiros",
-  "Falta de regras de governança e administração",
-  "Dificuldade para centralizar empresas e participações",
-  "Pretendo transferir ou integralizar bens para a holding",
-  "Pretendo comprar ou vender imóveis ou participações",
-  "Não sei qual tipo de holding é adequado",
-  "Outro",
-];
-
-const AREAS_HOLDING = [
-  { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
-  { id: "participacoes", label: "Participações societárias", Icon: Users },
-  { id: "imoveis", label: "Imóveis", Icon: Building2 },
-  { id: "receitas_patrimoniais", label: "Receitas patrimoniais", Icon: Wallet },
-  { id: "tributario_patrimonial", label: "Tributário patrimonial", Icon: Calculator },
-  { id: "governanca", label: "Governança", Icon: Target },
-  { id: "sucessao", label: "Sucessão", Icon: Users },
-  { id: "protecao_patrimonial", label: "Proteção patrimonial", Icon: Scale },
-  { id: "custos_estrutura", label: "Custos da estrutura", Icon: Percent },
-];
-
-const DORES_GRUPO = [
-  "Não temos uma visão consolidada das empresas do grupo",
-  "Há movimentações entre empresas sem processo claro",
-  "Existem custos e estruturas duplicadas",
-  "A governança entre os sócios e empresas é fraca",
-  "O caixa do grupo não é gerido de forma integrada",
-  "Há dúvidas sobre tributação das operações entre empresas",
-  "Funcionários ou estruturas são compartilhados sem regra clara",
-  "Existe risco de grupo econômico ou confusão patrimonial",
-  "Os dados estão fragmentados entre sistemas e empresas",
-  "Outro",
-];
-
-const DORES_SPE = [
-  "Não está clara a viabilidade financeira do projeto",
-  "Há dificuldade para controlar aportes e necessidades de caixa",
-  "As responsabilidades entre sócios/investidores não estão claras",
-  "Existem contratos ou obrigações críticas ainda não estruturadas",
-  "A tributação do projeto não foi simulada adequadamente",
-  "Falta governança para decisões e prestação de contas",
-  "Os custos estão acima do previsto",
-  "O cronograma do projeto apresenta riscos",
-  "Não existe plano claro para saída ou encerramento da SPE",
-  "Outro",
-];
-
-const IMPACTOS_GRUPO = [
-  "Perda de eficiência entre empresas",
-  "Custos duplicados",
-  "Risco tributário",
-  "Risco de grupo econômico",
-  "Conflitos entre sócios",
-  "Decisões sem visão consolidada",
-  "Baixa previsibilidade de caixa",
-  "Dificuldade de crescimento do grupo",
-];
-
-const IMPACTOS_SPE = [
-  "Aumento do custo do projeto",
-  "Necessidade inesperada de aportes",
-  "Atraso do empreendimento",
-  "Conflito entre sócios/investidores",
-  "Risco contratual",
-  "Risco tributário",
-  "Perda de rentabilidade",
-  "Dificuldade de encerramento ou saída",
-];
-
-const IMPACTOS_DOR = [
-  "Perda de vendas",
-  "Redução da margem",
-  "Falta de caixa",
-  "Retrabalho",
-  "Atrasos",
-  "Risco fiscal ou jurídico",
-  "Sobrecarga dos sócios",
-  "Dificuldade de crescimento",
-];
-
-const IMPACTOS_HOLDING = [
-  "Risco sucessório",
-  "Conflito entre herdeiros ou sócios",
-  "Patrimônio desorganizado",
-  "Carga tributária patrimonial elevada",
-  "Risco fiscal ou jurídico",
-  "Dificuldade para administrar imóveis",
-  "Dificuldade para transferir ou vender bens",
-  "Falta de governança",
-  "Exposição patrimonial",
-  "Decisões sem planejamento",
-];
-
-const IMPACTOS_PF = [
-  "Falta de dinheiro no fim do mês",
-  "Dificuldade para poupar",
-  "Endividamento",
-  "Ausência de reserva de emergência",
-  "Aposentadoria insuficiente",
-  "Investimentos sem estratégia",
-  "Patrimônio desorganizado",
-  "Insegurança financeira",
-  "Dependência da renda atual",
-  "Dificuldade para atingir objetivos",
-];
-
-const CHECKLISTS_PF = {
-  financeiro: [
-    {
-      tema: "Organização financeira",
-      dica: "Entender renda, gastos, previsibilidade e capacidade real de poupança.",
-      perguntas: [
-        { id: "pf_fin_1", text: "Você acompanha mensalmente quanto recebe, quanto gasta e quanto consegue poupar?", risco: "Baixa visibilidade financeira pessoal.", importancia: 3 },
-        { id: "pf_fin_2", text: "Seus gastos fixos e variáveis estão organizados por categoria e prioridade?", risco: "Dificuldade para identificar excessos e ajustar o orçamento.", importancia: 2 },
-        { id: "pf_fin_3", text: "Você consegue prever seus compromissos financeiros dos próximos 3 meses?", risco: "Risco de falta de liquidez e decisões reativas.", importancia: 2 },
-      ],
-    },
-  ],
-  aposentadoria: [
-    {
-      tema: "Planejamento de aposentadoria",
-      dica: "Transformar o objetivo de renda futura em prazo, patrimônio-alvo e capacidade de aporte.",
-      perguntas: [
-        { id: "pf_apo_1", text: "Você já definiu com que idade gostaria de reduzir ou encerrar sua atividade profissional?", risco: "Aposentadoria sem horizonte definido.", importancia: 2 },
-        { id: "pf_apo_2", text: "Você sabe qual renda mensal gostaria de ter na aposentadoria, em valores atuais?", risco: "Meta de aposentadoria sem valor de referência.", importancia: 3 },
-        { id: "pf_apo_3", text: "Você conhece aproximadamente quanto já possui acumulado para esse objetivo e quanto consegue aportar por mês?", risco: "Distância entre patrimônio atual e objetivo futuro desconhecida.", importancia: 3 },
-      ],
-    },
-  ],
-  investimentos: [
-    {
-      tema: "Investimentos",
-      dica: "Avaliar objetivos, prazo, liquidez e organização da carteira antes de discutir produtos.",
-      perguntas: [
-        { id: "pf_inv_1", text: "Seus investimentos estão separados de acordo com objetivos de curto, médio e longo prazo?", risco: "Carteira sem relação clara com os objetivos pessoais.", importancia: 3 },
-        { id: "pf_inv_2", text: "Você mantém sua reserva de emergência separada dos investimentos de longo prazo?", risco: "Liquidez inadequada para emergências.", importancia: 3 },
-        { id: "pf_inv_3", text: "Você entende o nível de risco e liquidez dos principais investimentos que possui?", risco: "Exposição a produtos incompatíveis com necessidades e prazo.", importancia: 2 },
-      ],
-    },
-  ],
-  patrimonio: [
-    {
-      tema: "Organização patrimonial",
-      dica: "Consolidar bens, investimentos e obrigações em uma visão patrimonial única.",
-      perguntas: [
-        { id: "pf_pat_1", text: "Você possui uma relação atualizada dos seus principais bens, investimentos e dívidas?", risco: "Patrimônio fragmentado e sem visão consolidada.", importancia: 2 },
-        { id: "pf_pat_2", text: "Você sabe quanto do seu patrimônio está concentrado em imóveis, investimentos financeiros e outros ativos?", risco: "Concentração patrimonial não monitorada.", importancia: 2 },
-        { id: "pf_pat_3", text: "Há decisões patrimoniais relevantes previstas para os próximos anos, como compra, venda, herança ou doação?", risco: "Decisões patrimoniais relevantes sem planejamento prévio.", importancia: 3 },
-      ],
-    },
-  ],
-  protecao: [
-    {
-      tema: "Proteção financeira",
-      dica: "Avaliar reserva, dependentes e vulnerabilidades que podem comprometer renda e patrimônio.",
-      perguntas: [
-        { id: "pf_pro_1", text: "Sua reserva de emergência seria suficiente para manter seus principais gastos por alguns meses?", risco: "Baixa capacidade de absorver imprevistos.", importancia: 3 },
-        { id: "pf_pro_2", text: "Existem pessoas que dependem financeiramente da sua renda?", risco: "Dependentes expostos à interrupção de renda.", importancia: 3 },
-        { id: "pf_pro_3", text: "Você já avaliou quais eventos poderiam comprometer significativamente sua renda ou patrimônio?", risco: "Riscos pessoais e familiares não mapeados.", importancia: 2 },
-      ],
-    },
-  ],
-  organizacao: [
-    {
-      tema: "Planejamento financeiro",
-      dica: "Transformar objetivos em prioridades, prazo e ações mensuráveis.",
-      perguntas: [
-        { id: "pf_org_1", text: "Você possui metas financeiras definidas com valor e prazo?", risco: "Objetivos financeiros sem plano de execução.", importancia: 2 },
-        { id: "pf_org_2", text: "Você revisa periodicamente se suas decisões financeiras estão aproximando você dos seus objetivos?", risco: "Ausência de acompanhamento e correção de rota.", importancia: 2 },
-        { id: "pf_org_3", text: "Você sabe qual é hoje a prioridade financeira mais importante para você?", risco: "Recursos dispersos entre objetivos concorrentes.", importancia: 3 },
-      ],
-    },
-  ],
-};
-
-const CHECKLISTS = {
-  marketing: [
-    { tema: "Aquisição e conversão", dica: "Mapear o funil completo e acompanhar CAC e ROI mês a mês", perguntas: [
-      { id: "m1", text: "Você sabe hoje qual é o seu custo de aquisição de cliente (CAC)?", risco: "O CAC não é acompanhado hoje" },
-      { id: "m2", text: "Existe um funil de vendas mapeado, do primeiro contato até o fechamento?", risco: "Não há funil de vendas mapeado" },
-      { id: "m3", text: "Você mede o retorno (ROI) das campanhas que faz?", risco: "O retorno das campanhas não é medido" },
-    ]},
-    { tema: "Marca e presença digital", dica: "Padronizar a identidade de marca e manter presença digital ativa em todos os canais", perguntas: [
-      { id: "m4", text: "Existe consistência de marca (visual e discurso) em todos os canais?", risco: "A marca não é consistente entre os canais" },
-      { id: "m5", text: "As redes sociais e o site são atualizados com regularidade?", risco: "Presença digital desatualizada" },
-      { id: "m6", text: "A empresa aparece bem posicionada quando o cliente pesquisa no Google?", risco: "Baixo posicionamento em buscas" },
-    ]},
-    { tema: "Relacionamento e retenção", dica: "Estruturar pós-venda e coletar feedback para reter clientes atuais", perguntas: [
-      { id: "m7", text: "Você tem uma base de clientes segmentada para ações futuras?", risco: "Não há base de clientes segmentada" },
-      { id: "m8", text: "Existe um processo de pós-venda estruturado?", risco: "Falta processo de pós-venda" },
-      { id: "m9", text: "A satisfação dos clientes é medida de alguma forma (NPS, pesquisas)?", risco: "Satisfação do cliente não é medida" },
-    ]},
-  ],
-  juridico: [
-    { tema: "Contratos e propriedade", dica: "Formalizar contratos-padrão e registrar a marca no INPI", perguntas: [
-      { id: "j1", text: "Todos os contratos com clientes e fornecedores estão formalizados?", risco: "Contratos não estão formalizados" },
-      { id: "j2", text: "Sua marca está registrada no INPI?", risco: "A marca ainda não está registrada" },
-      { id: "j3", text: "Contratos de prestação de serviço têm cláusulas de confidencialidade e SLA?", risco: "Faltam cláusulas de proteção nos contratos" },
-    ]},
-    { tema: "Trabalhista e compliance", dica: "Revisar rotina trabalhista e formalizar políticas internas de compliance", perguntas: [
-      { id: "j4", text: "A empresa está em dia com obrigações trabalhistas?", risco: "Há pendências trabalhistas" },
-      { id: "j5", text: "Existem políticas internas formalizadas (conduta, segurança, LGPD)?", risco: "Faltam políticas internas formalizadas" },
-      { id: "j6", text: "A equipe recebe algum treinamento de compliance ou conduta?", risco: "Não há treinamento de compliance" },
-    ]},
-    { tema: "Estrutura societária e riscos", dica: "Atualizar o contrato social e mapear riscos jurídicos em aberto", perguntas: [
-      { id: "j7", text: "O contrato social está atualizado e alinhado com a operação real?", risco: "O contrato social está desatualizado" },
-      { id: "j8", text: "Existe algum processo judicial ou risco jurídico conhecido em aberto?", risco: "Há processo ou risco jurídico em aberto", invert: true },
-      { id: "j9", text: "Há um plano de sucessão societária definido?", risco: "Não há plano de sucessão societária" },
-    ]},
-  ],
-  contabilidade: [
-    { tema: "Contábil e DRE", dica: "Passar a analisar balancete e DRE mensalmente com o time contábil", perguntas: [
-      { id: "c1", text: "Você recebe e analisa o balancete mensalmente?", risco: "O balancete mensal não é analisado" },
-      { id: "c2", text: "A DRE (Demonstração de Resultado) é analisada com regularidade?", risco: "A DRE não é analisada com regularidade" },
-      { id: "c3", text: "O pró-labore e a distribuição de lucros são feitos de forma correta?", risco: "Pró-labore ou distribuição de lucros pode estar incorreta" },
-    ]},
-    { tema: "Fiscal e obrigações", dica: "Revisar classificação fiscal e aproveitamento de créditos", perguntas: [
-      { id: "c4", text: "Todas as notas fiscais são emitidas corretamente, com CST e NCM atualizados?", risco: "Pode haver erro de classificação fiscal (NCM/CST)",
-        porSegmento: { "Serviço": {
-          text: "As notas de serviço são emitidas com o código correto e o ISS tratado devidamente?",
-          risco: "Pode haver erro na emissão de notas de serviço ou no tratamento do ISS",
-        }}},
-      { id: "c5", text: "A empresa aproveita todos os créditos e benefícios fiscais a que tem direito?", risco: "Créditos e benefícios fiscais podem estar sendo perdidos" },
-      { id: "c6", text: "As apurações fiscais passam por alguma conferência periódica?", risco: "Não há conferência periódica das apurações fiscais" },
-    ]},
-    { tema: "Tributário e planejamento", dica: "Simular o regime tributário ideal e preparar a empresa para a reforma (IBS/CBS)", perguntas: [
-      { id: "c7", text: "Você tem certeza de que o regime tributário atual é o mais vantajoso?", risco: "O regime tributário ideal nunca foi validado" },
-      { id: "c8", text: "Existe algum planejamento tributário ou recuperação de créditos em andamento?", risco: "Não há planejamento tributário ativo" },
-      { id: "c9", text: "A empresa já simulou o impacto da Reforma Tributária (IBS/CBS)?", risco: "Não há simulação do impacto do IBS/CBS" },
-    ]},
-  ],
-  financeiro: [
-    { tema: "Fluxo de caixa", dica: "Implantar fluxo de caixa diário com projeção de 90 dias", perguntas: [
-      { id: "f1a", text: "A empresa possui fluxo de caixa diário?", risco: "Não há fluxo de caixa diário" },
-      { id: "f2a", text: "O caixa é projetado para os próximos 90 dias?", risco: "Não há projeção de caixa para 90 dias" },
-      { id: "f3a", text: "Você sabe exatamente quanto precisa vender por mês para cobrir os custos?", risco: "O valor mínimo de vendas mensal não é conhecido" },
-    ]},
-    { tema: "Contas e conciliação", dica: "Automatizar conciliação bancária e a cobrança de inadimplentes", perguntas: [
-      { id: "f4a", text: "A conciliação bancária e de cartão é feita diariamente?", risco: "Conciliação bancária/cartão não é diária" },
-      { id: "f5a", text: "A inadimplência é controlada com algum processo de cobrança?", risco: "Não há controle estruturado de inadimplência" },
-      { id: "f6a", text: "A empresa tem reserva financeira para imprevistos?", risco: "Não há reserva financeira para imprevistos" },
-    ]},
-    { tema: "Indicadores financeiros", dica: "Calcular margem, ponto de equilíbrio, CAC e LTV com regularidade", perguntas: [
-      { id: "f7a", text: "A margem líquida e o EBITDA são acompanhados regularmente?", risco: "Margem líquida e EBITDA não são acompanhados" },
-      { id: "f8a", text: "O ponto de equilíbrio e o ticket médio são conhecidos?", risco: "Ponto de equilíbrio e ticket médio não são conhecidos" },
-      { id: "f9a", text: "A empresa conhece o custo por produto, cliente ou centro de custo?", risco: "Custos por produto/cliente não são conhecidos" },
-    ]},
-  ],
-  administrativo: [
-    { tema: "Processos e documentação", dica: "Documentar os processos mais críticos (POPs) e criar rotina de arquivamento", perguntas: [
-      { id: "a1", text: "Existem procedimentos operacionais escritos (POPs) para as principais rotinas?", risco: "Não há procedimentos operacionais escritos (POPs)" },
-      { id: "a2", text: "Contratos, procurações e certificados digitais estão organizados e controlados?", risco: "Documentos legais não estão organizados/controlados" },
-      { id: "a3", text: "As licenças da empresa estão sempre em dia?", risco: "Pode haver licença vencida ou pendente" },
-    ]},
-    { tema: "Estrutura organizacional", dica: "Definir organograma, descrição de cargos e reduzir dependência de uma pessoa", perguntas: [
-      { id: "a4", text: "A empresa possui organograma e descrição de cargos formalizados?", risco: "Faltam organograma e descrição de cargos" },
-      { id: "a5", text: "Cada funcionário sabe claramente suas responsabilidades?", risco: "Responsabilidades não são claras para a equipe" },
-      { id: "a6", text: "As decisões dependem de uma única pessoa para acontecer?", risco: "Há forte dependência de uma única pessoa", invert: true },
-    ]},
-    { tema: "Sistemas e indicadores", dica: "Centralizar dados em um sistema de gestão e acompanhar indicadores de desempenho", perguntas: [
-      { id: "a7", text: "A empresa usa algum sistema de gestão estruturado (ERP/planilhas)?", risco: "A gestão ainda depende de controles informais" },
-      { id: "a8", text: "Existem indicadores de desempenho acompanhados nas reuniões?", risco: "Não há indicadores de desempenho acompanhados" },
-      { id: "a9", text: "Existe rotina de backup e segurança da informação?", risco: "Falta rotina de backup e segurança da informação" },
-    ]},
-  ],
-  gestao: [
-    { tema: "Indicadores e metas", dica: "Definir de 3 a 5 KPIs prioritários e instituir reuniões semanais", perguntas: [
-      { id: "g1", text: "A empresa faz reunião semanal de acompanhamento?", risco: "Não há reunião semanal de acompanhamento" },
-      { id: "g2", text: "Existe planejamento anual com metas definidas?", risco: "Não há planejamento anual com metas" },
-      { id: "g3", text: "Os indicadores de desempenho são acompanhados com regularidade?", risco: "Indicadores não são acompanhados com regularidade" },
-    ]},
-    { tema: "Planejamento estratégico", dica: "Estruturar um plano estratégico de 12 meses baseado em dados", perguntas: [
-      { id: "g4", text: "A empresa tem um planejamento estratégico para os próximos 12 meses?", risco: "Não há planejamento estratégico formal" },
-      { id: "g5", text: "As decisões são baseadas em dados, e não apenas em percepção?", risco: "Decisões ainda dependem só de percepção" },
-      { id: "g6", text: "A concorrência é acompanhada de forma estruturada?", risco: "Concorrência não é acompanhada de forma estruturada" },
-    ]},
-    { tema: "Liderança e sucessão", dica: "Reduzir a dependência de uma pessoa e estruturar um plano de sucessão", perguntas: [
-      { id: "g7", text: "Existe dependência crítica de uma única pessoa para a gestão?", risco: "Há dependência crítica de uma pessoa na gestão", invert: true },
-      { id: "g8", text: "Há um plano de sucessão para posições-chave?", risco: "Não há plano de sucessão para posições-chave" },
-      { id: "g9", text: "A liderança da empresa recebe algum tipo de desenvolvimento?", risco: "Não há desenvolvimento formal de liderança" },
-    ]},
-  ],
-  operacional: [
-    { tema: "Produção e entrega", dica: "Mapear gargalos e monitorar prazos médios de entrega ou execução", perguntas: [
-      { id: "o1", text: "Os principais gargalos de produção ou entrega são conhecidos?", risco: "Os gargalos operacionais não estão mapeados",
-        porSegmento: {
-          "Comércio": { text: "Os principais gargalos de reposição ou entrega são conhecidos?", risco: "Os gargalos de reposição/entrega não estão mapeados" },
-          "Serviço": { text: "Os principais gargalos na execução ou entrega do serviço são conhecidos?", risco: "Os gargalos na execução do serviço não estão mapeados" },
-        }},
-      { id: "o2", text: "O prazo médio de entrega é medido e monitorado?", risco: "O prazo de entrega não é monitorado",
-        porSegmento: { "Serviço": { text: "O prazo médio de execução do serviço é medido e monitorado?", risco: "O prazo de execução do serviço não é monitorado" } }},
-      { id: "o3", text: "A capacidade produtiva da empresa é conhecida com precisão?", risco: "Capacidade produtiva não é conhecida com precisão",
-        porSegmento: {
-          "Comércio": { text: "A capacidade de reposição de estoque é conhecida com precisão?", risco: "Capacidade de reposição de estoque não é conhecida" },
-          "Serviço": { text: "A capacidade de atendimento da equipe é conhecida com precisão?", risco: "Capacidade de atendimento da equipe não é conhecida" },
-        }},
-    ]},
-    { tema: "Fornecedores e cadeia", dica: "Diversificar fornecedores-chave e formalizar contratos de fornecimento", perguntas: [
-      { id: "o4", text: "A empresa depende de poucos fornecedores-chave?", risco: "Há forte dependência de poucos fornecedores", invert: true,
-        porSegmento: { "Serviço": { text: "A empresa depende de poucos parceiros ou subcontratados-chave?", risco: "Há forte dependência de poucos parceiros/subcontratados" } }},
-      { id: "o5", text: "Os contratos com fornecedores estão formalizados?", risco: "Contratos com fornecedores não estão formalizados",
-        porSegmento: { "Serviço": { text: "Os contratos com parceiros ou subcontratados estão formalizados?", risco: "Contratos com parceiros/subcontratados não estão formalizados" } }},
-      { id: "o6", text: "A gestão de estoque é feita de forma estruturada?", risco: "Gestão de estoque não é estruturada",
-        porSegmento: { "Serviço": { text: "A agenda ou capacidade da equipe é planejada com antecedência?", risco: "A capacidade da equipe não é planejada com antecedência" } }},
-    ]},
-    { tema: "Qualidade e contingência", dica: "Formalizar controle de qualidade e um plano de contingência operacional", perguntas: [
-      { id: "o7", text: "Existe controle de qualidade formalizado?", risco: "Não há controle de qualidade formalizado" },
-      { id: "o8", text: "Há um plano de contingência para falhas operacionais?", risco: "Falta plano de contingência operacional" },
-      { id: "o9", text: "Indicadores de qualidade são acompanhados com regularidade?", risco: "Indicadores de qualidade não são acompanhados" },
-    ]},
-  ],
-  rh: [
-    { tema: "Recrutamento e retenção", dica: "Estruturar um processo de recrutamento e acompanhar turnover e absenteísmo", perguntas: [
-      { id: "r1", text: "Existe um processo de contratação estruturado?", risco: "Não há processo de contratação estruturado" },
-      { id: "r2", text: "O turnover e o absenteísmo são acompanhados?", risco: "Turnover e absenteísmo não são monitorados" },
-      { id: "r3", text: "Existe um plano de cargos e carreira definido?", risco: "Não há plano de cargos e carreira definido" },
-    ]},
-    { tema: "Clima e cultura", dica: "Aplicar pesquisa de clima organizacional e formalizar controle de ponto e banco de horas", perguntas: [
-      { id: "r4", text: "Já foi aplicada alguma pesquisa de clima organizacional?", risco: "Nunca foi aplicada pesquisa de clima" },
-      { id: "r5", text: "Existe controle de ponto e banco de horas formalizado?", risco: "Controle de ponto/banco de horas não é formalizado" },
-      { id: "r6", text: "A equipe recebe treinamentos com alguma regularidade?", risco: "Não há treinamentos regulares para a equipe" },
-    ]},
-    { tema: "Departamento pessoal", dica: "Revisar a rotina de departamento pessoal e as obrigações do eSocial", perguntas: [
-      { id: "r7", text: "A folha de pagamento roda sem erros recorrentes?", risco: "A folha de pagamento tem erros recorrentes" },
-      { id: "r8", text: "As obrigações do eSocial estão sempre em dia?", risco: "Há pendências com o eSocial" },
-      { id: "r9", text: "Existe uma política de benefícios formalizada?", risco: "Não há política de benefícios formalizada" },
-    ]},
-  ],
-  comercial: [
-    { tema: "Processo comercial", dica: "Estruturar um processo comercial com CRM e funil de vendas claro", perguntas: [
-      { id: "v1", text: "A empresa possui CRM?", risco: "Não há CRM em uso" },
-      { id: "v2", text: "Existe um processo comercial e funil de vendas definido?", risco: "Não há processo comercial/funil definido" },
-      { id: "v3", text: "A taxa de conversão em cada etapa do funil é conhecida?", risco: "A conversão por etapa não é conhecida" },
-    ]},
-    { tema: "Time comercial", dica: "Padronizar follow-up e acompanhar tempo médio de fechamento", perguntas: [
-      { id: "v4", text: "Existe um padrão de follow-up com os leads?", risco: "Não há padrão de follow-up definido" },
-      { id: "v5", text: "O tempo médio de fechamento é acompanhado?", risco: "O tempo médio de fechamento não é acompanhado" },
-      { id: "v6", text: "A equipe comercial recebe treinamento contínuo?", risco: "Não há treinamento comercial contínuo" },
-    ]},
-    { tema: "Pipeline e previsibilidade", dica: "Construir um forecast de vendas confiável baseado em dados históricos", perguntas: [
-      { id: "v7", text: "A empresa tem uma previsão de vendas (forecast) confiável?", risco: "Não há forecast de vendas confiável" },
-      { id: "v8", text: "O ticket médio de venda é acompanhado?", risco: "O ticket médio não é acompanhado" },
-      { id: "v9", text: "A taxa de clientes recorrentes/recompra é conhecida?", risco: "A taxa de recompra não é conhecida" },
-    ]},
-  ],
-  tecnologia: [
-    { tema: "Sistemas e dados", dica: "Centralizar dados em um ERP/CRM e implantar dashboards de BI", perguntas: [
-      { id: "t1", text: "A empresa utiliza ERP e/ou CRM?", risco: "Não há ERP/CRM em uso" },
-      { id: "t2", text: "Existe algum BI ou dashboard para acompanhar dados do negócio?", risco: "Não há BI/dashboard de dados" },
-      { id: "t3", text: "Os dados da empresa estão centralizados em um só lugar?", risco: "Dados espalhados em vários lugares diferentes" },
-    ]},
-    { tema: "Segurança da informação", dica: "Implementar backup testado e autenticação em duas etapas (MFA)", perguntas: [
-      { id: "t4", text: "Existe rotina de backup testada com regularidade?", risco: "Backup não é testado com regularidade" },
-      { id: "t5", text: "A empresa usa autenticação em duas etapas (MFA) nos sistemas?", risco: "Não há autenticação em duas etapas (MFA)" },
-      { id: "t6", text: "Há antivírus corporativo ou proteção de endpoints instalado?", risco: "Falta antivírus corporativo/proteção de endpoints" },
-    ]},
-    { tema: "Privacidade e conformidade", dica: "Formalizar política de LGPD e um plano de resposta a incidentes", perguntas: [
-      { id: "t7", text: "A empresa tem uma política formal de LGPD implementada?", risco: "Não há política de LGPD implementada" },
-      { id: "t8", text: "O consentimento de dados de clientes é coletado formalmente?", risco: "Consentimento de dados não é formalizado" },
-      { id: "t9", text: "Existe um plano definido para resposta a incidentes de segurança?", risco: "Não há plano de resposta a incidentes" },
-    ]},
-  ],
-};
-
-function areaLabel(id) { return AREAS.find((a) => a.id === id)?.label || id; }
-function formatBRL(v) { return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }); }
-
-function pickCompany(cnpjDigits) {
-  const sum = cnpjDigits.split("").reduce((acc, d) => acc + Number(d), 0);
-  const idx = cnpjDigits.length ? sum % COMPANIES.length : 0;
-  return COMPANIES[idx];
-}
-
-function normalizarSegmentoTributario(segmento) {
-  if (!segmento) return "Serviço";
-
-  const valor = String(segmento).toLowerCase();
+  const cnpj =
+    String(
+      item.cnpj ||
+      item?.empresa?.cnpj ||
+      ""
+    ).replace(/\D/g, "");
 
   if (
-    valor.includes("indústria") ||
-    valor.includes("industria")
+    segmento.includes("pessoa física") ||
+    segmento.includes("pessoa fisica")
   ) {
-    return "Indústria";
+    return "pessoa_fisica";
   }
 
   if (
-    valor.includes("comércio") ||
-    valor.includes("comercio")
+    razao.includes("avaliação de holding") ||
+    razao.includes("avaliacao de holding")
   ) {
-    return "Comércio";
+    return "avaliar_holding";
   }
 
-  return "Serviço";
+  if (
+    segmento.includes("holding") ||
+    razao.includes("holding")
+  ) {
+    return "holding";
+  }
+
+  if (
+    segmento.includes("grupo empresarial")
+  ) {
+    return "grupo";
+  }
+
+  if (
+    segmento.includes("spe")
+  ) {
+    return "spe";
+  }
+
+  if (!cnpj && segmento.includes("financeira")) {
+    return "pessoa_fisica";
+  }
+
+  return "operacional";
 }
 
-function segmentoPredominanteDe(empresas) {
-  if (!empresas.length) return null;
+function labelEstruturaDiagnostico(valor) {
+  const mapa = {
+    operacional: "Empresa operacional",
+    holding: "Holding",
+    avaliar_holding: "Avaliação de Holding",
+    grupo: "Grupo empresarial",
+    spe: "SPE",
+    pessoa_fisica: "Pessoa Física",
+  };
 
-  const contagem = {};
-
-  empresas.forEach((e) => {
-    const segmento = normalizarSegmentoTributario(e.segmento);
-
-    contagem[segmento] =
-      (contagem[segmento] || 0) + 1;
-  });
-
-  return Object.entries(contagem)
-    .sort((a, b) => b[1] - a[1])[0][0];
+  return mapa[valor] || valor || "Empresa operacional";
 }
 
-function StepDots({ step }) {
-  const order = ["cadastro", "cnpj", "porte", "dor", "checklist", "analisando", "resultado"];
-  const idx = order.indexOf(step);
-  if (idx === -1) return null;
+function corEstruturaDiagnostico(valor) {
+  const mapa = {
+    operacional: {
+      bg: "#EEF3FF",
+      color: "#31589C",
+    },
+    holding: {
+      bg: "#FFF3EF",
+      color: "#993C1D",
+    },
+    avaliar_holding: {
+      bg: "#FAEEDA",
+      color: "#854F0B",
+    },
+    grupo: {
+      bg: "#E1F5EE",
+      color: "#0F6E56",
+    },
+    spe: {
+      bg: "#F3EEFF",
+      color: "#6843A3",
+    },
+    pessoa_fisica: {
+      bg: "#F1F3F7",
+      color: NAVY,
+    },
+  };
+
   return (
-    <div style={{ display: "flex", gap: 6, justifyContent: "center", padding: "14px 0 4px" }}>
-      {order.map((s, i) => (
-        <div key={s} style={{
-          width: i === idx ? 16 : 6, height: 6, borderRadius: 3,
-          background: i <= idx ? CORAL : "#D8DEEA", transition: "all 0.25s",
-        }} />
-      ))}
+    mapa[valor] ||
+    mapa.operacional
+  );
+}
+
+function areaCanonica(valor = "") {
+  const texto = String(valor || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+  const mapa = {
+    financeiro: "financeiro",
+    financeiropfpj: "financeiro",
+
+    contabilfiscal: "contabilidade",
+    contabilidade: "contabilidade",
+
+    tributario: "tributario",
+
+    operacional: "operacional",
+
+    gestao: "gestao",
+
+    comercial: "comercial",
+    comercialvendas: "comercial",
+
+    rh: "rh",
+    recursoshumanos: "rh",
+    pessoas: "rh",
+
+    tecnologia: "tecnologia",
+
+    administrativo: "administrativo",
+
+    marketing: "marketing",
+
+    juridico: "juridico",
+  };
+
+  return mapa[texto] || texto;
+}
+
+function responsavelCompativelComArea(responsavel, area) {
+  const areaAlvo = areaCanonica(area);
+
+  const areasResponsavel =
+    normalizarLista(
+      responsavel?.areas
+    );
+
+  if (!areasResponsavel.length) {
+    return false;
+  }
+
+  return areasResponsavel.some(
+    (item) =>
+      areaCanonica(item) ===
+      areaAlvo
+  );
+}
+
+function juntarLista(valor) {
+  return Array.isArray(valor)
+    ? valor.filter(Boolean).join(" | ")
+    : "";
+}
+
+function textoSeguro(valor) {
+  if (valor === null || valor === undefined) return "";
+  if (typeof valor === "string" || typeof valor === "number") return String(valor);
+  if (Array.isArray(valor)) return valor.map(textoSeguro).filter(Boolean).join(" | ");
+  if (typeof valor === "object") {
+    return (
+      valor.titulo ||
+      valor.nome ||
+      valor.indicador ||
+      valor.pergunta ||
+      valor.acao ||
+      valor.objetivo ||
+      valor.descricao ||
+      valor.resumo ||
+      JSON.stringify(valor)
+    );
+  }
+  return String(valor);
+}
+
+function listaFlexivel(valor) {
+  if (!valor) return [];
+  if (Array.isArray(valor)) return valor.filter(Boolean);
+  if (typeof valor === "string") return valor.trim() ? [valor] : [];
+  if (typeof valor === "object") {
+    return Object.entries(valor)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "" && (!Array.isArray(v) || v.length))
+      .map(([chave, v]) => ({
+        chave,
+        valor: v,
+      }));
+  }
+  return [valor];
+}
+
+function tituloChave(chave = "") {
+  const mapa = {
+    primeiros30Dias: "0–30 dias",
+    dias0a30: "0–30 dias",
+    zeroA30: "0–30 dias",
+    de0a30: "0–30 dias",
+    dias31a60: "31–60 dias",
+    trintaEUmA60: "31–60 dias",
+    de31a60: "31–60 dias",
+    dias61a90: "61–90 dias",
+    sessentaEUmA90: "61–90 dias",
+    de61a90: "61–90 dias",
+  };
+
+  if (mapa[chave]) return mapa[chave];
+
+  return String(chave)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function BlocoDossie({ titulo, children, destaque = false }) {
+  return (
+    <>
+      <h2 style={tituloSecao}>{titulo}</h2>
+      <Card
+        style={
+          destaque
+            ? {
+                border: "1px solid #F0C8BD",
+                background: "#FFF9F7",
+              }
+            : {}
+        }
+      >
+        {children}
+      </Card>
+    </>
+  );
+}
+
+function ListaDossie({ itens, vazio = "Sem informação gerada." }) {
+  const lista = listaFlexivel(itens);
+
+  if (!lista.length) {
+    return <span style={{ fontSize: 12, color: MUTED }}>{vazio}</span>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {lista.map((item, index) => {
+        if (item && typeof item === "object" && "chave" in item) {
+          return (
+            <div
+              key={index}
+              style={{
+                background: "#F7F8FB",
+                borderRadius: 10,
+                padding: 12,
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 12, marginBottom: 5 }}>
+                {tituloChave(item.chave)}
+              </strong>
+              {Array.isArray(item.valor) ? (
+                <ListaDossie itens={item.valor} />
+              ) : typeof item.valor === "object" && item.valor !== null ? (
+                <ListaDossie itens={item.valor} />
+              ) : (
+                <div style={{ fontSize: 12, lineHeight: 1.55 }}>
+                  {textoSeguro(item.valor)}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        if (item && typeof item === "object") {
+          const titulo =
+            item.titulo ||
+            item.nome ||
+            item.indicador ||
+            item.pergunta ||
+            item.acao ||
+            item.objetivo ||
+            `Item ${index + 1}`;
+
+          const detalhes = Object.entries(item).filter(
+            ([chave, valor]) =>
+              !["titulo", "nome", "indicador", "pergunta", "acao", "objetivo"].includes(chave) &&
+              valor !== null &&
+              valor !== undefined &&
+              valor !== "" &&
+              (!Array.isArray(valor) || valor.length)
+          );
+
+          return (
+            <div
+              key={index}
+              style={{
+                background: "#F7F8FB",
+                borderRadius: 10,
+                padding: 12,
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 12.5, marginBottom: 6 }}>
+                {textoSeguro(titulo)}
+              </strong>
+
+              {detalhes.map(([chave, valor]) => (
+                <div key={chave} style={{ fontSize: 11.5, lineHeight: 1.55, marginTop: 4 }}>
+                  <strong>{tituloChave(chave)}:</strong>{" "}
+                  {Array.isArray(valor)
+                    ? valor.map(textoSeguro).filter(Boolean).join(" • ")
+                    : typeof valor === "object"
+                    ? textoSeguro(valor)
+                    : String(valor)}
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={index}
+            style={{
+              display: "flex",
+              gap: 9,
+              alignItems: "flex-start",
+              fontSize: 12,
+              lineHeight: 1.55,
+            }}
+          >
+            <span style={{ color: CORAL, fontWeight: 900 }}>•</span>
+            <span>{textoSeguro(item)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function PrimaryButton({ children, onClick, disabled, style }) {
+function Plano90Dias({ plano }) {
+  const lista = listaFlexivel(plano);
+
+  if (!lista.length) {
+    return <span style={{ fontSize: 12, color: MUTED }}>Sem plano de 90 dias gerado.</span>;
+  }
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
+        gap: 12,
+      }}
+    >
+      {lista.map((fase, index) => {
+        if (fase && typeof fase === "object" && "chave" in fase) {
+          return (
+            <div
+              key={index}
+              style={{
+                border: "1px solid #E3E7EF",
+                borderRadius: 12,
+                padding: 14,
+                background: "#F7F8FB",
+              }}
+            >
+              <strong style={{ display: "block", color: CORAL, marginBottom: 8 }}>
+                {tituloChave(fase.chave)}
+              </strong>
+              <ListaDossie itens={fase.valor} />
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={index}
+            style={{
+              border: "1px solid #E3E7EF",
+              borderRadius: 12,
+              padding: 14,
+              background: "#F7F8FB",
+            }}
+          >
+            <ListaDossie itens={[fase]} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Card({ children, style = {} }) {
+  return (
+    <div
+      style={{
+        background: WHITE,
+        border: "1px solid #E3E7EF",
+        borderRadius: 14,
+        padding: 18,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Botao({
+  children,
+  onClick,
+  disabled = false,
+  secundario = false,
+  style = {},
+}) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       style={{
-        width: "100%", padding: "13px 16px", borderRadius: 12, border: "none",
-        background: disabled ? "#D8DEEA" : CORAL, color: WHITE, fontFamily: BODY_FONT,
-        fontSize: 14.5, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        border: secundario
+          ? "1px solid #D8DEEA"
+          : "none",
+
+        background: secundario
+          ? WHITE
+          : CORAL,
+
+        color: secundario
+          ? NAVY
+          : WHITE,
+
+        borderRadius: 10,
+        padding: "10px 14px",
+        fontFamily: BODY_FONT,
+        fontSize: 13,
+        fontWeight: 700,
+
+        cursor: disabled
+          ? "not-allowed"
+          : "pointer",
+
+        opacity: disabled
+          ? 0.55
+          : 1,
+
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 7,
+
         ...style,
       }}
     >
@@ -1181,499 +596,5354 @@ function PrimaryButton({ children, onClick, disabled, style }) {
   );
 }
 
-export default function DiagnosticoPrototipo() {
-  const [step, setStep] = useState("intro");
-  const [nome, setNome] = useState("");
-  const [cargo, setCargo] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [email, setEmail] = useState("");
-  const [consentimentoEmail, setConsentimentoEmail] = useState(true);
-  const [envioRelatorio, setEnvioRelatorio] = useState("idle");
-  const relatorioEnviadoRef = useRef(false);
-  const [cnpjInput, setCnpjInput] = useState("");
-  const [buscando, setBuscando] = useState(false);
-  const [empresas, setEmpresas] = useState([]);
-  const [cnaesEmpresa, setCnaesEmpresa] = useState([]);
-  const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([]);
-  const [atividadePredominante, setAtividadePredominante] = useState(null);
-  const [descricaoNegocio, setDescricaoNegocio] = useState("");
-  const [estruturaNegocio, setEstruturaNegocio] = useState("operacional");
-  const [tiposHolding, setTiposHolding] = useState([]);
-  const [objetivosHolding, setObjetivosHolding] = useState([]);
-  const [patrimonioHolding, setPatrimonioHolding] = useState("");
-  const [receitasHolding, setReceitasHolding] = useState("");
-  const [sucessaoHolding, setSucessaoHolding] = useState("");
+// =========================================================
+// LOGIN
+// =========================================================
 
-  const [objetivosPF, setObjetivosPF] = useState([]);
-  const [rendaMensalPF, setRendaMensalPF] = useState("");
-  const [gastosMensaisPF, setGastosMensaisPF] = useState("");
-  const [dividasPF, setDividasPF] = useState("");
-  const [reservaPF, setReservaPF] = useState("");
-  const [patrimonioPF, setPatrimonioPF] = useState("");
-  const [investimentosPF, setInvestimentosPF] = useState("");
-  const [aposentadoriaPF, setAposentadoriaPF] = useState("");
-  const [dependentesPF, setDependentesPF] = useState("");
+function LoginAdmin({ onLogin }) {
+  const [token, setToken] =
+    useState("");
 
-  const [nomeGrupo, setNomeGrupo] = useState("");
-  const [funcaoEmpresasGrupo, setFuncaoEmpresasGrupo] = useState("");
-  const [sociosComunsGrupo, setSociosComunsGrupo] = useState("");
-  const [financeiroCentralizadoGrupo, setFinanceiroCentralizadoGrupo] = useState("");
-  const [pessoasCompartilhadasGrupo, setPessoasCompartilhadasGrupo] = useState("");
-  const [operacoesIntercompanyGrupo, setOperacoesIntercompanyGrupo] = useState("");
-  const [governancaGrupo, setGovernancaGrupo] = useState("");
+  const [erro, setErro] =
+    useState("");
 
-  const [speConstituida, setSpeConstituida] = useState("");
-  const [nomeProjetoSPE, setNomeProjetoSPE] = useState("");
-  const [finalidadeSPE, setFinalidadeSPE] = useState("");
-  const [sociosSPE, setSociosSPE] = useState("");
-  const [valorProjetoSPE, setValorProjetoSPE] = useState("");
-  const [aportesSPE, setAportesSPE] = useState("");
-  const [financiamentoSPE, setFinanciamentoSPE] = useState("");
-  const [prazoSPE, setPrazoSPE] = useState("");
-  const [receitaPrevistaSPE, setReceitaPrevistaSPE] = useState("");
-  const [custosPrevistosSPE, setCustosPrevistosSPE] = useState("");
-  const [faseProjetoSPE, setFaseProjetoSPE] = useState("");
+  const [carregando, setCarregando] =
+    useState(false);
 
-  const [perguntasDinamicas, setPerguntasDinamicas] = useState([]);
-  const [negocioInterpretado, setNegocioInterpretado] = useState(null);
-  const [gerandoPerguntas, setGerandoPerguntas] = useState(false);
-  const [erroPerguntas, setErroPerguntas] = useState("");
-  const [faturamento, setFaturamento] = useState(null);
-  const [colaboradores, setColaboradores] = useState(null);
-  const [regime, setRegime] = useState(null);
-  const [observacao, setObservacao] = useState("");
-  const [dores, setDores] = useState([]);
-  const [doresSelecionadas, setDoresSelecionadas] = useState([]);
-  const [dor90Dias, setDor90Dias] = useState("");
-  const [impactosDor, setImpactosDor] = useState([]);
-  const [respostas, setRespostas] = useState({});
-  const [msgIdx, setMsgIdx] = useState(0);
-  const [toast, setToast] = useState("");
-  const [iaResultado, setIaResultado] = useState(null);
-  const toastTimer = useRef(null);
+  async function entrar() {
+    const valor =
+      token.trim();
 
-  // =========================================================
-  // CRM / RASTREAMENTO DO LEAD
-  // Complemento: não altera o fluxo existente do diagnóstico.
-  // =========================================================
-  const [leadId, setLeadId] = useState("");
-  const [sessionIdLead, setSessionIdLead] = useState("");
-  const [diagnosticoIdSalvo, setDiagnosticoIdSalvo] = useState("");
-  const leadInicializadoRef = useRef(false);
-  const ultimaAtualizacaoLeadRef = useRef("");
+    if (!valor) {
+      setErro(
+        "Digite a senha administrativa."
+      );
 
-  const empresaPrincipal = empresas[0] || null;
-
-  const avaliarHoldingAtiva =
-    estruturaNegocio === "avaliar_holding";
-
-  const trilhaHoldingAtiva =
-    estruturaNegocio === "holding" ||
-    avaliarHoldingAtiva;
-
-  const trilhaPFAtiva =
-    estruturaNegocio === "pessoa_fisica";
-
-  const trilhaGrupoAtiva =
-    estruturaNegocio === "grupo";
-
-  const trilhaSPEAtiva =
-    estruturaNegocio === "spe";
-
-  // Regras de CNPJ por estrutura:
-  // PF e avaliação de Holding não exigem CNPJ.
-  // Holding existente e Grupo exigem CNPJ.
-  // SPE exige CNPJ apenas quando já estiver constituída.
-  const fluxoSemCnpj =
-    trilhaPFAtiva ||
-    avaliarHoldingAtiva ||
-    (
-      trilhaSPEAtiva &&
-      speConstituida !== "sim"
-    );
-
-  const areasDaEstrutura =
-    trilhaPFAtiva
-      ? AREAS_PF
-      : avaliarHoldingAtiva
-      ? AREAS_AVALIAR_HOLDING
-      : estruturaNegocio === "holding"
-      ? AREAS_HOLDING
-      : trilhaGrupoAtiva
-      ? AREAS_GRUPO
-      : trilhaSPEAtiva
-      ? AREAS_SPE
-      : AREAS;
-
-  const doresDisponiveis =
-    trilhaPFAtiva
-      ? DORES_PF
-      : trilhaHoldingAtiva
-      ? DORES_HOLDING
-      : trilhaGrupoAtiva
-      ? DORES_GRUPO
-      : trilhaSPEAtiva
-      ? DORES_SPE
-      : DORES_EVENTO;
-
-  const impactosDisponiveis =
-    trilhaPFAtiva
-      ? IMPACTOS_PF
-      : trilhaHoldingAtiva
-      ? IMPACTOS_HOLDING
-      : trilhaGrupoAtiva
-      ? IMPACTOS_GRUPO
-      : trilhaSPEAtiva
-      ? IMPACTOS_SPE
-      : IMPACTOS_DOR;
-
-  const tituloContextoDiagnostico =
-    trilhaPFAtiva
-      ? "sua vida financeira"
-      : trilhaHoldingAtiva
-      ? (
-          avaliarHoldingAtiva
-            ? "sua necessidade de estrutura patrimonial"
-            : "sua holding e estrutura patrimonial"
-        )
-      : "seu negócio";
-
-  const perfilPF = {
-    ativo: trilhaPFAtiva,
-    objetivos: objetivosPF,
-    rendaMensal: rendaMensalPF,
-    gastosMensais: gastosMensaisPF,
-    dividas: dividasPF,
-    reservaEmergencia: reservaPF,
-    patrimonio: patrimonioPF,
-    investimentosAtuais: investimentosPF,
-    aposentadoria: aposentadoriaPF,
-    dependentes: dependentesPF,
-  };
-
-  const perfilHolding = {
-    ativo: trilhaHoldingAtiva,
-    estruturaNegocio,
-    tipos: tiposHolding,
-    objetivos: objetivosHolding,
-    patrimonioAproximado: patrimonioHolding,
-    receitasPatrimoniais: receitasHolding,
-    situacaoSucessoria: sucessaoHolding,
-  };
-
-  const perfilGrupo = {
-    ativo: trilhaGrupoAtiva,
-    nomeGrupo,
-    funcaoEmpresas: funcaoEmpresasGrupo,
-    sociosComuns: sociosComunsGrupo,
-    financeiroCentralizado: financeiroCentralizadoGrupo,
-    pessoasCompartilhadas: pessoasCompartilhadasGrupo,
-    operacoesIntercompany: operacoesIntercompanyGrupo,
-    governanca: governancaGrupo,
-  };
-
-  const perfilSPE = {
-    ativo: trilhaSPEAtiva,
-    constituida: speConstituida,
-    nomeProjeto: nomeProjetoSPE,
-    finalidade: finalidadeSPE,
-    sociosInvestidores: sociosSPE,
-    valorProjeto: valorProjetoSPE,
-    aportes: aportesSPE,
-    financiamento: financiamentoSPE,
-    prazo: prazoSPE,
-    receitaPrevista: receitaPrevistaSPE,
-    custosPrevistos: custosPrevistosSPE,
-    faseProjeto: faseProjetoSPE,
-  };
-
-  const atividadesSelecionadasObjetos = cnaesEmpresa.filter((atividade) =>
-    atividadesSelecionadas.includes(String(atividade.codigo))
-  );
-
-  const segmentoPredominante =
-    atividadePredominante?.classificacao?.segmento ||
-    segmentoPredominanteDe(empresas);
-
-  const categoriaPrincipal =
-    atividadePredominante?.classificacao?.categoria ||
-    empresaPrincipal?.categoria ||
-    "Serviços Profissionais";
-
-  const codigoQuestionario =
-    atividadePredominante?.classificacao?.codigoQuestionario ||
-    empresaPrincipal?.codigoQuestionario ||
-    null;
-
-  const mapaAreaApiParaId = {
-    "Marketing": "marketing",
-    "Jurídico": "juridico",
-    "Contábil / Fiscal": "contabilidade",
-    "Contabilidade": "contabilidade",
-    "Financeiro": "financeiro",
-    "Financeiro PF/PJ": "financeiro",
-    "Finanças pessoais": "financeiro",
-    "Patrimônio / Financeiro": "financeiro",
-    "Aposentadoria": "aposentadoria",
-    "Investimentos": "investimentos",
-    "Patrimônio": "patrimonio",
-    "Proteção financeira": "protecao",
-    "Organização / Planejamento": "organizacao",
-    "Administrativo": "administrativo",
-    "Gestão": "gestao",
-    "Operacional": "operacional",
-    "Pessoas": "rh",
-    "Recursos Humanos": "rh",
-    "Comercial": "comercial",
-    "Comercial / Vendas": "comercial",
-    "Tecnologia": "tecnologia",
-    "Processos": "administrativo",
-    "Atendimento": "comercial",
-    "Custos": "financeiro",
-    "Produção": "operacional",
-    "Estoque": "operacional",
-    "Compras": "operacional",
-    "Logística": "operacional",
-    "Qualidade": "operacional",
-    "Contratos": "juridico",
-    "LGPD": "tecnologia",
-    "Segurança da Informação": "tecnologia",
-  };
-
-  const areasPrioritariasApi =
-    atividadePredominante?.classificacao?.diagnostico?.areasPrioritarias ||
-    empresaPrincipal?.areasPrioritarias ||
-    [];
-  const areasSugeridasApi = areasPrioritariasApi
-    .map((nome) => mapaAreaApiParaId[nome])
-    .filter(Boolean);
-
-  const areasFallbackCategoria = CATEGORY_AREA_FALLBACK[categoriaPrincipal] || [];
-  const areasSugeridas = [...new Set([...areasSugeridasApi, ...areasFallbackCategoria])];
-
-  // O diagnóstico cobre TODOS os eixos da estrutura.
-  // "dores" passa a representar somente as prioridades
-  // escolhidas para aprofundamento.
-  const areasDoDiagnostico =
-    areasDaEstrutura.map(
-      (item) => item.id
-    );
-
-  const prioridadesDiagnostico =
-    dores;
-
-  function labelAreaAtual(id) {
-    return (
-      areasDaEstrutura.find(
-        (item) => item.id === id
-      )?.label ||
-      areaLabel(id)
-    );
-  }
-
-  function checklistBaseAtual(id) {
-    if (
-      trilhaPFAtiva &&
-      CHECKLISTS_PF[id]
-    ) {
-      return CHECKLISTS_PF[id];
-    }
-
-    return CHECKLISTS[id] || null;
-  }
-
-  const gruposEstaticos = areasDoDiagnostico
-    .filter(
-      (id) =>
-        checklistBaseAtual(id)
-    )
-    .map((id) => ({
-      id,
-      label:
-        labelAreaAtual(id),
-      subtemas:
-        checklistEnxuto(
-          checklistBaseAtual(id)
-        ),
-    }));
-
-  const gruposDinamicos = [...new Set(
-    perguntasDinamicas
-      .map((q) => q.areaId)
-      .filter(Boolean)
-  )]
-    .map((id) => {
-      const perguntasArea =
-        perguntasDinamicas.filter(
-          (q) => q.areaId === id
-        );
-
-      if (!perguntasArea.length) {
-        return null;
-      }
-
-      const temas = [
-        ...new Set(
-          perguntasArea.map(
-            (q) =>
-              q.tema ||
-              "Diagnóstico específico"
-          )
-        ),
-      ];
-
-      return {
-        id,
-        label:
-          perguntasArea[0]?.area ||
-          labelAreaAtual(id),
-
-        subtemas: temas.map(
-          (tema) => ({
-            tema,
-            dica:
-              `Aprofundar ${tema.toLowerCase()} dentro da estrutura ${estruturaNegocio}.`,
-
-            perguntas:
-              perguntasArea.filter(
-                (q) =>
-                  (
-                    q.tema ||
-                    "Diagnóstico específico"
-                  ) === tema
-              ),
-          })
-        ),
-      };
-    })
-    .filter(Boolean);
-
-  const gruposSelecionados = perguntasDinamicas.length > 0
-    ? gruposDinamicos
-    : gruposEstaticos;
-
-  const todasPerguntas = gruposSelecionados.flatMap((g) => g.subtemas.flatMap((s) => s.perguntas));
-  const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
-
-  // =========================================================
-  // CRM — REGISTRA O ACESSO ASSIM QUE O CLIENTE ABRE O LINK
-  // =========================================================
-  useEffect(() => {
-    if (leadInicializadoRef.current) {
       return;
     }
 
-    leadInicializadoRef.current = true;
+    setCarregando(true);
+    setErro("");
 
-    let cancelado = false;
-
-    async function iniciarSessaoLead() {
-      try {
-        const params = new URLSearchParams(
-          window.location.search
+    try {
+      const resposta =
+        await fetch(
+          "/api/listar-diagnosticos?limite=1",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${valor}`,
+            },
+          }
         );
 
-        const origem =
-          params.get("origem") ||
-          params.get("utm_source") ||
-          "direto";
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
 
-        const campanha =
-          params.get("campanha") ||
-          params.get("utm_campaign") ||
-          "";
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Senha administrativa inválida."
+        );
+      }
 
-        const promoter =
-          params.get("promoter") ||
-          "";
+      sessionStorage.setItem(
+        "finder_admin_token",
+        valor
+      );
 
-        const utmSource =
-          params.get("utm_source") ||
-          "";
+      onLogin(valor);
 
-        const utmMedium =
-          params.get("utm_medium") ||
-          "";
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Não foi possível acessar o painel."
+      );
 
-        const utmCampaign =
-          params.get("utm_campaign") ||
-          "";
+    } finally {
+      setCarregando(false);
+    }
+  }
 
-        const utmContent =
-          params.get("utm_content") ||
-          "";
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: BG,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+        fontFamily: BODY_FONT,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: WHITE,
+          borderRadius: 20,
+          padding: 30,
+          boxShadow:
+            "0 24px 60px rgba(23,35,61,0.14)",
+        }}
+      >
+        <img
+          src="/finder-logo.png"
+          alt="Finder of Solutions"
+          style={{
+            width: 180,
+            maxWidth: "70%",
+            objectFit: "contain",
+            marginBottom: 22,
+          }}
+        />
 
-        const utmTerm =
-          params.get("utm_term") ||
-          "";
+        <h1
+          style={{
+            fontFamily: DISPLAY_FONT,
+            color: NAVY,
+            fontSize: 28,
+            margin: "0 0 7px",
+          }}
+        >
+          Painel de Diagnósticos
+        </h1>
 
-        const chaveSessao =
-          "finder_diagnostico_session_id";
+        <p
+          style={{
+            fontSize: 13,
+            color: MUTED,
+            lineHeight: 1.5,
+            margin: "0 0 22px",
+          }}
+        >
+          Área restrita da Finder para consulta
+          dos diagnósticos empresariais realizados.
+        </p>
 
-        let sessionId =
-          sessionStorage.getItem(
-            chaveSessao
-          ) || "";
+        <label
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 700,
+            color: NAVY,
+            marginBottom: 7,
+          }}
+        >
+          Senha administrativa
+        </label>
 
-        if (!sessionId) {
-          const uuid =
-            typeof crypto !== "undefined" &&
-            typeof crypto.randomUUID === "function"
-              ? crypto.randomUUID()
-              : `${Date.now()}_${Math.random()
-                  .toString(36)
-                  .slice(2)}`;
+        <input
+          type="password"
+          value={token}
+          onChange={(e) => {
+            setToken(
+              e.target.value
+            );
 
-          sessionId =
-            `sessao_${uuid}`;
+            setErro("");
+          }}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter"
+            ) {
+              entrar();
+            }
+          }}
+          autoComplete="current-password"
+          placeholder="Digite o ADMIN_TOKEN"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            border:
+              "1px solid #D8DEEA",
+            borderRadius: 10,
+            padding: "12px 13px",
+            fontFamily: BODY_FONT,
+            fontSize: 14,
+            color: NAVY,
+            marginBottom: 12,
+          }}
+        />
 
-          sessionStorage.setItem(
-            chaveSessao,
-            sessionId
+        {erro && (
+          <div
+            style={{
+              background: "#FAECE7",
+              color: "#993C1D",
+              borderRadius: 9,
+              padding: 10,
+              fontSize: 12,
+              marginBottom: 12,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+
+        <Botao
+          onClick={entrar}
+          disabled={carregando}
+          style={{
+            width: "100%",
+          }}
+        >
+          {carregando
+            ? "Validando..."
+            : "Entrar no painel"}
+        </Botao>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
+// LISTA DE DIAGNÓSTICOS
+// =========================================================
+
+function ListaDiagnosticos({
+  token,
+  onAbrir,
+  onLogout,
+}) {
+  const [
+    diagnosticos,
+    setDiagnosticos,
+  ] = useState([]);
+
+  const [
+    busca,
+    setBusca,
+  ] = useState("");
+
+  const [
+    buscaAplicada,
+    setBuscaAplicada,
+  ] = useState("");
+
+  const [
+    estruturaFiltro,
+    setEstruturaFiltro,
+  ] = useState("");
+
+  const [
+    total,
+    setTotal,
+  ] = useState(0);
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    exportando,
+    setExportando,
+  ] = useState(false);
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  // =======================================================
+  // CARREGAR LISTA
+  // =======================================================
+
+  async function carregar(
+    termo = ""
+  ) {
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const params =
+        new URLSearchParams();
+
+      params.set(
+        "limite",
+        "100"
+      );
+
+      params.set(
+        "offset",
+        "0"
+      );
+
+      if (
+        termo.trim()
+      ) {
+        params.set(
+          "busca",
+          termo.trim()
+        );
+      }
+
+      const resposta =
+        await fetch(
+          `/api/listar-diagnosticos?${params.toString()}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        if (
+          resposta.status ===
+          401
+        ) {
+          throw new Error(
+            "Sua sessão administrativa expirou."
           );
         }
 
-        setSessionIdLead(
-          sessionId
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar os diagnósticos."
+        );
+      }
+
+      setDiagnosticos(
+        Array.isArray(
+          data.diagnosticos
+        )
+          ? data.diagnosticos
+          : []
+      );
+
+      setTotal(
+        Number(
+          data.total
+        ) || 0
+      );
+
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar diagnósticos."
+      );
+
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregar("");
+  }, []);
+
+  function pesquisar() {
+    const termo =
+      busca.trim();
+
+    setBuscaAplicada(
+      termo
+    );
+
+    carregar(
+      termo
+    );
+  }
+
+  function limparBusca() {
+    setBusca("");
+    setBuscaAplicada("");
+    setEstruturaFiltro("");
+    carregar("");
+  }
+
+  const diagnosticosFiltrados =
+    useMemo(() => {
+      if (!estruturaFiltro) {
+        return diagnosticos;
+      }
+
+      return diagnosticos.filter(
+        (item) =>
+          estruturaDiagnostico(item) ===
+          estruturaFiltro
+      );
+    }, [
+      diagnosticos,
+      estruturaFiltro,
+    ]);
+
+  const estruturasResumo =
+    useMemo(() => {
+      return diagnosticos.reduce(
+        (acc, item) => {
+          const estrutura =
+            estruturaDiagnostico(
+              item
+            );
+
+          acc[estrutura] =
+            (acc[estrutura] || 0) + 1;
+
+          return acc;
+        },
+        {}
+      );
+    }, [diagnosticos]);
+
+  // =======================================================
+  // SCORE MÉDIO
+  // =======================================================
+
+  const mediaScore =
+    useMemo(() => {
+      const scores =
+        diagnosticosFiltrados
+          .map(
+            (d) =>
+              Number(
+                d.score
+              )
+          )
+          .filter(
+            Number.isFinite
+          );
+
+      if (!scores.length) {
+        return null;
+      }
+
+      return Math.round(
+        scores.reduce(
+          (
+            acc,
+            valor
+          ) =>
+            acc + valor,
+          0
+        ) /
+        scores.length
+      );
+    }, [diagnosticos]);
+
+  // =======================================================
+  // EXPORTAR EXCEL
+  // =======================================================
+
+  async function exportarExcel() {
+    if (exportando) {
+      return;
+    }
+
+    setExportando(true);
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/exportar-diagnosticos",
+          {
+            method: "GET",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
         );
 
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso ||
+        !Array.isArray(
+          data.diagnosticos
+        )
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar os dados para exportação."
+        );
+      }
+
+      const registros =
+        data.diagnosticos;
+
+      if (
+        registros.length === 0
+      ) {
+        throw new Error(
+          "Não existem diagnósticos para exportar."
+        );
+      }
+
+      // ===================================================
+      // ABA 1 - DIAGNÓSTICOS
+      // ===================================================
+
+      const abaDiagnosticos =
+        registros.map(
+          (item) => {
+            const participante =
+              item.participante ||
+              {};
+
+            const empresa =
+              item.empresa ||
+              {};
+
+            const dores =
+              Array.isArray(
+                item.dores
+              )
+                ? item.dores
+                : [];
+
+            const doresEstruturadas =
+              item.doresEstruturadas ||
+              {};
+
+            const negocio =
+              item.negocioInterpretado ||
+              {};
+
+            const resultado =
+              item.resultado ||
+              {};
+
+            const diagnosticoGeral =
+              resultado.diagnosticoGeral ||
+              {};
+
+            return {
+              "ID":
+                item.id ||
+                "",
+
+              "Data":
+                item.criadoEm
+                  ? new Date(
+                      item.criadoEm
+                    ).toLocaleString(
+                      "pt-BR"
+                    )
+                  : "",
+
+              "Estrutura":
+                labelEstruturaDiagnostico(
+                  estruturaDiagnostico(
+                    item
+                  )
+                ),
+
+              "Empresa":
+                empresa.razaoSocial ||
+                "",
+
+              "CNPJ":
+                formatarCnpj(
+                  empresa.cnpj ||
+                  ""
+                ),
+
+              "Responsável":
+                participante.nome ||
+                "",
+
+              "Cargo":
+                participante.cargo ||
+                "",
+
+              "Telefone":
+                participante.telefone ||
+                "",
+
+              "E-mail":
+                participante.email ||
+                "",
+
+              "Descrição do negócio":
+                empresa.descricaoNegocio ||
+                "",
+
+              "Segmento":
+                empresa.segmento ||
+                "",
+
+              "Subsegmento":
+                empresa.subsegmento ||
+                "",
+
+              "Score":
+                item.score ??
+                "",
+
+              "Dores declaradas":
+                dores.join(
+                  " | "
+                ),
+
+              "Dor principal":
+                doresEstruturadas
+                  .principal ||
+                dores[0] ||
+                "",
+
+              "Objetivo 90 dias":
+                doresEstruturadas
+                  .objetivo90Dias ||
+                "",
+
+              "Impactos da dor":
+                juntarLista(
+                  doresEstruturadas
+                    .impactos
+                ),
+
+              "Modelo de negócio":
+                negocio.modeloNegocio ||
+                negocio.modeloOperacional ||
+                "",
+
+              "Como gera receita":
+                negocio.comoGeraReceita ||
+                "",
+
+              "Resumo executivo":
+                diagnosticoGeral
+                  .resumoExecutivo ||
+                "",
+
+              "Alerta estratégico":
+                diagnosticoGeral
+                  .alertaEstrategico ||
+                "",
+
+              "Leitura das dores":
+                diagnosticoGeral
+                  .leituraDasDores ||
+                diagnosticoGeral
+                  .leituraDaDor ||
+                "",
+
+              "Principais dores IA":
+                juntarLista(
+                  diagnosticoGeral
+                    .principaisDores
+                ),
+
+              "Causas prováveis":
+                juntarLista(
+                  diagnosticoGeral
+                    .causasProvaveis
+                ),
+
+              "Impactos":
+                juntarLista(
+                  diagnosticoGeral
+                    .impactos
+                ),
+
+              "Pontos fortes":
+                juntarLista(
+                  diagnosticoGeral
+                    .pontosFortes
+                ),
+
+              "Prioridades imediatas":
+                juntarLista(
+                  diagnosticoGeral
+                    .prioridadesImediatas
+                ),
+
+              "Oportunidades":
+                juntarLista(
+                  diagnosticoGeral
+                    .oportunidades
+                ),
+
+              "Próximos passos":
+                juntarLista(
+                  diagnosticoGeral
+                    .proximosPassos
+                ),
+            };
+          }
+        );
+
+      // ===================================================
+      // ABA 2 - PERGUNTAS E RESPOSTAS
+      // ===================================================
+
+      const abaPerguntas = [];
+
+      registros.forEach(
+        (item) => {
+          const participante =
+            item.participante ||
+            {};
+
+          const empresa =
+            item.empresa ||
+            {};
+
+          const perguntas =
+            Array.isArray(
+              item.perguntasRespostas
+            )
+              ? item.perguntasRespostas
+              : [];
+
+          perguntas.forEach(
+            (
+              pergunta,
+              index
+            ) => {
+              abaPerguntas.push({
+                "ID Diagnóstico":
+                  item.id ||
+                  "",
+
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
+                  empresa.razaoSocial ||
+                  "",
+
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Responsável":
+                  participante.nome ||
+                  "",
+
+                "Nº":
+                  index + 1,
+
+                "Área":
+                  pergunta.area ||
+                  "",
+
+                "Área ID":
+                  pergunta.areaId ||
+                  "",
+
+                "Tema":
+                  pergunta.tema ||
+                  "",
+
+                "Pergunta":
+                  pergunta.pergunta ||
+                  "",
+
+                "Resposta":
+                  pergunta.resposta ||
+                  "",
+
+                "Peso":
+                  pergunta.peso ??
+                  "",
+
+                "Importância":
+                  pergunta.importancia ??
+                  "",
+
+                "Motivo":
+                  pergunta.motivo ||
+                  "",
+
+                "Risco avaliado":
+                  pergunta.riscoAvaliado ||
+                  "",
+              });
+            }
+          );
+        }
+      );
+
+      // ===================================================
+      // ABA 3 - ANÁLISE POR ÁREA
+      // ===================================================
+
+      const abaAreas = [];
+
+      registros.forEach(
+        (item) => {
+          const empresa =
+            item.empresa ||
+            {};
+
+          const areas =
+            Array.isArray(
+              item.areas
+            )
+              ? item.areas
+              : [];
+
+          areas.forEach(
+            (area) => {
+              abaAreas.push({
+                "ID Diagnóstico":
+                  item.id ||
+                  "",
+
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
+                  empresa.razaoSocial ||
+                  "",
+
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Área":
+                  area.area ||
+                  "",
+
+                "Score":
+                  area.score ??
+                  "",
+
+                "Nível":
+                  area.nivel ||
+                  "",
+
+                "Prioridade":
+                  area.prioridade ??
+                  "",
+
+                "Resumo":
+                  area.resumo ||
+                  "",
+
+                "Achados":
+                  juntarLista(
+                    area.achados
+                  ),
+
+                "Causas prováveis":
+                  juntarLista(
+                    area.causasProvaveis
+                  ),
+
+                "Riscos":
+                  juntarLista(
+                    area.riscos
+                  ),
+
+                "Recomendações":
+                  juntarLista(
+                    area.recomendacoes
+                  ),
+              });
+            }
+          );
+        }
+      );
+
+      // ===================================================
+      // ABA 4 - DORES E OBJETIVOS
+      // ===================================================
+
+      const abaDores = [];
+
+      registros.forEach(
+        (item) => {
+          const empresa =
+            item.empresa ||
+            {};
+
+          const participante =
+            item.participante ||
+            {};
+
+          const estruturadas =
+            item.doresEstruturadas ||
+            {};
+
+          const dores =
+            Array.isArray(
+              estruturadas.selecionadas
+            )
+              ? estruturadas.selecionadas
+
+              : Array.isArray(
+                  item.dores
+                )
+                ? item.dores
+
+                : [];
+
+          // Mesmo se não houver dor,
+          // mantém uma linha com o diagnóstico.
+          if (
+            dores.length === 0
+          ) {
+            abaDores.push({
+              "ID Diagnóstico":
+                item.id ||
+                "",
+
+              "Data":
+                item.criadoEm
+                  ? new Date(
+                      item.criadoEm
+                    ).toLocaleString(
+                      "pt-BR"
+                    )
+                  : "",
+
+              "Empresa":
+                empresa.razaoSocial ||
+                "",
+
+              "CNPJ":
+                formatarCnpj(
+                  empresa.cnpj ||
+                  ""
+                ),
+
+              "Responsável":
+                participante.nome ||
+                "",
+
+              "Dor Nº":
+                "",
+
+              "Dor":
+                "",
+
+              "Dor principal":
+                estruturadas.principal ||
+                "",
+
+              "Objetivo 90 dias":
+                estruturadas
+                  .objetivo90Dias ||
+                "",
+
+              "Impactos":
+                juntarLista(
+                  estruturadas
+                    .impactos
+                ),
+            });
+
+            return;
+          }
+
+          dores.forEach(
+            (
+              dor,
+              index
+            ) => {
+              abaDores.push({
+                "ID Diagnóstico":
+                  item.id ||
+                  "",
+
+                "Data":
+                  item.criadoEm
+                    ? new Date(
+                        item.criadoEm
+                      ).toLocaleString(
+                        "pt-BR"
+                      )
+                    : "",
+
+                "Empresa":
+                  empresa.razaoSocial ||
+                  "",
+
+                "CNPJ":
+                  formatarCnpj(
+                    empresa.cnpj ||
+                    ""
+                  ),
+
+                "Responsável":
+                  participante.nome ||
+                  "",
+
+                "Dor Nº":
+                  index + 1,
+
+                "Dor":
+                  dor,
+
+                "Dor principal":
+                  estruturadas.principal ||
+                  dores[0] ||
+                  "",
+
+                "Objetivo 90 dias":
+                  estruturadas
+                    .objetivo90Dias ||
+                  "",
+
+                "Impactos":
+                  juntarLista(
+                    estruturadas
+                      .impactos
+                  ),
+              });
+            }
+          );
+        }
+      );
+
+      // ===================================================
+      // CRIAR ARQUIVO EXCEL
+      // ===================================================
+
+      const workbook =
+        XLSX.utils.book_new();
+
+      const wsDiagnosticos =
+        XLSX.utils.json_to_sheet(
+          abaDiagnosticos
+        );
+
+      const wsPerguntas =
+        XLSX.utils.json_to_sheet(
+          abaPerguntas
+        );
+
+      const wsAreas =
+        XLSX.utils.json_to_sheet(
+          abaAreas
+        );
+
+      const wsDores =
+        XLSX.utils.json_to_sheet(
+          abaDores
+        );
+
+      // ===================================================
+      // LARGURA DAS COLUNAS
+      // ===================================================
+
+      wsDiagnosticos["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 30 },
+        { wch: 60 },
+        { wch: 35 },
+        { wch: 50 },
+        { wch: 10 },
+        { wch: 50 },
+        { wch: 40 },
+        { wch: 60 },
+        { wch: 60 },
+        { wch: 40 },
+        { wch: 60 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+        { wch: 80 },
+      ];
+
+      wsPerguntas["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 8 },
+        { wch: 28 },
+        { wch: 16 },
+        { wch: 35 },
+        { wch: 90 },
+        { wch: 18 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 70 },
+        { wch: 70 },
+      ];
+
+      wsAreas["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 28 },
+        { wch: 10 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 80 },
+        { wch: 90 },
+        { wch: 90 },
+        { wch: 90 },
+        { wch: 90 },
+      ];
+
+      wsDores["!cols"] = [
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 38 },
+        { wch: 20 },
+        { wch: 25 },
+        { wch: 10 },
+        { wch: 45 },
+        { wch: 45 },
+        { wch: 70 },
+        { wch: 70 },
+      ];
+
+      // ===================================================
+      // ADICIONAR ABAS
+      // ===================================================
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsDiagnosticos,
+        "Diagnósticos"
+      );
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsPerguntas,
+        "Perguntas Respostas"
+      );
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsAreas,
+        "Análise por Área"
+      );
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        wsDores,
+        "Dores e Objetivos"
+      );
+
+      // ===================================================
+      // DOWNLOAD
+      // ===================================================
+
+      const agora =
+        new Date();
+
+      const dataArquivo =
+        agora
+          .toISOString()
+          .slice(
+            0,
+            10
+          );
+
+      const nomeArquivo =
+        `diagnosticos-finder-${dataArquivo}.xlsx`;
+
+      XLSX.writeFile(
+        workbook,
+        nomeArquivo
+      );
+
+    } catch (error) {
+      console.error(
+        "Erro exportação Excel:",
+        error
+      );
+
+      setErro(
+        error?.message ||
+        "Não foi possível gerar o Excel."
+      );
+
+    } finally {
+      setExportando(false);
+    }
+  }
+
+  // =======================================================
+  // RENDER LISTA
+  // =======================================================
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: BG,
+        fontFamily: BODY_FONT,
+        color: NAVY,
+      }}
+    >
+      <header
+        style={{
+          background: NAVY,
+          color: WHITE,
+          padding: "18px 28px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            display: "flex",
+            justifyContent:
+              "space-between",
+            alignItems:
+              "center",
+            gap: 18,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems:
+                "center",
+              gap: 18,
+            }}
+          >
+            <img
+              src="/finder-logo.png"
+              alt="Finder of Solutions"
+              style={{
+                maxWidth: 150,
+                maxHeight: 45,
+                objectFit:
+                  "contain",
+                background:
+                  WHITE,
+                padding: 5,
+                borderRadius: 7,
+              }}
+            />
+
+            <div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize: 24,
+                }}
+              >
+                Diagnósticos
+              </h1>
+
+              <p
+                style={{
+                  margin:
+                    "3px 0 0",
+                  fontSize: 11,
+                  opacity: 0.7,
+                }}
+              >
+                Painel administrativo
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onLogout}
+            style={{
+              background:
+                "transparent",
+
+              border:
+                "1px solid rgba(255,255,255,.30)",
+
+              color:
+                WHITE,
+
+              borderRadius:
+                9,
+
+              padding:
+                "8px 11px",
+
+              cursor:
+                "pointer",
+
+              display:
+                "flex",
+
+              alignItems:
+                "center",
+
+              gap: 6,
+            }}
+          >
+            <LogOut
+              size={15}
+            />
+
+            Sair
+          </button>
+        </div>
+      </header>
+
+      <main
+        style={{
+          maxWidth: 1320,
+          margin: "0 auto",
+          padding:
+            "26px 22px 50px",
+        }}
+      >
+        {/* ================================================= */}
+        {/* CARDS RESUMO */}
+        {/* ================================================= */}
+
+        <div
+          style={{
+            display: "grid",
+
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+
+            gap: 12,
+
+            marginBottom:
+              20,
+          }}
+        >
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 11,
+                marginBottom: 7,
+              }}
+            >
+              DIAGNÓSTICOS
+            </div>
+
+            <div
+              style={{
+                fontSize: 30,
+                fontWeight: 800,
+              }}
+            >
+              {total}
+            </div>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 11,
+                marginBottom: 7,
+              }}
+            >
+              EXIBIDOS
+            </div>
+
+            <div
+              style={{
+                fontSize: 30,
+                fontWeight: 800,
+              }}
+            >
+              {diagnosticosFiltrados.length}
+            </div>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 11,
+                marginBottom: 7,
+              }}
+            >
+              SCORE MÉDIO
+            </div>
+
+            <div
+              style={{
+                fontSize: 30,
+                fontWeight: 800,
+              }}
+            >
+              {mediaScore ??
+                "-"}
+            </div>
+          </Card>
+        </div>
+
+        {/* ================================================= */}
+        {/* BUSCA + EXPORTAÇÃO */}
+        {/* ================================================= */}
+
+        <Card
+          style={{
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 9,
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                flex:
+                  "1 1 360px",
+
+                position:
+                  "relative",
+              }}
+            >
+              <Search
+                size={16}
+                color={MUTED}
+                style={{
+                  position:
+                    "absolute",
+                  top: 12,
+                  left: 12,
+                }}
+              />
+
+              <input
+                value={busca}
+                onChange={(
+                  e
+                ) =>
+                  setBusca(
+                    e.target
+                      .value
+                  )
+                }
+                onKeyDown={(
+                  e
+                ) => {
+                  if (
+                    e.key ===
+                    "Enter"
+                  ) {
+                    pesquisar();
+                  }
+                }}
+                placeholder="Buscar empresa, CNPJ, nome, e-mail, segmento..."
+                style={{
+                  width:
+                    "100%",
+
+                  boxSizing:
+                    "border-box",
+
+                  border:
+                    "1px solid #D8DEEA",
+
+                  borderRadius:
+                    9,
+
+                  padding:
+                    "10px 12px 10px 36px",
+
+                  fontFamily:
+                    BODY_FONT,
+
+                  fontSize:
+                    13,
+                }}
+              />
+            </div>
+
+            <select
+              value={
+                estruturaFiltro
+              }
+              onChange={(e) =>
+                setEstruturaFiltro(
+                  e.target.value
+                )
+              }
+              style={{
+                minWidth: 210,
+                border:
+                  "1px solid #D8DEEA",
+                borderRadius: 9,
+                padding:
+                  "10px 12px",
+                background: WHITE,
+                fontFamily: BODY_FONT,
+                fontSize: 12,
+                color: NAVY,
+              }}
+            >
+              <option value="">
+                Todas as estruturas
+              </option>
+
+              <option value="operacional">
+                Empresa operacional ({estruturasResumo.operacional || 0})
+              </option>
+
+              <option value="holding">
+                Holding ({estruturasResumo.holding || 0})
+              </option>
+
+              <option value="avaliar_holding">
+                Avaliação de Holding ({estruturasResumo.avaliar_holding || 0})
+              </option>
+
+              <option value="grupo">
+                Grupo empresarial ({estruturasResumo.grupo || 0})
+              </option>
+
+              <option value="spe">
+                SPE ({estruturasResumo.spe || 0})
+              </option>
+
+              <option value="pessoa_fisica">
+                Pessoa Física ({estruturasResumo.pessoa_fisica || 0})
+              </option>
+            </select>
+
+            <Botao
+              onClick={
+                pesquisar
+              }
+            >
+              <Search
+                size={14}
+              />
+
+              Buscar
+            </Botao>
+
+            {(buscaAplicada || estruturaFiltro) && (
+              <Botao
+                secundario
+                onClick={
+                  limparBusca
+                }
+              >
+                Limpar
+              </Botao>
+            )}
+
+            <Botao
+              secundario
+              onClick={() =>
+                carregar(
+                  buscaAplicada
+                )
+              }
+            >
+              <RefreshCcw
+                size={14}
+              />
+
+              Atualizar
+            </Botao>
+
+            <Botao
+              secundario
+              onClick={
+                exportarExcel
+              }
+              disabled={
+                exportando
+              }
+              style={{
+                borderColor:
+                  "#0F6E56",
+
+                color:
+                  "#0F6E56",
+              }}
+            >
+              <Download
+                size={14}
+              />
+
+              {exportando
+                ? "Gerando Excel..."
+                : "Exportar Excel"}
+            </Botao>
+          </div>
+        </Card>
+
+        {/* ================================================= */}
+        {/* ERRO */}
+        {/* ================================================= */}
+
+        {erro && (
+          <div
+            style={{
+              background:
+                "#FAECE7",
+
+              color:
+                "#993C1D",
+
+              padding:
+                13,
+
+              borderRadius:
+                10,
+
+              marginBottom:
+                14,
+
+              display:
+                "flex",
+
+              gap:
+                8,
+
+              alignItems:
+                "flex-start",
+            }}
+          >
+            <AlertTriangle
+              size={17}
+              style={{
+                flexShrink: 0,
+              }}
+            />
+
+            <div>
+              {erro}
+            </div>
+          </div>
+        )}
+
+        {/* ================================================= */}
+        {/* LISTA */}
+        {/* ================================================= */}
+
+        {carregando ? (
+          <Card>
+            Carregando diagnósticos...
+          </Card>
+
+        ) : diagnosticosFiltrados.length ===
+          0 ? (
+          <Card>
+            Nenhum diagnóstico encontrado.
+          </Card>
+
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection:
+                "column",
+              gap: 10,
+            }}
+          >
+            {diagnosticosFiltrados.map(
+              (item) => {
+                const score =
+                  scoreInfo(
+                    item.score
+                  );
+
+                const dores =
+                  normalizarLista(
+                    item.dores
+                  );
+
+                return (
+                  <button
+                    key={
+                      item.id
+                    }
+                    onClick={() =>
+                      onAbrir(
+                        item.id
+                      )
+                    }
+                    style={{
+                      width:
+                        "100%",
+
+                      background:
+                        WHITE,
+
+                      border:
+                        "1px solid #E2E6EE",
+
+                      borderRadius:
+                        14,
+
+                      padding:
+                        16,
+
+                      textAlign:
+                        "left",
+
+                      cursor:
+                        "pointer",
+
+                      display:
+                        "grid",
+
+                      gridTemplateColumns:
+                        "minmax(250px,2fr) minmax(180px,1.2fr) 90px 34px",
+
+                      gap:
+                        15,
+
+                      alignItems:
+                        "center",
+
+                      fontFamily:
+                        BODY_FONT,
+
+                      color:
+                        NAVY,
+                    }}
+                  >
+                    <div>
+                      {(() => {
+                        const estrutura =
+                          estruturaDiagnostico(
+                            item
+                          );
+
+                        const cor =
+                          corEstruturaDiagnostico(
+                            estrutura
+                          );
+
+                        return (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              background:
+                                cor.bg,
+                              color:
+                                cor.color,
+                              borderRadius: 20,
+                              padding:
+                                "4px 8px",
+                              fontSize: 9,
+                              fontWeight: 900,
+                              marginBottom: 7,
+                            }}
+                          >
+                            ESTRUTURA ·{" "}
+                            {labelEstruturaDiagnostico(
+                              estrutura
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      <div
+                        style={{
+                          fontSize:
+                            9.5,
+                          color:
+                            MUTED,
+                          fontWeight:
+                            800,
+                          marginBottom:
+                            3,
+                        }}
+                      >
+                        {estruturaDiagnostico(item) ===
+                        "pessoa_fisica"
+                          ? "PESSOA"
+                          : "EMPRESA"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            14,
+
+                          fontWeight:
+                            800,
+
+                          marginBottom:
+                            4,
+                        }}
+                      >
+                        {item.razaoSocial ||
+                          item.nome ||
+                          (
+                            estruturaDiagnostico(
+                              item
+                            ) ===
+                            "pessoa_fisica"
+                              ? "Pessoa física"
+                              : estruturaDiagnostico(
+                                  item
+                                ) ===
+                                "avaliar_holding"
+                              ? "Avaliação de Holding"
+                              : "Empresa não informada"
+                          )}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            11.5,
+
+                          color:
+                            MUTED,
+
+                          display:
+                            "flex",
+
+                          gap:
+                            9,
+
+                          flexWrap:
+                            "wrap",
+                        }}
+                      >
+                        {item.cnpj && (
+                          <span>
+                            {formatarCnpj(
+                              item.cnpj
+                            )}
+                          </span>
+                        )}
+
+                        {item.segmento && (
+                          <span>
+                            {
+                              item.segmento
+                            }
+                          </span>
+                        )}
+                      </div>
+
+                      {dores.length >
+                        0 && (
+                        <div
+                          style={{
+                            display:
+                              "flex",
+
+                            gap:
+                              5,
+
+                            flexWrap:
+                              "wrap",
+
+                            marginTop:
+                              8,
+                          }}
+                        >
+                          {dores
+                            .slice(
+                              0,
+                              3
+                            )
+                            .map(
+                              (
+                                dor,
+                                index
+                              ) => (
+                                <span
+                                  key={`${dor}-${index}`}
+                                  style={{
+                                    fontSize:
+                                      9.5,
+
+                                    background:
+                                      "#FFF3EF",
+
+                                    color:
+                                      "#993C1D",
+
+                                    borderRadius:
+                                      20,
+
+                                    padding:
+                                      "3px 7px",
+                                  }}
+                                >
+                                  {
+                                    dor
+                                  }
+                                </span>
+                              )
+                            )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize:
+                            12,
+
+                          fontWeight:
+                            700,
+                        }}
+                      >
+                        {item.nome ||
+                          "Participante não informado"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            10.5,
+
+                          color:
+                            MUTED,
+
+                          marginTop:
+                            3,
+                        }}
+                      >
+                        {item.email ||
+                          "-"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            10.5,
+
+                          color:
+                            MUTED,
+
+                          marginTop:
+                            5,
+                        }}
+                      >
+                        {formatarData(
+                          item.criadoEm
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        textAlign:
+                          "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background:
+                            score.bg,
+
+                          color:
+                            score.color,
+
+                          borderRadius:
+                            12,
+
+                          padding:
+                            "8px 6px",
+                        }}
+                      >
+                        <strong
+                          style={{
+                            fontSize:
+                              19,
+                          }}
+                        >
+                          {item.score ??
+                            "-"}
+                        </strong>
+
+                        <div
+                          style={{
+                            fontSize:
+                              8.5,
+
+                            marginTop:
+                              1,
+                          }}
+                        >
+                          {
+                            score.label
+                          }
+                        </div>
+                      </div>
+                    </div>
+
+                    <ChevronRight
+                      size={20}
+                      color={MUTED}
+                    />
+                  </button>
+                );
+              }
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// =========================================================
+// LEADS / CRM
+// =========================================================
+
+function LeadsCRM({ token, onAbrirDiagnostico }) {
+  const [leads, setLeads] = useState([]);
+  const [resumo, setResumo] = useState({});
+  const [busca, setBusca] = useState("");
+  const [origem, setOrigem] = useState("");
+  const [statusDiagnostico, setStatusDiagnostico] = useState("");
+  const [prioridadeComercial, setPrioridadeComercial] = useState("");
+  const [responsaveis, setResponsaveis] = useState([]);
+  const [atribuindoLeadId, setAtribuindoLeadId] = useState("");
+  const [selecoesResponsavel, setSelecoesResponsavel] = useState({});
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+
+  async function carregarLeads() {
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const params = new URLSearchParams();
+      params.set("limite", "200");
+
+      if (busca.trim()) params.set("busca", busca.trim());
+      if (origem) params.set("origem", origem);
+      if (statusDiagnostico) {
+        params.set("statusDiagnostico", statusDiagnostico);
+      }
+
+      if (prioridadeComercial) {
+        params.set("prioridadeComercial", prioridadeComercial);
+      }
+
+      const resposta = await fetch(
+        `/api/crm?action=listar-leads&${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await resposta.json().catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(
+          data?.error || "Não foi possível carregar os leads."
+        );
+      }
+
+      setLeads(Array.isArray(data.leads) ? data.leads : []);
+      setResumo(data.resumo || {});
+    } catch (error) {
+      setErro(error?.message || "Erro ao carregar leads.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  async function carregarResponsaveis() {
+    try {
+      const resposta = await fetch(
+        "/api/crm?action=listar-responsaveis",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar os responsáveis."
+        );
+      }
+
+      setResponsaveis(
+        Array.isArray(
+          data.responsaveis
+        )
+          ? data.responsaveis
+          : []
+      );
+    } catch (error) {
+      console.warn(
+        "[CRM] Erro ao carregar responsáveis:",
+        error
+      );
+    }
+  }
+
+  async function atribuirLead(
+    leadId,
+    responsavelId
+  ) {
+    if (
+      !leadId ||
+      !responsavelId
+    ) {
+      return;
+    }
+
+    setAtribuindoLeadId(
+      leadId
+    );
+
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=atribuir-lead",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              leadId,
+              responsavelId,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível atribuir o lead."
+        );
+      }
+
+      await Promise.all([
+        carregarLeads(),
+        carregarResponsaveis(),
+      ]);
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao atribuir lead."
+      );
+    } finally {
+      setAtribuindoLeadId(
+        ""
+      );
+    }
+  }
+
+  useEffect(() => {
+    carregarLeads();
+    carregarResponsaveis();
+  }, []);
+
+  const origensDisponiveis = useMemo(() => {
+    return [...new Set(leads.map((lead) => lead.origem).filter(Boolean))].sort();
+  }, [leads]);
+
+  function corStatus(status) {
+    if (status === "CONCLUIDO") return { bg: "#E1F5EE", color: "#0F6E56" };
+    if (status === "EM_PREENCHIMENTO") return { bg: "#FAEEDA", color: "#854F0B" };
+    if (status === "NAO_CONCLUIDO") return { bg: "#FCEBEB", color: "#791F1F" };
+    return { bg: "#EEF0F5", color: MUTED };
+  }
+
+  function labelStatus(status) {
+    const mapa = {
+      ACESSOU: "Acessou",
+      EM_PREENCHIMENTO: "Em preenchimento",
+      NAO_CONCLUIDO: "Não concluído",
+      CONCLUIDO: "Concluído",
+    };
+    return mapa[status] || status || "-";
+  }
+
+  function temperatura(lead) {
+    const mapa = {
+      MUITO_ALTA: "Muito alta",
+      ALTA: "Alta",
+      MEDIA: "Média",
+      BAIXA: "Baixa",
+    };
+
+    const valor =
+      lead.temperaturaComercial ||
+      lead.temperatura;
+
+    return mapa[valor] || valor || "-";
+  }
+
+  function prioridadeInfo(prioridade) {
+    const mapa = {
+      A: {
+        label: "Prioridade A",
+        descricao: "Atendimento imediato",
+        bg: "#FCEBEB",
+        color: "#791F1F",
+      },
+      B: {
+        label: "Prioridade B",
+        descricao: "Alta",
+        bg: "#FAEEDA",
+        color: "#854F0B",
+      },
+      C: {
+        label: "Prioridade C",
+        descricao: "Acompanhar",
+        bg: "#FFF3EF",
+        color: "#993C1D",
+      },
+      D: {
+        label: "Prioridade D",
+        descricao: "Nutrição",
+        bg: "#EEF0F5",
+        color: MUTED,
+      },
+    };
+
+    return (
+      mapa[prioridade] || {
+        label: "Não classificado",
+        descricao: "",
+        bg: "#EEF0F5",
+        color: MUTED,
+      }
+    );
+  }
+
+  function textoProximaAcao(valor) {
+    const mapa = {
+      CONTATO_COMERCIAL: "Contato comercial",
+      AGENDAR_REUNIAO: "Agendar reunião",
+      FOLLOW_UP_CONSULTIVO: "Follow-up consultivo",
+      NUTRICAO: "Nutrição",
+    };
+
+    return mapa[valor] || valor || "-";
+  }
+
+  function textoPrazo(valor) {
+    const mapa = {
+      "2_HORAS": "Até 2 horas",
+      "24_HORAS": "Até 24 horas",
+      "3_DIAS": "Até 3 dias",
+      NUTRICAO: "Sem urgência",
+    };
+
+    return mapa[valor] || valor || "-";
+  }
+
+  function nomeResponsavel(id) {
+    if (!id) {
+      return "Não atribuído";
+    }
+
+    const encontrado =
+      responsaveis.find(
+        (item) =>
+          item.id === id
+      );
+
+    return (
+      encontrado?.nome ||
+      "Responsável não encontrado"
+    );
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))",
+          gap: 12,
+          marginBottom: 18,
+        }}
+      >
+        <Card>
+          <Users size={18} color={CORAL} />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>LEADS</div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>{resumo.total ?? 0}</div>
+        </Card>
+
+        <Card>
+          <Activity size={18} color="#854F0B" />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>
+            EM PREENCHIMENTO
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.emPreenchimento ?? 0}
+          </div>
+        </Card>
+
+        <Card>
+          <Clock3 size={18} color="#791F1F" />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>
+            NÃO CONCLUÍDOS
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.naoConcluidos ?? 0}
+          </div>
+        </Card>
+
+        <Card>
+          <CheckCircle2 size={18} color="#0F6E56" />
+          <div style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>CONCLUÍDOS</div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.concluidos ?? 0}
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ color: MUTED, fontSize: 10 }}>TAXA DE CONCLUSÃO</div>
+          <div style={{ fontSize: 29, fontWeight: 900 }}>
+            {resumo.taxaConclusao ?? 0}%
+          </div>
+        </Card>
+
+        <Card
+          style={{
+            background: "#FCEBEB",
+            borderColor: "#F0C5C5",
+          }}
+        >
+          <Flame size={18} color="#791F1F" />
+          <div style={{ color: "#791F1F", fontSize: 10, marginTop: 8 }}>
+            PRIORIDADE A
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900, color: "#791F1F" }}>
+            {resumo.prioridadeA ?? 0}
+          </div>
+        </Card>
+
+        <Card
+          style={{
+            background: "#FAEEDA",
+            borderColor: "#E9D3A5",
+          }}
+        >
+          <div style={{ color: "#854F0B", fontSize: 10 }}>
+            PRIORIDADE B
+          </div>
+          <div style={{ fontSize: 29, fontWeight: 900, color: "#854F0B" }}>
+            {resumo.prioridadeB ?? 0}
+          </div>
+        </Card>
+      </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && carregarLeads()}
+            placeholder="Buscar nome, empresa, CNPJ, telefone..."
+            style={{
+              flex: "1 1 280px",
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              fontFamily: BODY_FONT,
+            }}
+          />
+
+          <select
+            value={origem}
+            onChange={(e) => setOrigem(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todas as origens</option>
+            {origensDisponiveis.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+
+          <select
+            value={statusDiagnostico}
+            onChange={(e) => setStatusDiagnostico(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todos os status</option>
+            <option value="ACESSOU">Acessou</option>
+            <option value="EM_PREENCHIMENTO">Em preenchimento</option>
+            <option value="NAO_CONCLUIDO">Não concluído</option>
+            <option value="CONCLUIDO">Concluído</option>
+          </select>
+
+          <select
+            value={prioridadeComercial}
+            onChange={(e) => setPrioridadeComercial(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todas as prioridades</option>
+            <option value="A">Prioridade A</option>
+            <option value="B">Prioridade B</option>
+            <option value="C">Prioridade C</option>
+            <option value="D">Prioridade D</option>
+          </select>
+
+          <Botao onClick={carregarLeads}>
+            <Search size={14} /> Filtrar
+          </Botao>
+
+          <Botao
+            secundario
+            onClick={() => {
+              setBusca("");
+              setOrigem("");
+              setStatusDiagnostico("");
+              setPrioridadeComercial("");
+              setTimeout(carregarLeads, 0);
+            }}
+          >
+            Limpar
+          </Botao>
+
+          <Botao secundario onClick={carregarLeads}>
+            <RefreshCcw size={14} /> Atualizar
+          </Botao>
+        </div>
+      </Card>
+
+      {erro && (
+        <div
+          style={{
+            background: "#FAECE7",
+            color: "#993C1D",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          {erro}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          gap: 12,
+          margin: "18px 0 10px",
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              fontFamily: DISPLAY_FONT,
+              fontSize: 20,
+              margin: 0,
+            }}
+          >
+            Fila de atendimento
+          </h2>
+
+          <p
+            style={{
+              margin: "4px 0 0",
+              color: MUTED,
+              fontSize: 10.5,
+            }}
+          >
+            Ordenada automaticamente por prioridade comercial e score.
+          </p>
+        </div>
+      </div>
+
+      {carregando ? (
+        <Card>Carregando leads...</Card>
+      ) : leads.length === 0 ? (
+        <Card>Nenhum lead encontrado.</Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          {leads.map((lead) => {
+            const status = corStatus(lead.statusDiagnostico);
+            const progresso = Math.max(
+              0,
+              Math.min(100, Number(lead.progressoPercentual) || 0)
+            );
+
+            return (
+              <Card key={lead.leadId} style={{ padding: 15 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "minmax(220px,1.5fr) minmax(130px,.75fr) minmax(170px,1fr) minmax(190px,1.1fr) minmax(190px,1.05fr) minmax(150px,.8fr)",
+                    gap: 14,
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: 13.5 }}>
+                      {lead.razaoSocial || lead.nome || "Lead sem identificação"}
+                    </strong>
+
+                    <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4 }}>
+                      {lead.nome || "-"}
+                      {lead.telefone ? ` · ${lead.telefone}` : ""}
+                    </div>
+
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>
+                      {lead.origem || "direto"}
+                      {lead.campanha ? ` · ${lead.campanha}` : ""}
+
+                      {lead.estruturaNegocio && (
+                        <>
+                          {" · "}
+                          {labelEstruturaDiagnostico(
+                            lead.estruturaNegocio
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: status.bg,
+                        color: status.color,
+                        borderRadius: 20,
+                        padding: "5px 8px",
+                        fontSize: 9.5,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {labelStatus(lead.statusDiagnostico)}
+                    </span>
+
+                    <div style={{ fontSize: 9.5, color: MUTED, marginTop: 6 }}>
+                      {lead.etapaAtual || "-"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        height: 8,
+                        background: "#E9EDF5",
+                        borderRadius: 20,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${progresso}%`,
+                          height: "100%",
+                          background: CORAL,
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 5 }}>
+                      {progresso}% · última atividade {formatarData(lead.ultimaAtividade)}
+                    </div>
+                  </div>
+
+                  <div>
+                    {(() => {
+                      const info =
+                        prioridadeInfo(
+                          lead.prioridadeComercial
+                        );
+
+                      return (
+                        <>
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              flexDirection: "column",
+                              background: info.bg,
+                              color: info.color,
+                              borderRadius: 9,
+                              padding: "6px 8px",
+                              minWidth: 95,
+                            }}
+                          >
+                            <strong style={{ fontSize: 10.5 }}>
+                              {info.label}
+                            </strong>
+
+                            <span style={{ fontSize: 9, marginTop: 2 }}>
+                              {info.descricao}
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: MUTED,
+                              marginTop: 7,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            Score comercial:{" "}
+                            <strong style={{ color: NAVY }}>
+                              {lead.scoreComercial ?? 0}/100
+                            </strong>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: MUTED,
+                              marginTop: 4,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {textoProximaAcao(
+                              lead.proximaAcao
+                            )}
+                            {" · "}
+                            {textoPrazo(
+                              lead.prazoAtendimento
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 9.5,
+                        color: MUTED,
+                        fontWeight: 800,
+                        marginBottom: 5,
+                      }}
+                    >
+                      RESPONSÁVEL FINDER
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                        color: NAVY,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {nomeResponsavel(
+                        lead.responsavelFinder
+                      )}
+                    </div>
+
+                    <select
+                      value={
+                        selecoesResponsavel[
+                          lead.leadId
+                        ] ||
+                        lead.responsavelFinder ||
+                        ""
+                      }
+                      onChange={(e) =>
+                        setSelecoesResponsavel(
+                          (atual) => ({
+                            ...atual,
+
+                            [lead.leadId]:
+                              e.target.value,
+                          })
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "7px 8px",
+                        background: WHITE,
+                        fontSize: 10,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <option value="">
+                        Não atribuído
+                      </option>
+
+                      {responsaveis.map(
+                        (responsavel) => (
+                          <option
+                            key={
+                              responsavel.id
+                            }
+                            value={
+                              responsavel.id
+                            }
+                          >
+                            {responsavel.nome}
+                            {" · "}
+                            {
+                              responsavel.leadsAbertos
+                            }
+                            {" abertos"}
+                          </option>
+                        )
+                      )}
+                    </select>
+
+                    <button
+                      type="button"
+                      disabled={
+                        atribuindoLeadId ===
+                        lead.leadId
+                      }
+                      onClick={() =>
+                        atribuirLead(
+                          lead.leadId,
+                          selecoesResponsavel[
+                            lead.leadId
+                          ] ||
+                            lead.responsavelFinder
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        border: 0,
+                        borderRadius: 8,
+                        padding: "7px 8px",
+                        background: NAVY,
+                        color: WHITE,
+                        fontSize: 9.8,
+                        fontWeight: 800,
+                        cursor:
+                          atribuindoLeadId ===
+                          lead.leadId
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          atribuindoLeadId ===
+                          lead.leadId
+                            ? 0.6
+                            : 1,
+                      }}
+                    >
+                      {atribuindoLeadId ===
+                      lead.leadId
+                        ? "Atribuindo..."
+                        : lead.responsavelFinder
+                        ? "Reatribuir"
+                        : "Atribuir"}
+                    </button>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                      }}
+                    >
+                      <Flame size={14} color={CORAL} />
+                      {temperatura(lead)}
+                    </div>
+
+                    {lead.diagnosticoId ? (
+                      <button
+                        type="button"
+                        onClick={() => onAbrirDiagnostico(lead.diagnosticoId)}
+                        style={{
+                          marginTop: 7,
+                          border: 0,
+                          padding: 0,
+                          background: "transparent",
+                          color: CORAL,
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Abrir diagnóstico →
+                      </button>
+                    ) : (
+                      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 7 }}>
+                        Diagnóstico ainda não vinculado
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
+// EQUIPE / CAPACIDADE
+// =========================================================
+
+function EquipeCapacidade({
+  token,
+}) {
+  const [
+    responsaveis,
+    setResponsaveis,
+  ] = useState([]);
+
+  const [
+    nome,
+    setNome,
+  ] = useState("");
+
+  const [
+    email,
+    setEmail,
+  ] = useState("");
+
+  const [
+    telefone,
+    setTelefone,
+  ] = useState("");
+
+  const [
+    capacidadeDiaria,
+    setCapacidadeDiaria,
+  ] = useState("3");
+
+  const [
+    areas,
+    setAreas,
+  ] = useState([]);
+
+  const [
+    perfil,
+    setPerfil,
+  ] = useState("ESPECIALISTA");
+
+  const [
+    permissoes,
+    setPermissoes,
+  ] = useState({
+    verRelatorioPropriaArea: true,
+    verRespostasPropriaArea: true,
+    inserirObservacoes: true,
+    alterarStatusAtendimento: true,
+    verDiagnosticoCompleto: false,
+    verEstrategiaComercial: false,
+    verValoresPropostas: false,
+    verOutrosDepartamentos: false,
+  });
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    salvando,
+    setSalvando,
+  ] = useState(false);
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  const [
+    sucesso,
+    setSucesso,
+  ] = useState("");
+
+  const areasDisponiveis = [
+    "Marketing",
+    "Jurídico",
+    "Contábil/Fiscal",
+    "Tributário",
+    "Financeiro",
+    "Administrativo",
+    "Gestão",
+    "Operacional",
+    "RH",
+    "Comercial",
+    "Tecnologia",
+  ];
+
+  const permissoesDisponiveis = [
+    {
+      id: "verRelatorioPropriaArea",
+      label: "Ver relatório da própria área",
+    },
+    {
+      id: "verRespostasPropriaArea",
+      label: "Ver respostas da própria área",
+    },
+    {
+      id: "inserirObservacoes",
+      label: "Inserir observações",
+    },
+    {
+      id: "alterarStatusAtendimento",
+      label: "Alterar status do atendimento",
+    },
+    {
+      id: "verDiagnosticoCompleto",
+      label: "Ver diagnóstico completo",
+    },
+    {
+      id: "verEstrategiaComercial",
+      label: "Ver estratégia comercial",
+    },
+    {
+      id: "verValoresPropostas",
+      label: "Ver valores e propostas",
+    },
+    {
+      id: "verOutrosDepartamentos",
+      label: "Ver outros departamentos",
+    },
+  ];
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=listar-responsaveis",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar a equipe."
+        );
+      }
+
+      setResponsaveis(
+        Array.isArray(
+          data.responsaveis
+        )
+          ? data.responsaveis
+          : []
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar equipe."
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregar();
+  }, []);
+
+  function alternarArea(
+    area
+  ) {
+    setAreas(
+      (atuais) =>
+        atuais.includes(area)
+          ? atuais.filter(
+              (item) =>
+                item !== area
+            )
+          : [
+              ...atuais,
+              area,
+            ]
+    );
+  }
+
+  async function salvar() {
+    if (!nome.trim()) {
+      setErro(
+        "Informe o nome do responsável."
+      );
+
+      return;
+    }
+
+    setSalvando(true);
+    setErro("");
+    setSucesso("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=salvar-responsavel",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              nome:
+                nome.trim(),
+
+              email:
+                email.trim(),
+
+              telefone:
+                telefone.trim(),
+
+              areas,
+
+              capacidadeDiaria:
+                Number(
+                  capacidadeDiaria
+                ) || 0,
+
+              perfil,
+
+              permissoes,
+
+              ativo:
+                true,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível salvar o responsável."
+        );
+      }
+
+      setNome("");
+      setEmail("");
+      setTelefone("");
+      setCapacidadeDiaria("3");
+      setAreas([]);
+      setPerfil("ESPECIALISTA");
+      setPermissoes({
+        verRelatorioPropriaArea: true,
+        verRespostasPropriaArea: true,
+        inserirObservacoes: true,
+        alterarStatusAtendimento: true,
+        verDiagnosticoCompleto: false,
+        verEstrategiaComercial: false,
+        verValoresPropostas: false,
+        verOutrosDepartamentos: false,
+      });
+
+      setSucesso(
+        "Responsável salvo com sucesso."
+      );
+
+      await carregar();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao salvar responsável."
+      );
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(320px,.9fr) minmax(0,1.5fr)",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        <Card>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 14,
+            }}
+          >
+            <UserPlus
+              size={18}
+              color={CORAL}
+            />
+
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize: 19,
+                }}
+              >
+                Novo responsável
+              </h2>
+
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: MUTED,
+                  marginTop: 2,
+                }}
+              >
+                Cadastre quem poderá receber leads.
+              </div>
+            </div>
+          </div>
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Nome
+          </label>
+
+          <input
+            value={nome}
+            onChange={(e) =>
+              setNome(
+                e.target.value
+              )
+            }
+            placeholder="Ex.: Diones"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 10,
+            }}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            E-mail
+          </label>
+
+          <input
+            value={email}
+            onChange={(e) =>
+              setEmail(
+                e.target.value
+              )
+            }
+            placeholder="email@finder.com.br"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 10,
+            }}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Telefone
+          </label>
+
+          <input
+            value={telefone}
+            onChange={(e) =>
+              setTelefone(
+                e.target.value
+              )
+            }
+            placeholder="41999999999"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 10,
+            }}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Capacidade diária
+          </label>
+
+          <input
+            type="number"
+            min="0"
+            max="50"
+            value={capacidadeDiaria}
+            onChange={(e) =>
+              setCapacidadeDiaria(
+                e.target.value
+              )
+            }
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 12,
+            }}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 5,
+            }}
+          >
+            Perfil
+          </label>
+
+          <select
+            value={perfil}
+            onChange={(e) => {
+              const novoPerfil =
+                e.target.value;
+
+              setPerfil(
+                novoPerfil
+              );
+
+              if (novoPerfil === "ADMIN") {
+                setPermissoes({
+                  verRelatorioPropriaArea: true,
+                  verRespostasPropriaArea: true,
+                  inserirObservacoes: true,
+                  alterarStatusAtendimento: true,
+                  verDiagnosticoCompleto: true,
+                  verEstrategiaComercial: true,
+                  verValoresPropostas: true,
+                  verOutrosDepartamentos: true,
+                });
+              }
+            }}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 11px",
+              marginBottom: 12,
+              background: WHITE,
+            }}
+          >
+            <option value="ESPECIALISTA">
+              Especialista
+            </option>
+
+            <option value="ADMIN">
+              Administrador
+            </option>
+          </select>
+
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 7,
+            }}
+          >
+            Áreas de atuação
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              marginBottom: 14,
+            }}
+          >
+            {areasDisponiveis.map(
+              (area) => {
+                const ativa =
+                  areas.includes(
+                    area
+                  );
+
+                return (
+                  <button
+                    key={area}
+                    type="button"
+                    onClick={() =>
+                      alternarArea(
+                        area
+                      )
+                    }
+                    style={{
+                      border:
+                        ativa
+                          ? `1px solid ${CORAL}`
+                          : "1px solid #D8DEEA",
+                      background:
+                        ativa
+                          ? "#FFF3EF"
+                          : WHITE,
+                      color:
+                        ativa
+                          ? "#993C1D"
+                          : NAVY,
+                      borderRadius: 20,
+                      padding: "6px 9px",
+                      fontSize: 9.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {area}
+                  </button>
+                );
+              }
+            )}
+          </div>
+
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 800,
+              marginBottom: 7,
+            }}
+          >
+            Permissões
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr",
+              gap: 6,
+              marginBottom: 14,
+            }}
+          >
+            {permissoesDisponiveis.map(
+              (item) => (
+                <label
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    fontSize: 10.5,
+                    color: NAVY,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(
+                      permissoes[item.id]
+                    )}
+                    onChange={(e) =>
+                      setPermissoes(
+                        (atuais) => ({
+                          ...atuais,
+                          [item.id]:
+                            e.target.checked,
+                        })
+                      )
+                    }
+                  />
+
+                  <span>
+                    {item.label}
+                  </span>
+                </label>
+              )
+            )}
+          </div>
+
+          {erro && (
+            <div
+              style={{
+                background: "#FAECE7",
+                color: "#993C1D",
+                borderRadius: 9,
+                padding: 9,
+                fontSize: 10.5,
+                marginBottom: 10,
+              }}
+            >
+              {erro}
+            </div>
+          )}
+
+          {sucesso && (
+            <div
+              style={{
+                background: "#E1F5EE",
+                color: "#0F6E56",
+                borderRadius: 9,
+                padding: 9,
+                fontSize: 10.5,
+                marginBottom: 10,
+              }}
+            >
+              {sucesso}
+            </div>
+          )}
+
+          <Botao
+            onClick={salvar}
+            disabled={salvando}
+            style={{
+              width: "100%",
+            }}
+          >
+            <Save size={14} />
+
+            {salvando
+              ? "Salvando..."
+              : "Salvar responsável"}
+          </Botao>
+        </Card>
+
+        <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent:
+                "space-between",
+              alignItems:
+                "center",
+              marginBottom: 10,
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize: 20,
+                }}
+              >
+                Equipe disponível
+              </h2>
+
+              <p
+                style={{
+                  margin:
+                    "3px 0 0",
+                  fontSize: 10.5,
+                  color: MUTED,
+                }}
+              >
+                Capacidade configurada e carga atual por responsável.
+              </p>
+            </div>
+
+            <Botao
+              secundario
+              onClick={carregar}
+            >
+              <RefreshCcw
+                size={14}
+              />
+
+              Atualizar
+            </Botao>
+          </div>
+
+          {carregando ? (
+            <Card>
+              Carregando equipe...
+            </Card>
+          ) : responsaveis.length ===
+            0 ? (
+            <Card>
+              Nenhum responsável cadastrado.
+            </Card>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(230px,1fr))",
+                gap: 10,
+              }}
+            >
+              {responsaveis.map(
+                (
+                  responsavel
+                ) => (
+                  <Card
+                    key={
+                      responsavel.id
+                    }
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        gap: 10,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div>
+                        <strong
+                          style={{
+                            fontSize: 13.5,
+                          }}
+                        >
+                          {responsavel.nome}
+                        </strong>
+
+                        <div
+                          style={{
+                            display: "inline-block",
+                            marginTop: 5,
+                            background:
+                              responsavel.perfil === "ADMIN"
+                                ? "#EEF3FF"
+                                : "#FFF3EF",
+                            color:
+                              responsavel.perfil === "ADMIN"
+                                ? "#31589C"
+                                : "#993C1D",
+                            borderRadius: 20,
+                            padding: "3px 7px",
+                            fontSize: 8.5,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {responsavel.perfil === "ADMIN"
+                            ? "ADMIN"
+                            : "ESPECIALISTA"}
+                        </div>
+
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 10,
+                            marginTop: 3,
+                          }}
+                        >
+                          {responsavel.email ||
+                            "-"}
+                        </div>
+                      </div>
+
+                      <Gauge
+                        size={19}
+                        color={CORAL}
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "1fr 1fr",
+                        gap: 8,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          background:
+                            "#F7F8FB",
+                          borderRadius: 9,
+                          padding: 9,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color: MUTED,
+                          }}
+                        >
+                          CAPACIDADE/DIA
+                        </div>
+
+                        <strong
+                          style={{
+                            fontSize: 17,
+                          }}
+                        >
+                          {
+                            responsavel.capacidadeDiaria
+                          }
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          background:
+                            "#F7F8FB",
+                          borderRadius: 9,
+                          padding: 9,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color: MUTED,
+                          }}
+                        >
+                          LEADS ABERTOS
+                        </div>
+
+                        <strong
+                          style={{
+                            fontSize: 17,
+                          }}
+                        >
+                          {
+                            responsavel.leadsAbertos
+                          }
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 5,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {normalizarLista(
+                        responsavel.areas
+                      ).map(
+                        (
+                          area
+                        ) => (
+                          <span
+                            key={area}
+                            style={{
+                              background:
+                                "#FFF3EF",
+                              color:
+                                "#993C1D",
+                              borderRadius:
+                                20,
+                              padding:
+                                "3px 7px",
+                              fontSize:
+                                9,
+                            }}
+                          >
+                            {area}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </Card>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
+// ATENDIMENTOS POR DEPARTAMENTO
+// =========================================================
+
+function AtendimentosDepartamento({
+  token,
+  onAbrirDiagnostico,
+}) {
+  const [
+    atendimentos,
+    setAtendimentos,
+  ] = useState([]);
+
+  const [
+    responsaveis,
+    setResponsaveis,
+  ] = useState([]);
+
+  const [
+    leads,
+    setLeads,
+  ] = useState([]);
+
+  const [
+    busca,
+    setBusca,
+  ] = useState("");
+
+  const [
+    areaFiltro,
+    setAreaFiltro,
+  ] = useState("");
+
+  const [
+    statusFiltro,
+    setStatusFiltro,
+  ] = useState("");
+
+  const [
+    responsavelFiltro,
+    setResponsavelFiltro,
+  ] = useState("");
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    salvandoId,
+    setSalvandoId,
+  ] = useState("");
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  const [
+    edicoes,
+    setEdicoes,
+  ] = useState({});
+
+  async function carregarTudo() {
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const [
+        respAtendimentos,
+        respResponsaveis,
+        respLeads,
+      ] =
+        await Promise.all([
+          fetch(
+            "/api/crm?action=listar-atendimentos",
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          ),
+
+          fetch(
+            "/api/crm?action=listar-responsaveis",
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          ),
+
+          fetch(
+            "/api/crm?action=listar-leads&limite=300",
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          ),
+        ]);
+
+      const [
+        dataAtendimentos,
+        dataResponsaveis,
+        dataLeads,
+      ] =
+        await Promise.all([
+          respAtendimentos
+            .json()
+            .catch(() => null),
+
+          respResponsaveis
+            .json()
+            .catch(() => null),
+
+          respLeads
+            .json()
+            .catch(() => null),
+        ]);
+
+      if (
+        !respAtendimentos.ok ||
+        !dataAtendimentos?.sucesso
+      ) {
+        throw new Error(
+          dataAtendimentos?.error ||
+          "Não foi possível carregar os atendimentos."
+        );
+      }
+
+      if (
+        !respResponsaveis.ok ||
+        !dataResponsaveis?.sucesso
+      ) {
+        throw new Error(
+          dataResponsaveis?.error ||
+          "Não foi possível carregar os responsáveis."
+        );
+      }
+
+      setAtendimentos(
+        Array.isArray(
+          dataAtendimentos.atendimentos
+        )
+          ? dataAtendimentos.atendimentos
+          : []
+      );
+
+      setResponsaveis(
+        Array.isArray(
+          dataResponsaveis.responsaveis
+        )
+          ? dataResponsaveis.responsaveis
+          : []
+      );
+
+      setLeads(
+        Array.isArray(
+          dataLeads?.leads
+        )
+          ? dataLeads.leads
+          : []
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar atendimentos."
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregarTudo();
+  }, []);
+
+  const mapaLeads = useMemo(() => {
+    const mapa = {};
+
+    leads.forEach(
+      (lead) => {
+        if (
+          lead.diagnosticoId
+        ) {
+          mapa[
+            String(
+              lead.diagnosticoId
+            )
+          ] = lead;
+        }
+
+        if (lead.leadId) {
+          mapa[
+            String(
+              lead.leadId
+            )
+          ] = lead;
+        }
+      }
+    );
+
+    return mapa;
+  }, [leads]);
+
+  const areasDisponiveis =
+    useMemo(
+      () =>
+        [
+          ...new Set(
+            atendimentos
+              .map(
+                (item) =>
+                  item.area
+              )
+              .filter(Boolean)
+          ),
+        ].sort(),
+      [atendimentos]
+    );
+
+  function statusAtendimentoLabel(
+    status
+  ) {
+    const mapa = {
+      NAO_INICIADO:
+        "Não iniciado",
+
+      EM_ANALISE:
+        "Em análise",
+
+      REUNIAO_AGENDADA:
+        "Reunião agendada",
+
+      EM_ATENDIMENTO:
+        "Em atendimento",
+
+      PLANO_APRESENTADO:
+        "Plano apresentado",
+
+      CONCLUIDO:
+        "Concluído",
+    };
+
+    return (
+      mapa[status] ||
+      status ||
+      "-"
+    );
+  }
+
+  function statusAtendimentoCor(
+    status
+  ) {
+    if (
+      status === "CONCLUIDO"
+    ) {
+      return {
+        bg: "#E1F5EE",
+        color: "#0F6E56",
+      };
+    }
+
+    if (
+      status === "EM_ATENDIMENTO" ||
+      status === "EM_ANALISE"
+    ) {
+      return {
+        bg: "#FAEEDA",
+        color: "#854F0B",
+      };
+    }
+
+    if (
+      status === "REUNIAO_AGENDADA" ||
+      status === "PLANO_APRESENTADO"
+    ) {
+      return {
+        bg: "#EEF3FF",
+        color: "#31589C",
+      };
+    }
+
+    return {
+      bg: "#EEF0F5",
+      color: MUTED,
+    };
+  }
+
+  function editar(
+    id,
+    campo,
+    valor
+  ) {
+    setEdicoes(
+      (atuais) => ({
+        ...atuais,
+
+        [id]: {
+          ...(atuais[id] || {}),
+          [campo]: valor,
+        },
+      })
+    );
+  }
+
+  async function salvarAtendimento(
+    atendimento
+  ) {
+    setSalvandoId(
+      atendimento.id
+    );
+
+    setErro("");
+
+    try {
+      const alteracoes =
+        edicoes[
+          atendimento.id
+        ] ||
+        {};
+
+      const resposta =
+        await fetch(
+          "/api/crm?action=atualizar-atendimento",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              atendimentoId:
+                atendimento.id,
+
+              responsavelId:
+                alteracoes.responsavelId ??
+                atendimento.responsavelId ??
+                "",
+
+              statusAtendimento:
+                alteracoes.statusAtendimento ??
+                atendimento.statusAtendimento,
+
+              observacoesEspecialista:
+                alteracoes.observacoesEspecialista ??
+                atendimento.observacoesEspecialista ??
+                "",
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível atualizar o atendimento."
+        );
+      }
+
+      setEdicoes(
+        (atuais) => {
+          const copia = {
+            ...atuais,
+          };
+
+          delete copia[
+            atendimento.id
+          ];
+
+          return copia;
+        }
+      );
+
+      await carregarTudo();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao atualizar atendimento."
+      );
+    } finally {
+      setSalvandoId("");
+    }
+  }
+
+  const filtrados =
+    atendimentos.filter(
+      (atendimento) => {
+        const lead =
+          mapaLeads[
+            String(
+              atendimento.diagnosticoId ||
+              atendimento.leadId ||
+              ""
+            )
+          ] ||
+          mapaLeads[
+            String(
+              atendimento.leadId ||
+              ""
+            )
+          ] ||
+          {};
+
+        const termo =
+          busca
+            .trim()
+            .toLowerCase();
+
+        const bateBusca =
+          !termo ||
+          [
+            atendimento.area,
+            atendimento.nivelArea,
+            atendimento.responsavelNome,
+            atendimento.diagnosticoId,
+            atendimento.leadId,
+            lead.razaoSocial,
+            lead.nome,
+            lead.cnpj,
+            lead.telefone,
+          ]
+            .filter(Boolean)
+            .some(
+              (valor) =>
+                String(valor)
+                  .toLowerCase()
+                  .includes(termo)
+            );
+
+        const bateArea =
+          !areaFiltro ||
+          atendimento.area ===
+            areaFiltro;
+
+        const bateStatus =
+          !statusFiltro ||
+          atendimento.statusAtendimento ===
+            statusFiltro;
+
+        const bateResponsavel =
+          !responsavelFiltro ||
+          atendimento.responsavelId ===
+            responsavelFiltro;
+
+        return (
+          bateBusca &&
+          bateArea &&
+          bateStatus &&
+          bateResponsavel
+        );
+      }
+    );
+
+  const resumo = {
+    total:
+      atendimentos.length,
+
+    naoIniciado:
+      atendimentos.filter(
+        (item) =>
+          item.statusAtendimento ===
+          "NAO_INICIADO"
+      ).length,
+
+    emAndamento:
+      atendimentos.filter(
+        (item) =>
+          [
+            "EM_ANALISE",
+            "REUNIAO_AGENDADA",
+            "EM_ATENDIMENTO",
+            "PLANO_APRESENTADO",
+          ].includes(
+            item.statusAtendimento
+          )
+      ).length,
+
+    concluidos:
+      atendimentos.filter(
+        (item) =>
+          item.statusAtendimento ===
+          "CONCLUIDO"
+      ).length,
+  };
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit,minmax(180px,1fr))",
+          gap: 12,
+          marginBottom: 18,
+        }}
+      >
+        <Card>
+          <Target
+            size={18}
+            color={CORAL}
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            ATENDIMENTOS
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.total}
+          </div>
+        </Card>
+
+        <Card>
+          <Clock3
+            size={18}
+            color={MUTED}
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            NÃO INICIADOS
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.naoIniciado}
+          </div>
+        </Card>
+
+        <Card>
+          <Activity
+            size={18}
+            color="#854F0B"
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            EM ANDAMENTO
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.emAndamento}
+          </div>
+        </Card>
+
+        <Card>
+          <CheckCircle2
+            size={18}
+            color="#0F6E56"
+          />
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            CONCLUÍDOS
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+            }}
+          >
+            {resumo.concluidos}
+          </div>
+        </Card>
+      </div>
+
+      <Card
+        style={{
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+          }}
+        >
+          <input
+            value={busca}
+            onChange={(e) =>
+              setBusca(
+                e.target.value
+              )
+            }
+            placeholder="Buscar empresa, especialista, área, diagnóstico..."
+            style={{
+              flex: "1 1 300px",
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              fontFamily:
+                BODY_FONT,
+            }}
+          />
+
+          <select
+            value={areaFiltro}
+            onChange={(e) =>
+              setAreaFiltro(
+                e.target.value
+              )
+            }
+            style={{
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todas as áreas
+            </option>
+
+            {areasDisponiveis.map(
+              (area) => (
+                <option
+                  key={area}
+                  value={area}
+                >
+                  {area}
+                </option>
+              )
+            )}
+          </select>
+
+          <select
+            value={statusFiltro}
+            onChange={(e) =>
+              setStatusFiltro(
+                e.target.value
+              )
+            }
+            style={{
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todos os status
+            </option>
+
+            <option value="NAO_INICIADO">
+              Não iniciado
+            </option>
+
+            <option value="EM_ANALISE">
+              Em análise
+            </option>
+
+            <option value="REUNIAO_AGENDADA">
+              Reunião agendada
+            </option>
+
+            <option value="EM_ATENDIMENTO">
+              Em atendimento
+            </option>
+
+            <option value="PLANO_APRESENTADO">
+              Plano apresentado
+            </option>
+
+            <option value="CONCLUIDO">
+              Concluído
+            </option>
+          </select>
+
+          <select
+            value={responsavelFiltro}
+            onChange={(e) =>
+              setResponsavelFiltro(
+                e.target.value
+              )
+            }
+            style={{
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding:
+                "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todos os especialistas
+            </option>
+
+            {responsaveis.map(
+              (responsavel) => (
+                <option
+                  key={
+                    responsavel.id
+                  }
+                  value={
+                    responsavel.id
+                  }
+                >
+                  {responsavel.nome}
+                </option>
+              )
+            )}
+          </select>
+
+          <Botao
+            secundario
+            onClick={
+              carregarTudo
+            }
+          >
+            <RefreshCcw
+              size={14}
+            />
+
+            Atualizar
+          </Botao>
+        </div>
+      </Card>
+
+      {erro && (
+        <div
+          style={{
+            background:
+              "#FAECE7",
+            color:
+              "#993C1D",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          {erro}
+        </div>
+      )}
+
+      {carregando ? (
+        <Card>
+          Carregando atendimentos...
+        </Card>
+      ) : filtrados.length === 0 ? (
+        <Card>
+          Nenhum atendimento encontrado.
+        </Card>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          {filtrados.map(
+            (atendimento) => {
+              const lead =
+                mapaLeads[
+                  String(
+                    atendimento.diagnosticoId ||
+                    atendimento.leadId ||
+                    ""
+                  )
+                ] ||
+                mapaLeads[
+                  String(
+                    atendimento.leadId ||
+                    ""
+                  )
+                ] ||
+                {};
+
+              const infoScore =
+                scoreInfo(
+                  atendimento.scoreArea
+                );
+
+              const infoStatus =
+                statusAtendimentoCor(
+                  atendimento.statusAtendimento
+                );
+
+              const edicao =
+                edicoes[
+                  atendimento.id
+                ] ||
+                {};
+
+              const responsaveisCompativeis =
+                responsaveis.filter(
+                  (responsavel) =>
+                    responsavelCompativelComArea(
+                      responsavel,
+                      atendimento.area
+                    )
+                );
+
+              return (
+                <Card
+                  key={
+                    atendimento.id
+                  }
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(220px,1.3fr) 120px minmax(180px,.9fr) minmax(220px,1fr)",
+                      gap: 14,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          color: CORAL,
+                          fontSize: 9.5,
+                          fontWeight: 900,
+                          letterSpacing: 0.5,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {
+                          atendimento.area
+                        }
+                      </div>
+
+                      <strong
+                        style={{
+                          fontSize: 14,
+                        }}
+                      >
+                        {lead.razaoSocial ||
+                          lead.nome ||
+                          `Diagnóstico ${atendimento.diagnosticoId}`}
+                      </strong>
+
+                      <div
+                        style={{
+                          color: MUTED,
+                          fontSize: 10.5,
+                          marginTop: 4,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {lead.cnpj
+                          ? formatarCnpj(
+                              lead.cnpj
+                            )
+                          : ""}
+
+                        {lead.nome
+                          ? ` · ${lead.nome}`
+                          : ""}
+
+                        {lead.telefone
+                          ? ` · ${lead.telefone}`
+                          : ""}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "wrap",
+                          marginTop: 8,
+                        }}
+                      >
+                        <span
+                          style={{
+                            background:
+                              infoStatus.bg,
+                            color:
+                              infoStatus.color,
+                            borderRadius: 20,
+                            padding:
+                              "4px 8px",
+                            fontSize: 9,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {statusAtendimentoLabel(
+                            atendimento.statusAtendimento
+                          )}
+                        </span>
+
+                        {atendimento.nivelArea && (
+                          <span
+                            style={{
+                              background:
+                                infoScore.bg,
+                              color:
+                                infoScore.color,
+                              borderRadius:
+                                20,
+                              padding:
+                                "4px 8px",
+                              fontSize: 9,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {
+                              atendimento.nivelArea
+                            }
+                          </span>
+                        )}
+                      </div>
+
+                      {atendimento.diagnosticoId && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onAbrirDiagnostico(
+                              atendimento.diagnosticoId
+                            )
+                          }
+                          style={{
+                            marginTop: 10,
+                            background:
+                              "transparent",
+                            border: 0,
+                            color: CORAL,
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            padding: 0,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Abrir diagnóstico completo →
+                        </button>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        textAlign: "center",
+                        background:
+                          infoScore.bg,
+                        color:
+                          infoScore.color,
+                        borderRadius: 12,
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 28,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {atendimento.scoreArea ??
+                          "-"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          marginTop: 2,
+                        }}
+                      >
+                        SCORE DA ÁREA
+                      </div>
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          fontWeight: 800,
+                          marginBottom: 5,
+                        }}
+                      >
+                        ESPECIALISTA
+                      </div>
+
+                      <select
+                        value={
+                          edicao.responsavelId ??
+                          atendimento.responsavelId ??
+                          ""
+                        }
+                        onChange={(e) =>
+                          editar(
+                            atendimento.id,
+                            "responsavelId",
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 8,
+                          padding:
+                            "8px 9px",
+                          background: WHITE,
+                          fontSize: 10.5,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <option value="">
+                          Não atribuído
+                        </option>
+
+                        {responsaveisCompativeis.map(
+                          (responsavel) => (
+                            <option
+                              key={
+                                responsavel.id
+                              }
+                              value={
+                                responsavel.id
+                              }
+                            >
+                              {
+                                responsavel.nome
+                              }
+                              {" · "}
+                              {
+                                responsavel.leadsAbertos
+                              }
+                              {" abertos"}
+                            </option>
+                          )
+                        )}
+                      </select>
+
+                      {responsaveisCompativeis.length === 0 && (
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            color: "#993C1D",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          Nenhum integrante da equipe está cadastrado para esta área.
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          fontWeight: 800,
+                          margin:
+                            "10px 0 5px",
+                        }}
+                      >
+                        STATUS DO ATENDIMENTO
+                      </div>
+
+                      <select
+                        value={
+                          edicao.statusAtendimento ??
+                          atendimento.statusAtendimento ??
+                          "NAO_INICIADO"
+                        }
+                        onChange={(e) =>
+                          editar(
+                            atendimento.id,
+                            "statusAtendimento",
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 8,
+                          padding:
+                            "8px 9px",
+                          background: WHITE,
+                          fontSize: 10.5,
+                        }}
+                      >
+                        <option value="NAO_INICIADO">
+                          Não iniciado
+                        </option>
+
+                        <option value="EM_ANALISE">
+                          Em análise
+                        </option>
+
+                        <option value="REUNIAO_AGENDADA">
+                          Reunião agendada
+                        </option>
+
+                        <option value="EM_ATENDIMENTO">
+                          Em atendimento
+                        </option>
+
+                        <option value="PLANO_APRESENTADO">
+                          Plano apresentado
+                        </option>
+
+                        <option value="CONCLUIDO">
+                          Concluído
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          fontWeight: 800,
+                          marginBottom: 5,
+                        }}
+                      >
+                        OBSERVAÇÕES DO ESPECIALISTA
+                      </div>
+
+                      <textarea
+                        value={
+                          edicao.observacoesEspecialista ??
+                          atendimento.observacoesEspecialista ??
+                          ""
+                        }
+                        onChange={(e) =>
+                          editar(
+                            atendimento.id,
+                            "observacoesEspecialista",
+                            e.target.value
+                          )
+                        }
+                        rows={4}
+                        placeholder="Registre validações, observações da reunião e próximos passos..."
+                        style={{
+                          width: "100%",
+                          boxSizing:
+                            "border-box",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 8,
+                          padding:
+                            "9px 10px",
+                          fontFamily:
+                            BODY_FONT,
+                          fontSize: 10.5,
+                          resize: "vertical",
+                        }}
+                      />
+
+                      <Botao
+                        onClick={() =>
+                          salvarAtendimento(
+                            atendimento
+                          )
+                        }
+                        disabled={
+                          salvandoId ===
+                          atendimento.id
+                        }
+                        style={{
+                          width: "100%",
+                          marginTop: 8,
+                        }}
+                      >
+                        <Save
+                          size={13}
+                        />
+
+                        {salvandoId ===
+                        atendimento.id
+                          ? "Salvando..."
+                          : "Salvar atendimento"}
+                      </Botao>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit,minmax(220px,1fr))",
+                      gap: 10,
+                      marginTop: 14,
+                    }}
+                  >
+                    <ListaInterna
+                      titulo="Oportunidades"
+                      itens={
+                        atendimento.oportunidades
+                      }
+                    />
+
+                    <ListaInterna
+                      titulo="Riscos"
+                      itens={
+                        atendimento.riscos
+                      }
+                    />
+
+                    <ListaInterna
+                      titulo="Recomendações"
+                      itens={
+                        atendimento.recomendacoes
+                      }
+                    />
+
+                    <ListaInterna
+                      titulo="Plano de ação"
+                      itens={
+                        atendimento.planoAcao
+                      }
+                    />
+                  </div>
+
+                  {atendimento.orientacaoTecnica && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        background:
+                          "#EEF3FF",
+                        borderLeft:
+                          "4px solid #31589C",
+                        borderRadius: 10,
+                        padding: 12,
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          fontSize: 10.5,
+                          marginBottom: 5,
+                          color: "#31589C",
+                        }}
+                      >
+                        ORIENTAÇÃO TÉCNICA PARA O ESPECIALISTA
+                      </strong>
+
+                      <div
+                        style={{
+                          fontSize: 11.5,
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        {
+                          atendimento.orientacaoTecnica
+                        }
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            }
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResumoEstruturaSelecionada({
+  estrutura,
+  perfil = {},
+  resultado = {},
+}) {
+  const contexto =
+    resultado?.contextoEstrutura ||
+    {};
+
+  const holding =
+    perfil?.holding ||
+    contexto?.holding ||
+    {};
+
+  const pessoaFisica =
+    perfil?.pessoaFisica ||
+    contexto?.pessoaFisica ||
+    {};
+
+  function Linha({
+    titulo,
+    valor,
+  }) {
+    if (
+      valor === null ||
+      valor === undefined ||
+      valor === "" ||
+      (
+        Array.isArray(valor) &&
+        valor.length === 0
+      )
+    ) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          background: "#F7F8FB",
+          borderRadius: 9,
+          padding: 10,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 9,
+            color: MUTED,
+            fontWeight: 800,
+            marginBottom: 3,
+          }}
+        >
+          {titulo}
+        </div>
+
+        <div
+          style={{
+            fontSize: 11.5,
+            color: NAVY,
+            lineHeight: 1.45,
+          }}
+        >
+          {Array.isArray(valor)
+            ? valor.join(" · ")
+            : String(valor)}
+        </div>
+      </div>
+    );
+  }
+
+  if (estrutura === "pessoa_fisica") {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <h3 style={{ margin: "0 0 4px" }}>
+          Perfil preenchido — Pessoa Física
+        </h3>
+
+        <p
+          style={{
+            margin: "0 0 12px",
+            color: MUTED,
+            fontSize: 10.5,
+          }}
+        >
+          Dados informados no fluxo de consultoria pessoal.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Linha titulo="OBJETIVOS" valor={pessoaFisica.objetivos} />
+          <Linha titulo="RENDA MENSAL" valor={pessoaFisica.rendaMensal} />
+          <Linha titulo="GASTOS MENSAIS" valor={pessoaFisica.gastosMensais} />
+          <Linha titulo="DÍVIDAS / PARCELAS" valor={pessoaFisica.dividas} />
+          <Linha titulo="RESERVA DE EMERGÊNCIA" valor={pessoaFisica.reservaEmergencia} />
+          <Linha titulo="PATRIMÔNIO" valor={pessoaFisica.patrimonio} />
+          <Linha titulo="INVESTIMENTOS ATUAIS" valor={pessoaFisica.investimentosAtuais} />
+          <Linha titulo="APOSENTADORIA" valor={pessoaFisica.aposentadoria} />
+          <Linha titulo="DEPENDENTES" valor={pessoaFisica.dependentes} />
+        </div>
+      </Card>
+    );
+  }
+
+  if (
+    estrutura === "holding" ||
+    estrutura === "avaliar_holding"
+  ) {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <h3 style={{ margin: "0 0 4px" }}>
+          {estrutura === "avaliar_holding"
+            ? "Dados preenchidos — Avaliação de Holding"
+            : "Dados preenchidos — Holding"}
+        </h3>
+
+        <p
+          style={{
+            margin: "0 0 12px",
+            color: MUTED,
+            fontSize: 10.5,
+          }}
+        >
+          Dados patrimoniais e objetivos informados no fluxo selecionado.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Linha titulo="TIPOS / HIPÓTESES" valor={holding.tipos} />
+          <Linha titulo="OBJETIVOS" valor={holding.objetivos} />
+          <Linha titulo="PATRIMÔNIO / ATIVOS" valor={holding.patrimonioAproximado} />
+          <Linha titulo="RECEITAS PATRIMONIAIS" valor={holding.receitasPatrimoniais} />
+          <Linha titulo="SITUAÇÃO SUCESSÓRIA" valor={holding.situacaoSucessoria} />
+        </div>
+      </Card>
+    );
+  }
+
+  if (estrutura === "grupo") {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <strong>Estrutura selecionada: Grupo empresarial</strong>
+      </Card>
+    );
+  }
+
+  if (estrutura === "spe") {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <strong>Estrutura selecionada: SPE</strong>
+      </Card>
+    );
+  }
+
+  return null;
+}
+
+// =========================================================
+// DETALHE DO DIAGNÓSTICO
+// =========================================================
+
+function DetalheDiagnostico({
+  token,
+  id,
+  onVoltar,
+}) {
+  const [
+    item,
+    setItem,
+  ] = useState(null);
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(true);
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  const [
+    abaRelatorio,
+    setAbaRelatorio,
+  ] = useState("administracao");
+
+  const [
+    atendimentosEquipe,
+    setAtendimentosEquipe,
+  ] = useState([]);
+
+  const [
+    areaEquipe,
+    setAreaEquipe,
+  ] = useState("");
+
+  const [
+    carregandoEquipe,
+    setCarregandoEquipe,
+  ] = useState(false);
+
+  useEffect(() => {
+    async function carregar() {
+      setCarregando(true);
+      setErro("");
+
+      try {
         const resposta =
           await fetch(
-            "/api/crm?action=iniciar",
+            `/api/ver-diagnostico?id=${encodeURIComponent(
+              id
+            )}`,
             {
-              method: "POST",
-
               headers: {
-                "content-type":
-                  "application/json",
+                Authorization:
+                  `Bearer ${token}`,
               },
-
-              body: JSON.stringify({
-                sessionId,
-
-                origem,
-                campanha,
-                promoter,
-
-                utm_source:
-                  utmSource,
-
-                utm_medium:
-                  utmMedium,
-
-                utm_campaign:
-                  utmCampaign,
-
-                utm_content:
-                  utmContent,
-
-                utm_term:
-                  utmTerm,
-
-                referrer:
-                  document.referrer ||
-                  "",
-              }),
             }
           );
 
@@ -1686,4986 +5956,3287 @@ export default function DiagnosticoPrototipo() {
           !resposta.ok ||
           !data?.sucesso
         ) {
-          console.warn(
-            "[CRM] Não foi possível registrar o acesso:",
-            data
+          throw new Error(
+            data?.error ||
+            "Não foi possível abrir o diagnóstico."
+          );
+        }
+
+        setItem(
+          data.diagnostico
+        );
+
+      } catch (error) {
+        setErro(
+          error?.message ||
+          "Erro ao abrir diagnóstico."
+        );
+
+      } finally {
+        setCarregando(false);
+      }
+    }
+
+    carregar();
+  }, [id, token]);
+
+  useEffect(() => {
+    async function carregarAtendimentosEquipe() {
+      if (
+        abaRelatorio !== "equipe" ||
+        !id
+      ) {
+        return;
+      }
+
+      setCarregandoEquipe(true);
+
+      try {
+        const resposta =
+          await fetch(
+            `/api/crm?action=listar-atendimentos&diagnosticoId=${encodeURIComponent(
+              id
+            )}`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
           );
 
-          return;
+        const data =
+          await resposta
+            .json()
+            .catch(() => null);
+
+        if (
+          !resposta.ok ||
+          !data?.sucesso
+        ) {
+          throw new Error(
+            data?.error ||
+            "Não foi possível carregar os atendimentos da equipe."
+          );
         }
 
-        if (cancelado) {
-          return;
-        }
+        const lista =
+          Array.isArray(
+            data.atendimentos
+          )
+            ? data.atendimentos
+            : [];
 
-        setLeadId(
-          data.leadId ||
-          ""
+        setAtendimentosEquipe(
+          lista
         );
 
         if (
-          data.sessionId &&
-          data.sessionId !==
-            sessionId
+          !areaEquipe &&
+          lista.length
         ) {
-          sessionStorage.setItem(
-            chaveSessao,
-            data.sessionId
-          );
-
-          setSessionIdLead(
-            data.sessionId
+          setAreaEquipe(
+            lista[0].area ||
+            ""
           );
         }
-
-        console.info(
-          "[CRM] Lead registrado:",
-          {
-            leadId:
-              data.leadId,
-
-            sessionId:
-              data.sessionId,
-
-            origem:
-              data.origem ||
-              origem,
-
-            campanha:
-              data.campanha ||
-              campanha,
-
-            statusDiagnostico:
-              data.statusDiagnostico,
-
-            statusComercial:
-              data.statusComercial,
-          }
-        );
-      } catch (erro) {
+      } catch (error) {
         console.warn(
-          "[CRM] Falha ao iniciar sessão do lead:",
-          erro
+          "[Admin] Erro ao carregar relatório da equipe:",
+          error
         );
+      } finally {
+        setCarregandoEquipe(false);
       }
     }
 
-    iniciarSessaoLead();
-
-    return () => {
-      cancelado = true;
-    };
-  }, []);
-
-  async function atualizarLeadCRM(dados = {}) {
-    const identificadorLead =
-      leadId ||
-      "";
-
-    const identificadorSessao =
-      sessionIdLead ||
-      sessionStorage.getItem(
-        "finder_diagnostico_session_id"
-      ) ||
-      "";
-
-    if (
-      !identificadorLead &&
-      !identificadorSessao
-    ) {
-      return;
-    }
-
-    try {
-      const resposta =
-        await fetch(
-          "/api/crm?action=atualizar",
-          {
-            method: "POST",
-
-            headers: {
-              "content-type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              leadId:
-                identificadorLead,
-
-              sessionId:
-                identificadorSessao,
-
-              ...dados,
-            }),
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso
-      ) {
-        console.warn(
-          "[CRM] Falha ao atualizar lead:",
-          data
-        );
-
-        return;
-      }
-
-      if (
-        data?.lead?.leadId &&
-        !leadId
-      ) {
-        setLeadId(
-          data.lead.leadId
-        );
-      }
-    } catch (erro) {
-      console.warn(
-        "[CRM] Erro ao atualizar lead:",
-        erro
-      );
-    }
-  }
-
-  async function classificarLeadCRM({
-    scoreDiagnostico,
-    nivelDiagnostico,
-    faturamentoAnual,
-    dores,
-    notaSatisfacao,
-    intencao,
-  } = {}) {
-    const identificadorLead =
-      leadId ||
-      "";
-
-    const identificadorSessao =
-      sessionIdLead ||
-      sessionStorage.getItem(
-        "finder_diagnostico_session_id"
-      ) ||
-      "";
-
-    if (
-      !identificadorLead &&
-      !identificadorSessao
-    ) {
-      console.warn(
-        "[CRM] Classificação comercial ignorada: lead não identificado."
-      );
-
-      return null;
-    }
-
-    try {
-      const resposta =
-        await fetch(
-          "/api/crm?action=classificar",
-          {
-            method: "POST",
-
-            headers: {
-              "content-type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              leadId:
-                identificadorLead,
-
-              sessionId:
-                identificadorSessao,
-
-              scoreDiagnostico:
-                Number(
-                  scoreDiagnostico
-                ) || 0,
-
-              nivelDiagnostico:
-                nivelDiagnostico ||
-                "",
-
-              faturamentoAnual:
-                Number(
-                  faturamentoAnual
-                ) || 0,
-
-              dores:
-                Array.isArray(
-                  dores
-                )
-                  ? dores
-                  : [],
-
-              notaSatisfacao:
-                notaSatisfacao ??
-                undefined,
-
-              intencao:
-                intencao ??
-                undefined,
-            }),
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso
-      ) {
-        console.warn(
-          "[CRM] Não foi possível classificar o lead:",
-          data
-        );
-
-        return null;
-      }
-
-      console.info(
-        "[CRM] Lead classificado:",
-        {
-          scoreComercial:
-            data.scoreComercial,
-
-          prioridade:
-            data.prioridade,
-
-          temperatura:
-            data.temperatura,
-
-          prazoAtendimento:
-            data.prazoAtendimento,
-
-          proximaAcao:
-            data.proximaAcao,
-
-          motivos:
-            data.motivos,
-        }
-      );
-
-      return data;
-    } catch (erro) {
-      console.warn(
-        "[CRM] Erro na classificação comercial:",
-        erro
-      );
-
-      return null;
-    }
-  }
-
-  async function criarAtendimentosDepartamentoCRM({
-    diagnosticoId,
-    areas,
-  } = {}) {
-    const idDiagnostico =
-      String(
-        diagnosticoId ||
-        ""
-      ).trim();
-
-    const identificadorLead =
-      leadId ||
-      "";
-
-    if (!idDiagnostico) {
-      console.warn(
-        "[CRM] Atendimentos por departamento não criados: diagnóstico sem ID."
-      );
-
-      return null;
-    }
-
-    const areasValidas =
-      Array.isArray(areas)
-        ? areas.filter(
-            (item) =>
-              item &&
-              item.area
-          )
-        : [];
-
-    if (
-      areasValidas.length === 0
-    ) {
-      console.warn(
-        "[CRM] Atendimentos por departamento não criados: nenhuma área elegível."
-      );
-
-      return null;
-    }
-
-    try {
-      const resposta =
-        await fetch(
-          "/api/crm?action=criar-atendimentos",
-          {
-            method: "POST",
-
-            headers: {
-              "content-type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              diagnosticoId:
-                idDiagnostico,
-
-              leadId:
-                identificadorLead,
-
-              areas:
-                areasValidas,
-            }),
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso
-      ) {
-        console.warn(
-          "[CRM] Não foi possível criar atendimentos por departamento:",
-          data
-        );
-
-        return null;
-      }
-
-      console.info(
-        "[CRM] Atendimentos por departamento criados:",
-        {
-          diagnosticoId:
-            idDiagnostico,
-
-          total:
-            data.total || 0,
-
-          areas:
-            areasValidas.map(
-              (item) =>
-                item.area
-            ),
-        }
-      );
-
-      return data;
-    } catch (erro) {
-      console.warn(
-        "[CRM] Erro ao criar atendimentos por departamento:",
-        erro
-      );
-
-      return null;
-    }
-  }
-
-  function progressoDoDiagnostico() {
-    const progressoBase = {
-      intro: 0,
-      cadastro: 10,
-      estrutura: 18,
-      cnpj: 28,
-      porte: 40,
-      dor: 52,
-      gerandoPerguntas: 60,
-      confirmarNegocio: 65,
-      checklist: 70,
-      analisando: 95,
-      resultado: 100,
-    };
-
-    if (
-      step === "checklist" &&
-      todasPerguntas.length > 0
-    ) {
-      const respondidas =
-        todasPerguntas.filter(
-          (q) =>
-            Boolean(
-              respostas[q.id]
-            )
-        ).length;
-
-      const proporcao =
-        respondidas /
-        todasPerguntas.length;
-
-      return Math.round(
-        70 +
-        proporcao * 20
-      );
-    }
-
-    return progressoBase[step] ?? 0;
-  }
-
-  // =========================================================
-  // CRM — ATUALIZA STATUS, PROGRESSO E DADOS CONHECIDOS
-  // =========================================================
-  useEffect(() => {
-    if (
-      !leadId &&
-      !sessionIdLead
-    ) {
-      return;
-    }
-
-    const progresso =
-      progressoDoDiagnostico();
-
-    const statusDiagnostico =
-      step === "intro"
-        ? "ACESSOU"
-        : step === "resultado"
-        ? "CONCLUIDO"
-        : "EM_PREENCHIMENTO";
-
-    const payload = {
-      statusDiagnostico,
-
-      etapaAtual:
-        String(step || "")
-          .toUpperCase(),
-
-      progressoPercentual:
-        progresso,
-
-      nome:
-        nome || "",
-
-      email:
-        email || "",
-
-      telefone:
-        telefone || "",
-
-      cnpj:
-        empresaPrincipal?.cnpjDigits ||
-        "",
-
-      razaoSocial:
-        empresaPrincipal?.razao ||
-        "",
-
-      diagnosticoId:
-        diagnosticoIdSalvo ||
-        "",
-
-      estruturaNegocio,
-
-      contextoCliente: {
-        estruturaNegocio,
-        holding: perfilHolding,
-        pessoaFisica: perfilPF,
-      },
-    };
-
-    const assinatura =
-      JSON.stringify(
-        payload
-      );
-
-    if (
-      ultimaAtualizacaoLeadRef.current ===
-      assinatura
-    ) {
-      return;
-    }
-
-    ultimaAtualizacaoLeadRef.current =
-      assinatura;
-
-    const timer =
-      setTimeout(
-        () => {
-          atualizarLeadCRM(
-            payload
-          );
-        },
-        250
-      );
-
-    return () =>
-      clearTimeout(timer);
+    carregarAtendimentosEquipe();
   }, [
-    step,
-    leadId,
-    sessionIdLead,
-    nome,
-    email,
-    telefone,
-    empresaPrincipal?.cnpjDigits,
-    empresaPrincipal?.razao,
-    diagnosticoIdSalvo,
-    estruturaNegocio,
-    tiposHolding,
-    objetivosHolding,
-    patrimonioHolding,
-    receitasHolding,
-    sucessaoHolding,
-    objetivosPF,
-    rendaMensalPF,
-    gastosMensaisPF,
-    dividasPF,
-    reservaPF,
-    patrimonioPF,
-    investimentosPF,
-    aposentadoriaPF,
-    dependentesPF,
-    todasPerguntas.length,
-    respostas,
+    abaRelatorio,
+    id,
+    token,
   ]);
 
-  useEffect(() => {
-    if (
-      step !== "analisando" ||
-      (
-        !fluxoSemCnpj &&
-        !empresaPrincipal
-      ) ||
-      gruposSelecionados.length === 0
-    ) {
-      return;
-    }
-
-    let cancelado = false;
-    const labels = gruposSelecionados.map((g) => g.label);
-    const msgs =
-      trilhaPFAtiva
-        ? [
-            `Objetivos: ${
-              objetivosPF
-                .map(
-                  (id) =>
-                    OBJETIVOS_PF.find(
-                      (item) =>
-                        item.id === id
-                    )?.label
-                )
-                .filter(Boolean)
-                .join(", ")
-            }`,
-            `Analisando: ${labels.join(", ")}`,
-            "Cruzando respostas com renda, gastos, reserva e prioridades",
-            "Organizando riscos e oportunidades financeiras",
-            "Montando próximos passos personalizados",
-          ]
-        : [
-            `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
-            `Aprofundando prioridades: ${prioridadesDiagnostico.map(labelAreaAtual).join(", ") || "visão geral"}`,
-            "Cruzando respostas com o contexto do segmento",
-            "Estimando carga tributária de referência",
-            "Calculando índice de maturidade por departamento",
-          ];
-
-    setMsgIdx(0);
-    const interval = setInterval(
-      () => setMsgIdx((i) => Math.min(i + 1, msgs.length - 1)),
-      500
+  if (carregando) {
+    return (
+      <div
+        style={{
+          padding: 30,
+          fontFamily:
+            BODY_FONT,
+        }}
+      >
+        Carregando diagnóstico...
+      </div>
     );
+  }
 
-    const payload = {
-      responsavel: { nome, cargo, telefone, email },
-      segmento:
-        trilhaPFAtiva
-          ? "Pessoa Física / Consultoria Financeira"
-          : segmentoPredominante,
+  if (
+    erro ||
+    !item
+  ) {
+    return (
+      <div
+        style={{
+          minHeight:
+            "100vh",
 
-      categoria:
-        trilhaPFAtiva
-          ? (
-              objetivosPF
-                .map(
-                  (id) =>
-                    OBJETIVOS_PF.find(
-                      (item) =>
-                        item.id === id
-                    )?.label
-                )
-                .filter(Boolean)
-                .join(" + ") ||
-              "Pessoa Física"
-            )
-          : categoriaPrincipal,
+          background:
+            BG,
 
-      codigoQuestionario:
-        trilhaPFAtiva
-          ? "PF_CONSULTORIA"
-          : codigoQuestionario,
-      cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
-      cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
-      atividadesSelecionadas: atividadesSelecionadasObjetos,
-      atividadePredominante,
-      empresas:
-        fluxoSemCnpj
-          ? []
-          : empresas.map((e) => ({
-              razao: e.razao,
-              categoria: e.categoria,
-              segmento: e.segmento,
-              cnae: e.cnae,
-            })),
+          padding:
+            24,
 
-      faturamento:
-        trilhaPFAtiva
-          ? ""
-          : faturamento?.label,
-
-      colaboradores:
-        trilhaPFAtiva
-          ? ""
-          : colaboradores,
-
-      regime:
-        trilhaPFAtiva
-          ? ""
-          : regime,
-      observacao,
-      descricaoNegocio,
-      negocioInterpretado,
-
-      estruturaNegocio,
-
-      contextoEstrutura: {
-        estruturaNegocio,
-        holding: perfilHolding,
-        pessoaFisica: perfilPF,
-        grupo: perfilGrupo,
-        spe: perfilSPE,
-      },
-
-      holding: perfilHolding,
-      pessoaFisica: perfilPF,
-      grupo: perfilGrupo,
-      spe: perfilSPE,
-
-      doresSelecionadas,
-
-      prioridadesSelecionadas:
-        prioridadesDiagnostico.map(
-          (id) => ({
-            id,
-            label:
-              labelAreaAtual(id),
-          })
-        ),
-
-      eixosObrigatorios:
-        areasDaEstrutura.map(
-          (item) => ({
-            id:
-              item.id,
-            label:
-              item.label,
-          })
-        ),
-
-      dorPrincipal: doresSelecionadas[0] || "",
-      dor90Dias,
-      impactosDor,
-      areas: gruposSelecionados.map((g) => ({
-        id: g.id,
-        area: g.label,
-
-        prioridade:
-          prioridadesDiagnostico.includes(
-            g.id
-          ),
-
-        score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
-        subtemas: g.subtemas.map((s) => ({
-          tema: s.tema,
-          perguntas: s.perguntas.map((q) => ({
-            id: q.id,
-            texto: textoDe(q, segmentoPredominante, categoriaPrincipal),
-            tema: q.tema || "",
-            motivo: q.motivo || "",
-            riscoAvaliado: q.risco || "",
-            importancia: q.importancia || 1,
-            resposta: respostas[q.id],
-          })),
-        })),
-      })),
-      scoreGeral: scoreDe(todasPerguntas),
-    };
-
-    const minDelay = new Promise((resolve) => setTimeout(resolve, 1800));
-    const chamadaIA = fetch("/api/diagnostico", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(async (r) => {
-        if (!r.ok) {
-          const erro = await r.json().catch(() => null);
-          console.error("Erro diagnóstico:", erro);
-          return null;
-        }
-        return r.json();
-      })
-      .catch((erro) => {
-        console.error("Erro ao chamar diagnóstico:", erro);
-        return null;
-      });
-
-    Promise.all([chamadaIA, minDelay]).then(([data]) => {
-      if (cancelado) return;
-
-      const diagnostico =
-        data?.diagnostico ||
-        data?.resultado ||
-        null;
-
-      if (diagnostico) {
-        const mapa = {};
-
-        const eixos =
-          Array.isArray(
-            diagnostico.eixos
-          )
-            ? diagnostico.eixos
-            : [];
-
-        eixos.forEach(
-          (eixo) => {
-            const label =
-              eixo.label ||
-              labelAreaAtual(
-                eixo.id
-              );
-
-            mapa[label] = {
-              area:
-                label,
-
-              areaId:
-                eixo.id,
-
-              score:
-                Number(
-                  eixo.score
-                ) || 0,
-
-              nivel:
-                eixo.nivel ||
-                "",
-
-              resumo:
-                Array.isArray(
-                  eixo.achados
-                )
-                  ? eixo.achados.join(
-                      " "
-                    )
-                  : "",
-
-              achados:
-                Array.isArray(
-                  eixo.achados
-                )
-                  ? eixo.achados
-                  : [],
-
-              riscos:
-                Array.isArray(
-                  eixo.riscos
-                )
-                  ? eixo.riscos
-                  : [],
-
-              pontosFortes:
-                Array.isArray(
-                  eixo.pontosFortes
-                )
-                  ? eixo.pontosFortes
-                  : [],
-
-              recomendacoes:
-                Array.isArray(
-                  eixo.recomendacoes
-                )
-                  ? eixo.recomendacoes
-                  : [],
-            };
+          fontFamily:
+            BODY_FONT,
+        }}
+      >
+        <Botao
+          secundario
+          onClick={
+            onVoltar
           }
-        );
+        >
+          <ArrowLeft
+            size={15}
+          />
 
-        setIaResultado({
-          areas:
-            mapa,
+          Voltar
+        </Botao>
 
-          diagnosticoGeral: {
-            resumoExecutivo:
-              diagnostico.leituraExecutiva ||
-              "",
+        <div
+          style={{
+            marginTop:
+              16,
 
-            principaisDores:
-              Array.isArray(
-                diagnostico.doresPrincipais
-              )
-                ? diagnostico.doresPrincipais
-                : [],
+            background:
+              "#FAECE7",
 
-            pontosFortes:
-              Array.isArray(
-                diagnostico.pontosFortes
-              )
-                ? diagnostico.pontosFortes
-                : [],
+            color:
+              "#993C1D",
 
-            prioridadesImediatas:
-              Array.isArray(
-                diagnostico.prioridades
-              )
-                ? diagnostico.prioridades
-                : [],
+            padding:
+              15,
 
-            oportunidades:
-              Array.isArray(
-                diagnostico.recomendacoes
-              )
-                ? diagnostico.recomendacoes
-                : [],
-
-            causasProvaveis:
-              Array.isArray(
-                diagnostico.causasProvaveis
-              )
-                ? diagnostico.causasProvaveis
-                : [],
-
-            impactos:
-              Array.isArray(
-                diagnostico.impactos
-              )
-                ? diagnostico.impactos
-                : [],
-
-            proximosPassos:
-              Array.isArray(
-                diagnostico.proximosPassos
-              )
-                ? diagnostico.proximosPassos
-                : [],
-
-            leituraDaDor:
-              diagnostico.leituraExecutiva ||
-              "",
-
-            alertaEstrategico:
-              Array.isArray(
-                diagnostico.riscosPrioritarios
-              ) &&
-              diagnostico.riscosPrioritarios.length
-                ? diagnostico.riscosPrioritarios[0]
-                : "",
-          },
-
-          visaoGrupo:
-            estruturaNegocio ===
-            "grupo"
-              ? diagnostico
-              : null,
-
-          lacunasDiagnostico:
-            Array.isArray(
-              diagnostico.informacoesFaltantes
-            )
-              ? diagnostico.informacoesFaltantes
-              : [],
-
-          oportunidadesConsultoria:
-            Array.isArray(
-              diagnostico
-                ?.visaoAdministracao
-                ?.oportunidades
-            )
-              ? diagnostico
-                  .visaoAdministracao
-                  .oportunidades
-              : [],
-
-          plano90Dias:
-            diagnostico.plano90Dias ||
-            null,
-
-          quickWins:
-            Array.isArray(
-              diagnostico.quickWins
-            )
-              ? diagnostico.quickWins
-              : [],
-
-          kpisRecomendados:
-            Array.isArray(
-              diagnostico.indicadores
-            )
-              ? diagnostico.indicadores
-              : [],
-
-          perguntasAprofundamento:
-            Array.isArray(
-              diagnostico.informacoesFaltantes
-            )
-              ? diagnostico.informacoesFaltantes
-              : [],
-
-          visaoConsultor:
-            diagnostico.visaoAdministracao ||
-            null,
-
-          visaoComercial:
-            diagnostico.visaoAdministracao ||
-            null,
-
-          contextoInterpretado: {
-            estruturaNegocio,
-            estruturaLabel:
-              diagnostico.estruturaLabel ||
-              "",
-          },
-
-          resultadoCompleto:
-            diagnostico,
-
-          modelo:
-            data.motor ||
-            "",
-        });
-      }
-
-
-      setStep("resultado");
-    });
-
-    return () => {
-      cancelado = true;
-      clearInterval(interval);
-    };
-  }, [step]);
-  function toggleTipoHolding(id) {
-    setTiposHolding((atuais) =>
-      atuais.includes(id)
-        ? atuais.filter((item) => item !== id)
-        : [...atuais, id]
+            borderRadius:
+              10,
+          }}
+        >
+          {erro ||
+            "Diagnóstico não encontrado."}
+        </div>
+      </div>
     );
   }
 
-  function toggleObjetivoHolding(valor) {
-    setObjetivosHolding((atuais) =>
-      atuais.includes(valor)
-        ? atuais.filter((item) => item !== valor)
-        : [...atuais, valor]
-    );
-  }
+  const participante =
+    item.participante ||
+    {};
 
-  function toggleObjetivoPF(id) {
-    setObjetivosPF((atuais) =>
-      atuais.includes(id)
-        ? atuais.filter((item) => item !== id)
-        : [...atuais, id]
-    );
-  }
+  const empresa =
+    item.empresa ||
+    {};
 
-  function toggleDorSelecionada(valor) {
-    setDoresSelecionadas((prev) =>
-      prev.includes(valor)
-        ? prev.filter((item) => item !== valor)
-        : [...prev, valor]
-    );
-  }
+  const resultado =
+    item.resultado ||
+    {};
 
-  async function gerarPerguntasPersonalizadas() {
-    if (
-      !fluxoSemCnpj &&
-      !empresaPrincipal
-    ) {
-      showToast("Adicione pelo menos um CNPJ.");
-      return;
-    }
+  const perfilDiagnostico =
+    item.perfil ||
+    item?.dadosCompletos?.perfil ||
+    {};
 
-    if (
-      !fluxoSemCnpj &&
-      descricaoNegocio.trim().length < 20
-    ) {
-      showToast("Descreva brevemente o que o negócio realmente faz.");
-      return;
-    }
+  // Diagnóstico V2 completo. O Admin continua exibindo o mesmo
+  // relatório visual, mas passa a consumir os novos motores.
+  const resultadoCompleto =
+    resultado.resultadoCompleto ||
+    {};
 
-    if (
-      !fluxoSemCnpj &&
-      !atividadePredominante
-    ) {
-      showToast("Selecione a atividade predominante.");
-      return;
-    }
+  const diagnosticoGeral =
+    resultado.diagnosticoGeral ||
+    {
+      resumoExecutivo:
+        resultadoCompleto.leituraExecutiva ||
+        "",
 
-    if (dores.length === 0) {
-      showToast("Selecione pelo menos uma área para analisar.");
-      return;
-    }
+      principaisDores:
+        resultadoCompleto.doresPrincipais ||
+        [],
 
-    setGerandoPerguntas(true);
-    setErroPerguntas("");
-    setStep("gerandoPerguntas");
+      pontosFortes:
+        resultadoCompleto.pontosFortes ||
+        [],
 
-    const payload = {
-      segmentoAtual:
-        trilhaHoldingAtiva
-          ? "Holding / Estrutura Patrimonial"
-          : trilhaPFAtiva
-          ? "Pessoa Física / Consultoria Financeira"
-          : segmentoPredominante,
+      prioridadesImediatas:
+        resultadoCompleto.prioridades ||
+        [],
 
-      categoriaAtual:
-        trilhaHoldingAtiva
-          ? (
-              tiposHolding
-                .map(
-                  (id) =>
-                    TIPOS_HOLDING.find(
-                      (tipo) =>
-                        tipo.id === id
-                    )?.label
-                )
-                .filter(Boolean)
-                .join(" + ") ||
-              "Holding"
-            )
-          : trilhaPFAtiva
-          ? (
-              objetivosPF
-                .map(
-                  (id) =>
-                    OBJETIVOS_PF.find(
-                      (objetivo) =>
-                        objetivo.id === id
-                    )?.label
-                )
-                .filter(Boolean)
-                .join(" + ") ||
-              "Pessoa Física"
-            )
-          : categoriaPrincipal,
-      cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
-      cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
-      atividadesSelecionadas: atividadesSelecionadasObjetos,
-      atividadePredominante,
-      descricaoNegocio: descricaoNegocio.trim(),
-      estruturaNegocio,
+      oportunidades:
+        resultadoCompleto.recomendacoes ||
+        [],
 
-      contextoEstrutura: {
-        estruturaNegocio,
-        holding: perfilHolding,
-        pessoaFisica: perfilPF,
-        grupo: perfilGrupo,
-        spe: perfilSPE,
-      },
+      causasProvaveis:
+        resultadoCompleto.causasProvaveis ||
+        [],
 
-      holding: perfilHolding,
-      pessoaFisica: perfilPF,
-      grupo: perfilGrupo,
-      spe: perfilSPE,
+      impactos:
+        resultadoCompleto.impactos ||
+        [],
 
-      instrucoesEspeciais: trilhaHoldingAtiva
-        ? [
-            "Tratar a holding como estrutura especializada, e não como simples empresa de serviços.",
-            "Investigar patrimônio, imóveis, participações societárias, receitas patrimoniais, governança, sucessão e tributação.",
-            "Diferenciar holding patrimonial, familiar/sucessória, participações/controle, pura e mista conforme as respostas.",
-            "Não presumir que constituir holding é vantajoso; admitir conclusão de que a estrutura não é recomendada sem estudo adicional.",
-            "Na Reforma Tributária, separar locação, venda, administração, intermediação e demais operações imobiliárias antes de qualquer projeção.",
-            "As perguntas devem partir das dores específicas selecionadas pelo usuário e não de um checklist empresarial genérico.",
-            "Se o usuário escolheu 'Quero avaliar se uma holding faz sentido', não presumir que já existe CNPJ nem que uma holding será recomendada. O objetivo é avaliar viabilidade e necessidade.",
-            "Nesse caso, perguntar sobre quantidade e tipo de bens, titularidade PF/PJ, imóveis financiados, receitas de aluguel, participações societárias, herdeiros, intenção sucessória, compras e vendas futuras, endividamento e objetivos patrimoniais.",
-            "Ao final, admitir três conclusões possíveis: holding aparenta fazer sentido e merece estudo; ainda faltam dados para concluir; ou não há evidência suficiente de benefício neste momento.",
-            "Se a dor envolver sucessão, investigar herdeiros, doação de quotas, usufruto, administração, continuidade e conflitos potenciais.",
-            "Se a dor envolver patrimônio ou imóveis, investigar titularidade, valor aproximado, financiamento, locação, venda, integralização e objetivo dos ativos.",
-            "Se a dor envolver participações societárias ou grupo empresarial, investigar empresas controladas, percentuais, governança, distribuição de resultados e dependência entre empresas.",
-            "Se a dor envolver tributação, investigar regime, origem das receitas, locações, alienações, dividendos, custos, créditos e necessidade de simulação individualizada.",
-          ]
-        : trilhaPFAtiva
-        ? [
-            "Tratar este diagnóstico como consultoria financeira para Pessoa Física, não como empresa.",
-            "As perguntas devem seguir os objetivos escolhidos e as dores declaradas.",
-            "Se houver organização financeira, investigar orçamento, gastos, capacidade de poupança, dívidas, reserva e estabilidade da renda.",
-            "Se houver aposentadoria, investigar idade, prazo, renda desejada, patrimônio acumulado e capacidade de aporte.",
-            "Se houver investimentos, investigar objetivos, horizonte, liquidez necessária, tolerância a risco e diversificação, sem recomendar produto específico.",
-            "Se houver dívidas, investigar saldo, custo, prazo, parcelas e impacto no orçamento antes de sugerir estratégia.",
-            "Se houver patrimônio ou proteção, investigar bens, dependentes, reserva e vulnerabilidades financeiras.",
-            "Os próximos passos devem mostrar somente ações relacionadas aos objetivos selecionados e às prioridades identificadas.",
-          ]
-        : [],
-      empresas: fluxoSemCnpj ? [] : empresas.map((e) => ({
-        razao: e.razao,
-        cnpj: e.cnpjDigits,
-        segmento: e.segmento,
-        categoria: e.categoria,
-        cnaePrincipal: e.cnaePrincipal || null,
-        cnaesSecundarios: e.cnaesSecundarios || [],
-      })),
-      perfil: {
-        faturamento: faturamento?.label || "",
-        colaboradores: colaboradores || "",
-        regime: regime || "",
-      },
-      dor: {
-        selecionadas: doresSelecionadas,
-        principal: doresSelecionadas[0] || "",
-        objetivo90Dias: dor90Dias,
-        impactos: impactosDor,
-      },
-      // Áreas selecionadas = prioridades de aprofundamento.
-      areasSelecionadas:
-        prioridadesDiagnostico.map(
-          (id) => {
-            const area =
-              areasDaEstrutura.find(
-                (item) =>
-                  item.id === id
-              );
+      proximosPassos:
+        resultadoCompleto.proximosPassos ||
+        [],
 
-            return {
-              id,
-              label:
-                area?.label ||
-                areaLabel(id),
-              prioridade:
-                true,
-            };
-          }
-        ),
-
-      // O motor deve cobrir todos estes eixos.
-      eixosObrigatorios:
-        areasDaEstrutura.map(
-          (item) => ({
-            id:
-              item.id,
-            label:
-              item.label,
-          })
-        ),
+      alertaEstrategico:
+        Array.isArray(
+          resultadoCompleto.riscosPrioritarios
+        ) &&
+        resultadoCompleto.riscosPrioritarios.length
+          ? resultadoCompleto.riscosPrioritarios[0]
+          : "",
     };
 
-    try {
-      const r = await fetch("/api/gerar-perguntas", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await r.json().catch(() => null);
-
-      if (!r.ok || !data?.sucesso || !Array.isArray(data?.perguntas)) {
-        throw new Error(data?.error || "Não foi possível gerar as perguntas personalizadas.");
-      }
-
-      const perguntas = data.perguntas.map((q, idx) => ({
-        id: q.id || `ia_${idx + 1}`,
-        areaId: q.areaId,
-        area: q.area,
-        tema: q.tema || "Diagnóstico específico",
-        text: q.pergunta,
-        risco: q.riscoAvaliado || "Ponto relevante para aprofundamento",
-        motivo: q.motivo || "",
-        importancia: Number(q.importancia) || 1,
-        invert: false,
-      }));
-
-      // Se a IA não devolver perguntas, mantemos o fluxo com
-      // o checklist local da estrutura selecionada.
-      setPerguntasDinamicas(
-        perguntas.length > 0
-          ? perguntas
-          : []
-      );
-      setNegocioInterpretado(data.negocioInterpretado || null);
-      setRespostas({});
-      setStep("confirmarNegocio");
-    } catch (error) {
-      console.error("Erro ao gerar perguntas:", error);
-
-      setErroPerguntas(
-        fluxoSemCnpj
-          ? "Usaremos as perguntas específicas da estrutura escolhida para continuar o diagnóstico."
-          : error?.message ||
-            "Não foi possível gerar perguntas personalizadas."
-      );
-
-      setPerguntasDinamicas([]);
-
-      // PF e avaliação/holding sem CNPJ não dependem de uma
-      // interpretação empresarial para continuar.
-      if (!fluxoSemCnpj) {
-        setNegocioInterpretado(null);
-      }
-
-      setStep("confirmarNegocio");
-    } finally {
-      setGerandoPerguntas(false);
-    }
-  }
-
-  async function adicionarCnpj() {
-    const digits = String(cnpjInput || "").replace(/\D/g, "");
-
-    if (digits.length !== 14) {
-      showToast("Digite um CNPJ válido com 14 dígitos.");
-      return;
-    }
-
-    if (empresas.length >= MAX_EMPRESAS) {
-      showToast(`Limite de ${MAX_EMPRESAS} CNPJs atingido.`);
-      return;
-    }
-
-    setBuscando(true);
-
-    try {
-      const r = await fetch(`/api/cnpj?cnpj=${encodeURIComponent(digits)}`);
-
-      const contentType = r.headers.get("content-type") || "";
-      let data;
-
-      if (contentType.includes("application/json")) {
-        data = await r.json();
-      } else {
-        const texto = await r.text();
-
-        console.error("Resposta não JSON de /api/cnpj:", {
-          status: r.status,
-          texto,
-        });
-
-        throw new Error(
-          `Erro no servidor ao consultar CNPJ. Status: ${r.status}`
-        );
-      }
-
-      if (!r.ok || !data?.sucesso) {
-        throw new Error(
-          data?.error || "Erro ao consultar CNPJ"
-        );
-      }
-
-      const cnaePrincipal =
-        data.cnaePrincipal ||
-        data.cnae?.principal || {
-          codigo: String(data.cnae?.codigo || ""),
-          descricao: data.cnae?.descricao || "",
-          principal: true,
-          classificacao: data.classificacao || null,
-        };
-
-      const cnaesSecundarios =
-        Array.isArray(data.cnaesSecundarios)
-          ? data.cnaesSecundarios
-          : Array.isArray(data.cnae?.secundarios)
-            ? data.cnae.secundarios
-            : [];
-
-      const todosBrutos =
-        Array.isArray(data.todosCnaes) && data.todosCnaes.length
-          ? data.todosCnaes
-          : Array.isArray(data.cnae?.todos) && data.cnae.todos.length
-            ? data.cnae.todos
-            : [cnaePrincipal, ...cnaesSecundarios];
-
-      const mapaCnaes = new Map();
-
-      todosBrutos.forEach((atividade) => {
-        if (!atividade) return;
-
-        const codigo = String(atividade.codigo || "");
-        const descricao = String(atividade.descricao || "");
-
-        const chave =
-          codigo.replace(/\D/g, "") ||
-          descricao.toLowerCase().trim();
-
-        if (!chave) return;
-
-        if (!mapaCnaes.has(chave)) {
-          mapaCnaes.set(chave, {
-            ...atividade,
-            codigo,
-            descricao,
-            principal: Boolean(atividade.principal),
-            classificacao:
-              atividade.classificacao ||
-              (atividade.principal
-                ? data.classificacao || null
-                : null),
-          });
-        }
-      });
-
-      let todosCnaes = Array.from(mapaCnaes.values());
-
-      const codigoPrincipalLimpo =
-        String(cnaePrincipal?.codigo || "").replace(/\D/g, "");
-
-      const principalJaExiste =
-        todosCnaes.some(
-          (atividade) =>
-            String(atividade.codigo || "").replace(/\D/g, "") ===
-            codigoPrincipalLimpo
-        );
-
-      if (codigoPrincipalLimpo && !principalJaExiste) {
-        todosCnaes = [
-          {
-            ...cnaePrincipal,
-            principal: true,
-            classificacao:
-              cnaePrincipal?.classificacao ||
-              data.classificacao ||
-              null,
-          },
-          ...todosCnaes,
-        ];
-      } else {
-        todosCnaes =
-          todosCnaes.map((atividade) => {
-            const ehPrincipal =
-              String(atividade.codigo || "").replace(/\D/g, "") ===
-              codigoPrincipalLimpo;
-
-            return {
-              ...atividade,
-              principal:
-                ehPrincipal
-                  ? true
-                  : Boolean(atividade.principal),
-
-              classificacao:
-                atividade.classificacao ||
-                (ehPrincipal
-                  ? data.classificacao || null
-                  : null),
-            };
-          });
-      }
-
-      const empresa = {
-        cnpjDigits:
-          data.empresa?.cnpj || digits,
-
-        razao:
-          data.empresa?.razaoSocial ||
-          "Razão social não informada",
-
-        nomeFantasia:
-          data.empresa?.nomeFantasia || "",
-
-        porte:
-          data.empresa?.porte ||
-          "Não informado",
-
-        segmento:
-          data.classificacao?.segmento ||
-          "Serviços Profissionais",
-
-        categoria:
-          data.classificacao?.categoria ||
-          "Serviços Profissionais",
-
-        codigoQuestionario:
-          data.classificacao?.codigoQuestionario ||
-          "servicos",
-
-        cnae:
-          `${cnaePrincipal?.codigo || ""} — ${cnaePrincipal?.descricao || ""}`,
-
-        cnaePrincipal,
-        cnaesSecundarios,
-        todosCnaes,
-
-        areasPrioritarias:
-          data.classificacao
-            ?.diagnostico
-            ?.areasPrioritarias ||
-          [],
-
-        areasComplementares:
-          data.classificacao
-            ?.diagnostico
-            ?.areasComplementares ||
-          [],
-
-        endereco:
-          data.endereco || {},
-      };
-
-      const primeiraEmpresa =
-        empresas.length === 0;
-
-      setEmpresas((prev) => [
-        ...prev,
-        empresa,
-      ]);
-
-      // A primeira empresa adicionada será a empresa-base do diagnóstico.
-      if (primeiraEmpresa) {
-        setCnaesEmpresa(
-          todosCnaes
-        );
-
-        const codigoPrincipal =
-          String(cnaePrincipal?.codigo || "");
-
-        setAtividadesSelecionadas(
-          codigoPrincipal
-            ? [codigoPrincipal]
-            : []
-        );
-
-        setAtividadePredominante(
-          cnaePrincipal?.codigo ||
-          cnaePrincipal?.descricao
-            ? {
-                ...cnaePrincipal,
-
-                principal: true,
-
-                classificacao:
-                  cnaePrincipal?.classificacao ||
-                  data.classificacao ||
-                  null,
-              }
-            : null
-        );
-      }
-
-      setCnpjInput("");
-
-      showToast(
-        primeiraEmpresa &&
-        todosCnaes.length > 1
-          ? `${todosCnaes.length} atividades encontradas. Confirme quais a empresa realmente exerce.`
-          : "Empresa encontrada com sucesso."
-      );
-
-    } catch (err) {
-      console.error(
-        "Erro CNPJ:",
-        err
-      );
-
-      showToast(
-        err?.message ||
-        "Erro ao consultar CNPJ"
-      );
-
-    } finally {
-      setBuscando(false);
-    }
-  }
-
-  function removerEmpresa(idx) {
-    setEmpresas((prev) => {
-      const novas =
-        prev.filter(
-          (_, i) => i !== idx
-        );
-
-      if (idx === 0) {
-        const novaPrincipal =
-          novas[0] || null;
-
-        const novosCnaes =
-          novaPrincipal?.todosCnaes || [];
-
-        setCnaesEmpresa(
-          novosCnaes
-        );
-
-        const cnaePrincipal =
-          novaPrincipal?.cnaePrincipal ||
-          null;
-
-        const codigoPrincipal =
-          String(
-            cnaePrincipal?.codigo || ""
-          );
-
-        setAtividadesSelecionadas(
-          codigoPrincipal
-            ? [codigoPrincipal]
-            : []
-        );
-
-        setAtividadePredominante(
-          cnaePrincipal
-            ? {
-                ...cnaePrincipal,
-
-                principal: true,
-
-                classificacao:
-                  cnaePrincipal?.classificacao ||
-                  (
-                    novaPrincipal
-                      ? {
-                          segmento:
-                            novaPrincipal.segmento,
-
-                          categoria:
-                            novaPrincipal.categoria,
-
-                          codigoQuestionario:
-                            novaPrincipal.codigoQuestionario,
-
-                          diagnostico: {
-                            areasPrioritarias:
-                              novaPrincipal.areasPrioritarias ||
-                              [],
-
-                            areasComplementares:
-                              novaPrincipal.areasComplementares ||
-                              [],
-                          },
-                        }
-                      : null
-                  ),
-              }
-            : null
-        );
-      }
-
-      return novas;
-    });
-  }
-
-  function toggleDor(id) {
-    setDores((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= MAX_DORES) return prev;
-      return [...prev, id];
-    });
-  }
-
-  function responder(qid, valor) {
-    setRespostas((r) => ({ ...r, [qid]: valor }));
-  }
-
-  function showToast(msg) {
-    setToast(msg);
-    clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(""), 2200);
-  }
-
-
-  async function enviarRelatorioPorEmail() {
-    if (
-      (
-        !fluxoSemCnpj &&
-        !empresaPrincipal
-      ) ||
-      relatorioEnviadoRef.current
-    ) {
-      return;
-    }
-
-    const respostasDetalhadas = gruposSelecionados.map((g) => ({
-  area: g.label,
-
-  score: scoreDe(
-    g.subtemas.flatMap((s) => s.perguntas)
-  ),
-
-  subtemas: g.subtemas.map((s) => ({
-    tema: s.tema,
-
-    perguntas: s.perguntas.map((q) => {
-      const importancia =
-        Math.max(
-          1,
-          Math.min(
-            3,
-            Number(q.importancia) || 1
-          )
-        );
-
-      const resposta =
-        respostas[q.id] || "";
-
-      const pesoCalculado =
-        pesoResposta(
-          q,
-          resposta
-        );
-
-      return {
-        id:
-          q.id,
-
+  // =====================================================
+  // DOSSIÊ CONSULTIVO FINDER
+  // =====================================================
+
+  const plano90Dias =
+    resultado.plano90Dias ||
+    resultadoCompleto.plano90Dias ||
+    null;
+
+  const quickWins =
+    (
+      Array.isArray(
+        resultado.quickWins
+      ) &&
+      resultado.quickWins.length
+        ? resultado.quickWins
+        : resultadoCompleto.quickWins
+    ) || [];
+
+  const kpisRecomendados =
+    (
+      Array.isArray(
+        resultado.kpisRecomendados
+      ) &&
+      resultado.kpisRecomendados.length
+        ? resultado.kpisRecomendados
+        : resultadoCompleto.indicadores
+    ) || [];
+
+  const perguntasAprofundamento =
+    (
+      Array.isArray(
+        resultado.perguntasAprofundamento
+      ) &&
+      resultado.perguntasAprofundamento.length
+        ? resultado.perguntasAprofundamento
+        : resultadoCompleto.informacoesFaltantes
+    ) || [];
+
+  const visaoAdministracaoV2 =
+    resultadoCompleto.visaoAdministracao ||
+    {};
+
+  const visaoConsultor =
+    resultado.visaoConsultor ||
+    visaoAdministracaoV2.aprofundamentos ||
+    null;
+
+  const visaoComercial =
+    resultado.visaoComercial ||
+    visaoAdministracaoV2.oportunidades ||
+    null;
+
+  const lacunasDiagnostico =
+    (
+      Array.isArray(
+        resultado.lacunasDiagnostico
+      ) &&
+      resultado.lacunasDiagnostico.length
+        ? resultado.lacunasDiagnostico
+        : resultadoCompleto.informacoesFaltantes
+    ) || [];
+
+  const oportunidadesConsultoria =
+    (
+      Array.isArray(
+        resultado.oportunidadesConsultoria
+      ) &&
+      resultado.oportunidadesConsultoria.length
+        ? resultado.oportunidadesConsultoria
+        : visaoAdministracaoV2.oportunidades
+    ) || [];
+
+  // COMPLEMENTO — inteligência tributária
+  const inteligenciaTributaria =
+    resultado.inteligenciaTributaria ||
+    null;
+
+  const perguntas =
+    normalizarLista(
+      item.perguntasRespostas
+    );
+
+  const areasV2 =
+    normalizarLista(
+      resultadoCompleto.eixos
+    ).map(
+      (eixo) => ({
         area:
-          g.label,
+          eixo.label ||
+          eixo.id ||
+          "Área",
 
         areaId:
-          g.id,
-
-        tema:
-          s.tema,
-
-        pergunta:
-          textoDe(
-            q,
-            segmentoPredominante,
-            categoriaPrincipal
-          ),
-
-        resposta,
-
-        importancia,
-
-        peso:
-          pesoCalculado,
-
-        motivo:
-          q.motivo ||
+          eixo.id ||
           "",
 
-        riscoAvaliado:
-          riscoDe(
-            q,
-            segmentoPredominante,
-            categoriaPrincipal
+        score:
+          eixo.score,
+
+        nivel:
+          eixo.nivel ||
+          "",
+
+        resumo:
+          normalizarLista(
+            eixo.achados
+          ).join(" "),
+
+        achados:
+          normalizarLista(
+            eixo.achados
           ),
-      };
-    }),
-  })),
-}));
 
-    const payloadEmail = {
-      // CRM — metadados da sessão de origem do diagnóstico.
-      crm: {
-        leadId,
-        sessionId:
-          sessionIdLead,
-      },
-
-      responsavel: {
-        nome,
-        cargo,
-        telefone,
-        email,
-        consentimentoEmail,
-      },
-      empresa: fluxoSemCnpj
-        ? {
-            razao:
-              trilhaPFAtiva
-                ? nome || "Pessoa Física"
-                : avaliarHoldingAtiva
-                ? `Avaliação de Holding — ${nome || "Participante"}`
-                : trilhaSPEAtiva
-                ? nomeProjetoSPE || "SPE em estruturação"
-                : nome || "Participante",
-
-            nomeFantasia: "",
-            cnpj: "",
-            cnae: "",
-            cnaePrincipal: null,
-            cnaesSecundarios: [],
-            atividadesSelecionadas: [],
-            atividadePredominante: null,
-
-            categoria:
-              trilhaPFAtiva
-                ? "Pessoa Física"
-                : avaliarHoldingAtiva
-                ? "Avaliação de Holding"
-                : trilhaSPEAtiva
-                ? "SPE"
-                : "Diagnóstico",
-
-            segmento:
-              trilhaPFAtiva
-                ? "Pessoa Física / Consultoria Financeira"
-                : avaliarHoldingAtiva
-                ? "Holding / Estrutura Patrimonial"
-                : trilhaSPEAtiva
-                ? "SPE / Projeto específico"
-                : "",
-
-            porte: "",
-            endereco: {},
-          }
-        : {
-            razao: empresaPrincipal?.razao || "",
-            nomeFantasia: empresaPrincipal?.nomeFantasia || "",
-            cnpj: empresaPrincipal?.cnpjDigits || "",
-            cnae: empresaPrincipal?.cnae || "",
-            cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
-            cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
-            atividadesSelecionadas: atividadesSelecionadasObjetos,
-            atividadePredominante,
-            categoria: categoriaPrincipal,
-            segmento: segmentoPredominante,
-            porte: empresaPrincipal?.porte || "",
-            endereco: empresaPrincipal?.endereco || {},
-          },
-      perfil: {
-        estruturaNegocio,
-        faturamento: faturamento?.label || "",
-        colaboradores: colaboradores || "",
-        regime: regime || "",
-        observacao: observacao || "",
-        descricaoNegocio: descricaoNegocio || "",
-        negocioInterpretado: negocioInterpretado || null,
-        estruturaNegocio,
-        holding: perfilHolding,
-        pessoaFisica: perfilPF,
-        grupo: perfilGrupo,
-        spe: perfilSPE,
-        doresSelecionadas,
-        dorPrincipal: doresSelecionadas[0] || "",
-        dor90Dias,
-        impactosDor,
-        areasSelecionadas: gruposSelecionados.map((g) => g.label),
-      },
-      resultado: {
-        contextoEstrutura: {
-          estruturaNegocio,
-          holding: perfilHolding,
-          pessoaFisica: perfilPF,
-          grupo: perfilGrupo,
-          spe: perfilSPE,
-        },
-
-        // Resultado principal
-        scoreGeral: score,
-
-        nivelGeral:
-          tierGeral.label,
-
-        areas:
-          areasComScore.map((a) => ({
-            area: a.label,
-
-            score: a.score,
-
-            nivel:
-              tierDe(a.score).label,
-
-            // Preserva resumo, achados, causas, riscos,
-            // recomendações e prioridade gerados pela IA.
-            ...(iaResultado?.areas?.[a.label] || {}),
-          })),
-
-        diagnosticoGeral:
-          iaResultado?.diagnosticoGeral || null,
-
-        // Diagnóstico completo já existente
-        visaoGrupo:
-          iaResultado?.visaoGrupo || null,
-
-        lacunasDiagnostico:
-          Array.isArray(
-            iaResultado?.lacunasDiagnostico
-          )
-            ? iaResultado.lacunasDiagnostico
-            : [],
-
-        oportunidadesConsultoria:
-          Array.isArray(
-            iaResultado?.oportunidadesConsultoria
-          )
-            ? iaResultado.oportunidadesConsultoria
-            : [],
-
-        // Novo dossiê consultivo do administrador
-        plano90Dias:
-          iaResultado?.plano90Dias || null,
-
-        quickWins:
-          Array.isArray(
-            iaResultado?.quickWins
-          )
-            ? iaResultado.quickWins
-            : [],
-
-        kpisRecomendados:
-          Array.isArray(
-            iaResultado?.kpisRecomendados
-          )
-            ? iaResultado.kpisRecomendados
-            : [],
-
-        perguntasAprofundamento:
-          Array.isArray(
-            iaResultado?.perguntasAprofundamento
-          )
-            ? iaResultado.perguntasAprofundamento
-            : [],
-
-        visaoConsultor:
-          iaResultado?.visaoConsultor || null,
-
-        visaoComercial:
-          iaResultado?.visaoComercial || null,
-
-        contextoInterpretado:
-          iaResultado?.contextoInterpretado || null,
-
-        // Inteligência tributária — cliente + administração
-        inteligenciaTributaria,
-
-        // Rastreabilidade
-        respostas:
-          respostasDetalhadas,
-
-        resultadoCompleto:
-          iaResultado?.resultadoCompleto || null,
-      },
-    };
-
-    try {
-      setEnvioRelatorio("sending");
-
-      const r = await fetch("/api/enviar-relatorio", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payloadEmail),
-      });
-
-      const data = await r.json().catch(() => null);
-
-      if (!r.ok) {
-        console.error("Erro ao enviar relatório:", data);
-        setEnvioRelatorio("error");
-        return;
-      }
-
-      relatorioEnviadoRef.current = true;
-
-      const idSalvo =
-        data?.id ||
-        data?.diagnosticoId ||
-        data?.diagnostico?.id ||
-        "";
-
-      if (idSalvo) {
-        setDiagnosticoIdSalvo(
-          String(idSalvo)
-        );
-      }
-
-      await atualizarLeadCRM({
-        statusDiagnostico:
-          "CONCLUIDO",
-
-        etapaAtual:
-          "RESULTADO",
-
-        progressoPercentual:
-          100,
-
-        nome:
-          nome || "",
-
-        email:
-          email || "",
-
-        telefone:
-          telefone || "",
-
-        cnpj:
-          fluxoSemCnpj
-            ? ""
-            : empresaPrincipal?.cnpjDigits || "",
-
-        razaoSocial:
-          trilhaPFAtiva
-            ? nome || "Pessoa Física"
-            : avaliarHoldingAtiva
-            ? `Avaliação de Holding — ${nome || "Participante"}`
-            : trilhaSPEAtiva && speConstituida !== "sim"
-            ? nomeProjetoSPE || "SPE em estruturação"
-            : trilhaGrupoAtiva
-            ? nomeGrupo || empresaPrincipal?.razao || "Grupo empresarial"
-            : empresaPrincipal?.razao || "",
-
-        diagnosticoId:
-          idSalvo
-            ? String(idSalvo)
-            : "",
-
-        estruturaNegocio,
-
-        contextoCliente: {
-          estruturaNegocio,
-          holding: perfilHolding,
-          pessoaFisica: perfilPF,
-          grupo: perfilGrupo,
-          spe: perfilSPE,
-        },
-      });
-
-      // ===================================================
-      // CRM — CLASSIFICAÇÃO COMERCIAL AUTOMÁTICA
-      // ===================================================
-      //
-      // A classificação acontece somente depois que:
-      // 1. o diagnóstico foi gerado;
-      // 2. o relatório foi salvo;
-      // 3. o lead foi marcado como CONCLUÍDO.
-      //
-      // Assim o atendimento pode ser ordenado por prioridade
-      // sem alterar o relatório já existente.
-      // ===================================================
-
-      const areasParaAtendimento =
-        areasComScore
-          .map((area) => {
-            const diagnosticoArea =
-              iaResultado?.areas?.[
-                area.label
-              ] ||
-              {};
-
-            const oportunidades =
-              Array.isArray(
-                diagnosticoArea
-                  ?.oportunidades
-              )
-                ? diagnosticoArea
-                    .oportunidades
-                : Array.isArray(
-                    diagnosticoArea
-                      ?.oportunidadesConsultoria
-                  )
-                ? diagnosticoArea
-                    .oportunidadesConsultoria
-                : [];
-
-            const riscos =
-              Array.isArray(
-                diagnosticoArea
-                  ?.riscos
-              )
-                ? diagnosticoArea
-                    .riscos
-                : [];
-
-            const recomendacoes =
-              Array.isArray(
-                diagnosticoArea
-                  ?.recomendacoes
-              )
-                ? diagnosticoArea
-                    .recomendacoes
-                : [];
-
-            const planoAcao =
-              Array.isArray(
-                diagnosticoArea
-                  ?.planoAcao
-              )
-                ? diagnosticoArea
-                    .planoAcao
-                : [];
-
-            const orientacaoTecnica =
-              diagnosticoArea
-                ?.orientacaoTecnica ||
-              diagnosticoArea
-                ?.resumo ||
-              "";
-
-            const possuiSinalDeAtuacao =
-              area.score < 80 ||
-              oportunidades.length > 0 ||
-              riscos.length > 0 ||
-              recomendacoes.length > 0 ||
-              planoAcao.length > 0;
-
-            if (
-              !possuiSinalDeAtuacao
-            ) {
-              return null;
-            }
-
-            return {
-              area:
-                area.label,
-
-              score:
-                area.score,
-
-              nivel:
-                tierDe(
-                  area.score
-                ).label,
-
-              oportunidades,
-
-              riscos,
-
-              recomendacoes,
-
-              planoAcao,
-
-              orientacaoTecnica,
-            };
-          })
-          .filter(Boolean);
-
-      // ===================================================
-      // CRM — PROCESSOS PÓS-DIAGNÓSTICO
-      // ===================================================
-      //
-      // Rodam em paralelo para não aumentar desnecessariamente
-      // o tempo de conclusão do cliente:
-      //
-      // 1. classificação comercial do lead;
-      // 2. criação dos atendimentos por departamento.
-      //
-      // O relatório atual do cliente permanece inalterado.
-      // ===================================================
-
-      await Promise.allSettled([
-        classificarLeadCRM({
-          scoreDiagnostico:
-            score,
-
-          nivelDiagnostico:
-            tierGeral?.label ||
-            "",
-
-          faturamentoAnual:
-            faturamento?.anual ||
-            0,
-
-          dores:
-            [
-              ...(
-                Array.isArray(
-                  doresSelecionadas
-                )
-                  ? doresSelecionadas
-                  : []
-              ),
-
-              ...(
-                Array.isArray(
-                  impactosDor
-                )
-                  ? impactosDor
-                  : []
-              ),
-            ],
-        }),
-
-        criarAtendimentosDepartamentoCRM({
-          diagnosticoId:
-            idSalvo
-              ? String(
-                  idSalvo
-                )
-              : "",
-
-          areas:
-            areasParaAtendimento,
-        }),
-      ]);
-
-      setEnvioRelatorio("sent");
-    } catch (error) {
-      console.error("Erro no envio do relatório:", error);
-      setEnvioRelatorio("error");
-    }
-  }
-
-  function reiniciar() {
-    setStep("intro");
-    setNome("");
-    setCargo("");
-    setTelefone("");
-    setEmail("");
-    setConsentimentoEmail(true);
-    setEnvioRelatorio("idle");
-    relatorioEnviadoRef.current = false;
-    setCnpjInput("");
-    setEmpresas([]);
-    setCnaesEmpresa([]);
-    setAtividadesSelecionadas([]);
-    setAtividadePredominante(null);
-    setDescricaoNegocio("");
-    setEstruturaNegocio("operacional");
-    setTiposHolding([]);
-    setObjetivosHolding([]);
-    setPatrimonioHolding("");
-    setReceitasHolding("");
-    setSucessaoHolding("");
-
-    setObjetivosPF([]);
-    setRendaMensalPF("");
-    setGastosMensaisPF("");
-    setDividasPF("");
-    setReservaPF("");
-    setPatrimonioPF("");
-    setInvestimentosPF("");
-    setAposentadoriaPF("");
-    setDependentesPF("");
-
-    setNomeGrupo("");
-    setFuncaoEmpresasGrupo("");
-    setSociosComunsGrupo("");
-    setFinanceiroCentralizadoGrupo("");
-    setPessoasCompartilhadasGrupo("");
-    setOperacoesIntercompanyGrupo("");
-    setGovernancaGrupo("");
-
-    setSpeConstituida("");
-    setNomeProjetoSPE("");
-    setFinalidadeSPE("");
-    setSociosSPE("");
-    setValorProjetoSPE("");
-    setAportesSPE("");
-    setFinanciamentoSPE("");
-    setPrazoSPE("");
-    setReceitaPrevistaSPE("");
-    setCustosPrevistosSPE("");
-    setFaseProjetoSPE("");
-
-    setPerguntasDinamicas([]);
-    setNegocioInterpretado(null);
-    setGerandoPerguntas(false);
-    setErroPerguntas("");
-    setFaturamento(null);
-    setColaboradores(null);
-    setRegime(null);
-    setObservacao("");
-    setDores([]);
-    setDoresSelecionadas([]);
-    setDor90Dias("");
-    setImpactosDor([]);
-    setRespostas({});
-    setIaResultado(null);
-    setDiagnosticoIdSalvo("");
-    ultimaAtualizacaoLeadRef.current = "";
-  }
-
-  function scoreDe(perguntas) {
-    if (!perguntas.length) return 0;
-
-    const total = perguntas.reduce((acc, q) => {
-      const importancia = Math.max(1, Math.min(3, Number(q.importancia) || 1));
-      return acc + (pesoResposta(q, respostas[q.id]) * importancia);
-    }, 0);
-
-    const maximo = perguntas.reduce((acc, q) => {
-      const importancia = Math.max(1, Math.min(3, Number(q.importancia) || 1));
-      return acc + (5 * importancia);
-    }, 0);
-
-    return maximo ? Math.round((total / maximo) * 100) : 0;
-  }
-
-  const score = scoreDe(todasPerguntas);
-  const tierGeral = tierDe(score);
-
-  const areasComScore = gruposSelecionados.map((g) => ({
-    ...g, score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
-  }));
-  const areaMaisFraca = areasComScore.length
-    ? [...areasComScore].sort((a, b) => a.score - b.score)[0]
-    : null;
-
-  const subScoresAll = gruposSelecionados.flatMap((g) =>
-    g.subtemas.map((s) => ({ area: g.label, tema: s.tema, dica: s.dica, score: scoreDe(s.perguntas) }))
-  );
-  const subOrdenados = [...subScoresAll].sort((a, b) => a.score - b.score);
-
-  const perguntasComPeso = todasPerguntas.map((q) => ({
-    ...q, peso: pesoResposta(q, respostas[q.id]), riscoTexto: riscoDe(
-      q,
-      segmentoPredominante,
-      categoriaPrincipal
-    ),
-  }));
-  const pontosAtencao = [...perguntasComPeso]
-    .filter((q) => q.peso < 5)
-    .sort((a, b) => a.peso - b.peso)
-    .slice(0, 6)
-    .map((q) => q.riscoTexto);
-
-  const riscosNaAreaMaisFraca = areaMaisFraca
-    ? perguntasComPeso.filter((q) => q.peso < 5 && gruposSelecionados
-        .find((g) => g.id === areaMaisFraca.id).subtemas
-        .some((s) => s.perguntas.some((p) => p.id === q.id))).length
-    : 0;
-
-  // Quando a IA responde, seus riscos/recomendações substituem os calculados localmente.
-  const pontosAtencaoFinal = iaResultado
-    ? gruposSelecionados.flatMap((g) => iaResultado?.areas?.[g.label]?.riscos || []).slice(0, 8)
-    : pontosAtencao;
-  const recomendacoesFinal = iaResultado
-    ? gruposSelecionados.flatMap((g) => (iaResultado?.areas?.[g.label]?.recomendacoes || []).map((r) => ({ area: g.label, dica: r }))).slice(0, 6)
-    : subOrdenados.slice(0, 3);
-
-  const aliquota = empresaPrincipal && regime ? estimarAliquota(regime, segmentoPredominante, faturamento?.anual || 0) : null;
-  const valorAnualImposto = aliquota != null && faturamento ? faturamento.anual * (aliquota / 100) : null;
-
-
-  const inteligenciaTributaria =
-    (
-      estruturaNegocio ===
-        "operacional" ||
-      estruturaNegocio ===
-        "grupo"
-    )
-      ? montarInteligenciaTributaria({
-          regime,
-          segmento:
-            segmentoPredominante,
-          categoria:
-            categoriaPrincipal,
-          faturamento,
-        })
-      : {
-          disponivel: false,
-          reforma: null,
-        };
-
-  const diagnosticoGeral = iaResultado?.diagnosticoGeral || null;
-  const resumoExecutivo = diagnosticoGeral?.resumoExecutivo || "";
-  const principaisDoresIa = diagnosticoGeral?.principaisDores || [];
-  const pontosFortesIa = diagnosticoGeral?.pontosFortes || [];
-  const prioridadesIa = diagnosticoGeral?.prioridadesImediatas || [];
-  const oportunidadesIa = diagnosticoGeral?.oportunidades || [];
-  const causasProvaveisIa = diagnosticoGeral?.causasProvaveis || [];
-  const impactosIa = diagnosticoGeral?.impactos || [];
-  const proximosPassosIa = diagnosticoGeral?.proximosPassos || [];
-  const leituraDaDorIa = diagnosticoGeral?.leituraDaDor || "";
-  const alertaEstrategicoIa = diagnosticoGeral?.alertaEstrategico || "";
-  const visaoGrupoIa = iaResultado?.visaoGrupo || null;
-  const lacunasDiagnosticoIa = iaResultado?.lacunasDiagnostico || [];
-  const oportunidadesConsultoriaIa = iaResultado?.oportunidadesConsultoria || [];
-
-
-  useEffect(() => {
-    if (
-      step === "resultado" &&
-      (fluxoSemCnpj || empresaPrincipal) &&
-      gruposSelecionados.length > 0 &&
-      !relatorioEnviadoRef.current
-    ) {
-      enviarRelatorioPorEmail();
-    }
-  }, [step]);
-
-  function proximosPassosAdaptaveisPF() {
-    if (!trilhaPFAtiva) return [];
-
-    const passos = [];
-
-    if (objetivosPF.includes("financeiro") || objetivosPF.includes("renda")) {
-      passos.push(
-        "Organizar receitas, gastos fixos, gastos variáveis e capacidade real de poupança."
-      );
-      passos.push(
-        "Definir uma meta de reserva de emergência compatível com a estabilidade da renda e os compromissos mensais."
-      );
-    }
-
-    if (objetivosPF.includes("dividas")) {
-      passos.push(
-        "Mapear todas as dívidas por saldo, taxa, parcela e prazo antes de definir a ordem de quitação."
-      );
-    }
-
-    if (objetivosPF.includes("aposentadoria")) {
-      passos.push(
-        "Definir idade-alvo, renda desejada e patrimônio necessário para aposentadoria, estimando o aporte mensal necessário."
-      );
-    }
-
-    if (objetivosPF.includes("investimentos")) {
-      passos.push(
-        "Separar objetivos por prazo e liquidez antes de revisar a distribuição dos investimentos."
-      );
-      passos.push(
-        "Distinguir reserva de emergência, objetivos de curto prazo e investimentos de longo prazo."
-      );
-    }
-
-    if (objetivosPF.includes("patrimonio")) {
-      passos.push(
-        "Consolidar bens, investimentos e obrigações em uma visão patrimonial única."
-      );
-    }
-
-    if (objetivosPF.includes("protecao")) {
-      passos.push(
-        "Avaliar dependentes, reserva e principais riscos capazes de comprometer a renda ou o patrimônio familiar."
-      );
-    }
-
-    if (objetivosPF.includes("nao_sei") && passos.length === 0) {
-      passos.push(
-        "Começar pela organização financeira básica: renda, gastos, dívidas, reserva e objetivos."
-      );
-    }
-
-    return passos;
-  }
-
-  function gerarPdf() {
-    if (
-      !fluxoSemCnpj &&
-      !empresaPrincipal
-    ) {
-      showToast("Não há dados suficientes para gerar o relatório.");
-      return;
-    }
-
-    const escaparHtml = (valor) =>
-      String(valor ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-
-    const listaHtml = (itens, vazio = "Nenhuma informação relevante identificada.") =>
-      Array.isArray(itens) && itens.length
-        ? itens.map((item) => `<li>${escaparHtml(item)}</li>`).join("")
-        : `<li>${escaparHtml(vazio)}</li>`;
-
-    const prioridadesExecutivas = subOrdenados
-      .slice(0, 3)
-      .map((item) => `${item.area}: fortalecer ${String(item.tema || "esta frente").toLowerCase()}`);
-
-    const conexoesExecutivas = causasProvaveisIa.slice(0, 3);
-    const impactosExecutivos = impactosIa.slice(0, 3);
-    const pontosFortesExecutivos = pontosFortesIa.slice(0, 3);
-
-    const mensagemWhatsApp = encodeURIComponent(
-      trilhaPFAtiva
-        ? `Olá! Fiz o Diagnóstico Financeiro Pessoal Finder.\n\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nGostaria de conversar com um especialista para entender minhas prioridades e os próximos passos.`
-        : `Olá! Fiz o Diagnóstico Empresarial Finder.\n\nEmpresa: ${empresaPrincipal?.razao || ""}\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nO resultado fez sentido para mim e gostaria de conversar com um especialista para entender as prioridades e os próximos passos.`
+        causasProvaveis:
+          [],
+
+        riscos:
+          normalizarLista(
+            eixo.riscos
+          ),
+
+        pontosFortes:
+          normalizarLista(
+            eixo.pontosFortes
+          ),
+
+        recomendacoes:
+          normalizarLista(
+            eixo.recomendacoes
+          ),
+      })
     );
 
-    const whatsappEspecialista = `https://wa.me/5541989049616?text=${mensagemWhatsApp}`;
-    const logoUrl = `${window.location.origin}/finder-logo.png`;
-    const dataGeracao = new Date().toLocaleString("pt-BR");
+  const areas =
+    normalizarLista(
+      resultado.areas
+    ).length
+      ? normalizarLista(
+          resultado.areas
+        )
+      : areasV2.length
+      ? areasV2
+      : normalizarLista(
+          item.areas
+        );
 
-    const html = `<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Diagnóstico Finder - ${escaparHtml(
-  trilhaPFAtiva
-    ? nome || "Pessoa Física"
-    : empresaPrincipal?.razao || "Empresa"
-)}</title>
-<style>
-  @page { size: A4; margin: 14mm; }
-  * { box-sizing: border-box; }
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    color: #17233D;
-    margin: 0;
-    font-size: 11.5px;
-    line-height: 1.55;
-    background: #fff;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .capa {
-    background: #17233D;
-    color: #fff;
-    padding: 30px 28px;
-    border-radius: 14px;
-    margin-bottom: 20px;
-  }
-  .logo { width: 220px; max-width: 70%; background: #fff; border-radius: 8px; padding: 8px; margin-bottom: 16px; }
-  .marca { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .8; }
-  .capa h1 { font-size: 25px; margin: 10px 0 7px; }
-  .capa .empresa { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
-  .capa .meta { color: #D7DDEA; margin: 0; }
-  h2 { font-size: 16px; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #FF6B4A; }
-  h3 { font-size: 13px; margin: 0 0 5px; }
-  .score-box {
-    display: grid;
-    grid-template-columns: 130px 1fr;
-    gap: 20px;
-    align-items: center;
-    background: #F7F8FB;
-    border: 1px solid #D8DEEA;
-    padding: 17px;
-    border-radius: 12px;
-    page-break-inside: avoid;
-  }
-  .score { font-size: 40px; font-weight: 800; color: #FF6B4A; }
-  .score small { font-size: 13px; color: #5B667A; }
-  .box { border: 1px solid #D8DEEA; background: #F7F8FB; border-radius: 10px; padding: 13px; page-break-inside: avoid; }
-  .insight { border-left: 4px solid #FF6B4A; background: #FFF3EF; border-radius: 8px; padding: 13px 15px; page-break-inside: avoid; }
-  .positivo { background: #E1F5EE; border: 1px solid #C9E8D8; border-radius: 10px; padding: 13px; }
-  .alerta { background: #FAEEDA; color: #70410A; border-radius: 10px; padding: 13px; }
-  .prioridades { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; }
-  .prioridade { border: 1px solid #D8DEEA; border-radius: 10px; padding: 11px; page-break-inside: avoid; }
-  .num { width: 23px; height: 23px; border-radius: 7px; background: #17233D; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-bottom: 7px; }
-  ul { margin: 0; padding-left: 18px; }
-  li { margin-bottom: 5px; }
-  .cta { margin-top: 24px; background: #17233D; color: white; border-radius: 12px; padding: 18px; page-break-inside: avoid; }
-  .cta h3 { font-size: 16px; margin: 0 0 7px; }
-  .cta p { color: #D7DDEA; margin: 0 0 10px; }
-  .cta a { display: inline-block; background: #FF6B4A; color: #fff; font-weight: 700; text-decoration: none; padding: 10px 14px; border-radius: 8px; }
-  .aviso { margin-top: 19px; font-size: 9.5px; color: #5B667A; font-style: italic; }
-  .footer { margin-top: 16px; padding-top: 9px; border-top: 1px solid #D8DEEA; font-size: 9px; color: #7A8495; text-align: center; }
-  @media print { a { color: inherit; } }
-</style>
-</head>
-<body>
+  const dores =
+    normalizarLista(
+      item.dores
+    );
 
-  <section class="capa">
-    <img src="${logoUrl}" alt="Finder of Solutions" class="logo" />
-    <div class="marca">Finder of Solutions</div>
-    <h1>${
-      trilhaPFAtiva
-        ? "Diagnóstico Financeiro Pessoal"
-        : avaliarHoldingAtiva
-        ? "Avaliação de Viabilidade de Holding"
-        : estruturaNegocio === "holding"
-        ? "Diagnóstico Patrimonial da Holding"
-        : estruturaNegocio === "grupo"
-        ? "Diagnóstico do Grupo Empresarial"
-        : estruturaNegocio === "spe"
-        ? "Diagnóstico da SPE"
-        : "Diagnóstico Executivo Empresarial"
-    }</h1>
-    <p class="empresa">${escaparHtml(
-      trilhaPFAtiva
-        ? nome || "Pessoa Física"
-        : empresaPrincipal?.razao || "Empresa"
-    )}</p>
-    <p class="meta">${
-      trilhaPFAtiva
-        ? escaparHtml(
-            objetivosPF
-              .map(
-                (id) =>
-                  OBJETIVOS_PF.find(
-                    (item) =>
-                      item.id === id
-                  )?.label
-              )
-              .filter(Boolean)
-              .join(" · ")
+  const score =
+    scoreInfo(
+      item.score
+    );
+
+  const estruturaAtual =
+    estruturaDiagnostico(
+      item
+    );
+
+  const estruturaAtualLabel =
+    labelEstruturaDiagnostico(
+      estruturaAtual
+    );
+
+  const estruturaAtualCor =
+    corEstruturaDiagnostico(
+      estruturaAtual
+    );
+
+  const areasEquipeDisponiveis =
+    [
+      ...new Set(
+        atendimentosEquipe
+          .map(
+            (atendimento) =>
+              atendimento.area
           )
-        : `${escaparHtml(categoriaPrincipal)} · ${escaparHtml(
-            atividadePredominante?.descricao ||
-            empresaPrincipal?.cnae ||
-            ""
-          )}`
-    }</p>
-  </section>
+          .filter(Boolean)
+      ),
+    ];
 
-  <h2>Seu resultado</h2>
-  <div class="score-box">
-    <div>
-      <div class="score">${score}<small>/100</small></div>
-      <strong>${escaparHtml(tierGeral.label)}</strong>
-    </div>
-    <div>
-      <strong>Principal área de atenção</strong><br />
-      ${escaparHtml(areaMaisFraca?.label || "-")}<br /><br />
-      <span style="color:#5B667A">Este índice representa a maturidade das respostas fornecidas no diagnóstico e serve como sinalizador para aprofundamento.</span>
-    </div>
-  </div>
+  const atendimentoEquipeSelecionado =
+    atendimentosEquipe.find(
+      (atendimento) =>
+        atendimento.area ===
+        areaEquipe
+    ) ||
+    atendimentosEquipe[0] ||
+    null;
 
-  <h2>${trilhaPFAtiva ? "O que entendemos sobre sua vida financeira" : "O que entendemos sobre o seu negócio"}</h2>
-  <div class="box">
-    <strong>${escaparHtml(
-      trilhaPFAtiva
-        ? objetivosPF
-            .map(
-              (id) =>
-                OBJETIVOS_PF.find(
-                  (item) =>
-                    item.id === id
-                )?.label
+  const perguntasEquipe =
+    perguntas.filter(
+      (pergunta) =>
+        areaCanonica(
+          pergunta.area
+        ) ===
+        areaCanonica(
+          atendimentoEquipeSelecionado?.area
+        )
+    );
+
+  const areaClientePorNome =
+    areas.reduce(
+      (acc, area) => {
+        if (area?.area) {
+          acc[
+            area.area
+          ] = area;
+
+          acc[
+            areaCanonica(
+              area.area
             )
-            .filter(Boolean)
-            .join(" · ") ||
-          "Consultoria financeira pessoal"
-        : negocioInterpretado?.subsegmento ||
-          negocioInterpretado?.segmento ||
-          categoriaPrincipal
-    )}</strong>
-    <p>${escaparHtml(
-      trilhaPFAtiva
-        ? `Renda informada: ${rendaMensalPF || "não informada"} · Gastos informados: ${gastosMensaisPF || "não informados"} · Reserva: ${reservaPF || "não informada"}`
-        : descricaoNegocio || "Descrição do negócio não informada."
-    )}</p>
-    ${negocioInterpretado?.modeloOperacional ? `<p><strong>Modelo operacional:</strong> ${escaparHtml(negocioInterpretado.modeloOperacional)}</p>` : ""}
-    ${trilhaHoldingAtiva ? `<p><strong>Estrutura especial:</strong> Holding / avaliação de holding</p>` : ""}
-    ${trilhaHoldingAtiva && tiposHolding.length ? `<p><strong>Perfil informado:</strong> ${escaparHtml(tiposHolding.map((id) => TIPOS_HOLDING.find((t) => t.id === id)?.label || id).join(" · "))}</p>` : ""}
-    ${trilhaHoldingAtiva && objetivosHolding.length ? `<p><strong>Objetivos:</strong> ${escaparHtml(objetivosHolding.join(" · "))}</p>` : ""}
-  </div>
+          ] = area;
+        }
 
-  ${resumoExecutivo ? `
-    <h2>Leitura executiva</h2>
-    <div class="insight">${escaparHtml(resumoExecutivo)}</div>
-  ` : ""}
+        if (area?.areaId) {
+          acc[
+            area.areaId
+          ] = area;
+        }
 
-  ${inteligenciaTributaria?.disponivel ? `
-    <h2>Inteligência tributária</h2>
-    <div class="box">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-        <div>
-          <strong>Faturamento de referência</strong><br>
-          ${escaparHtml(moedaTributaria(inteligenciaTributaria.faturamentoMensalReferencia))}/mês
-        </div>
-        <div>
-          <strong>Tributos estimados</strong><br>
-          ${escaparHtml(moedaTributaria(inteligenciaTributaria.tributosMensaisEstimados))}/mês
-        </div>
-        <div>
-          <strong>Carga tributária estimada</strong><br>
-          <span style="font-size:18px;color:#993C1D;font-weight:800;">
-            ${escaparHtml(percentualTributario(inteligenciaTributaria.cargaTributariaEstimada))}
-          </span>
-        </div>
-      </div>
-
-      <p style="margin:0 0 8px;">
-        A cada R$ 100 faturados, aproximadamente
-        <strong>R$ ${Number(inteligenciaTributaria.cargaTributariaEstimada).toLocaleString("pt-BR", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        })}</strong>
-        correspondem à carga tributária estimada nesta referência.
-      </p>
-
-      <div class="alerta">
-        <strong>Reforma Tributária:</strong>
-        impacto preliminar do segmento:
-        <strong>${escaparHtml(inteligenciaTributaria.reforma?.status || "A avaliar")}</strong>.
-        O efeito efetivo depende do regime, atividade, créditos, perfil dos clientes e das operações.
-      </div>
-
-      <p style="font-size:9.5px;color:#7A8495;margin:9px 0 0;font-style:italic;">
-        Estimativa gerencial baseada na faixa de faturamento informada, regime e segmento.
-        Não representa apuração fiscal definitiva.
-      </p>
-    </div>
-  ` : ""}
-
-  ${leituraDaDorIa ? `
-    <h2>O que suas respostas estão mostrando</h2>
-    <div class="box">${escaparHtml(leituraDaDorIa)}</div>
-  ` : ""}
-
-  ${conexoesExecutivas.length ? `
-    <h2>Conexões que merecem atenção</h2>
-    <div class="box"><ul>${listaHtml(conexoesExecutivas)}</ul></div>
-  ` : ""}
-
-  ${impactosExecutivos.length ? `
-    <h2>Onde isso pode estar impactando</h2>
-    <div class="box"><ul>${listaHtml(impactosExecutivos)}</ul></div>
-  ` : ""}
-
-  ${pontosFortesExecutivos.length ? `
-    <h2>O que já está funcionando a seu favor</h2>
-    <div class="positivo"><ul>${listaHtml(pontosFortesExecutivos)}</ul></div>
-  ` : ""}
-
-  ${alertaEstrategicoIa ? `
-    <h2>Alerta estratégico</h2>
-    <div class="alerta"><strong>${escaparHtml(alertaEstrategicoIa)}</strong></div>
-  ` : ""}
-
-  <h2>Prioridades identificadas</h2>
-  <div class="prioridades">
-    ${prioridadesExecutivas.map((item, i) => `
-      <div class="prioridade">
-        <div class="num">${i + 1}</div>
-        <h3>${escaparHtml(item)}</h3>
-        <span style="color:#5B667A">A prioridade indica onde aprofundar a análise. O plano de implementação deve ser definido após validação profissional.</span>
-      </div>
-    `).join("")}
-  </div>
-
-  <section class="cta">
-    <h3>Seu diagnóstico mostrou onde olhar. Agora precisamos definir como agir.</h3>
-    <p>A análise consultiva da Finder aprofunda as causas, valida os riscos e transforma as prioridades em um plano de ação adequado à realidade da empresa.</p>
-    <a href="${whatsappEspecialista}">Quero falar com um especialista</a>
-  </section>
-
-  <p class="aviso">
-    Este é um diagnóstico executivo preliminar elaborado a partir das informações fornecidas pelo participante. A análise técnica completa, validação dos achados e definição das ações exigem avaliação profissional individualizada.
-  </p>
-
-  <div class="footer">
-    Finder of Solutions · Diagnóstico Executivo Empresarial · Gerado em ${escaparHtml(dataGeracao)}
-  </div>
-
-</body>
-</html>`;
-
-    try {
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const janela = window.open(url, "_blank");
-
-      if (!janela) {
-        URL.revokeObjectURL(url);
-        showToast("Permita pop-ups no navegador para gerar o PDF.");
-        return;
-      }
-
-      janela.addEventListener(
-        "load",
-        () => {
-          setTimeout(() => {
-            try {
-              janela.focus();
-              janela.print();
-            } finally {
-              setTimeout(() => URL.revokeObjectURL(url), 10000);
-            }
-          }, 700);
-        },
-        { once: true }
-      );
-    } catch (erro) {
-      console.error("Erro ao gerar relatório executivo:", erro);
-      showToast("Não foi possível gerar o relatório executivo.");
-    }
-  }
+        return acc;
+      },
+      {}
+    );
 
   return (
-    <div style={{ background: "#EEF0F5", minHeight: 760, display: "flex", justifyContent: "center", padding: "32px 16px", fontFamily: BODY_FONT }}>
-      <div style={{ width: 380, borderRadius: 40, background: NAVY, padding: 12, boxShadow: "0 30px 60px rgba(23,35,61,0.25)" }}>
-        <div style={{ width: 120, height: 22, background: NAVY, borderRadius: 12, margin: "0 auto 4px", position: "relative" }}>
-          <div style={{ width: 46, height: 6, background: "#0B1526", borderRadius: 4, position: "absolute", left: "50%", top: 8, transform: "translateX(-50%)" }} />
+    <div
+      style={{
+        minHeight:
+          "100vh",
+
+        background:
+          BG,
+
+        fontFamily:
+          BODY_FONT,
+
+        color:
+          NAVY,
+      }}
+    >
+      <header
+        style={{
+          background:
+            NAVY,
+
+          padding:
+            "17px 24px",
+
+          color:
+            WHITE,
+        }}
+      >
+        <div
+          style={{
+            maxWidth:
+              1180,
+
+            margin:
+              "0 auto",
+
+            display:
+              "flex",
+
+            justifyContent:
+              "space-between",
+
+            alignItems:
+              "center",
+
+            gap:
+              15,
+          }}
+        >
+          <Botao
+            secundario
+            onClick={
+              onVoltar
+            }
+          >
+            <ArrowLeft
+              size={15}
+            />
+
+            Diagnósticos
+          </Botao>
+
+          <span
+            style={{
+              fontSize:
+                11,
+
+              opacity:
+                0.75,
+            }}
+          >
+            {formatarData(
+              item.criadoEm
+            )}
+          </span>
         </div>
-        <div style={{ background: WHITE, borderRadius: 28, minHeight: 686, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
-          <StepDots step={step} />
+      </header>
 
-          <div style={{ flex: 1, padding: "18px 22px 22px", display: "flex", flexDirection: "column" }}>
+      <main
+        style={{
+          maxWidth:
+            1180,
 
-            {step === "intro" && (
+          margin:
+            "0 auto",
+
+          padding:
+            "24px 20px 60px",
+        }}
+      >
+        <div
+          style={{
+            display:
+              "grid",
+
+            gridTemplateColumns:
+              "minmax(0,1fr) 170px",
+
+            gap:
+              14,
+
+            marginBottom:
+              16,
+          }}
+        >
+          <Card>
+            <div
+              style={{
+                fontSize:
+                  11,
+
+                color:
+                  CORAL,
+
+                fontWeight:
+                  800,
+
+                marginBottom:
+                  6,
+              }}
+            >
+              {estruturaAtual === "pessoa_fisica"
+                ? "DIAGNÓSTICO FINANCEIRO PESSOAL"
+                : estruturaAtual === "avaliar_holding"
+                ? "AVALIAÇÃO DE VIABILIDADE DE HOLDING"
+                : estruturaAtual === "holding"
+                ? "DIAGNÓSTICO PATRIMONIAL / HOLDING"
+                : estruturaAtual === "grupo"
+                ? "DIAGNÓSTICO DO GRUPO EMPRESARIAL"
+                : estruturaAtual === "spe"
+                ? "DIAGNÓSTICO DA SPE"
+                : "DIAGNÓSTICO EMPRESARIAL"}
+            </div>
+
+            <h1
+              style={{
+                fontFamily:
+                  DISPLAY_FONT,
+
+                fontSize:
+                  28,
+
+                margin:
+                  "0 0 7px",
+              }}
+            >
+              {estruturaAtual === "pessoa_fisica"
+                ? participante.nome ||
+                  "Pessoa Física"
+                : estruturaAtual === "avaliar_holding"
+                ? empresa.razaoSocial ||
+                  "Avaliação de Holding"
+                : estruturaAtual === "grupo"
+                ? perfilDiagnostico?.grupo?.nomeGrupo ||
+                  empresa.razaoSocial ||
+                  "Grupo empresarial"
+                : estruturaAtual === "spe"
+                ? perfilDiagnostico?.spe?.nomeProjeto ||
+                  empresa.razaoSocial ||
+                  "SPE"
+                : empresa.razaoSocial ||
+                  "Empresa"}
+            </h1>
+
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                background:
+                  estruturaAtualCor.bg,
+                color:
+                  estruturaAtualCor.color,
+                borderRadius: 20,
+                padding:
+                  "4px 8px",
+                fontSize: 9.5,
+                fontWeight: 900,
+                marginBottom: 8,
+              }}
+            >
+              ESTRUTURA ·{" "}
+              {estruturaAtualLabel}
+            </div>
+
+            <div
+              style={{
+                color:
+                  MUTED,
+
+                fontSize:
+                  12,
+
+                lineHeight:
+                  1.6,
+              }}
+            >
+              {empresa.cnpj
+                ? formatarCnpj(
+                    empresa.cnpj
+                  )
+                : ""}
+
+              {empresa.segmento
+                ? `${empresa.cnpj ? " · " : ""}${empresa.segmento}`
+                : ""}
+
+              {empresa.subsegmento
+                ? ` · ${empresa.subsegmento}`
+                : ""}
+            </div>
+          </Card>
+
+          <Card
+            style={{
+              background:
+                score.bg,
+
+              textAlign:
+                "center",
+            }}
+          >
+            <div
+              style={{
+                fontSize:
+                  38,
+
+                fontWeight:
+                  900,
+
+                color:
+                  score.color,
+              }}
+            >
+              {item.score ??
+                "-"}
+            </div>
+
+            <div
+              style={{
+                fontSize:
+                  11,
+
+                color:
+                  score.color,
+
+                fontWeight:
+                  700,
+              }}
+            >
+              {score.label}
+            </div>
+          </Card>
+        </div>
+
+        <Card
+          style={{
+            padding: 10,
+            marginBottom: 18,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <Botao
+              secundario={
+                abaRelatorio !==
+                "administracao"
+              }
+              onClick={() =>
+                setAbaRelatorio(
+                  "administracao"
+                )
+              }
+            >
+              <Building2 size={14} />
+              Relatório Administração
+            </Botao>
+
+            <Botao
+              secundario={
+                abaRelatorio !==
+                "cliente"
+              }
+              onClick={() =>
+                setAbaRelatorio(
+                  "cliente"
+                )
+              }
+            >
+              <Users size={14} />
+              Relatório Cliente
+            </Botao>
+
+            <Botao
+              secundario={
+                abaRelatorio !==
+                "equipe"
+              }
+              onClick={() =>
+                setAbaRelatorio(
+                  "equipe"
+                )
+              }
+            >
+              <Users size={14} />
+              Relatório Equipe
+            </Botao>
+          </div>
+        </Card>
+
+        <ResumoEstruturaSelecionada
+          estrutura={estruturaAtual}
+          perfil={perfilDiagnostico}
+          resultado={resultado}
+        />
+
+        {abaRelatorio === "administracao" && (
+          <>
+        <div
+          style={{
+            display:
+              "grid",
+
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(230px,1fr))",
+
+            gap:
+              12,
+
+            marginBottom:
+              18,
+          }}
+        >
+          <Card>
+            <Users
+              size={18}
+              color={CORAL}
+            />
+
+            <h3>
+              Participante
+            </h3>
+
+            <p>
+              <strong>
+                {participante.nome ||
+                  "-"}
+              </strong>
+
+              <br />
+
+              {participante.cargo ||
+                "-"}
+
+              <br />
+
+              {participante.email ||
+                "-"}
+
+              <br />
+
+              {participante.telefone ||
+                "-"}
+            </p>
+          </Card>
+
+          <Card>
+            <Target
+              size={18}
+              color={CORAL}
+            />
+
+            <h3>
+              Estrutura
+            </h3>
+
+            <p>
+              <strong>
+                {estruturaAtualLabel}
+              </strong>
+            </p>
+          </Card>
+
+          <Card>
+            <Building2
+              size={18}
+              color={CORAL}
+            />
+
+            <h3>
+              {estruturaAtual ===
+              "pessoa_fisica"
+                ? "Contexto pessoal"
+                : estruturaAtual ===
+                    "holding" ||
+                  estruturaAtual ===
+                    "avaliar_holding"
+                ? "Estrutura patrimonial"
+                : estruturaAtual ===
+                    "grupo"
+                ? "Contexto do grupo"
+                : estruturaAtual ===
+                    "spe"
+                ? "Contexto do projeto"
+                : "Negócio"}
+            </h3>
+
+            <p>
+              {empresa.descricaoNegocio ||
+                "Descrição não registrada."}
+            </p>
+          </Card>
+
+          <Card>
+            <Target
+              size={18}
+              color={CORAL}
+            />
+
+            <h3>
+              Dores declaradas
+            </h3>
+
+            {dores.length ? (
+              <ul
+                style={{
+                  paddingLeft:
+                    18,
+
+                  marginBottom:
+                    0,
+                }}
+              >
+                {dores.map(
+                  (
+                    dor,
+                    index
+                  ) => (
+                    <li
+                      key={`${dor}-${index}`}
+                    >
+                      {dor}
+                    </li>
+                  )
+                )}
+              </ul>
+            ) : (
+              <p>
+                Nenhuma dor registrada.
+              </p>
+            )}
+          </Card>
+        </div>
+
+        {diagnosticoGeral
+          .resumoExecutivo && (
+          <>
+            <h2
+              style={
+                tituloSecao
+              }
+            >
+              Resumo executivo
+            </h2>
+
+            <Card>
+              <p
+                style={{
+                  margin:
+                    0,
+
+                  lineHeight:
+                    1.65,
+                }}
+              >
+                {
+                  diagnosticoGeral
+                    .resumoExecutivo
+                }
+              </p>
+            </Card>
+          </>
+        )}
+
+        {estruturaAtual === "avaliar_holding" &&
+          resultadoCompleto?.viabilidadeHolding && (
+          <>
+            <h2 style={tituloSecao}>
+              Viabilidade preliminar da Holding
+            </h2>
+
+            <Card
+              style={{
+                borderLeft: `4px solid ${CORAL}`,
+              }}
+            >
               <div
                 style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "170px minmax(0,1fr)",
                   gap: 14,
-                  padding: "20px 14px",
+                  alignItems: "start",
                 }}
               >
-                <img
-                  src="/finder-logo.png"
-                  alt="Finder of Solutions"
-                  style={{
-                    width: 210,
-                    maxWidth: "88%",
-                    height: "auto",
-                    objectFit: "contain",
-                    marginBottom: 2,
-                  }}
-                />
-
                 <div>
-                  <h1
+                  <div
                     style={{
-                      fontFamily: DISPLAY_FONT,
-                      fontSize: 28,
+                      fontSize: 9.5,
+                      color: MUTED,
                       fontWeight: 800,
+                      marginBottom: 4,
+                    }}
+                  >
+                    NÍVEL
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 20,
                       color: NAVY,
-                      margin: "2px 0 7px",
                     }}
                   >
-                    Diagnóstico Empresarial
-                  </h1>
-
-                  <p
-                    style={{
-                      fontSize: 13.5,
-                      color: MUTED,
-                      lineHeight: 1.5,
-                      maxWidth: 360,
-                      margin: "0 auto",
-                    }}
-                  >
-                    Descubra em poucos minutos os principais gargalos e oportunidades da sua empresa.
-                  </p>
+                    {resultadoCompleto
+                      .viabilidadeHolding
+                      .nivel ||
+                      "DADOS_INSUFICIENTES"}
+                  </strong>
                 </div>
-
-                <div
-                  style={{
-                    background: "#FFFFFF",
-                    padding: 10,
-                    borderRadius: 18,
-                    border: "1px solid #E5E7EB",
-                    boxShadow: "0 8px 26px rgba(23,35,61,0.10)",
-                  }}
-                >
-                  <img
-                    src="/qrcode-diagnostico.png"
-                    alt="QR Code do Diagnóstico Empresarial"
-                    style={{
-                      width: 190,
-                      height: 190,
-                      display: "block",
-                      objectFit: "contain",
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <p
-                    style={{
-                      fontFamily: DISPLAY_FONT,
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: NAVY,
-                      margin: "0 0 5px",
-                    }}
-                  >
-                    Escaneie para começar
-                  </p>
-
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: MUTED,
-                      lineHeight: 1.45,
-                      maxWidth: 340,
-                      margin: 0,
-                    }}
-                  >
-                    Faça seu diagnóstico gratuito e descubra onde sua empresa pode melhorar.
-                  </p>
-                </div>
-
-                <div
-                  style={{
-                    width: "100%",
-                    maxWidth: 330,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    margin: "1px 0",
-                  }}
-                >
-                  <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
-                  <span style={{ fontSize: 11.5, color: MUTED }}>ou</span>
-                  <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
-                </div>
-
-                <PrimaryButton onClick={() => setStep("cadastro")}>
-                  Iniciar diagnóstico <ArrowRight size={16} />
-                </PrimaryButton>
-              </div>
-            )}
-
-            
-
-            {step === "cadastro" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: NAVY, margin: "6px 0 4px" }}>Vamos te conhecer</p>
-                <p style={{ fontSize: 12.5, color: MUTED, margin: "0 0 18px" }}>Leva menos de 20 segundos.</p>
-
-                <label style={labelStyle}>Nome</label>
-                <input style={inputStyle} placeholder="Seu nome completo" value={nome} onChange={(e) => setNome(e.target.value)} />
-
-                <label style={labelStyle}>Seu papel na empresa</label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-                  {["Sócio/Dono", "Diretor", "Gerente", "Colaborador"].map((c) => (
-                    <button key={c} onClick={() => setCargo(c)} style={chipStyle(cargo === c)}>{c}</button>
-                  ))}
-                </div>
-
-                <label style={labelStyle}>WhatsApp</label>
-                <input style={inputStyle} placeholder="(41) 99999-9999" value={telefone} onChange={(e) => setTelefone(e.target.value)} inputMode="tel" />
-
-                <label style={labelStyle}>E-mail</label>
-                <input style={inputStyle} placeholder="voce@empresa.com.br" value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" />
-
-                <label style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "flex-start",
-                  fontSize: 10.8,
-                  lineHeight: 1.4,
-                  color: MUTED,
-                  margin: "-4px 0 14px",
-                  cursor: "pointer",
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={consentimentoEmail}
-                    onChange={(e) => setConsentimentoEmail(e.target.checked)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <span>
-                    Quero receber meu diagnóstico por e-mail e comunicações relacionadas à consultoria da Finder.
-                  </span>
-                </label>
-
-                <div style={{ flex: 1 }} />
-                
-                <PrimaryButton
-                  disabled={
-                    !nome ||
-                    !cargo ||
-                    telefone.replace(/\D/g, "").length < 10 ||
-                    !email.includes("@")
-                  }
-                  onClick={() => setStep("estrutura")}
-                >
-                  Continuar <ArrowRight size={16} />
-                </PrimaryButton>
-              </div>
-            )}
-
-            {step === "estrutura" && (
-              <div
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <p
-                  style={{
-                    fontFamily: DISPLAY_FONT,
-                    fontSize: 21,
-                    fontWeight: 700,
-                    color: NAVY,
-                    margin: "6px 0 4px",
-                  }}
-                >
-                  Estrutura do negócio
-                </p>
-
-                <p
-                  style={{
-                    fontSize: 12.5,
-                    color: MUTED,
-                    margin: "0 0 16px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Antes de analisar a operação, precisamos entender qual estrutura
-                  representa melhor o negócio. Isso define o fluxo, as dores e as
-                  perguntas do diagnóstico.
-                </p>
 
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 8,
-                    marginBottom: 14,
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(200px,1fr))",
+                    gap: 10,
                   }}
                 >
-                  {ESTRUTURAS_NEGOCIO.map((item) => {
-                    const selecionada =
-                      estruturaNegocio === item.id;
+                  <ListaInterna
+                    titulo="Fatores favoráveis"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .fatoresFavoraveis
+                    }
+                  />
 
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setEstruturaNegocio(item.id);
+                  <ListaInterna
+                    titulo="Fatores contrários / atenção"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .fatoresContrarios
+                    }
+                  />
 
-                          // Ao trocar a estrutura, limpamos seleções específicas
-                          // para evitar que dores de Holding contaminem outro fluxo.
-                          setDoresSelecionadas([]);
-                          setDores([]);
-                          setDor90Dias("");
-                          setImpactosDor([]);
+                  <ListaInterna
+                    titulo="Dados necessários"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .dadosNecessarios
+                    }
+                  />
 
-                          if (
-                            ![
-                              "holding",
-                              "avaliar_holding",
-                            ].includes(item.id)
-                          ) {
-                            setTiposHolding([]);
-                            setObjetivosHolding([]);
-                            setPatrimonioHolding("");
-                            setReceitasHolding("");
-                            setSucessaoHolding("");
-                          }
-
-                          if (item.id !== "pessoa_fisica") {
-                            setObjetivosPF([]);
-                            setRendaMensalPF("");
-                            setGastosMensaisPF("");
-                            setDividasPF("");
-                            setReservaPF("");
-                            setPatrimonioPF("");
-                            setInvestimentosPF("");
-                            setAposentadoriaPF("");
-                            setDependentesPF("");
-                          }
-
-                          if (item.id !== "grupo") {
-                            setNomeGrupo("");
-                            setFuncaoEmpresasGrupo("");
-                            setSociosComunsGrupo("");
-                            setFinanceiroCentralizadoGrupo("");
-                            setPessoasCompartilhadasGrupo("");
-                            setOperacoesIntercompanyGrupo("");
-                            setGovernancaGrupo("");
-                          }
-
-                          if (item.id !== "spe") {
-                            setSpeConstituida("");
-                            setNomeProjetoSPE("");
-                            setFinalidadeSPE("");
-                            setSociosSPE("");
-                            setValorProjetoSPE("");
-                            setAportesSPE("");
-                            setFinanciamentoSPE("");
-                            setPrazoSPE("");
-                            setReceitaPrevistaSPE("");
-                            setCustosPrevistosSPE("");
-                            setFaseProjetoSPE("");
-                          }
-                        }}
-                        style={{
-                          ...chipStyle(
-                            selecionada
-                          ),
-                          width: "100%",
-                          minHeight: 48,
-                          textAlign: "left",
-                        }}
-                      >
-                        {item.label}
-                      </button>
-                    );
-                  })}
+                  <ListaInterna
+                    titulo="Estruturas possíveis"
+                    itens={
+                      resultadoCompleto
+                        .viabilidadeHolding
+                        .estruturasPossiveis
+                    }
+                  />
                 </div>
+              </div>
+            </Card>
+          </>
+        )}
 
-                {trilhaGrupoAtiva && (
-                  <div style={{ background: "#F7F8FB", border: "1px solid #E3E7EF", borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                      <Building2 size={16} color={CORAL} />
-                      <strong style={{ fontSize: 13, color: NAVY }}>Contexto do grupo empresarial</strong>
-                    </div>
-                    <p style={{ fontSize: 10.7, color: MUTED, margin: "0 0 13px", lineHeight: 1.5 }}>
-                      Registre como o grupo funciona antes de informar os CNPJs. Isso melhora a análise de governança, caixa consolidado e operações entre empresas.
-                    </p>
+        {diagnosticoGeral
+          .alertaEstrategico && (
+          <>
+            <h2
+              style={
+                tituloSecao
+              }
+            >
+              Alerta estratégico
+            </h2>
 
-                    <label style={labelStyle}>Nome do grupo</label>
-                    <input value={nomeGrupo} onChange={(e) => setNomeGrupo(e.target.value)} placeholder="Ex.: Grupo Finder" style={{ ...inputStyle, marginBottom: 10 }} />
+            <Card
+              style={{
+                background:
+                  "#FAEEDA",
 
-                    <label style={labelStyle}>Qual é a função de cada empresa?</label>
-                    <textarea value={funcaoEmpresasGrupo} onChange={(e) => setFuncaoEmpresasGrupo(e.target.value)}
-                      placeholder="Ex.: indústria fabrica; comercial vende; holding concentra participações."
-                      rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+                color:
+                  "#70410A",
+              }}
+            >
+              {
+                diagnosticoGeral
+                  .alertaEstrategico
+              }
+            </Card>
+          </>
+        )}
 
-                    <label style={labelStyle}>Os sócios são os mesmos nas empresas?</label>
-                    <textarea value={sociosComunsGrupo} onChange={(e) => setSociosComunsGrupo(e.target.value)}
-                      placeholder="Ex.: mesmos sócios e percentuais; ou composições diferentes."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
+        {inteligenciaTributaria?.disponivel && (
+          <>
+            <h2 style={tituloSecao}>
+              Inteligência tributária
+            </h2>
 
-                    <label style={labelStyle}>Financeiro / caixa é centralizado?</label>
-                    <textarea value={financeiroCentralizadoGrupo} onChange={(e) => setFinanceiroCentralizadoGrupo(e.target.value)}
-                      placeholder="Ex.: tesouraria central; cada empresa possui caixa próprio."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Há funcionários, despesas ou estruturas compartilhadas?</label>
-                    <textarea value={pessoasCompartilhadasGrupo} onChange={(e) => setPessoasCompartilhadasGrupo(e.target.value)}
-                      placeholder="Ex.: administrativo, comercial, aluguel, veículos, TI."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Existem operações entre as próprias empresas?</label>
-                    <textarea value={operacoesIntercompanyGrupo} onChange={(e) => setOperacoesIntercompanyGrupo(e.target.value)}
-                      placeholder="Ex.: mútuos, repasses, serviços, vendas, rateios ou adiantamentos."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Como as decisões do grupo são tomadas?</label>
-                    <textarea value={governancaGrupo} onChange={(e) => setGovernancaGrupo(e.target.value)}
-                      placeholder="Ex.: fundador centraliza; reunião de sócios; conselho; sem rotina formal."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }} />
-                  </div>
-                )}
-
-                {trilhaPFAtiva && (
+            <Card
+              style={{
+                border: "1px solid #D8DEEA",
+                background: "#FBFCFE",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(180px,1fr))",
+                  gap: 10,
+                  marginBottom: 16,
+                }}
+              >
+                <div
+                  style={{
+                    background: WHITE,
+                    border: "1px solid #E3E7EF",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
                   <div
                     style={{
-                      background: "#F7F8FB",
-                      border: "1px solid #E3E7EF",
-                      borderRadius: 12,
-                      padding: 14,
-                      marginBottom: 14,
+                      fontSize: 10,
+                      color: MUTED,
+                      marginBottom: 4,
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                      <User size={16} color={CORAL} />
-                      <strong style={{ fontSize: 13, color: NAVY }}>
-                        Consultoria para Pessoa Física
-                      </strong>
-                    </div>
-
-                    <p style={{ fontSize: 10.7, color: MUTED, margin: "0 0 13px", lineHeight: 1.5 }}>
-                      Escolha o que você quer organizar ou melhorar. As perguntas e os próximos passos serão adaptados às suas escolhas.
-                    </p>
-
-                    <label style={labelStyle}>Quais objetivos você quer trabalhar?</label>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 14 }}>
-                      {OBJETIVOS_PF.map((objetivo) => (
-                        <button
-                          key={objetivo.id}
-                          type="button"
-                          onClick={() => toggleObjetivoPF(objetivo.id)}
-                          style={{
-                            ...chipStyle(objetivosPF.includes(objetivo.id)),
-                            width: "100%",
-                            minHeight: 46,
-                            textAlign: "left",
-                          }}
-                        >
-                          {objetivo.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <label style={labelStyle}>Renda mensal aproximada</label>
-                    <input
-                      value={rendaMensalPF}
-                      onChange={(e) => setRendaMensalPF(e.target.value)}
-                      placeholder="Ex.: R$ 8.000"
-                      style={{ ...inputStyle, marginBottom: 10 }}
-                    />
-
-                    <label style={labelStyle}>Gastos mensais aproximados</label>
-                    <input
-                      value={gastosMensaisPF}
-                      onChange={(e) => setGastosMensaisPF(e.target.value)}
-                      placeholder="Ex.: R$ 6.000"
-                      style={{ ...inputStyle, marginBottom: 10 }}
-                    />
-
-                    <label style={labelStyle}>Dívidas ou parcelas relevantes</label>
-                    <textarea
-                      value={dividasPF}
-                      onChange={(e) => setDividasPF(e.target.value)}
-                      placeholder="Ex.: financiamento, cartão, consignado, empréstimos ou nenhuma dívida relevante."
-                      rows={2}
-                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
-                    />
-
-                    <label style={labelStyle}>Reserva de emergência</label>
-                    <textarea
-                      value={reservaPF}
-                      onChange={(e) => setReservaPF(e.target.value)}
-                      placeholder="Ex.: não tenho reserva; tenho 3 meses de gastos; tenho R$ 30 mil reservados."
-                      rows={2}
-                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
-                    />
-
-                    {objetivosPF.includes("investimentos") && (
-                      <>
-                        <label style={labelStyle}>Investimentos atuais</label>
-                        <textarea
-                          value={investimentosPF}
-                          onChange={(e) => setInvestimentosPF(e.target.value)}
-                          placeholder="Ex.: poupança, CDB, Tesouro, fundos, ações, previdência privada ou ainda não invisto."
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
-                        />
-                      </>
-                    )}
-
-                    {objetivosPF.includes("aposentadoria") && (
-                      <>
-                        <label style={labelStyle}>Objetivo de aposentadoria</label>
-                        <textarea
-                          value={aposentadoriaPF}
-                          onChange={(e) => setAposentadoriaPF(e.target.value)}
-                          placeholder="Ex.: quero me aposentar aos 60 anos com renda mensal de R$ 10 mil."
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
-                        />
-                      </>
-                    )}
-
-                    {(objetivosPF.includes("patrimonio") || objetivosPF.includes("protecao")) && (
-                      <>
-                        <label style={labelStyle}>Patrimônio e dependentes</label>
-                        <textarea
-                          value={patrimonioPF}
-                          onChange={(e) => setPatrimonioPF(e.target.value)}
-                          placeholder="Ex.: imóvel próprio, veículo, investimentos e outros bens."
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
-                        />
-                        <textarea
-                          value={dependentesPF}
-                          onChange={(e) => setDependentesPF(e.target.value)}
-                          placeholder="Ex.: cônjuge, filhos, pais ou outras pessoas dependentes."
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
-                        />
-                      </>
-                    )}
+                    FATURAMENTO DE REFERÊNCIA
                   </div>
-                )}
 
-                {trilhaSPEAtiva && (
-                  <div style={{ background: "#F7F8FB", border: "1px solid #E3E7EF", borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                      <Target size={16} color={CORAL} />
-                      <strong style={{ fontSize: 13, color: NAVY }}>Contexto da SPE / empreendimento</strong>
-                    </div>
+                  <strong
+                    style={{
+                      fontSize: 18,
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .faturamentoMensalReferencia
+                    ).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })}
+                  </strong>
 
-                    <label style={labelStyle}>A SPE já está constituída?</label>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 12 }}>
-                      {[["sim", "Sim, já possui CNPJ"], ["nao", "Ainda não / em estruturação"]].map(([id, label]) => (
-                        <button key={id} type="button" onClick={() => setSpeConstituida(id)} style={chipStyle(speConstituida === id)}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <label style={labelStyle}>Nome do projeto / empreendimento</label>
-                    <input value={nomeProjetoSPE} onChange={(e) => setNomeProjetoSPE(e.target.value)}
-                      placeholder="Ex.: Residencial Alameda" style={{ ...inputStyle, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Qual é a finalidade da SPE?</label>
-                    <textarea value={finalidadeSPE} onChange={(e) => setFinalidadeSPE(e.target.value)}
-                      placeholder="Ex.: desenvolver e comercializar empreendimento imobiliário específico."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Sócios / investidores</label>
-                    <textarea value={sociosSPE} onChange={(e) => setSociosSPE(e.target.value)}
-                      placeholder="Ex.: 3 sócios, percentuais e papel de cada um."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Valor aproximado do projeto</label>
-                    <input value={valorProjetoSPE} onChange={(e) => setValorProjetoSPE(e.target.value)}
-                      placeholder="Ex.: R$ 8 milhões" style={{ ...inputStyle, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Aportes realizados / previstos</label>
-                    <textarea value={aportesSPE} onChange={(e) => setAportesSPE(e.target.value)}
-                      placeholder="Ex.: R$ 1,5 milhão aportado; novas chamadas conforme cronograma."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Financiamento / capital de terceiros</label>
-                    <textarea value={financiamentoSPE} onChange={(e) => setFinanciamentoSPE(e.target.value)}
-                      placeholder="Ex.: financiamento bancário previsto; investidores; sem financiamento."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Prazo do projeto</label>
-                    <input value={prazoSPE} onChange={(e) => setPrazoSPE(e.target.value)}
-                      placeholder="Ex.: 30 meses" style={{ ...inputStyle, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Receita prevista</label>
-                    <input value={receitaPrevistaSPE} onChange={(e) => setReceitaPrevistaSPE(e.target.value)}
-                      placeholder="Ex.: VGV / receita estimada de R$ 12 milhões" style={{ ...inputStyle, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Custos previstos</label>
-                    <input value={custosPrevistosSPE} onChange={(e) => setCustosPrevistosSPE(e.target.value)}
-                      placeholder="Ex.: custo estimado de R$ 7,2 milhões" style={{ ...inputStyle, marginBottom: 10 }} />
-
-                    <label style={labelStyle}>Fase atual</label>
-                    <textarea value={faseProjetoSPE} onChange={(e) => setFaseProjetoSPE(e.target.value)}
-                      placeholder="Ex.: estruturação, aprovação, obras, vendas, conclusão ou encerramento."
-                      rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }} />
-                  </div>
-                )}
-
-                {trilhaHoldingAtiva && (
                   <div
                     style={{
-                      background: "#F7F8FB",
-                      border: "1px solid #E3E7EF",
-                      borderRadius: 12,
-                      padding: 14,
-                      marginBottom: 14,
+                      fontSize: 10,
+                      color: MUTED,
+                      marginTop: 3,
+                    }}
+                  >
+                    por mês
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: WHITE,
+                    border: "1px solid #E3E7EF",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginBottom: 4,
+                    }}
+                  >
+                    TRIBUTOS ESTIMADOS
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 18,
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .tributosMensaisEstimados
+                    ).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })}
+                  </strong>
+
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginTop: 3,
+                    }}
+                  >
+                    por mês
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#FFF3EF",
+                    border: "1px solid #F0C8BD",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#993C1D",
+                      marginBottom: 4,
+                    }}
+                  >
+                    CARGA TRIBUTÁRIA ESTIMADA
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 25,
+                      color: "#993C1D",
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .cargaTributariaEstimada
+                    ).toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                    %
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    background: WHITE,
+                    border: "1px solid #E3E7EF",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: MUTED,
+                      marginBottom: 4,
+                    }}
+                  >
+                    PROJEÇÃO ANUAL DE TRIBUTOS
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 18,
+                    }}
+                  >
+                    {Number(
+                      inteligenciaTributaria
+                        .tributosAnuaisEstimados
+                    ).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })}
+                  </strong>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(230px,1fr))",
+                  gap: 10,
+                  marginBottom: 14,
+                }}
+              >
+                <ListaInterna
+                  titulo="Base da estimativa"
+                  itens={[
+                    `Regime informado: ${
+                      inteligenciaTributaria.regime || "-"
+                    }`,
+                    `Segmento: ${
+                      inteligenciaTributaria.segmento || "-"
+                    }`,
+                    `Categoria: ${
+                      inteligenciaTributaria.categoria || "-"
+                    }`,
+                    `Faixa de faturamento: ${
+                      inteligenciaTributaria.faturamentoFaixa || "-"
+                    }`,
+                    `Confiabilidade: ${
+                      inteligenciaTributaria.confiabilidade ||
+                      "Referencial"
+                    }`,
+                  ]}
+                />
+
+                <ListaInterna
+                  titulo="Critério"
+                  itens={[
+                    inteligenciaTributaria.criterio ||
+                      "Estimativa gerencial.",
+                  ]}
+                />
+              </div>
+
+              <div
+                style={{
+                  background: "#17233D",
+                  color: WHITE,
+                  borderRadius: 12,
+                  padding: 15,
+                  marginTop: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "#FFB7A7",
+                    fontWeight: 900,
+                    letterSpacing: 0.7,
+                    marginBottom: 4,
+                  }}
+                >
+                  REFORMA TRIBUTÁRIA · IMPACTO SETORIAL
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 19,
+                    fontWeight: 800,
+                    marginBottom: 8,
+                  }}
+                >
+                  {inteligenciaTributaria.reforma?.status ||
+                    "A avaliar"}
+                </div>
+
+                <p
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    color: "#E4E9F2",
+                    margin: "0 0 10px",
+                  }}
+                >
+                  {inteligenciaTributaria.reforma
+                    ?.tratamentoSetorial ||
+                    "Tratamento setorial não classificado."}
+                </p>
+
+                <p
+                  style={{
+                    fontSize: 11.5,
+                    lineHeight: 1.55,
+                    color: "#CDD4E0",
+                    margin: 0,
+                  }}
+                >
+                  <strong>Fase 2026:</strong>{" "}
+                  {inteligenciaTributaria.reforma
+                    ?.fase2026 || "-"}
+                </p>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(220px,1fr))",
+                  gap: 10,
+                  marginTop: 12,
+                }}
+              >
+                <ListaInterna
+                  titulo="Fatores favoráveis"
+                  itens={
+                    inteligenciaTributaria.reforma
+                      ?.fatoresFavoraveis
+                  }
+                />
+
+                <ListaInterna
+                  titulo="Fatores de atenção"
+                  itens={
+                    inteligenciaTributaria.reforma
+                      ?.fatoresAtencao
+                  }
+                />
+
+                <ListaInterna
+                  titulo="O que validar antes da conclusão"
+                  itens={
+                    inteligenciaTributaria.reforma
+                      ?.pontosValidar
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  background: "#FFF3EF",
+                  borderLeft: `4px solid ${CORAL}`,
+                  borderRadius: 10,
+                  padding: 12,
+                }}
+              >
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "#993C1D",
+                    marginBottom: 5,
+                  }}
+                >
+                  OPORTUNIDADE CONSULTIVA FINDER
+                </strong>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {inteligenciaTributaria.reforma
+                    ?.oportunidadeFinder ||
+                    "Avaliar necessidade de planejamento tributário individualizado."}
+                </div>
+              </div>
+
+              <p
+                style={{
+                  fontSize: 10,
+                  color: MUTED,
+                  lineHeight: 1.45,
+                  margin: "12px 0 0",
+                  fontStyle: "italic",
+                }}
+              >
+                A carga apresentada é estimativa gerencial e não corresponde
+                à apuração fiscal definitiva. O impacto da Reforma Tributária
+                deve ser validado com faturamento real, composição das
+                receitas, créditos, custos, perfil de clientes e enquadramento
+                legal das operações.
+              </p>
+            </Card>
+          </>
+        )}
+
+        <h2
+          style={
+            tituloSecao
+          }
+        >
+          Diagnóstico por área
+        </h2>
+
+        {areas.length ===
+        0 ? (
+          <Card>
+            Nenhuma análise por área registrada.
+          </Card>
+        ) : (
+          <div
+            style={{
+              display:
+                "flex",
+
+              flexDirection:
+                "column",
+
+              gap:
+                12,
+            }}
+          >
+            {areas.map(
+              (
+                area,
+                index
+              ) => {
+                const info =
+                  scoreInfo(
+                    area.score
+                  );
+
+                return (
+                  <Card
+                    key={
+                      index
+                    }
+                  >
+                    <div
+                      style={{
+                        display:
+                          "flex",
+
+                        justifyContent:
+                          "space-between",
+
+                        gap:
+                          15,
+
+                        marginBottom:
+                          10,
+                      }}
+                    >
+                      <div>
+                        <h3
+                          style={{
+                            margin:
+                              "0 0 4px",
+                          }}
+                        >
+                          {area.area ||
+                            "Área"}
+                        </h3>
+
+                        <div
+                          style={{
+                            fontSize:
+                              10,
+
+                            color:
+                              MUTED,
+                          }}
+                        >
+                          {info.label}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background:
+                            info.bg,
+
+                          color:
+                            info.color,
+
+                          padding:
+                            "7px 10px",
+
+                          borderRadius:
+                            10,
+
+                          fontWeight:
+                            800,
+                        }}
+                      >
+                        {area.score ??
+                          "-"}
+                      </div>
+                    </div>
+
+                    {area.resumo && (
+                      <p
+                        style={{
+                          lineHeight:
+                            1.55,
+                        }}
+                      >
+                        {area.resumo}
+                      </p>
+                    )}
+
+                    <div
+                      style={{
+                        display:
+                          "grid",
+
+                        gridTemplateColumns:
+                          "repeat(auto-fit,minmax(210px,1fr))",
+
+                        gap:
+                          10,
+                      }}
+                    >
+                      <ListaInterna
+                        titulo="Achados"
+                        itens={
+                          area.achados
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Causas prováveis"
+                        itens={
+                          area.causasProvaveis
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Riscos"
+                        itens={
+                          area.riscos
+                        }
+                      />
+
+                      {normalizarLista(
+                        area.pontosFortes
+                      ).length > 0 && (
+                        <ListaInterna
+                          titulo="Pontos fortes"
+                          itens={
+                            area.pontosFortes
+                          }
+                        />
+                      )}
+
+                      <ListaInterna
+                        titulo="Recomendações"
+                        itens={
+                          area.recomendacoes
+                        }
+                      />
+                    </div>
+                  </Card>
+                );
+              }
+            )}
+          </div>
+        )}
+
+        {/* ================================================= */}
+        {/* DOSSIÊ CONSULTIVO FINDER - SOMENTE ADMIN */}
+        {/* ================================================= */}
+
+        <div
+          style={{
+            marginTop: 34,
+            paddingTop: 8,
+            borderTop: "3px solid #17233D",
+          }}
+        >
+          <div
+            style={{
+              color: CORAL,
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 0.8,
+              marginTop: 18,
+            }}
+          >
+            USO INTERNO · FINDER OF SOLUTIONS
+          </div>
+
+          <h2
+            style={{
+              ...tituloSecao,
+              fontSize: 25,
+              marginTop: 6,
+              marginBottom: 5,
+            }}
+          >
+            Dossiê consultivo
+          </h2>
+
+          <p
+            style={{
+              margin: "0 0 18px",
+              color: MUTED,
+              fontSize: 12,
+              lineHeight: 1.55,
+            }}
+          >
+            Camada interna para condução da reunião, validação das hipóteses,
+            priorização da execução e definição da oportunidade comercial.
+          </p>
+        </div>
+
+        <BlocoDossie
+          titulo={`Plano de ação — 30 / 60 / 90 dias · ${estruturaAtualLabel}`}
+          destaque
+        >
+          <Plano90Dias plano={plano90Dias} />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="Quick wins">
+          <ListaDossie itens={quickWins} vazio="Nenhum quick win gerado." />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="KPIs recomendados">
+          <ListaDossie itens={kpisRecomendados} vazio="Nenhum KPI recomendado." />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="Visão do consultor" destaque>
+          <ListaDossie itens={visaoConsultor} vazio="Visão do consultor não gerada." />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="Perguntas para aprofundamento">
+          <ListaDossie
+            itens={perguntasAprofundamento}
+            vazio="Nenhuma pergunta de aprofundamento gerada."
+          />
+        </BlocoDossie>
+
+        <BlocoDossie titulo="Visão comercial Finder">
+          <ListaDossie itens={visaoComercial} vazio="Visão comercial não gerada." />
+        </BlocoDossie>
+
+        {listaFlexivel(lacunasDiagnostico).length > 0 && (
+          <BlocoDossie titulo="Lacunas do diagnóstico">
+            <ListaDossie itens={lacunasDiagnostico} />
+          </BlocoDossie>
+        )}
+
+        {listaFlexivel(oportunidadesConsultoria).length > 0 && (
+          <BlocoDossie titulo="Oportunidades de consultoria">
+            <ListaDossie itens={oportunidadesConsultoria} />
+          </BlocoDossie>
+        )}
+
+        <h2
+          style={
+            tituloSecao
+          }
+        >
+          Perguntas e respostas
+        </h2>
+
+        <Card
+          style={{
+            padding:
+              0,
+
+            overflowX:
+              "auto",
+          }}
+        >
+          <table
+            style={{
+              width:
+                "100%",
+
+              borderCollapse:
+                "collapse",
+
+              minWidth:
+                820,
+            }}
+          >
+            <thead>
+              <tr>
+                <th
+                  style={
+                    thStyle
+                  }
+                >
+                  Área
+                </th>
+
+                <th
+                  style={
+                    thStyle
+                  }
+                >
+                  Tema
+                </th>
+
+                <th
+                  style={
+                    thStyle
+                  }
+                >
+                  Pergunta
+                </th>
+
+                <th
+                  style={
+                    thStyle
+                  }
+                >
+                  Resposta
+                </th>
+
+                <th
+                  style={
+                    thStyle
+                  }
+                >
+                  Peso
+                </th>
+
+                <th
+                  style={
+                    thStyle
+                  }
+                >
+                  Importância
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {perguntas.length ? (
+                perguntas.map(
+                  (
+                    pergunta,
+                    index
+                  ) => (
+                    <tr
+                      key={
+                        index
+                      }
+                    >
+                      <td
+                        style={
+                          tdStyle
+                        }
+                      >
+                        {pergunta.area ||
+                          "-"}
+                      </td>
+
+                      <td
+                        style={
+                          tdStyle
+                        }
+                      >
+                        {pergunta.tema ||
+                          "-"}
+                      </td>
+
+                      <td
+                        style={
+                          tdStyle
+                        }
+                      >
+                        {pergunta.pergunta ||
+                          "-"}
+                      </td>
+
+                      <td
+                        style={{
+                          ...tdStyle,
+
+                          fontWeight:
+                            800,
+                        }}
+                      >
+                        {pergunta.resposta ||
+                          "-"}
+                      </td>
+
+                      <td
+                        style={
+                          tdStyle
+                        }
+                      >
+                        {pergunta.peso ??
+                          "-"}
+                      </td>
+
+                      <td
+                        style={
+                          tdStyle
+                        }
+                      >
+                        {pergunta.importancia ??
+                          "-"}
+                      </td>
+                    </tr>
+                  )
+                )
+              ) : (
+                <tr>
+                  <td
+                    colSpan="6"
+                    style={{
+                      ...tdStyle,
+
+                      textAlign:
+                        "center",
+                    }}
+                  >
+                    Nenhuma pergunta armazenada.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+          </>
+        )}
+
+        {abaRelatorio === "cliente" && (
+          <div>
+            <div
+              style={{
+                marginBottom: 18,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  color: CORAL,
+                  fontWeight: 900,
+                  letterSpacing: 0.7,
+                  marginBottom: 5,
+                }}
+              >
+                RELATÓRIO CONSULTIVO
+              </div>
+
+              <h2
+                style={{
+                  ...tituloSecao,
+                  marginTop: 0,
+                  fontSize: 24,
+                }}
+              >
+                Visão completa para apresentação ao cliente
+              </h2>
+
+              <p
+                style={{
+                  margin: "0 0 12px",
+                  color: MUTED,
+                  fontSize: 12,
+                  lineHeight: 1.55,
+                }}
+              >
+                Esta visão apresenta o diagnóstico técnico e consultivo,
+                sem informações comerciais ou estratégicas internas da Finder.
+              </p>
+            </div>
+
+            {diagnosticoGeral
+              .resumoExecutivo && (
+              <BlocoDossie titulo="Visão executiva" destaque>
+                <p
+                  style={{
+                    margin: 0,
+                    lineHeight: 1.65,
+                    fontSize: 12.5,
+                  }}
+                >
+                  {
+                    diagnosticoGeral
+                      .resumoExecutivo
+                  }
+                </p>
+              </BlocoDossie>
+            )}
+
+            {diagnosticoGeral
+              .alertaEstrategico && (
+              <BlocoDossie titulo="Ponto de atenção estratégico">
+                <p
+                  style={{
+                    margin: 0,
+                    lineHeight: 1.6,
+                    fontSize: 12.5,
+                  }}
+                >
+                  {
+                    diagnosticoGeral
+                      .alertaEstrategico
+                  }
+                </p>
+              </BlocoDossie>
+            )}
+
+            <h2
+              style={
+                tituloSecao
+              }
+            >
+              Análise por departamento
+            </h2>
+
+            {areas.length === 0 ? (
+              <Card>
+                Nenhuma análise por área registrada.
+              </Card>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection:
+                    "column",
+                  gap: 12,
+                }}
+              >
+                {areas.map(
+                  (
+                    area,
+                    index
+                  ) => {
+                    const info =
+                      scoreInfo(
+                        area.score
+                      );
+
+                    return (
+                      <Card
+                        key={
+                          `${area.area}-${index}`
+                        }
+                      >
+                        <div
+                          style={{
+                            display:
+                              "flex",
+                            justifyContent:
+                              "space-between",
+                            gap: 12,
+                            alignItems:
+                              "flex-start",
+                            marginBottom: 10,
+                          }}
+                        >
+                          <div>
+                            <h3
+                              style={{
+                                margin:
+                                  "0 0 3px",
+                              }}
+                            >
+                              {area.area ||
+                                "Área"}
+                            </h3>
+
+                            <div
+                              style={{
+                                fontSize:
+                                  10,
+                                color:
+                                  MUTED,
+                              }}
+                            >
+                              {area.nivel ||
+                                info.label}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              background:
+                                info.bg,
+                              color:
+                                info.color,
+                              borderRadius:
+                                10,
+                              padding:
+                                "7px 10px",
+                              fontWeight:
+                                900,
+                            }}
+                          >
+                            {area.score ??
+                              "-"}
+                          </div>
+                        </div>
+
+                        {area.resumo && (
+                          <p
+                            style={{
+                              lineHeight:
+                                1.55,
+                              margin:
+                                "0 0 10px",
+                              fontSize:
+                                12,
+                            }}
+                          >
+                            {area.resumo}
+                          </p>
+                        )}
+
+                        <div
+                          style={{
+                            display:
+                              "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit,minmax(220px,1fr))",
+                            gap: 10,
+                          }}
+                        >
+                          <ListaInterna
+                            titulo="Pontos identificados"
+                            itens={
+                              area.achados
+                            }
+                          />
+
+                          <ListaInterna
+                            titulo="Riscos"
+                            itens={
+                              area.riscos
+                            }
+                          />
+
+                          {normalizarLista(
+                            area.pontosFortes
+                          ).length > 0 && (
+                            <ListaInterna
+                              titulo="Pontos fortes"
+                              itens={
+                                area.pontosFortes
+                              }
+                            />
+                          )}
+
+                          <ListaInterna
+                            titulo="Recomendações"
+                            itens={
+                              area.recomendacoes
+                            }
+                          />
+                        </div>
+                      </Card>
+                    );
+                  }
+                )}
+              </div>
+            )}
+
+            <BlocoDossie
+              titulo={`Plano de melhoria — 30 / 60 / 90 dias · ${estruturaAtualLabel}`}
+              destaque
+            >
+              <Plano90Dias
+                plano={
+                  plano90Dias
+                }
+              />
+            </BlocoDossie>
+
+            {listaFlexivel(
+              quickWins
+            ).length > 0 && (
+              <BlocoDossie titulo="Ações de curto prazo">
+                <ListaDossie
+                  itens={
+                    quickWins
+                  }
+                />
+              </BlocoDossie>
+            )}
+
+            {listaFlexivel(
+              kpisRecomendados
+            ).length > 0 && (
+              <BlocoDossie titulo="Indicadores recomendados">
+                <ListaDossie
+                  itens={
+                    kpisRecomendados
+                  }
+                />
+              </BlocoDossie>
+            )}
+
+            {inteligenciaTributaria?.disponivel && (
+              <>
+                <h2 style={tituloSecao}>
+                  Inteligência tributária
+                </h2>
+
+                <Card>
+                  <div
+                    style={{
+                      display:
+                        "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit,minmax(190px,1fr))",
+                      gap: 10,
                     }}
                   >
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        marginBottom: 5,
+                        background:
+                          "#F7F8FB",
+                        borderRadius:
+                          10,
+                        padding: 12,
                       }}
                     >
-                      <Building2
-                        size={16}
-                        color={CORAL}
-                      />
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          marginBottom: 4,
+                        }}
+                      >
+                        FATURAMENTO DE REFERÊNCIA
+                      </div>
 
                       <strong
                         style={{
-                          fontSize: 13,
-                          color: NAVY,
+                          fontSize: 18,
                         }}
                       >
-                        {avaliarHoldingAtiva
-                          ? "Avaliação de viabilidade de Holding"
-                          : "Trilha especializada de Holding"}
+                        {Number(
+                          inteligenciaTributaria
+                            .faturamentoMensalReferencia
+                        ).toLocaleString(
+                          "pt-BR",
+                          {
+                            style:
+                              "currency",
+                            currency:
+                              "BRL",
+                            maximumFractionDigits:
+                              0,
+                          }
+                        )}
                       </strong>
                     </div>
 
-                    <p
-                      style={{
-                        fontSize: 10.7,
-                        color: MUTED,
-                        margin: "0 0 13px",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {avaliarHoldingAtiva
-                        ? "Você ainda não precisa saber qual tipo de holding seria adequado. Informe seus objetivos e, se souber, algumas características do patrimônio. O diagnóstico fará perguntas para avaliar se a estrutura faz sentido e qual caminho merece estudo."
-                        : "Selecione as características que mais se aproximam da estrutura atual. Essas respostas serão usadas para gerar perguntas específicas de patrimônio, sucessão, tributação, governança e participações."}
-                    </p>
-
-                    <label style={labelStyle}>
-                      {avaliarHoldingAtiva
-                        ? "Tipo de holding, se você já tiver alguma hipótese (opcional)"
-                        : "Tipo ou finalidade da holding"}
-                    </label>
-
                     <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 7,
-                        marginBottom: 14,
+                        background:
+                          "#FFF3EF",
+                        borderRadius:
+                          10,
+                        padding: 12,
                       }}
                     >
-                      {TIPOS_HOLDING.map(
-                        (tipo) => {
-                          const selecionado =
-                            tiposHolding.includes(
-                              tipo.id
-                            );
-
-                          return (
-                            <button
-                              key={tipo.id}
-                              type="button"
-                              title={
-                                tipo.descricao
-                              }
-                              onClick={() =>
-                                toggleTipoHolding(
-                                  tipo.id
-                                )
-                              }
-                              style={{
-                                ...chipStyle(
-                                  selecionado
-                                ),
-                                width: "100%",
-                                minHeight: 48,
-                                textAlign: "left",
-                              }}
-                            >
-                              {tipo.label}
-                            </button>
-                          );
-                        }
-                      )}
-                    </div>
-
-                    <label style={labelStyle}>
-                      O que você pretende resolver com essa estrutura?
-                    </label>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 7,
-                        marginBottom: 14,
-                      }}
-                    >
-                      {OBJETIVOS_HOLDING.map(
-                        (objetivo) => (
-                          <button
-                            key={objetivo}
-                            type="button"
-                            onClick={() =>
-                              toggleObjetivoHolding(
-                                objetivo
-                              )
-                            }
-                            style={{
-                              ...chipStyle(
-                                objetivosHolding.includes(
-                                  objetivo
-                                )
-                              ),
-                              width: "100%",
-                              minHeight: 44,
-                              textAlign: "left",
-                            }}
-                          >
-                            {objetivo}
-                          </button>
-                        )
-                      )}
-                    </div>
-
-                    <label style={labelStyle}>
-                      Patrimônio aproximado / principais ativos
-                    </label>
-
-                    <textarea
-                      value={
-                        patrimonioHolding
-                      }
-                      onChange={(e) =>
-                        setPatrimonioHolding(
-                          e.target.value
-                        )
-                      }
-                      placeholder="Ex.: 6 imóveis, participação em 2 empresas, veículos e aplicações."
-                      rows={2}
-                      style={{
-                        ...inputStyle,
-                        resize: "vertical",
-                        fontFamily: BODY_FONT,
-                        marginBottom: 10,
-                      }}
-                    />
-
-                    <label style={labelStyle}>
-                      Receitas patrimoniais ou imobiliárias
-                    </label>
-
-                    <textarea
-                      value={
-                        receitasHolding
-                      }
-                      onChange={(e) =>
-                        setReceitasHolding(
-                          e.target.value
-                        )
-                      }
-                      placeholder="Ex.: aluguéis, dividendos, venda eventual de imóveis ou outras receitas."
-                      rows={2}
-                      style={{
-                        ...inputStyle,
-                        resize: "vertical",
-                        fontFamily: BODY_FONT,
-                        marginBottom: 10,
-                      }}
-                    />
-
-                    <label style={labelStyle}>
-                      Situação sucessória / familiar
-                    </label>
-
-                    <textarea
-                      value={
-                        sucessaoHolding
-                      }
-                      onChange={(e) =>
-                        setSucessaoHolding(
-                          e.target.value
-                        )
-                      }
-                      placeholder="Ex.: herdeiros, doação de quotas, usufruto, regras de administração ou sucessão ainda não planejada."
-                      rows={2}
-                      style={{
-                        ...inputStyle,
-                        resize: "vertical",
-                        fontFamily: BODY_FONT,
-                      }}
-                    />
-                  </div>
-                )}
-
-                <div style={{ flex: 1 }} />
-
-                <PrimaryButton
-                  disabled={
-                    !estruturaNegocio ||
-                    (
-                      estruturaNegocio === "holding" &&
-                      (
-                        tiposHolding.length === 0 ||
-                        objetivosHolding.length === 0
-                      )
-                    ) ||
-                    (
-                      avaliarHoldingAtiva &&
-                      objetivosHolding.length === 0
-                    ) ||
-                    (
-                      trilhaPFAtiva &&
-                      objetivosPF.length === 0
-                    ) ||
-                    (
-                      trilhaGrupoAtiva &&
-                      (
-                        !nomeGrupo.trim() ||
-                        !funcaoEmpresasGrupo.trim()
-                      )
-                    ) ||
-                    (
-                      trilhaSPEAtiva &&
-                      (
-                        !speConstituida ||
-                        !nomeProjetoSPE.trim() ||
-                        !finalidadeSPE.trim()
-                      )
-                    )
-                  }
-                  onClick={() => {
-                    if (trilhaPFAtiva || avaliarHoldingAtiva) {
-                      setStep("dor");
-                      return;
-                    }
-
-                    if (trilhaSPEAtiva && speConstituida !== "sim") {
-                      setStep("dor");
-                      return;
-                    }
-
-                    setStep("cnpj");
-                  }}
-                >
-                  Continuar
-                  <ArrowRight size={16} />
-                </PrimaryButton>
-              </div>
-            )}
-
-            {step === "cnpj" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <p
-                  style={{
-                    fontFamily: DISPLAY_FONT,
-                    fontSize: 20,
-                    fontWeight: 700,
-                    color: NAVY,
-                    margin: "6px 0 4px",
-                  }}
-                >
-                  {estruturaNegocio === "holding"
-                    ? "CNPJ da holding"
-                    : estruturaNegocio === "grupo"
-                    ? "CNPJs do grupo empresarial"
-                    : estruturaNegocio === "spe"
-                    ? "CNPJ da SPE"
-                    : "CNPJ da empresa"}
-                </p>
-
-                <p
-                  style={{
-                    fontSize: 12.5,
-                    color: MUTED,
-                    margin: "0 0 14px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {estruturaNegocio === "holding"
-                    ? "Informe o CNPJ da holding existente. Os dados cadastrais serão cruzados com patrimônio, participações, receitas, governança e sucessão."
-                    : estruturaNegocio === "grupo"
-                    ? `Adicione a empresa-base e, se necessário, outras empresas do grupo. Você pode adicionar até ${MAX_EMPRESAS} CNPJs.`
-                    : "Adicione o CNPJ que será a base do diagnóstico."}
-                </p>
-
-                <label style={labelStyle}>CNPJ</label>
-                <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                  <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="00.000.000/0001-00" value={cnpjInput}
-                    onChange={(e) => setCnpjInput(e.target.value)} />
-                </div>
-                <button onClick={adicionarCnpj} disabled={!cnpjInput || buscando || empresas.length >= MAX_EMPRESAS} style={{
-                  ...chipStyle(false), width: "100%", marginTop: 8, marginBottom: 14, display: "flex",
-                  alignItems: "center", justifyContent: "center", gap: 8,
-                  opacity: (!cnpjInput || empresas.length >= MAX_EMPRESAS) ? 0.5 : 1,
-                }}>
-                  {buscando ? <Loader2 size={15} className="spin" /> : <Plus size={15} />}
-                  {buscando ? "Buscando dados..." : empresas.length >= MAX_EMPRESAS ? `Limite de ${MAX_EMPRESAS} CNPJs` : "Adicionar CNPJ"}
-                </button>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 300 }}>
-                  {empresas.map((e, i) => (
-                    <div key={i} style={{ background: ICE, borderRadius: 12, padding: 12, position: "relative" }}>
-                      <button onClick={() => removerEmpresa(i)} style={{
-                        position: "absolute", top: 10, right: 10, background: "none", border: "none", cursor: "pointer", color: MUTED,
-                      }}><X size={14} /></button>
-                      <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 22px 4px 0" }}>{e.razao}</p>
-                      <p style={{ fontSize: 11, color: MUTED, margin: "0 0 2px" }}>{e.cnae}</p>
-                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                        <span style={badgeStyle}>{e.categoria || e.segmento}</span>
-                        <span style={badgeStyle}>{e.porte}</span>
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color:
+                            "#993C1D",
+                          marginBottom: 4,
+                        }}
+                      >
+                        CARGA TRIBUTÁRIA ESTIMADA
                       </div>
+
+                      <strong
+                        style={{
+                          fontSize: 22,
+                          color:
+                            "#993C1D",
+                        }}
+                      >
+                        {Number(
+                          inteligenciaTributaria
+                            .cargaTributariaEstimada
+                        ).toLocaleString(
+                          "pt-BR",
+                          {
+                            minimumFractionDigits:
+                              2,
+                            maximumFractionDigits:
+                              2,
+                          }
+                        )}
+                        %
+                      </strong>
                     </div>
-                  ))}
-                </div>
 
+                    <div
+                      style={{
+                        background:
+                          "#F7F8FB",
+                        borderRadius:
+                          10,
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          color: MUTED,
+                          marginBottom: 4,
+                        }}
+                      >
+                        TRIBUTOS MENSAIS ESTIMADOS
+                      </div>
 
-                {empresaPrincipal && cnaesEmpresa.length > 0 && (
+                      <strong
+                        style={{
+                          fontSize: 18,
+                        }}
+                      >
+                        {Number(
+                          inteligenciaTributaria
+                            .tributosMensaisEstimados
+                        ).toLocaleString(
+                          "pt-BR",
+                          {
+                            style:
+                              "currency",
+                            currency:
+                              "BRL",
+                            maximumFractionDigits:
+                              0,
+                          }
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+
                   <div
                     style={{
-                      background: "#F7F8FB",
-                      border: "1px solid #E1E5EC",
-                      borderRadius: 12,
-                      padding: 12,
                       marginTop: 12,
-                      marginBottom: 12,
+                      background:
+                        NAVY,
+                      color: WHITE,
+                      borderRadius: 10,
+                      padding: 14,
                     }}
                   >
-                    <p
+                    <strong
                       style={{
-                        fontFamily: DISPLAY_FONT,
-                        fontSize: 16,
-                        fontWeight: 700,
-                        color: NAVY,
-                        margin: "0 0 5px",
+                        display:
+                          "block",
+                        marginBottom: 6,
                       }}
                     >
-                      Atividades da empresa-base
-                    </p>
-
-                    <p
-                      style={{
-                        fontSize: 11.5,
-                        color: MUTED,
-                        lineHeight: 1.45,
-                        margin: "0 0 10px",
-                      }}
-                    >
-                      Marque as atividades que a empresa realmente exerce. Depois escolha qual delas representa hoje a maior parte da operação, faturamento ou esforço da empresa.
-                    </p>
+                      Reforma Tributária
+                    </strong>
 
                     <div
                       style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 7,
+                        fontSize: 12,
+                        lineHeight: 1.6,
+                        color:
+                          "#E5EAF3",
                       }}
                     >
-                      {cnaesEmpresa.map((atividade) => {
-                        const codigo =
-                          String(atividade.codigo || "");
-
-                        const selecionada =
-                          atividadesSelecionadas.includes(
-                            codigo
-                          );
-
-                        return (
-                          <label
-                            key={`${codigo}-${atividade.descricao}`}
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              alignItems: "flex-start",
-
-                              background:
-                                selecionada
-                                  ? "#FFF3EF"
-                                  : "#FFFFFF",
-
-                              border:
-                                selecionada
-                                  ? `1px solid ${CORAL}`
-                                  : "1px solid #E1E5EC",
-
-                              borderRadius: 9,
-                              padding: 9,
-                              cursor: "pointer",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-
-                              checked={
-                                selecionada
-                              }
-
-                              onChange={() => {
-                                setAtividadesSelecionadas(
-                                  (prev) => {
-                                    if (selecionada) {
-                                      const novas =
-                                        prev.filter(
-                                          (item) =>
-                                            item !== codigo
-                                        );
-
-                                      if (
-                                        String(
-                                          atividadePredominante
-                                            ?.codigo ||
-                                          ""
-                                        ) ===
-                                        codigo
-                                      ) {
-                                        const proxima =
-                                          cnaesEmpresa.find(
-                                            (item) =>
-                                              novas.includes(
-                                                String(
-                                                  item.codigo
-                                                )
-                                              )
-                                          );
-
-                                        setAtividadePredominante(
-                                          proxima ||
-                                          null
-                                        );
-                                      }
-
-                                      return novas;
-                                    }
-
-                                    const novas = [
-                                      ...prev,
-                                      codigo,
-                                    ];
-
-                                    if (!atividadePredominante) {
-                                      setAtividadePredominante(
-                                        atividade
-                                      );
-                                    }
-
-                                    return novas;
-                                  }
-                                );
-                              }}
-
-                              style={{
-                                marginTop: 2,
-                              }}
-                            />
-
-                            <span
-                              style={{
-                                fontSize: 11.3,
-                                color: NAVY,
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              <strong>
-                                {codigo || "Sem código"}
-                              </strong>
-
-                              {" — "}
-
-                              {
-                                atividade.descricao ||
-                                "Descrição não informada"
-                              }
-
-                              {atividade.principal && (
-                                <span
-                                  style={{
-                                    display: "inline-block",
-                                    marginLeft: 6,
-                                    padding: "2px 5px",
-                                    borderRadius: 5,
-                                    background: "#FFE8DF",
-                                    color: CORAL,
-                                    fontSize: 9,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  CNAE principal cadastrado
-                                </span>
-                              )}
-                            </span>
-                          </label>
-                        );
-                      })}
+                      {inteligenciaTributaria
+                        .reforma
+                        ?.tratamentoSetorial ||
+                        inteligenciaTributaria
+                          .reforma
+                          ?.status ||
+                        "Impacto setorial em avaliação."}
                     </div>
+                  </div>
 
-                    {atividadesSelecionadasObjetos.length > 0 && (
-                      <div
+                  <p
+                    style={{
+                      margin:
+                        "12px 0 0",
+                      color: MUTED,
+                      fontSize: 10,
+                      lineHeight: 1.45,
+                      fontStyle:
+                        "italic",
+                    }}
+                  >
+                    Os valores tributários apresentados são estimativas gerenciais e
+                    devem ser validados com dados fiscais e contábeis completos antes
+                    de qualquer decisão definitiva.
+                  </p>
+                </Card>
+              </>
+            )}
+          </div>
+        )}
+
+        {abaRelatorio === "equipe" && (
+          <div>
+            <div
+              style={{
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  color: CORAL,
+                  fontSize: 11,
+                  fontWeight: 900,
+                  letterSpacing: 0.7,
+                  marginBottom: 5,
+                }}
+              >
+                RELATÓRIO TÉCNICO
+              </div>
+
+              <h2
+                style={{
+                  ...tituloSecao,
+                  marginTop: 0,
+                  fontSize: 24,
+                }}
+              >
+                Visão por departamento
+              </h2>
+
+              <p
+                style={{
+                  margin:
+                    "0 0 12px",
+                  color: MUTED,
+                  fontSize: 12,
+                  lineHeight: 1.55,
+                }}
+              >
+                Selecione o departamento para visualizar apenas as informações
+                técnicas necessárias ao especialista responsável.
+              </p>
+            </div>
+
+            {carregandoEquipe ? (
+              <Card>
+                Carregando relatório da equipe...
+              </Card>
+            ) : atendimentosEquipe.length === 0 ? (
+              <Card>
+                Este diagnóstico ainda não possui atendimentos departamentais vinculados.
+              </Card>
+            ) : (
+              <>
+                <Card
+                  style={{
+                    marginBottom: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(220px,1fr) minmax(220px,1fr)",
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <label
                         style={{
-                          marginTop: 14,
-                          paddingTop: 12,
-                          borderTop: "1px solid #D8DEEA",
+                          display: "block",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          marginBottom: 5,
                         }}
                       >
-                        <p
-                          style={{
-                            fontFamily: DISPLAY_FONT,
-                            fontSize: 14.5,
-                            fontWeight: 700,
-                            color: NAVY,
-                            margin: "0 0 4px",
-                          }}
-                        >
-                          Qual atividade é predominante na prática?
-                        </p>
+                        DEPARTAMENTO
+                      </label>
 
-                        <p
-                          style={{
-                            fontSize: 10.8,
-                            color: MUTED,
-                            lineHeight: 1.4,
-                            margin: "0 0 8px",
-                          }}
-                        >
-                          Essa escolha definirá o segmento, a categoria e a base das perguntas do diagnóstico.
-                        </p>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 6,
-                          }}
-                        >
-                          {atividadesSelecionadasObjetos.map(
-                            (atividade) => {
-                              const codigo =
-                                String(
-                                  atividade.codigo ||
-                                  ""
-                                );
-
-                              const predominante =
-                                String(
-                                  atividadePredominante
-                                    ?.codigo ||
-                                  ""
-                                ) ===
-                                codigo;
-
-                              return (
-                                <label
-                                  key={`pred-${codigo}-${atividade.descricao}`}
-                                  style={{
-                                    display: "flex",
-                                    gap: 8,
-                                    alignItems: "flex-start",
-                                    cursor: "pointer",
-                                    fontSize: 11.3,
-                                    color: NAVY,
-                                    padding: 8,
-                                    borderRadius: 8,
-
-                                    background:
-                                      predominante
-                                        ? "#EEF3FF"
-                                        : "#FFFFFF",
-
-                                    border:
-                                      predominante
-                                        ? "1px solid #6783C4"
-                                        : "1px solid #E1E5EC",
-                                  }}
-                                >
-                                  <input
-                                    type="radio"
-                                    name="atividadePredominante"
-
-                                    checked={
-                                      predominante
-                                    }
-
-                                    onChange={() =>
-                                      setAtividadePredominante(
-                                        atividade
-                                      )
-                                    }
-
-                                    style={{
-                                      marginTop: 2,
-                                    }}
-                                  />
-
-                                  <span>
-                                    <strong>
-                                      {codigo}
-                                    </strong>
-
-                                    {" — "}
-
-                                    {
-                                      atividade.descricao
-                                    }
-                                  </span>
-                                </label>
-                              );
-                            }
-                          )}
-                        </div>
-
-                        {atividadePredominante && (
-                          <div
-                            style={{
-                              marginTop: 10,
-                              padding: 9,
-                              borderRadius: 8,
-                              background: "#EEF8F3",
-                              border: "1px solid #C9E8D8",
-                            }}
-                          >
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: 10.8,
-                                lineHeight: 1.5,
-                                color: NAVY,
-                              }}
+                      <select
+                        value={
+                          atendimentoEquipeSelecionado?.area ||
+                          areaEquipe
+                        }
+                        onChange={(e) =>
+                          setAreaEquipe(
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          border:
+                            "1px solid #D8DEEA",
+                          borderRadius: 9,
+                          padding:
+                            "10px 11px",
+                          background:
+                            WHITE,
+                        }}
+                      >
+                        {areasEquipeDisponiveis.map(
+                          (area) => (
+                            <option
+                              key={area}
+                              value={area}
                             >
-                              <strong>
-                                Base do diagnóstico:
-                              </strong>{" "}
-                              {
-                                atividadePredominante
-                                  .descricao
-                              }
-
-                              <br />
-
-                              <strong>
-                                Segmento:
-                              </strong>{" "}
-                              {
-                                segmentoPredominante ||
-                                "-"
-                              }
-
-                              <br />
-
-                              <strong>
-                                Categoria:
-                              </strong>{" "}
-                              {
-                                categoriaPrincipal ||
-                                "-"
-                              }
-                            </p>
-                          </div>
+                              {area}
+                            </option>
+                          )
                         )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          marginBottom: 5,
+                        }}
+                      >
+                        RESPONSÁVEL
                       </div>
-                    )}
-                  </div>
-                )}
 
-                {empresaPrincipal && (
-                  <div style={{ marginTop: 12 }}>
-                    <label style={labelStyle}>
-                      Descreva brevemente o que seu negócio realmente faz
-                    </label>
-                    <textarea
-                      value={descricaoNegocio}
-                      onChange={(e) => setDescricaoNegocio(e.target.value)}
-                      placeholder={
-                        trilhaHoldingAtiva
-                          ? "Ex.: A holding concentra imóveis de locação e participações em duas empresas da família. Hoje a principal preocupação é organizar sucessão, tributação e regras entre os herdeiros."
-                          : empresas.length > 1
-                          ? "Ex.: A empresa A fabrica churrasqueiras metálicas e a empresa B realiza a comercialização e instalação dos produtos."
-                          : "Ex.: Fabricamos churrasqueiras metálicas, com modelos de linha e projetos sob medida, vendendo para consumidor final, lojistas e construtoras."
-                      }
-                      rows={4}
-                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 6 }}
-                    />
-                    <p style={{ fontSize: 10.5, color: MUTED, margin: "0 0 8px", lineHeight: 1.4 }}>
-                      {trilhaHoldingAtiva
-                        ? "Não se limite ao CNAE. Explique quais bens, imóveis ou participações a estrutura possui ou pretende possuir, de onde vêm as receitas e qual é o objetivo da holding."
-                        : "Não se limite ao CNAE. Explique o que vocês produzem, vendem ou entregam, para quem e como a operação funciona."}
-                    </p>
-                  </div>
-                )}
-
-                {empresas.length > 1 && (
-                  <p style={{ fontSize: 11, color: CORAL, fontWeight: 600, margin: "10px 0 0" }}>
-                    Segmento predominante do grupo: {segmentoPredominante}
-                  </p>
-                )}
-
-                <div style={{ flex: 1, minHeight: 10 }} />
-                <PrimaryButton
-                  disabled={
-                    empresas.length === 0 ||
-                    atividadesSelecionadas.length === 0 ||
-                    !atividadePredominante ||
-                    descricaoNegocio.trim().length < 20
-                  }
-                  onClick={() => setStep("porte")}
-                >
-                  Continuar <ArrowRight size={16} />
-                </PrimaryButton>
-              </div>
-            )}
-
-            {step === "porte" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: NAVY, margin: "6px 0 4px" }}>Alguns números da empresa</p>
-                <p style={{ fontSize: 12.5, color: MUTED, margin: "0 0 16px" }}>Isso deixa o diagnóstico mais preciso, inclusive na parte tributária.</p>
-
-                <label style={labelStyle}>Faturamento médio (do grupo)</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
-                  {FATURAMENTOS.map((f) => (
-                    <button key={f.id} onClick={() => setFaturamento(f)} style={{ ...chipStyle(faturamento?.id === f.id), width: "100%" }}>{f.label}</button>
-                  ))}
-                </div>
-
-                <label style={labelStyle}>Número de colaboradores</label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
-                  {COLABORADORES.map((c) => (
-                    <button key={c} onClick={() => setColaboradores(c)} style={chipStyle(colaboradores === c)}>{c}</button>
-                  ))}
-                </div>
-
-                <label style={labelStyle}>Regime tributário</label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
-                  {REGIMES.map((r) => (
-                    <button key={r} onClick={() => setRegime(r)} style={chipStyle(regime === r)}>{r}</button>
-                  ))}
-                </div>
-
-                <label style={labelStyle}>Observação (opcional)</label>
-                <textarea
-                  value={observacao}
-                  onChange={(e) => setObservacao(e.target.value)}
-                  placeholder="Algum ponto que queira destacar sobre o seu negócio?"
-                  rows={3}
-                  style={{ ...inputStyle, resize: "none", fontFamily: BODY_FONT }}
-                />
-
-                <div style={{ flex: 1, minHeight: 4 }} />
-                <PrimaryButton disabled={!faturamento || !colaboradores || !regime} onClick={() => setStep("dor")}>
-                  Continuar <ArrowRight size={16} />
-                </PrimaryButton>
-              </div>
-            )}
-
-            {step === "dor" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div>
-                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "6px 0 5px" }}>
-                    {trilhaHoldingAtiva
-                      ? "Vamos entender os pontos críticos da holding"
-                      : trilhaPFAtiva
-                      ? "Vamos entender sua vida financeira"
-                      : "Vamos entender sua principal dor"}
-                  </p>
-                  <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5, margin: 0 }}>
-                    {trilhaHoldingAtiva
-                      ? "Essas respostas serão cruzadas com patrimônio, finalidade da holding, CNAEs, sucessão e estrutura societária para gerar perguntas específicas."
-                      : trilhaPFAtiva
-                      ? "As respostas serão cruzadas com os objetivos escolhidos para que o diagnóstico e os próximos passos sejam personalizados."
-                      : "Essas respostas serão cruzadas com o CNAE e com o checklist para tornar o relatório mais específico."}
-                  </p>
-                </div>
-
-                <div>
-                  <p style={{ ...labelStyle, fontSize: 12, marginBottom: 5 }}>
-                    {trilhaHoldingAtiva
-                      ? "Quais situações mais preocupam na holding ou no patrimônio hoje?"
-                      : trilhaPFAtiva
-                      ? "Quais situações mais incomodam sua vida financeira hoje?"
-                      : "Quais problemas mais incomodam sua empresa hoje?"}
-                  </p>
-
-                  <p style={{ fontSize: 10.8, color: MUTED, lineHeight: 1.4, margin: "0 0 9px" }}>
-                    Você pode selecionar mais de uma opção. A análise vai cruzar essas dores com as respostas do diagnóstico.
-                  </p>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {doresDisponiveis.map((item) => {
-                      const selecionada = doresSelecionadas.includes(item);
-
-                      return (
-                        <button
-                          key={item}
-                          type="button"
-                          onClick={() => toggleDorSelecionada(item)}
-                          style={{
-                            border: selecionada ? `2px solid ${CORAL}` : "1px solid #D8DEEA",
-                            background: selecionada ? "#FFF3EF" : "#FFFFFF",
-                            color: NAVY,
-                            borderRadius: 10,
-                            padding: "10px 9px",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: 11.3,
-                            fontWeight: selecionada ? 700 : 500,
-                          }}
-                        >
-                          {selecionada ? "✓ " : ""}{item}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {doresSelecionadas.length > 0 && (
-                    <p style={{ fontSize: 10.5, color: CORAL, fontWeight: 700, margin: "8px 0 0" }}>
-                      {doresSelecionadas.length} problema(s) selecionado(s)
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    {trilhaHoldingAtiva
-                      ? "Qual decisão ou problema patrimonial você gostaria de resolver primeiro?"
-                      : trilhaPFAtiva
-                      ? "Qual objetivo financeiro você gostaria de priorizar agora?"
-                      : "Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?"}
-                  </label>
-
-                  <textarea
-                    value={dor90Dias}
-                    onChange={(e) => setDor90Dias(e.target.value)}
-                    placeholder={
-                      trilhaHoldingAtiva
-                        ? "Ex.: definir se vale a pena integralizar os imóveis; organizar sucessão; revisar tributação dos aluguéis; estruturar regras entre os herdeiros..."
-                        : trilhaPFAtiva
-                        ? "Ex.: organizar meu orçamento; quitar dívidas; formar reserva; começar a investir; planejar aposentadoria..."
-                        : "Ex.: aumentar vendas; descobrir por que o caixa não sobra; reduzir retrabalho..."
-                    }
-                    rows={3}
-                    style={{
-                      width: "100%",
-                      border: "1px solid #D8DEEA",
-                      borderRadius: 10,
-                      padding: "11px 12px",
-                      resize: "vertical",
-                      fontFamily: "inherit",
-                      fontSize: 12,
-                      color: NAVY,
-                      outline: "none",
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <p style={{ ...labelStyle, marginBottom: 8 }}>
-                    {trilhaPFAtiva
-                      ? "Como esse problema está afetando sua vida financeira?"
-                      : trilhaHoldingAtiva
-                      ? "Qual impacto essa situação está causando no patrimônio ou na estrutura?"
-                      : "Qual impacto esse problema está causando?"}
-                  </p>
-
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                    {impactosDisponiveis.map((impacto) => {
-                      const ativo = impactosDor.includes(impacto);
-
-                      return (
-                        <button
-                          key={impacto}
-                          type="button"
-                          onClick={() =>
-                            setImpactosDor((prev) =>
-                              ativo ? prev.filter((x) => x !== impacto) : [...prev, impacto]
-                            )
-                          }
-                          style={{
-                            border: ativo ? `1px solid ${CORAL}` : "1px solid #D8DEEA",
-                            background: ativo ? "#FFF3EF" : "#FFFFFF",
-                            color: NAVY,
-                            borderRadius: 999,
-                            padding: "7px 10px",
-                            fontSize: 10.7,
-                            fontWeight: ativo ? 700 : 500,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {impacto}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ borderTop: "1px solid #E6E9EF", paddingTop: 14 }}>
-                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: "0 0 4px" }}>
-                    {trilhaHoldingAtiva
-                      ? "Quais frentes patrimoniais merecem mais atenção?"
-                      : trilhaPFAtiva
-                      ? "Quais áreas da sua vida financeira merecem mais atenção?"
-                      : trilhaGrupoAtiva
-                      ? "Quais frentes do grupo empresarial merecem mais atenção?"
-                      : trilhaSPEAtiva
-                      ? "Quais frentes da SPE merecem mais atenção?"
-                      : "Quais áreas merecem mais atenção?"}
-                  </p>
-
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color:
-                        dores.length ===
-                        MAX_DORES
-                          ? CORAL
-                          : "#9AA3B5",
-                      margin:
-                        "0 0 4px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Escolha até {MAX_DORES} prioridades · {dores.length} selecionada(s)
-                  </p>
-
-                  <p
-                    style={{
-                      fontSize: 10.3,
-                      color: MUTED,
-                      margin:
-                        "0 0 10px",
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    O diagnóstico avaliará todas as frentes da estrutura. As opções marcadas receberão perguntas mais profundas.
-                  </p>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {areasDaEstrutura.map(({ id, label, Icon }) => {
-                      const selecionada = dores.includes(id);
-                      const bloqueada = !selecionada && dores.length >= MAX_DORES;
-
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          disabled={bloqueada}
-                          onClick={() =>
-                            setDores((prev) =>
-                              selecionada
-                                ? prev.filter((x) => x !== id)
-                                : [...prev, id]
-                            )
-                          }
-                          style={{
-                            border: selecionada ? `2px solid ${CORAL}` : "1px solid #D8DEEA",
-                            background: selecionada ? "#FFF3EF" : "#FFFFFF",
-                            color: bloqueada ? "#B5BCC8" : NAVY,
-                            borderRadius: 10,
-                            padding: "10px 9px",
-                            display: "flex",
-                            gap: 7,
-                            alignItems: "center",
-                            cursor: bloqueada ? "not-allowed" : "pointer",
-                            fontSize: 11.2,
-                            fontWeight: selecionada ? 700 : 500,
-                          }}
-                        >
-                          <Icon size={15} />
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <PrimaryButton
-                  disabled={doresSelecionadas.length === 0 || !dor90Dias.trim() || dores.length === 0 || gerandoPerguntas}
-                  onClick={gerarPerguntasPersonalizadas}
-                >
-                  <Sparkles size={16} /> Gerar perguntas personalizadas
-                </PrimaryButton>
-              </div>
-            )}
-
-            
-
-            {step === "gerandoPerguntas" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 14 }}>
-                <Loader2 size={34} color={CORAL} className="spin" />
-                <div>
-                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 700, color: NAVY, margin: "0 0 6px" }}>
-                    {trilhaPFAtiva
-                      ? "Entendendo sua vida financeira"
-                      : trilhaHoldingAtiva
-                      ? "Entendendo sua estrutura patrimonial"
-                      : "Entendendo o seu negócio"}
-                  </p>
-                  <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, maxWidth: 360, margin: 0 }}>
-                    {trilhaPFAtiva
-                      ? "Cruzando seus objetivos, renda, gastos, reserva, dores e áreas selecionadas para montar perguntas específicas."
-                      : trilhaHoldingAtiva
-                      ? "Cruzando objetivos patrimoniais, bens, receitas, sucessão, dores e áreas selecionadas para montar perguntas específicas."
-                      : "Cruzando CNAEs, atividade informada, descrição do negócio, dores e departamentos selecionados para montar perguntas específicas."}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {step === "confirmarNegocio" && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
-                <div>
-                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 700, color: NAVY, margin: "6px 0 5px" }}>
-                    {trilhaPFAtiva
-                      ? "Foi assim que entendemos sua situação financeira"
-                      : trilhaHoldingAtiva
-                      ? (
-                          avaliarHoldingAtiva
-                            ? "Foi assim que entendemos sua necessidade de avaliar uma holding"
-                            : "Foi assim que entendemos sua estrutura patrimonial"
-                        )
-                      : "Foi assim que entendemos seu negócio"}
-                  </p>
-                  <p style={{ fontSize: 12, color: MUTED, margin: 0, lineHeight: 1.5 }}>
-                    {trilhaPFAtiva
-                      ? "Confirme antes de responder. Se algo não representar sua realidade financeira, volte e ajuste suas escolhas."
-                      : trilhaHoldingAtiva
-                      ? "Confirme antes de responder. Se algo não representar seu patrimônio ou objetivo, volte e ajuste as informações."
-                      : "Confirme antes de responder. Se a interpretação estiver errada, ajuste a descrição e gere novamente."}
-                  </p>
-                </div>
-
-                {trilhaPFAtiva ? (
-                  <div style={{ background: "#EEF8F3", border: "1px solid #C9E8D8", borderRadius: 12, padding: 13 }}>
-                    <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 0 7px" }}>
-                      Consultoria financeira pessoal
-                    </p>
-                    <p style={{ fontSize: 11.2, color: MUTED, margin: "0 0 6px", lineHeight: 1.5 }}>
-                      <strong>Objetivos:</strong> {objetivosPF
-                        .map((id) => OBJETIVOS_PF.find((item) => item.id === id)?.label)
-                        .filter(Boolean)
-                        .join(" · ") || "Diagnóstico financeiro geral"}
-                    </p>
-                    <p style={{ fontSize: 11.2, color: MUTED, margin: 0, lineHeight: 1.5 }}>
-                      <strong>Prioridade declarada:</strong> {dor90Dias || "Não informada"}
-                    </p>
-                  </div>
-                ) : trilhaHoldingAtiva ? (
-                  <div style={{ background: "#EEF8F3", border: "1px solid #C9E8D8", borderRadius: 12, padding: 13 }}>
-                    <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 0 7px" }}>
-                      {avaliarHoldingAtiva ? "Avaliação de viabilidade de Holding" : "Holding / Estrutura patrimonial"}
-                    </p>
-                    <p style={{ fontSize: 11.2, color: MUTED, margin: "0 0 6px", lineHeight: 1.5 }}>
-                      <strong>Objetivos:</strong> {objetivosHolding.join(" · ") || "Avaliação patrimonial geral"}
-                    </p>
-                    {tiposHolding.length > 0 && (
-                      <p style={{ fontSize: 11.2, color: MUTED, margin: "0 0 6px", lineHeight: 1.5 }}>
-                        <strong>Hipótese de estrutura:</strong> {tiposHolding
-                          .map((id) => TIPOS_HOLDING.find((item) => item.id === id)?.label)
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    )}
-                    <p style={{ fontSize: 11.2, color: MUTED, margin: 0, lineHeight: 1.5 }}>
-                      <strong>Prioridade declarada:</strong> {dor90Dias || "Não informada"}
-                    </p>
-                  </div>
-                ) : negocioInterpretado ? (
-                  <div style={{ background: "#EEF8F3", border: "1px solid #C9E8D8", borderRadius: 12, padding: 13 }}>
-                    <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 0 5px" }}>
-                      {negocioInterpretado.subsegmento || negocioInterpretado.segmento || "Negócio interpretado"}
-                    </p>
-                    <p style={{ fontSize: 11.5, color: NAVY, margin: "0 0 5px", lineHeight: 1.45 }}>
-                      <strong>Modelo:</strong> {negocioInterpretado.modeloOperacional || "-"}
-                    </p>
-                    <p style={{ fontSize: 11, color: MUTED, margin: 0, lineHeight: 1.45 }}>
-                      {negocioInterpretado.justificativa || ""}
-                    </p>
-                    {Array.isArray(negocioInterpretado.riscosNaturais) && negocioInterpretado.riscosNaturais.length > 0 && (
-                      <div style={{ marginTop: 9 }}>
-                        <p style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, margin: "0 0 4px" }}>Pontos naturais para investigar:</p>
-                        <p style={{ fontSize: 10.8, color: MUTED, margin: 0, lineHeight: 1.45 }}>
-                          {negocioInterpretado.riscosNaturais.slice(0, 6).join(" · ")}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ background: "#FFF3EF", borderRadius: 10, padding: 12 }}>
-                    <p style={{ fontSize: 11.5, color: NAVY, margin: 0 }}>{erroPerguntas || "Não foi possível interpretar automaticamente o negócio."}</p>
-                  </div>
-                )}
-
-                {!fluxoSemCnpj && (
-                  <div>
-                    <label style={labelStyle}>Ajuste a descrição, se necessário</label>
-                    <textarea
-                      value={descricaoNegocio}
-                      onChange={(e) => setDescricaoNegocio(e.target.value)}
-                      rows={4}
-                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
-                    />
-                  </div>
-                )}
-
-                {todasPerguntas.length > 0 && (
-                  <div style={{ background: ICE, borderRadius: 10, padding: 10 }}>
-                    <p style={{ fontSize: 11.3, color: NAVY, margin: 0, lineHeight: 1.45 }}>
-                      <strong>
-                        {todasPerguntas.length} perguntas
-                        {perguntasDinamicas.length > 0
-                          ? " personalizadas"
-                          : " específicas"}
-                      </strong>
-                      {" "}foram preparadas para{" "}
-                      {dores
-                        .map(
-                          labelAreaAtual
-                        )
-                        .join(", ")}.
-                    </p>
-                  </div>
-                )}
-
-                <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
-                  <button
-                    type="button"
-                    onClick={gerarPerguntasPersonalizadas}
-                    disabled={
-                      gerandoPerguntas ||
-                      (!fluxoSemCnpj && descricaoNegocio.trim().length < 20)
-                    }
-                    style={{ ...chipStyle(false), flex: 1 }}
-                  >
-                    Reanalisar
-                  </button>
-                  <PrimaryButton
-                    disabled={
-                      todasPerguntas.length ===
-                      0
-                    }
-                    onClick={() =>
-                      setStep("checklist")
-                    }
-                    style={{ flex: 1 }}
-                  >
-                    Está correto <ArrowRight size={16} />
-                  </PrimaryButton>
-                </div>
-              </div>
-            )}
-
-            {step === "checklist" && gruposSelecionados.length > 0 && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 19, fontWeight: 700, color: NAVY, margin: "6px 0 2px" }}>
-                  Diagnóstico completo — {areasDaEstrutura.length} frentes
-                </p>
-                <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
-                  {todasPerguntas.length} perguntas · personalizadas para {
-                    trilhaPFAtiva
-                      ? "seus objetivos financeiros"
-                      : negocioInterpretado?.subsegmento || categoriaPrincipal
-                  }
-                  {atividadePredominante?.descricao
-                    ? ` · atividade-base: ${atividadePredominante.descricao}`
-                    : empresaPrincipal?.cnae
-                      ? ` · CNAE ${empresaPrincipal.cnae.split("—")[0].trim()}`
-                      : ""}
-                  {empresas.length > 1 ? " (empresa-base do grupo)" : ""}
-                </p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 22, overflowY: "auto", maxHeight: 440, paddingRight: 2 }}>
-                  {gruposSelecionados.map((g) => (
-                    <div key={g.id}>
-                      {prioridadesDiagnostico.includes(g.id) && (
-                        <div
-                          style={{
-                            display: "inline-flex",
-                            marginBottom: 7,
-                            background: "#FFF3EF",
-                            color: CORAL,
-                            borderRadius: 20,
-                            padding: "3px 7px",
-                            fontSize: 9,
-                            fontWeight: 800,
-                          }}
-                        >
-                          PRIORIDADE · APROFUNDAMENTO
-                        </div>
-                      )}
-
-                      {gruposSelecionados.length > 1 && (
-                        <p style={{
-                          fontSize: 12.5, fontWeight: 700, color: NAVY, background: ICE,
-                          display: "inline-block", padding: "4px 10px", borderRadius: 8, margin: "0 0 12px",
-                        }}>{g.label}</p>
-                      )}
-                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                        {g.subtemas.map((sub) => (
-                          <div key={sub.tema}>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: CORAL, textTransform: "uppercase", letterSpacing: 0.4, margin: "0 0 10px" }}>{sub.tema}</p>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                              {sub.perguntas.map((q) => (
-                                <div key={q.id}>
-                                  <p style={{ fontSize: 12.5, color: NAVY, margin: "0 0 6px", lineHeight: 1.4 }}>{textoDe(q, segmentoPredominante, categoriaPrincipal)}</p>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    {[["sim", "Sim"], ["parcialmente", "Parcial"], ["nao", "Não"]].map(([val, lbl]) => (
-                                      <button key={val} onClick={() => responder(q.id, val)} style={{
-                                        ...miniChipStyle(respostas[q.id] === val), flex: 1,
-                                      }}>{lbl}</button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                      <div
+                        style={{
+                          minHeight: 40,
+                          display: "flex",
+                          alignItems: "center",
+                          padding:
+                            "0 11px",
+                          border:
+                            "1px solid #E3E7EF",
+                          borderRadius: 9,
+                          background:
+                            "#F7F8FB",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {atendimentoEquipeSelecionado
+                          ?.responsavelNome ||
+                          "Não atribuído"}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                </Card>
 
-                <div style={{ minHeight: 12 }} />
-                <PrimaryButton disabled={!todasRespondidas} onClick={() => setStep("analisando")} style={{ marginTop: 14 }}>
-                  <Sparkles size={16} /> Gerar diagnóstico
-                </PrimaryButton>
-              </div>
-            )}
-
-            {step === "analisando" &&
-              (fluxoSemCnpj || empresaPrincipal) &&
-              gruposSelecionados.length > 0 && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
-                <Loader2 size={34} color={CORAL} className="spin" />
-                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: 0 }}>A IA está analisando</p>
-                <p style={{ fontSize: 12.5, color: MUTED, minHeight: 18, margin: 0, padding: "0 10px" }}>
-                  {[
-                    trilhaPFAtiva
-                      ? `Objetivos: ${objetivosPF
-                          .map(
-                            (id) =>
-                              OBJETIVOS_PF.find(
-                                (item) =>
-                                  item.id === id
-                              )?.label
-                          )
-                          .filter(Boolean)
-                          .join(", ")}`
-                      : `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
-                    `Analisando as áreas: ${gruposSelecionados.map((g) => g.label).join(", ")}`,
-                    "Cruzando respostas com o contexto do segmento",
-                    "Estimando carga tributária de referência",
-                    "Calculando índice de maturidade por departamento",
-                  ][msgIdx]}
-                </p>
-              </div>
-            )}
-
-            {step === "resultado" &&
-              (fluxoSemCnpj || empresaPrincipal) &&
-              gruposSelecionados.length > 0 &&
-              areaMaisFraca && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-
-                <div style={{ background: tierDe(areaMaisFraca.score).bg, borderRadius: 14, padding: 14, marginBottom: 16, display: "flex", gap: 10 }}>
-                  <Flame size={18} color={tierDe(areaMaisFraca.score).color} style={{ flexShrink: 0, marginTop: 1 }} />
-                  <p style={{ fontSize: 12, color: tierDe(areaMaisFraca.score).color, margin: 0, lineHeight: 1.5 }}>
-                    Identificamos sinais que merecem atenção em <strong>{areaMaisFraca.label}</strong>. Seu resultado indica nível <strong>{tierDe(areaMaisFraca.score).label.toUpperCase()}</strong> nessa área. Veja abaixo o que suas respostas estão mostrando.
-                  </p>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "6px 0 14px" }}>
-                  <ScoreRing score={score} color={tierGeral.color} />
-                  <span style={{ ...badgeStyle, background: tierGeral.bg, color: tierGeral.color, marginTop: 10, fontWeight: 700 }}>{tierGeral.label}</span>
-                </div>
-
-                <p style={{ fontSize: 12, color: MUTED, textAlign: "center", margin: "0 0 4px", fontWeight: 700 }}>
-                  {trilhaPFAtiva
-                    ? nome
-                    : avaliarHoldingAtiva
-                    ? "Avaliação de Holding"
-                    : empresaPrincipal?.razao}
-                </p>
-                <p style={{ fontSize: 11, color: "#9AA3B5", textAlign: "center", margin: "0 0 17px", lineHeight: 1.4 }}>
-                  {trilhaPFAtiva
-                    ? `Pessoa Física · ${gruposSelecionados.map((g) => g.label).join(", ")}`
-                    : avaliarHoldingAtiva
-                    ? `Avaliação de viabilidade · ${gruposSelecionados.map((g) => g.label).join(", ")}`
-                    : `${categoriaPrincipal} · ${colaboradores} colaboradores · ${gruposSelecionados.map((g) => g.label).join(", ")}`}
-                </p>
-
-                <p style={sectionTitleStyle}>
-                  {trilhaPFAtiva
-                    ? "O que entendemos sobre sua vida financeira"
-                    : trilhaHoldingAtiva
-                    ? "O que entendemos sobre sua estrutura patrimonial"
-                    : trilhaGrupoAtiva
-                    ? "O que entendemos sobre o grupo empresarial"
-                    : trilhaSPEAtiva
-                    ? "O que entendemos sobre a SPE"
-                    : "O que entendemos sobre o seu negócio"}
-                </p>
-                <div style={{ background: "#F7F8FB", borderRadius: 12, padding: 13, marginBottom: 14, border: "1px solid #E6E9EF" }}>
-                  <p style={{ fontSize: 11.8, color: NAVY, margin: 0, lineHeight: 1.55 }}>
-                    <strong>
-                      {trilhaPFAtiva
-                        ? (
-                            objetivosPF
-                              .map(
-                                (id) =>
-                                  OBJETIVOS_PF.find(
-                                    (item) =>
-                                      item.id === id
-                                  )?.label
-                              )
-                              .filter(Boolean)
-                              .join(" · ") ||
-                            "Consultoria financeira pessoal"
-                          )
-                        : negocioInterpretado?.subsegmento ||
-                          negocioInterpretado?.segmento ||
-                          categoriaPrincipal}
-                    </strong>
-                    {!trilhaPFAtiva &&
-                      negocioInterpretado?.modeloOperacional
-                        ? ` — ${negocioInterpretado.modeloOperacional}`
-                        : ""}.
-                  </p>
-                  {!trilhaPFAtiva && descricaoNegocio && (
-                    <p style={{ fontSize: 11.2, color: MUTED, margin: "7px 0 0", lineHeight: 1.5 }}>
-                      Com base no que você informou, entendemos sua operação como: {descricaoNegocio}.
-                    </p>
-                  )}
-                </div>
-
-                {resumoExecutivo && (
+                {atendimentoEquipeSelecionado && (
                   <>
-                    <p style={sectionTitleStyle}>Leitura executiva</p>
-                    <div style={{ background: "#FFF3EF", borderLeft: `4px solid ${CORAL}`, borderRadius: 10, padding: 13, marginBottom: 14 }}>
-                      <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.6 }}>{resumoExecutivo}</p>
-                    </div>
-                  </>
-                )}
-
-                {inteligenciaTributaria?.disponivel && (
-                  <>
-                    <p style={sectionTitleStyle}>Inteligência tributária</p>
-
                     <div
                       style={{
-                        background: "#F7F8FB",
-                        border: "1px solid #DDE2EA",
-                        borderRadius: 12,
-                        padding: 13,
+                        display: "grid",
+                        gridTemplateColumns:
+                          "minmax(0,1fr) 150px",
+                        gap: 12,
                         marginBottom: 14,
                       }}
                     >
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: 9,
-                          marginBottom: 10,
-                        }}
-                      >
+                      <Card>
                         <div
                           style={{
-                            background: WHITE,
-                            borderRadius: 9,
-                            padding: 10,
-                            border: "1px solid #E3E7EF",
+                            fontSize: 10,
+                            color: CORAL,
+                            fontWeight: 900,
+                            marginBottom: 5,
                           }}
                         >
-                          <p
-                            style={{
-                              fontSize: 9.5,
-                              color: MUTED,
-                              margin: "0 0 3px",
-                            }}
-                          >
-                            FATURAMENTO DE REFERÊNCIA
-                          </p>
-                          <strong
-                            style={{
-                              fontSize: 14,
-                              color: NAVY,
-                            }}
-                          >
-                            {moedaTributaria(
-                              inteligenciaTributaria
-                                .faturamentoMensalReferencia
-                            )}/mês
-                          </strong>
+                          {
+                            atendimentoEquipeSelecionado.area
+                          }
                         </div>
+
+                        <h3
+                          style={{
+                            margin:
+                              "0 0 6px",
+                            fontSize: 18,
+                          }}
+                        >
+                          {empresa.razaoSocial ||
+                            "Empresa"}
+                        </h3>
 
                         <div
                           style={{
-                            background: WHITE,
-                            borderRadius: 9,
-                            padding: 10,
-                            border: "1px solid #E3E7EF",
-                          }}
-                        >
-                          <p
-                            style={{
-                              fontSize: 9.5,
-                              color: MUTED,
-                              margin: "0 0 3px",
-                            }}
-                          >
-                            TRIBUTOS ESTIMADOS
-                          </p>
-                          <strong
-                            style={{
-                              fontSize: 14,
-                              color: NAVY,
-                            }}
-                          >
-                            {moedaTributaria(
-                              inteligenciaTributaria
-                                .tributosMensaisEstimados
-                            )}/mês
-                          </strong>
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          background: "#FFF3EF",
-                          borderLeft: `4px solid ${CORAL}`,
-                          borderRadius: 9,
-                          padding: 11,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <p
-                          style={{
-                            fontSize: 9.5,
-                            color: "#993C1D",
-                            margin: "0 0 3px",
-                            fontWeight: 700,
-                          }}
-                        >
-                          CARGA TRIBUTÁRIA ESTIMADA
-                        </p>
-
-                        <strong
-                          style={{
-                            fontSize: 23,
-                            color: "#993C1D",
-                          }}
-                        >
-                          {percentualTributario(
-                            inteligenciaTributaria
-                              .cargaTributariaEstimada
-                          )}
-                        </strong>
-
-                        <p
-                          style={{
+                            color: MUTED,
                             fontSize: 11,
-                            color: NAVY,
-                            margin: "6px 0 0",
-                            lineHeight: 1.45,
                           }}
                         >
-                          A cada R$ 100 faturados, aproximadamente{" "}
-                          <strong>
-                            R${" "}
-                            {Number(
-                              inteligenciaTributaria
-                                .cargaTributariaEstimada
-                            ).toLocaleString("pt-BR", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </strong>{" "}
-                          correspondem à carga tributária estimada nesta referência.
-                        </p>
-                      </div>
+                          {atendimentoEquipeSelecionado
+                            .nivelArea ||
+                            "-"}
+                          {" · "}
+                          {atendimentoEquipeSelecionado
+                            .statusAtendimento ||
+                            "NAO_INICIADO"}
+                        </div>
+                      </Card>
 
-                      <div
+                      <Card
                         style={{
-                          background: "#FAEEDA",
-                          borderRadius: 9,
-                          padding: 10,
+                          textAlign:
+                            "center",
+                          background:
+                            scoreInfo(
+                              atendimentoEquipeSelecionado
+                                .scoreArea
+                            ).bg,
                         }}
                       >
-                        <p
+                        <div
                           style={{
-                            fontSize: 9.5,
-                            color: "#70410A",
-                            margin: "0 0 3px",
+                            fontSize: 30,
+                            fontWeight: 900,
+                            color:
+                              scoreInfo(
+                                atendimentoEquipeSelecionado
+                                  .scoreArea
+                              ).color,
+                          }}
+                        >
+                          {atendimentoEquipeSelecionado
+                            .scoreArea ??
+                            "-"}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color:
+                              scoreInfo(
+                                atendimentoEquipeSelecionado
+                                  .scoreArea
+                              ).color,
                             fontWeight: 800,
                           }}
                         >
-                          REFORMA TRIBUTÁRIA
-                        </p>
+                          SCORE DA ÁREA
+                        </div>
+                      </Card>
+                    </div>
 
+                    {areaClientePorNome[
+                      atendimentoEquipeSelecionado.area
+                    ]?.resumo && (
+                      <BlocoDossie titulo="Situação identificada" destaque>
                         <p
                           style={{
-                            fontSize: 11,
-                            color: "#70410A",
                             margin: 0,
-                            lineHeight: 1.45,
+                            lineHeight: 1.6,
+                            fontSize: 12.5,
                           }}
                         >
-                          Impacto preliminar do segmento:{" "}
-                          <strong>
-                            {
-                              inteligenciaTributaria
-                                .reforma?.status
-                            }
-                          </strong>
-                          . O efeito efetivo depende do regime tributário,
-                          atividade, créditos, perfil dos clientes e das
-                          operações realizadas.
+                          {
+                            areaClientePorNome[
+                              atendimentoEquipeSelecionado.area
+                            ].resumo
+                          }
                         </p>
-                      </div>
+                      </BlocoDossie>
+                    )}
 
-                      <p
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit,minmax(220px,1fr))",
+                        gap: 10,
+                        marginBottom: 16,
+                      }}
+                    >
+                      <ListaInterna
+                        titulo="Oportunidades da área"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .oportunidades
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Riscos"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .riscos
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Recomendações"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .recomendacoes
+                        }
+                      />
+
+                      <ListaInterna
+                        titulo="Plano de ação"
+                        itens={
+                          atendimentoEquipeSelecionado
+                            .planoAcao
+                        }
+                      />
+                    </div>
+
+                    {atendimentoEquipeSelecionado
+                      .orientacaoTecnica && (
+                      <BlocoDossie titulo="Orientação técnica para o especialista">
+                        <p
+                          style={{
+                            margin: 0,
+                            lineHeight: 1.6,
+                            fontSize: 12,
+                          }}
+                        >
+                          {
+                            atendimentoEquipeSelecionado
+                              .orientacaoTecnica
+                          }
+                        </p>
+                      </BlocoDossie>
+                    )}
+
+                    <h2
+                      style={
+                        tituloSecao
+                      }
+                    >
+                      Perguntas e respostas da área
+                    </h2>
+
+                    <Card
+                      style={{
+                        padding: 0,
+                        overflowX:
+                          "auto",
+                      }}
+                    >
+                      <table
                         style={{
-                          fontSize: 9.2,
-                          color: "#8A93A3",
-                          margin: "9px 0 0",
-                          lineHeight: 1.4,
-                          fontStyle: "italic",
+                          width:
+                            "100%",
+                          borderCollapse:
+                            "collapse",
+                          minWidth: 720,
                         }}
                       >
-                        Estimativa gerencial. Não substitui apuração fiscal
-                        nem planejamento tributário individualizado.
-                      </p>
-                    </div>
+                        <thead>
+                          <tr>
+                            <th
+                              style={
+                                thStyle
+                              }
+                            >
+                              Tema
+                            </th>
+
+                            <th
+                              style={
+                                thStyle
+                              }
+                            >
+                              Pergunta
+                            </th>
+
+                            <th
+                              style={
+                                thStyle
+                              }
+                            >
+                              Resposta
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {perguntasEquipe.length ? (
+                            perguntasEquipe.map(
+                              (
+                                pergunta,
+                                index
+                              ) => (
+                                <tr
+                                  key={
+                                    index
+                                  }
+                                >
+                                  <td
+                                    style={
+                                      tdStyle
+                                    }
+                                  >
+                                    {pergunta.tema ||
+                                      "-"}
+                                  </td>
+
+                                  <td
+                                    style={
+                                      tdStyle
+                                    }
+                                  >
+                                    {pergunta.pergunta ||
+                                      "-"}
+                                  </td>
+
+                                  <td
+                                    style={{
+                                      ...tdStyle,
+                                      fontWeight:
+                                        800,
+                                    }}
+                                  >
+                                    {pergunta.resposta ||
+                                      "-"}
+                                  </td>
+                                </tr>
+                              )
+                            )
+                          ) : (
+                            <tr>
+                              <td
+                                colSpan="3"
+                                style={{
+                                  ...tdStyle,
+                                  textAlign:
+                                    "center",
+                                }}
+                              >
+                                Nenhuma pergunta específica armazenada para esta área.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </Card>
                   </>
                 )}
-
-                {leituraDaDorIa && (
-                  <>
-                    <p style={sectionTitleStyle}>O que suas respostas estão mostrando</p>
-                    <div style={{ background: WHITE, border: "1px solid #DDE2EA", borderRadius: 12, padding: 13, marginBottom: 14 }}>
-                      <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.6 }}>{leituraDaDorIa}</p>
-                    </div>
-                  </>
-                )}
-
-                {causasProvaveisIa.length > 0 && (
-                  <>
-                    <p style={sectionTitleStyle}>Conexões que merecem atenção</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 15 }}>
-                      {causasProvaveisIa.slice(0, 3).map((item, i) => (
-                        <div key={i} style={{ background: "#F7F8FB", borderRadius: 10, padding: 11, border: "1px solid #E6E9EF", display: "flex", gap: 9, alignItems: "flex-start" }}>
-                          <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#FFF3EF", color: CORAL, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
-                          <p style={{ fontSize: 11.7, color: NAVY, margin: 0, lineHeight: 1.5 }}>{item}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {impactosIa.length > 0 && (
-                  <>
-                    <p style={sectionTitleStyle}>Onde isso pode estar impactando</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 15 }}>
-                      {impactosIa.slice(0, 3).map((item, i) => (
-                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                          <AlertTriangle size={14} color="#993C1D" style={{ marginTop: 2, flexShrink: 0 }} />
-                          <p style={{ fontSize: 11.7, color: NAVY, margin: 0, lineHeight: 1.45 }}>{item}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {pontosFortesIa.length > 0 && (
-                  <>
-                    <p style={sectionTitleStyle}>O que já está funcionando a seu favor</p>
-                    <div style={{ background: "#E1F5EE", borderRadius: 11, padding: 12, marginBottom: 15 }}>
-                      {pontosFortesIa.slice(0, 3).map((item, i) => (
-                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: i ? 7 : 0 }}>
-                          <CheckCircle2 size={14} color="#0F6E56" style={{ marginTop: 2, flexShrink: 0 }} />
-                          <p style={{ fontSize: 11.7, color: "#0F6E56", margin: 0, lineHeight: 1.45 }}>{item}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {alertaEstrategicoIa && (
-                  <>
-                    <p style={sectionTitleStyle}>Alerta estratégico</p>
-                    <div style={{ background: "#FAEEDA", borderRadius: 11, padding: 13, marginBottom: 15 }}>
-                      <p style={{ fontSize: 11.8, color: "#70410A", margin: 0, lineHeight: 1.55, fontWeight: 600 }}>{alertaEstrategicoIa}</p>
-                    </div>
-                  </>
-                )}
-
-                <p style={sectionTitleStyle}>Prioridades identificadas</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 17 }}>
-                  {subOrdenados.slice(0, 3).map((item, i) => (
-                    <div key={`${item.area}-${item.tema}-${i}`} style={{ background: WHITE, border: "1px solid #E1E5EC", borderRadius: 10, padding: 11, display: "flex", gap: 9, alignItems: "flex-start" }}>
-                      <div style={{ minWidth: 24, height: 24, borderRadius: 7, background: NAVY, color: WHITE, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
-                      <div>
-                        <p style={{ fontSize: 11.8, fontWeight: 700, color: NAVY, margin: "1px 0 3px", lineHeight: 1.4 }}>{item.area} · {item.tema}</p>
-                        <p style={{ fontSize: 10.6, color: MUTED, margin: 0, lineHeight: 1.4 }}>Esta frente merece aprofundamento antes da definição do plano de implementação.</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {observacao.trim() && (
-                  <>
-                    <p style={sectionTitleStyle}>Sua observação</p>
-                    <div style={{ background: ICE, borderRadius: 10, padding: 11, marginBottom: 15 }}>
-                      <p style={{ fontSize: 11.5, color: NAVY, margin: 0, lineHeight: 1.45, fontStyle: "italic" }}>“{observacao.trim()}”</p>
-                    </div>
-                  </>
-                )}
-
-                <div style={{ background: NAVY, color: WHITE, borderRadius: 14, padding: 16, marginBottom: 15 }}>
-                  <p style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>
-                    Seu diagnóstico mostrou onde olhar. Agora precisamos definir como agir.
-                  </p>
-                  <p style={{ fontSize: 11.5, color: "#D7DDEA", margin: "0 0 10px", lineHeight: 1.5 }}>
-                    A análise consultiva da Finder aprofunda as causas, valida os riscos e transforma as prioridades em um plano de ação adequado à realidade da sua empresa.
-                  </p>
-                  <p style={{ fontSize: 10.5, color: "#AEB8CA", margin: 0, lineHeight: 1.45 }}>
-                    O diagnóstico técnico completo permanece reservado para a análise com o especialista.
-                  </p>
-                </div>
-
-                {envioRelatorio === "sent" && (
-                  <div style={{ background: "#E1F5EE", borderRadius: 10, padding: 10, marginBottom: 14 }}>
-                    <p style={{ fontSize: 11, color: "#0F6E56", margin: 0, lineHeight: 1.4 }}>Seu diagnóstico foi registrado com sucesso.</p>
-                  </div>
-                )}
-
-                {envioRelatorio === "error" && (
-                  <div style={{ background: "#FAECE7", borderRadius: 10, padding: 10, marginBottom: 14 }}>
-                    <p style={{ fontSize: 11, color: "#993C1D", margin: 0, lineHeight: 1.4 }}>Seu diagnóstico foi concluído. Houve uma falha em uma etapa de envio, mas o resultado permanece disponível nesta tela.</p>
-                  </div>
-                )}
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <PrimaryButton
-                    style={{ background: NAVY, padding: "14px 16px" }}
-                    onClick={() => {
-                      const numero = "5541989049616";
-                      const mensagem = encodeURIComponent(
-                        `Olá! Fiz o Diagnóstico Empresarial Finder.\n\nEmpresa: ${empresaPrincipal?.razao || ""}\nResponsável: ${nome || ""}\nScore: ${score}/100 — ${tierGeral.label}\nPrincipal área de atenção: ${areaMaisFraca?.label || ""}\n\nO resultado fez sentido para mim e gostaria de conversar com um especialista para entender as prioridades e os próximos passos.`
-                      );
-                      window.open(`https://wa.me/${numero}?text=${mensagem}`, "_blank");
-                    }}
-                  >
-                    <CalendarCheck size={15} /> Quero falar com um especialista
-                  </PrimaryButton>
-
-                  <PrimaryButton onClick={gerarPdf}>
-                    <Download size={15} /> Baixar meu diagnóstico executivo
-                  </PrimaryButton>
-
-                  <button onClick={reiniciar} style={{ background: "none", border: "none", color: MUTED, fontSize: 11.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 7, cursor: "pointer" }}>
-                    <RotateCcw size={12} /> Fazer um novo diagnóstico
-                  </button>
-                </div>
-
-                <p style={{ fontSize: 9.8, color: "#9AA3B5", fontStyle: "italic", margin: "14px 0 0", lineHeight: 1.45, textAlign: "center" }}>
-                  Diagnóstico empresarial executivo e preliminar elaborado a partir das informações fornecidas pelo participante. A validação dos achados e a definição das ações exigem análise profissional individualizada.
-                </p>
-
-              </div>
+              </>
             )}
-
           </div>
-
-          {step !== "intro" && step !== "resultado" && step !== "analisando" && (
-            <button onClick={() => {
-              const back = {
-                estrutura: "cadastro",
-                cnpj: "estrutura",
-                porte: "cnpj",
-                dor:
-                  trilhaPFAtiva ||
-                  avaliarHoldingAtiva ||
-                  (
-                    trilhaSPEAtiva &&
-                    speConstituida !== "sim"
-                  )
-                    ? "estrutura"
-                    : "porte",
-                gerandoPerguntas: "dor",
-                confirmarNegocio: "dor",
-                checklist: "dor",
-              };
-
-              setStep(back[step] || "intro");
-            }} style={{
-              position: "absolute", top: 26, left: 26, background: "none", border: "none",
-              color: MUTED, cursor: "pointer", display: "flex", alignItems: "center",
-            }}>
-              <ArrowLeft size={16} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
-          background: NAVY, color: WHITE, padding: "10px 18px", borderRadius: 10,
-          fontSize: 12.5, boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-        }}>{toast}</div>
-      )}
-
-      <style>{`
-        .spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        input:focus, textarea:focus { outline: none; border-color: ${CORAL} !important; }
-      `}</style>
+        )}
+      </main>
     </div>
   );
 }
 
-function ScoreRing({ score, color }) {
-  const r = 46, c = 2 * Math.PI * r;
-  const offset = c - (score / 100) * c;
+// =========================================================
+// LISTA INTERNA
+// =========================================================
+
+function ListaInterna({
+  titulo,
+  itens,
+}) {
+  const lista =
+    normalizarLista(
+      itens
+    );
+
   return (
-    <svg width="120" height="120" viewBox="0 0 120 120">
-      <circle cx="60" cy="60" r={r} fill="none" stroke="#EEF0F5" strokeWidth="10" />
-      <circle cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="10"
-        strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
-        transform="rotate(-90 60 60)" style={{ transition: "stroke-dashoffset 0.8s ease" }} />
-      <text x="60" y="56" textAnchor="middle" fontSize="26" fontWeight="700" fill={NAVY} fontFamily={DISPLAY_FONT}>{score}</text>
-      <text x="60" y="76" textAnchor="middle" fontSize="10" fill={MUTED} fontFamily={BODY_FONT}>de 100</text>
-    </svg>
+    <div
+      style={{
+        background:
+          "#F7F8FB",
+
+        borderRadius:
+          9,
+
+        padding:
+          11,
+      }}
+    >
+      <strong
+        style={{
+          display:
+            "block",
+
+          fontSize:
+            11,
+
+          marginBottom:
+            6,
+        }}
+      >
+        {titulo}
+      </strong>
+
+      {lista.length ? (
+        <ul
+          style={{
+            margin:
+              0,
+
+            paddingLeft:
+              17,
+
+            fontSize:
+              11.5,
+
+            lineHeight:
+              1.5,
+          }}
+        >
+          {lista.map(
+            (
+              item,
+              index
+            ) => (
+              <li
+                key={
+                  index
+                }
+              >
+                {item}
+              </li>
+            )
+          )}
+        </ul>
+      ) : (
+        <span
+          style={{
+            fontSize:
+              11,
+
+            color:
+              MUTED,
+          }}
+        >
+          Sem informação.
+        </span>
+      )}
+    </div>
   );
 }
 
-const labelStyle = { fontSize: 11.5, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
-const inputStyle = {
-  width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #D8DEEA",
-  fontSize: 13.5, marginBottom: 14, fontFamily: BODY_FONT, color: NAVY, boxSizing: "border-box",
-};
-const sectionTitleStyle = { fontSize: 11.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 8px" };
-const badgeStyle = {
-  fontSize: 10.5, padding: "3px 9px", borderRadius: 20, background: WHITE, color: NAVY,
-  fontWeight: 600, display: "inline-block",
-};
-function chipStyle(active) {
-  return {
-    padding: "9px 10px", borderRadius: 10, border: active ? `1px solid ${CORAL}` : "1px solid #D8DEEA",
-    background: active ? CORAL : WHITE, color: active ? WHITE : NAVY, fontSize: 12.5,
-    fontFamily: BODY_FONT, cursor: "pointer", textAlign: "left", fontWeight: 600,
-  };
+// =========================================================
+// COMPONENTE PRINCIPAL
+// =========================================================
+
+export default function Admin() {
+  const [token, setToken] = useState(
+    () =>
+      sessionStorage.getItem(
+        "finder_admin_token"
+      ) || ""
+  );
+
+  const [
+    diagnosticoId,
+    setDiagnosticoId,
+  ] = useState(null);
+
+  const [
+    aba,
+    setAba,
+  ] = useState("leads");
+
+  function sair() {
+    sessionStorage.removeItem(
+      "finder_admin_token"
+    );
+
+    setToken("");
+    setDiagnosticoId(null);
+    setAba("leads");
+  }
+
+  function BarraAbas() {
+    return (
+      <div
+        style={{
+          background: "#101A2F",
+          padding: "9px 22px",
+          display: "flex",
+          justifyContent: "center",
+          gap: 8,
+          fontFamily: BODY_FONT,
+          flexWrap: "wrap",
+        }}
+      >
+        <Botao
+          secundario={aba !== "leads"}
+          onClick={() =>
+            setAba("leads")
+          }
+        >
+          <Users size={14} />
+          Leads / CRM
+        </Botao>
+
+        <Botao
+          secundario={
+            aba !==
+            "diagnosticos"
+          }
+          onClick={() =>
+            setAba(
+              "diagnosticos"
+            )
+          }
+        >
+          <Building2
+            size={14}
+          />
+          Diagnósticos
+        </Botao>
+
+        <Botao
+          secundario={
+            aba !==
+            "atendimentos"
+          }
+          onClick={() =>
+            setAba(
+              "atendimentos"
+            )
+          }
+        >
+          <Target size={14} />
+          Atendimentos
+        </Botao>
+
+        <Botao
+          secundario={
+            aba !==
+            "equipe"
+          }
+          onClick={() =>
+            setAba("equipe")
+          }
+        >
+          <UserPlus size={14} />
+          Equipe / Capacidade
+        </Botao>
+      </div>
+    );
+  }
+
+  function Cabecalho({
+    titulo,
+    subtitulo,
+  }) {
+    return (
+      <header
+        style={{
+          background: NAVY,
+          color: WHITE,
+          padding: "18px 28px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            display: "flex",
+            justifyContent:
+              "space-between",
+            alignItems:
+              "center",
+            gap: 18,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems:
+                "center",
+              gap: 18,
+            }}
+          >
+            <img
+              src="/finder-logo.png"
+              alt="Finder of Solutions"
+              style={{
+                maxWidth: 150,
+                maxHeight: 45,
+                objectFit:
+                  "contain",
+                background: WHITE,
+                padding: 5,
+                borderRadius: 7,
+              }}
+            />
+
+            <div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize: 24,
+                }}
+              >
+                {titulo}
+              </h1>
+
+              <p
+                style={{
+                  margin:
+                    "3px 0 0",
+                  fontSize: 11,
+                  opacity: 0.7,
+                }}
+              >
+                {subtitulo}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={sair}
+            style={{
+              background:
+                "transparent",
+              border:
+                "1px solid rgba(255,255,255,.30)",
+              color: WHITE,
+              borderRadius: 9,
+              padding:
+                "8px 11px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems:
+                "center",
+              gap: 6,
+            }}
+          >
+            <LogOut size={15} />
+            Sair
+          </button>
+        </div>
+      </header>
+    );
+  }
+
+  if (!token) {
+    return (
+      <LoginAdmin
+        onLogin={setToken}
+      />
+    );
+  }
+
+  if (diagnosticoId) {
+    return (
+      <DetalheDiagnostico
+        token={token}
+        id={diagnosticoId}
+        onVoltar={() =>
+          setDiagnosticoId(
+            null
+          )
+        }
+      />
+    );
+  }
+
+  if (
+    aba ===
+    "diagnosticos"
+  ) {
+    return (
+      <div>
+        <BarraAbas />
+
+        <ListaDiagnosticos
+          token={token}
+          onAbrir={
+            setDiagnosticoId
+          }
+          onLogout={sair}
+        />
+      </div>
+    );
+  }
+
+  if (
+    aba ===
+    "atendimentos"
+  ) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: BG,
+          fontFamily: BODY_FONT,
+          color: NAVY,
+        }}
+      >
+        <Cabecalho
+          titulo="Atendimentos"
+          subtitulo="Execução consultiva por departamento"
+        />
+
+        <BarraAbas />
+
+        <main
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            padding:
+              "26px 22px 50px",
+          }}
+        >
+          <AtendimentosDepartamento
+            token={token}
+            onAbrirDiagnostico={
+              setDiagnosticoId
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
+  if (
+    aba ===
+    "equipe"
+  ) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: BG,
+          fontFamily: BODY_FONT,
+          color: NAVY,
+        }}
+      >
+        <Cabecalho
+          titulo="Equipe / Capacidade"
+          subtitulo="Especialidades, permissões e capacidade de atendimento"
+        />
+
+        <BarraAbas />
+
+        <main
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            padding:
+              "26px 22px 50px",
+          }}
+        >
+          <EquipeCapacidade
+            token={token}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: BG,
+        fontFamily: BODY_FONT,
+        color: NAVY,
+      }}
+    >
+      <Cabecalho
+        titulo="Leads / CRM"
+        subtitulo="Funil do diagnóstico empresarial"
+      />
+
+      <BarraAbas />
+
+      <main
+        style={{
+          maxWidth: 1320,
+          margin: "0 auto",
+          padding:
+            "26px 22px 50px",
+        }}
+      >
+        <LeadsCRM
+          token={token}
+          onAbrirDiagnostico={
+            setDiagnosticoId
+          }
+        />
+      </main>
+    </div>
+  );
 }
-function miniChipStyle(active) {
-  return {
-    padding: "7px 4px", borderRadius: 8, border: active ? `1px solid ${NAVY}` : "1px solid #D8DEEA",
-    background: active ? NAVY : WHITE, color: active ? WHITE : MUTED, fontSize: 11.5,
-    fontFamily: BODY_FONT, cursor: "pointer", fontWeight: 600,
-  };
-}
+
+// =========================================================
+// ESTILOS
+// =========================================================
+
+const tituloSecao = {
+  fontFamily:
+    DISPLAY_FONT,
+
+  fontSize:
+    20,
+
+  margin:
+    "25px 0 10px",
+};
+
+const thStyle = {
+  background:
+    ICE,
+
+  padding:
+    "10px 9px",
+
+  textAlign:
+    "left",
+
+  color:
+    NAVY,
+
+  fontSize:
+    11,
+
+  whiteSpace:
+    "nowrap",
+};
+
+const tdStyle = {
+  borderBottom:
+    "1px solid #E5E8EE",
+
+  padding:
+    "10px 9px",
+
+  fontSize:
+    11.5,
+
+  lineHeight:
+    1.45,
+
+  verticalAlign:
+    "top",
+};
