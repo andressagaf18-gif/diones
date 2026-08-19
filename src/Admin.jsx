@@ -3171,6 +3171,15 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                     <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>
                       {lead.origem || "direto"}
                       {lead.campanha ? ` · ${lead.campanha}` : ""}
+
+                      {lead.estruturaNegocio && (
+                        <>
+                          {" · "}
+                          {labelEstruturaDiagnostico(
+                            lead.estruturaNegocio
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -5688,6 +5697,193 @@ function AtendimentosDepartamento({
   );
 }
 
+function ResumoEstruturaSelecionada({
+  estrutura,
+  perfil = {},
+  resultado = {},
+}) {
+  const contexto =
+    resultado?.contextoEstrutura ||
+    {};
+
+  const holding =
+    perfil?.holding ||
+    contexto?.holding ||
+    {};
+
+  const pessoaFisica =
+    perfil?.pessoaFisica ||
+    contexto?.pessoaFisica ||
+    {};
+
+  function Linha({
+    titulo,
+    valor,
+  }) {
+    if (
+      valor === null ||
+      valor === undefined ||
+      valor === "" ||
+      (
+        Array.isArray(valor) &&
+        valor.length === 0
+      )
+    ) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          background: "#F7F8FB",
+          borderRadius: 9,
+          padding: 10,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 9,
+            color: MUTED,
+            fontWeight: 800,
+            marginBottom: 3,
+          }}
+        >
+          {titulo}
+        </div>
+
+        <div
+          style={{
+            fontSize: 11.5,
+            color: NAVY,
+            lineHeight: 1.45,
+          }}
+        >
+          {Array.isArray(valor)
+            ? valor.join(" · ")
+            : String(valor)}
+        </div>
+      </div>
+    );
+  }
+
+  if (estrutura === "pessoa_fisica") {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <h3 style={{ margin: "0 0 4px" }}>
+          Perfil preenchido — Pessoa Física
+        </h3>
+
+        <p
+          style={{
+            margin: "0 0 12px",
+            color: MUTED,
+            fontSize: 10.5,
+          }}
+        >
+          Dados informados no fluxo de consultoria pessoal.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Linha titulo="OBJETIVOS" valor={pessoaFisica.objetivos} />
+          <Linha titulo="RENDA MENSAL" valor={pessoaFisica.rendaMensal} />
+          <Linha titulo="GASTOS MENSAIS" valor={pessoaFisica.gastosMensais} />
+          <Linha titulo="DÍVIDAS / PARCELAS" valor={pessoaFisica.dividas} />
+          <Linha titulo="RESERVA DE EMERGÊNCIA" valor={pessoaFisica.reservaEmergencia} />
+          <Linha titulo="PATRIMÔNIO" valor={pessoaFisica.patrimonio} />
+          <Linha titulo="INVESTIMENTOS ATUAIS" valor={pessoaFisica.investimentosAtuais} />
+          <Linha titulo="APOSENTADORIA" valor={pessoaFisica.aposentadoria} />
+          <Linha titulo="DEPENDENTES" valor={pessoaFisica.dependentes} />
+        </div>
+      </Card>
+    );
+  }
+
+  if (
+    estrutura === "holding" ||
+    estrutura === "avaliar_holding"
+  ) {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <h3 style={{ margin: "0 0 4px" }}>
+          {estrutura === "avaliar_holding"
+            ? "Dados preenchidos — Avaliação de Holding"
+            : "Dados preenchidos — Holding"}
+        </h3>
+
+        <p
+          style={{
+            margin: "0 0 12px",
+            color: MUTED,
+            fontSize: 10.5,
+          }}
+        >
+          Dados patrimoniais e objetivos informados no fluxo selecionado.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Linha titulo="TIPOS / HIPÓTESES" valor={holding.tipos} />
+          <Linha titulo="OBJETIVOS" valor={holding.objetivos} />
+          <Linha titulo="PATRIMÔNIO / ATIVOS" valor={holding.patrimonioAproximado} />
+          <Linha titulo="RECEITAS PATRIMONIAIS" valor={holding.receitasPatrimoniais} />
+          <Linha titulo="SITUAÇÃO SUCESSÓRIA" valor={holding.situacaoSucessoria} />
+        </div>
+      </Card>
+    );
+  }
+
+  if (estrutura === "grupo") {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <strong>Estrutura selecionada: Grupo empresarial</strong>
+      </Card>
+    );
+  }
+
+  if (estrutura === "spe") {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft: `4px solid ${CORAL}`,
+        }}
+      >
+        <strong>Estrutura selecionada: SPE</strong>
+      </Card>
+    );
+  }
+
+  return null;
+}
+
 // =========================================================
 // DETALHE DO DIAGNÓSTICO
 // =========================================================
@@ -5943,6 +6139,11 @@ function DetalheDiagnostico({
 
   const resultado =
     item.resultado ||
+    {};
+
+  const perfilDiagnostico =
+    item.perfil ||
+    item?.dadosCompletos?.perfil ||
     {};
 
   const diagnosticoGeral =
@@ -6376,6 +6577,12 @@ function DetalheDiagnostico({
             </Botao>
           </div>
         </Card>
+
+        <ResumoEstruturaSelecionada
+          estrutura={estruturaAtual}
+          perfil={perfilDiagnostico}
+          resultado={resultado}
+        />
 
         {abaRelatorio === "administracao" && (
           <>
