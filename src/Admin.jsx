@@ -296,6 +296,52 @@ function juntarLista(valor) {
     : "";
 }
 
+function resumoSeguro(valor) {
+  if (
+    valor === null ||
+    valor === undefined ||
+    valor === ""
+  ) {
+    return "";
+  }
+
+  if (
+    typeof valor === "string" ||
+    typeof valor === "number"
+  ) {
+    return String(valor);
+  }
+
+  if (Array.isArray(valor)) {
+    // Quando o motor devolve achados estruturados,
+    // o detalhamento já aparece nos cards abaixo.
+    // Evitamos transformar objetos em "[object Object]".
+    const textos =
+      valor
+        .filter(
+          (item) =>
+            typeof item === "string" ||
+            typeof item === "number"
+        )
+        .map(String)
+        .filter(Boolean);
+
+    return textos.join(" ");
+  }
+
+  if (typeof valor === "object") {
+    return (
+      valor.resumo ||
+      valor.descricao ||
+      valor.texto ||
+      valor.titulo ||
+      ""
+    );
+  }
+
+  return "";
+}
+
 function textoSeguro(valor) {
   if (valor === null || valor === undefined) return "";
   if (typeof valor === "string" || typeof valor === "number") return String(valor);
@@ -1449,8 +1495,9 @@ function ListaDiagnosticos({
                   "",
 
                 "Resumo":
-                  area.resumo ||
-                  "",
+                  resumoSeguro(
+                    area.resumo
+                  ),
 
                 "Achados":
                   juntarLista(
@@ -6514,8 +6561,10 @@ function DetalheDiagnostico({
       (eixo) => ({
         area:
           eixo.label ||
-          eixo.id ||
-          "Área",
+          tituloChave(
+            eixo.id ||
+            "Área"
+          ),
 
         areaId:
           eixo.id ||
@@ -6529,9 +6578,11 @@ function DetalheDiagnostico({
           "",
 
         resumo:
-          normalizarLista(
-            eixo.achados
-          ).join(" "),
+          resumoSeguro(
+            eixo.resumo ||
+            eixo.leitura ||
+            ""
+          ),
 
         achados:
           normalizarLista(
@@ -6635,8 +6686,12 @@ function DetalheDiagnostico({
                 "",
 
               resumo:
-                areaV2.resumo ||
-                areaAntiga.resumo ||
+                resumoSeguro(
+                  areaV2.resumo
+                ) ||
+                resumoSeguro(
+                  areaAntiga.resumo
+                ) ||
                 "",
 
               achados:
@@ -8014,14 +8069,18 @@ function DetalheDiagnostico({
                       </div>
                     </div>
 
-                    {area.resumo && (
+                    {resumoSeguro(
+                      area.resumo
+                    ) && (
                       <p
                         style={{
                           lineHeight:
                             1.55,
                         }}
                       >
-                        {area.resumo}
+                        {resumoSeguro(
+                          area.resumo
+                        )}
                       </p>
                     )}
 
@@ -8543,7 +8602,9 @@ function DetalheDiagnostico({
                           </div>
                         </div>
 
-                        {area.resumo && (
+                        {resumoSeguro(
+                          area.resumo
+                        ) && (
                           <p
                             style={{
                               lineHeight:
@@ -8554,7 +8615,9 @@ function DetalheDiagnostico({
                                 12,
                             }}
                           >
-                            {area.resumo}
+                            {resumoSeguro(
+                              area.resumo
+                            )}
                           </p>
                         )}
 
