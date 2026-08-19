@@ -20,7 +20,6 @@ import {
   UserPlus,
   Gauge,
   Save,
-  User,
 } from "lucide-react";
 
 const NAVY = "#17233D";
