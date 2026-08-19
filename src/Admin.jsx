@@ -8007,8 +8007,10 @@ function DetalheDiagnostico({
                             800,
                         }}
                       >
-                        {area.score ??
-                          "-"}
+                        {typeof area.score === "number" ||
+                        typeof area.score === "string"
+                          ? area.score
+                          : "-"}
                       </div>
                     </div>
 
@@ -9312,6 +9314,132 @@ function ListaInterna({
       itens
     );
 
+  function itemSeguro(
+    item,
+    index
+  ) {
+    if (
+      item === null ||
+      item === undefined
+    ) {
+      return null;
+    }
+
+    if (
+      typeof item === "string" ||
+      typeof item === "number" ||
+      typeof item === "boolean"
+    ) {
+      return (
+        <li key={index}>
+          {String(item)}
+        </li>
+      );
+    }
+
+    if (
+      Array.isArray(item)
+    ) {
+      return (
+        <li key={index}>
+          {item
+            .map(
+              (valor) =>
+                textoSeguro(valor)
+            )
+            .filter(Boolean)
+            .join(" • ")}
+        </li>
+      );
+    }
+
+    if (
+      typeof item === "object"
+    ) {
+      const tituloItem =
+        item.titulo ||
+        item.nome ||
+        item.acao ||
+        item.recomendacao ||
+        item.risco ||
+        item.achado ||
+        item.descricao ||
+        item.texto ||
+        item.resumo ||
+        item.indicador ||
+        item.objetivo ||
+        "";
+
+      const detalhes =
+        Object.entries(item)
+          .filter(
+            ([chave, valor]) =>
+              ![
+                "titulo",
+                "nome",
+                "acao",
+                "recomendacao",
+                "risco",
+                "achado",
+                "descricao",
+                "texto",
+                "resumo",
+                "indicador",
+                "objetivo",
+              ].includes(chave) &&
+              valor !== null &&
+              valor !== undefined &&
+              valor !== ""
+          )
+          .map(
+            ([chave, valor]) => {
+              const textoValor =
+                Array.isArray(valor)
+                  ? valor
+                      .map(textoSeguro)
+                      .filter(Boolean)
+                      .join(" • ")
+                  : textoSeguro(valor);
+
+              if (!textoValor) {
+                return "";
+              }
+
+              return `${tituloChave(
+                chave
+              )}: ${textoValor}`;
+            }
+          )
+          .filter(Boolean);
+
+      const textoPrincipal =
+        textoSeguro(
+          tituloItem
+        );
+
+      const textoFinal =
+        [
+          textoPrincipal,
+          ...detalhes,
+        ]
+          .filter(Boolean)
+          .join(" — ");
+
+      return (
+        <li key={index}>
+          {textoFinal ||
+            "Informação estruturada disponível."}
+        </li>
+      );
+    }
+
+    return (
+      <li key={index}>
+        {String(item)}
+      </li>
+    );
+  }
+
   return (
     <div
       style={{
@@ -9357,18 +9485,7 @@ function ListaInterna({
           }}
         >
           {lista.map(
-            (
-              item,
-              index
-            ) => (
-              <li
-                key={
-                  index
-                }
-              >
-                {item}
-              </li>
-            )
+            itemSeguro
           )}
         </ul>
       ) : (
