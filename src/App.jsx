@@ -138,12 +138,53 @@ const DORES_PF = [
 ];
 
 const AREAS_PF = [
-  { id: "financeiro", label: "Finanças pessoais", Icon: Wallet },
-  { id: "aposentadoria", label: "Aposentadoria", Icon: Target },
-  { id: "investimentos", label: "Investimentos", Icon: TrendingUp },
+  { id: "organizacao_financeira", label: "Organização financeira", Icon: Wallet },
+  { id: "fluxo_pessoal", label: "Fluxo financeiro pessoal", Icon: TrendingUp },
+  { id: "endividamento", label: "Endividamento", Icon: AlertTriangle },
+  { id: "reserva_seguranca", label: "Reserva e segurança", Icon: Target },
   { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
-  { id: "protecao", label: "Proteção financeira", Icon: Scale },
-  { id: "organizacao", label: "Organização / Planejamento", Icon: ClipboardList },
+  { id: "investimentos", label: "Investimentos", Icon: TrendingUp },
+  { id: "aposentadoria", label: "Aposentadoria", Icon: CalendarCheck },
+  { id: "protecao_familiar", label: "Proteção familiar", Icon: Scale },
+  { id: "tributario_pf", label: "Tributário PF", Icon: Calculator },
+  { id: "sucessao", label: "Sucessão", Icon: Users },
+  { id: "objetivos", label: "Objetivos financeiros", Icon: ClipboardList },
+];
+
+const AREAS_AVALIAR_HOLDING = [
+  { id: "objetivos", label: "Objetivos da estrutura", Icon: Target },
+  { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
+  { id: "imoveis", label: "Imóveis", Icon: Building2 },
+  { id: "participacoes", label: "Participações societárias", Icon: Users },
+  { id: "receitas", label: "Receitas patrimoniais", Icon: Wallet },
+  { id: "familia_sucessao", label: "Família e sucessão", Icon: Users },
+  { id: "tributario", label: "Tributário patrimonial", Icon: Calculator },
+  { id: "financiamentos", label: "Financiamentos e obrigações", Icon: Wallet },
+  { id: "custos_viabilidade", label: "Custos e viabilidade", Icon: Percent },
+];
+
+const AREAS_GRUPO = [
+  { id: "estrutura_grupo", label: "Estrutura do grupo", Icon: Building2 },
+  { id: "governanca", label: "Governança", Icon: Target },
+  { id: "financeiro_consolidado", label: "Financeiro consolidado", Icon: Wallet },
+  { id: "intercompany", label: "Operações intercompany", Icon: Settings2 },
+  { id: "tributario", label: "Tributário", Icon: Calculator },
+  { id: "contabil_fiscal", label: "Contábil / Fiscal", Icon: ClipboardList },
+  { id: "pessoas_compartilhadas", label: "Pessoas compartilhadas", Icon: Users },
+  { id: "operacoes", label: "Operações do grupo", Icon: Settings2 },
+  { id: "tecnologia", label: "Tecnologia e dados", Icon: Cpu },
+];
+
+const AREAS_SPE = [
+  { id: "projeto", label: "Projeto / empreendimento", Icon: Target },
+  { id: "socios_investidores", label: "Sócios e investidores", Icon: Users },
+  { id: "aportes", label: "Aportes e capital", Icon: Wallet },
+  { id: "financeiro", label: "Financeiro", Icon: Wallet },
+  { id: "contratos", label: "Contratos", Icon: Scale },
+  { id: "tributario", label: "Tributário", Icon: Calculator },
+  { id: "governanca", label: "Governança", Icon: ClipboardList },
+  { id: "riscos", label: "Riscos do projeto", Icon: AlertTriangle },
+  { id: "encerramento", label: "Saída / encerramento", Icon: CalendarCheck },
 ];
 
 // Estimativa simplificada de carga tributária — referência, não é cálculo fiscal real.
@@ -705,36 +746,63 @@ const DORES_HOLDING = [
 ];
 
 const AREAS_HOLDING = [
-  {
-    id: "financeiro",
-    label: "Patrimônio / Financeiro",
-    Icon: Wallet,
-  },
-  {
-    id: "juridico",
-    label: "Societário / Jurídico",
-    Icon: Scale,
-  },
-  {
-    id: "contabilidade",
-    label: "Contábil / Fiscal",
-    Icon: Calculator,
-  },
-  {
-    id: "gestao",
-    label: "Governança / Gestão",
-    Icon: Target,
-  },
-  {
-    id: "administrativo",
-    label: "Documentação / Administração",
-    Icon: ClipboardList,
-  },
-  {
-    id: "operacional",
-    label: "Estrutura Patrimonial / Operacional",
-    Icon: Settings2,
-  },
+  { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
+  { id: "participacoes", label: "Participações societárias", Icon: Users },
+  { id: "imoveis", label: "Imóveis", Icon: Building2 },
+  { id: "receitas_patrimoniais", label: "Receitas patrimoniais", Icon: Wallet },
+  { id: "tributario_patrimonial", label: "Tributário patrimonial", Icon: Calculator },
+  { id: "governanca", label: "Governança", Icon: Target },
+  { id: "sucessao", label: "Sucessão", Icon: Users },
+  { id: "protecao_patrimonial", label: "Proteção patrimonial", Icon: Scale },
+  { id: "custos_estrutura", label: "Custos da estrutura", Icon: Percent },
+];
+
+const DORES_GRUPO = [
+  "Não temos uma visão consolidada das empresas do grupo",
+  "Há movimentações entre empresas sem processo claro",
+  "Existem custos e estruturas duplicadas",
+  "A governança entre os sócios e empresas é fraca",
+  "O caixa do grupo não é gerido de forma integrada",
+  "Há dúvidas sobre tributação das operações entre empresas",
+  "Funcionários ou estruturas são compartilhados sem regra clara",
+  "Existe risco de grupo econômico ou confusão patrimonial",
+  "Os dados estão fragmentados entre sistemas e empresas",
+  "Outro",
+];
+
+const DORES_SPE = [
+  "Não está clara a viabilidade financeira do projeto",
+  "Há dificuldade para controlar aportes e necessidades de caixa",
+  "As responsabilidades entre sócios/investidores não estão claras",
+  "Existem contratos ou obrigações críticas ainda não estruturadas",
+  "A tributação do projeto não foi simulada adequadamente",
+  "Falta governança para decisões e prestação de contas",
+  "Os custos estão acima do previsto",
+  "O cronograma do projeto apresenta riscos",
+  "Não existe plano claro para saída ou encerramento da SPE",
+  "Outro",
+];
+
+const IMPACTOS_GRUPO = [
+  "Perda de eficiência entre empresas",
+  "Custos duplicados",
+  "Risco tributário",
+  "Risco de grupo econômico",
+  "Conflitos entre sócios",
+  "Decisões sem visão consolidada",
+  "Baixa previsibilidade de caixa",
+  "Dificuldade de crescimento do grupo",
+];
+
+const IMPACTOS_SPE = [
+  "Aumento do custo do projeto",
+  "Necessidade inesperada de aportes",
+  "Atraso do empreendimento",
+  "Conflito entre sócios/investidores",
+  "Risco contratual",
+  "Risco tributário",
+  "Perda de rentabilidade",
+  "Dificuldade de encerramento ou saída",
 ];
 
 const IMPACTOS_DOR = [
@@ -1186,17 +1254,52 @@ export default function DiagnosticoPrototipo() {
   const trilhaPFAtiva =
     estruturaNegocio === "pessoa_fisica";
 
-  // PF e "quero avaliar se uma holding faz sentido"
-  // não exigem CNPJ para seguir no diagnóstico.
+  const trilhaGrupoAtiva =
+    estruturaNegocio === "grupo";
+
+  const trilhaSPEAtiva =
+    estruturaNegocio === "spe";
+
+  // Estruturas consultivas/patrimoniais não dependem de CNPJ
+  // para gerar perguntas e diagnóstico.
   const fluxoSemCnpj =
     trilhaPFAtiva ||
-    avaliarHoldingAtiva;
+    trilhaHoldingAtiva ||
+    trilhaSPEAtiva;
+
+  const areasDaEstrutura =
+    trilhaPFAtiva
+      ? AREAS_PF
+      : avaliarHoldingAtiva
+      ? AREAS_AVALIAR_HOLDING
+      : estruturaNegocio === "holding"
+      ? AREAS_HOLDING
+      : trilhaGrupoAtiva
+      ? AREAS_GRUPO
+      : trilhaSPEAtiva
+      ? AREAS_SPE
+      : AREAS;
+
+  const doresDisponiveis =
+    trilhaPFAtiva
+      ? DORES_PF
+      : trilhaHoldingAtiva
+      ? DORES_HOLDING
+      : trilhaGrupoAtiva
+      ? DORES_GRUPO
+      : trilhaSPEAtiva
+      ? DORES_SPE
+      : DORES_EVENTO;
 
   const impactosDisponiveis =
     trilhaPFAtiva
       ? IMPACTOS_PF
       : trilhaHoldingAtiva
       ? IMPACTOS_HOLDING
+      : trilhaGrupoAtiva
+      ? IMPACTOS_GRUPO
+      : trilhaSPEAtiva
+      ? IMPACTOS_SPE
       : IMPACTOS_DOR;
 
   const tituloContextoDiagnostico =
@@ -1302,17 +1405,9 @@ export default function DiagnosticoPrototipo() {
     : areasSugeridas.slice(0, MAX_DORES);
 
   function labelAreaAtual(id) {
-    const origem =
-      trilhaHoldingAtiva
-        ? AREAS_HOLDING
-        : trilhaPFAtiva
-        ? AREAS_PF
-        : AREAS;
-
     return (
-      origem.find(
-        (item) =>
-          item.id === id
+      areasDaEstrutura.find(
+        (item) => item.id === id
       )?.label ||
       areaLabel(id)
     );
@@ -1344,21 +1439,53 @@ export default function DiagnosticoPrototipo() {
         ),
     }));
 
-  const gruposDinamicos = areasDoDiagnostico
+  const gruposDinamicos = [...new Set(
+    perguntasDinamicas
+      .map((q) => q.areaId)
+      .filter(Boolean)
+  )]
     .map((id) => {
-      const perguntasArea = perguntasDinamicas.filter((q) => q.areaId === id);
-      if (!perguntasArea.length) return null;
+      const perguntasArea =
+        perguntasDinamicas.filter(
+          (q) => q.areaId === id
+        );
 
-      const temas = [...new Set(perguntasArea.map((q) => q.tema || "Diagnóstico específico"))];
+      if (!perguntasArea.length) {
+        return null;
+      }
+
+      const temas = [
+        ...new Set(
+          perguntasArea.map(
+            (q) =>
+              q.tema ||
+              "Diagnóstico específico"
+          )
+        ),
+      ];
 
       return {
         id,
-        label: labelAreaAtual(id),
-        subtemas: temas.map((tema) => ({
-          tema,
-          dica: `Aprofundar ${tema.toLowerCase()} considerando o modelo real do negócio.`,
-          perguntas: perguntasArea.filter((q) => (q.tema || "Diagnóstico específico") === tema),
-        })),
+        label:
+          perguntasArea[0]?.area ||
+          labelAreaAtual(id),
+
+        subtemas: temas.map(
+          (tema) => ({
+            tema,
+            dica:
+              `Aprofundar ${tema.toLowerCase()} dentro da estrutura ${estruturaNegocio}.`,
+
+            perguntas:
+              perguntasArea.filter(
+                (q) =>
+                  (
+                    q.tema ||
+                    "Diagnóstico específico"
+                  ) === tema
+              ),
+          })
+        ),
       };
     })
     .filter(Boolean);
@@ -1982,6 +2109,14 @@ export default function DiagnosticoPrototipo() {
       diagnosticoId:
         diagnosticoIdSalvo ||
         "",
+
+      estruturaNegocio,
+
+      contextoCliente: {
+        estruturaNegocio,
+        holding: perfilHolding,
+        pessoaFisica: perfilPF,
+      },
     };
 
     const assinatura =
@@ -2021,6 +2156,21 @@ export default function DiagnosticoPrototipo() {
     empresaPrincipal?.cnpjDigits,
     empresaPrincipal?.razao,
     diagnosticoIdSalvo,
+    estruturaNegocio,
+    tiposHolding,
+    objetivosHolding,
+    patrimonioHolding,
+    receitasHolding,
+    sucessaoHolding,
+    objetivosPF,
+    rendaMensalPF,
+    gastosMensaisPF,
+    dividasPF,
+    reservaPF,
+    patrimonioPF,
+    investimentosPF,
+    aposentadoriaPF,
+    dependentesPF,
     todasPerguntas.length,
     respostas,
   ]);
@@ -2132,7 +2282,15 @@ export default function DiagnosticoPrototipo() {
       observacao,
       descricaoNegocio,
       negocioInterpretado,
+
       estruturaNegocio,
+
+      contextoEstrutura: {
+        estruturaNegocio,
+        holding: perfilHolding,
+        pessoaFisica: perfilPF,
+      },
+
       holding: perfilHolding,
       pessoaFisica: perfilPF,
       doresSelecionadas,
@@ -2140,6 +2298,7 @@ export default function DiagnosticoPrototipo() {
       dor90Dias,
       impactosDor,
       areas: gruposSelecionados.map((g) => ({
+        id: g.id,
         area: g.label,
         score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
         subtemas: g.subtemas.map((s) => ({
@@ -2180,66 +2339,230 @@ export default function DiagnosticoPrototipo() {
     Promise.all([chamadaIA, minDelay]).then(([data]) => {
       if (cancelado) return;
 
-      if (data?.areas) {
+      const diagnostico =
+        data?.diagnostico ||
+        data?.resultado ||
+        null;
+
+      if (diagnostico) {
         const mapa = {};
-        data.areas.forEach((a) => {
-          mapa[a.area] = a;
-        });
+
+        const eixos =
+          Array.isArray(
+            diagnostico.eixos
+          )
+            ? diagnostico.eixos
+            : [];
+
+        eixos.forEach(
+          (eixo) => {
+            const label =
+              eixo.label ||
+              labelAreaAtual(
+                eixo.id
+              );
+
+            mapa[label] = {
+              area:
+                label,
+
+              areaId:
+                eixo.id,
+
+              score:
+                Number(
+                  eixo.score
+                ) || 0,
+
+              nivel:
+                eixo.nivel ||
+                "",
+
+              resumo:
+                Array.isArray(
+                  eixo.achados
+                )
+                  ? eixo.achados.join(
+                      " "
+                    )
+                  : "",
+
+              achados:
+                Array.isArray(
+                  eixo.achados
+                )
+                  ? eixo.achados
+                  : [],
+
+              riscos:
+                Array.isArray(
+                  eixo.riscos
+                )
+                  ? eixo.riscos
+                  : [],
+
+              pontosFortes:
+                Array.isArray(
+                  eixo.pontosFortes
+                )
+                  ? eixo.pontosFortes
+                  : [],
+
+              recomendacoes:
+                Array.isArray(
+                  eixo.recomendacoes
+                )
+                  ? eixo.recomendacoes
+                  : [],
+            };
+          }
+        );
 
         setIaResultado({
-          // Diagnóstico técnico já existente
-          areas: mapa,
+          areas:
+            mapa,
 
-          diagnosticoGeral:
-            data.diagnosticoGeral || null,
+          diagnosticoGeral: {
+            resumoExecutivo:
+              diagnostico.leituraExecutiva ||
+              "",
+
+            principaisDores:
+              Array.isArray(
+                diagnostico.doresPrincipais
+              )
+                ? diagnostico.doresPrincipais
+                : [],
+
+            pontosFortes:
+              Array.isArray(
+                diagnostico.pontosFortes
+              )
+                ? diagnostico.pontosFortes
+                : [],
+
+            prioridadesImediatas:
+              Array.isArray(
+                diagnostico.prioridades
+              )
+                ? diagnostico.prioridades
+                : [],
+
+            oportunidades:
+              Array.isArray(
+                diagnostico.recomendacoes
+              )
+                ? diagnostico.recomendacoes
+                : [],
+
+            causasProvaveis:
+              Array.isArray(
+                diagnostico.causasProvaveis
+              )
+                ? diagnostico.causasProvaveis
+                : [],
+
+            impactos:
+              Array.isArray(
+                diagnostico.impactos
+              )
+                ? diagnostico.impactos
+                : [],
+
+            proximosPassos:
+              Array.isArray(
+                diagnostico.proximosPassos
+              )
+                ? diagnostico.proximosPassos
+                : [],
+
+            leituraDaDor:
+              diagnostico.leituraExecutiva ||
+              "",
+
+            alertaEstrategico:
+              Array.isArray(
+                diagnostico.riscosPrioritarios
+              ) &&
+              diagnostico.riscosPrioritarios.length
+                ? diagnostico.riscosPrioritarios[0]
+                : "",
+          },
 
           visaoGrupo:
-            data.visaoGrupo || null,
+            estruturaNegocio ===
+            "grupo"
+              ? diagnostico
+              : null,
 
           lacunasDiagnostico:
-            Array.isArray(data.lacunasDiagnostico)
-              ? data.lacunasDiagnostico
+            Array.isArray(
+              diagnostico.informacoesFaltantes
+            )
+              ? diagnostico.informacoesFaltantes
               : [],
 
           oportunidadesConsultoria:
-            Array.isArray(data.oportunidadesConsultoria)
-              ? data.oportunidadesConsultoria
+            Array.isArray(
+              diagnostico
+                ?.visaoAdministracao
+                ?.oportunidades
+            )
+              ? diagnostico
+                  .visaoAdministracao
+                  .oportunidades
               : [],
 
-          // Novo dossiê consultivo do administrador
           plano90Dias:
-            data.plano90Dias || null,
+            diagnostico.plano90Dias ||
+            null,
 
           quickWins:
-            Array.isArray(data.quickWins)
-              ? data.quickWins
+            Array.isArray(
+              diagnostico.quickWins
+            )
+              ? diagnostico.quickWins
               : [],
 
           kpisRecomendados:
-            Array.isArray(data.kpisRecomendados)
-              ? data.kpisRecomendados
+            Array.isArray(
+              diagnostico.indicadores
+            )
+              ? diagnostico.indicadores
               : [],
 
           perguntasAprofundamento:
-            Array.isArray(data.perguntasAprofundamento)
-              ? data.perguntasAprofundamento
+            Array.isArray(
+              diagnostico.informacoesFaltantes
+            )
+              ? diagnostico.informacoesFaltantes
               : [],
 
           visaoConsultor:
-            data.visaoConsultor || null,
+            diagnostico.visaoAdministracao ||
+            null,
 
           visaoComercial:
-            data.visaoComercial || null,
+            diagnostico.visaoAdministracao ||
+            null,
 
-          contextoInterpretado:
-            data.contextoInterpretado || null,
+          contextoInterpretado: {
+            estruturaNegocio,
+            estruturaLabel:
+              diagnostico.estruturaLabel ||
+              "",
+          },
 
           resultadoCompleto:
-            data.resultado || null,
+            diagnostico,
 
           modelo:
-            data.modelo || "",
+            data.motor ||
+            "",
         });
+      }
+
+});
       }
 
       setStep("resultado");
@@ -2411,15 +2734,8 @@ export default function DiagnosticoPrototipo() {
       },
       areasSelecionadas:
         dores.map((id) => {
-          const origemArea =
-            trilhaHoldingAtiva
-              ? AREAS_HOLDING
-              : trilhaPFAtiva
-              ? AREAS_PF
-              : AREAS;
-
           const area =
-            origemArea.find(
+            areasDaEstrutura.find(
               (item) =>
                 item.id === id
             );
@@ -2982,6 +3298,7 @@ export default function DiagnosticoPrototipo() {
             endereco: empresaPrincipal?.endereco || {},
           },
       perfil: {
+        estruturaNegocio,
         faturamento: faturamento?.label || "",
         colaboradores: colaboradores || "",
         regime: regime || "",
@@ -2998,6 +3315,12 @@ export default function DiagnosticoPrototipo() {
         areasSelecionadas: gruposSelecionados.map((g) => g.label),
       },
       resultado: {
+        contextoEstrutura: {
+          estruturaNegocio,
+          holding: perfilHolding,
+          pessoaFisica: perfilPF,
+        },
+
         // Resultado principal
         scoreGeral: score,
 
@@ -3147,6 +3470,14 @@ export default function DiagnosticoPrototipo() {
           idSalvo
             ? String(idSalvo)
             : "",
+
+        estruturaNegocio,
+
+        contextoCliente: {
+          estruturaNegocio,
+          holding: perfilHolding,
+          pessoaFisica: perfilPF,
+        },
       });
 
       // ===================================================
@@ -3437,14 +3768,24 @@ export default function DiagnosticoPrototipo() {
 
 
   const inteligenciaTributaria =
-    montarInteligenciaTributaria({
-      regime,
-      segmento:
-        segmentoPredominante,
-      categoria:
-        categoriaPrincipal,
-      faturamento,
-    });
+    (
+      estruturaNegocio ===
+        "operacional" ||
+      estruturaNegocio ===
+        "grupo"
+    )
+      ? montarInteligenciaTributaria({
+          regime,
+          segmento:
+            segmentoPredominante,
+          categoria:
+            categoriaPrincipal,
+          faturamento,
+        })
+      : {
+          disponivel: false,
+          reforma: null,
+        };
 
   const diagnosticoGeral = iaResultado?.diagnosticoGeral || null;
   const resumoExecutivo = diagnosticoGeral?.resumoExecutivo || "";
@@ -3465,7 +3806,7 @@ export default function DiagnosticoPrototipo() {
   useEffect(() => {
     if (
       step === "resultado" &&
-      empresaPrincipal &&
+      (fluxoSemCnpj || empresaPrincipal) &&
       gruposSelecionados.length > 0 &&
       !relatorioEnviadoRef.current
     ) {
@@ -3530,8 +3871,11 @@ export default function DiagnosticoPrototipo() {
   }
 
   function gerarPdf() {
-    if (!empresaPrincipal) {
-      showToast("Nenhuma empresa disponível para gerar o relatório.");
+    if (
+      !fluxoSemCnpj &&
+      !empresaPrincipal
+    ) {
+      showToast("Não há dados suficientes para gerar o relatório.");
       return;
     }
 
@@ -3639,7 +3983,19 @@ export default function DiagnosticoPrototipo() {
   <section class="capa">
     <img src="${logoUrl}" alt="Finder of Solutions" class="logo" />
     <div class="marca">Finder of Solutions</div>
-    <h1>${trilhaPFAtiva ? "Diagnóstico Financeiro Pessoal" : "Diagnóstico Executivo Empresarial"}</h1>
+    <h1>${
+      trilhaPFAtiva
+        ? "Diagnóstico Financeiro Pessoal"
+        : avaliarHoldingAtiva
+        ? "Avaliação de Viabilidade de Holding"
+        : estruturaNegocio === "holding"
+        ? "Diagnóstico Patrimonial da Holding"
+        : estruturaNegocio === "grupo"
+        ? "Diagnóstico do Grupo Empresarial"
+        : estruturaNegocio === "spe"
+        ? "Diagnóstico da SPE"
+        : "Diagnóstico Executivo Empresarial"
+    }</h1>
     <p class="empresa">${escaparHtml(
       trilhaPFAtiva
         ? nome || "Pessoa Física"
@@ -5027,12 +5383,7 @@ export default function DiagnosticoPrototipo() {
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {(trilhaHoldingAtiva
-                      ? DORES_HOLDING
-                      : trilhaPFAtiva
-                      ? DORES_PF
-                      : DORES_EVENTO
-                    ).map((item) => {
+                    {doresDisponiveis.map((item) => {
                       const selecionada = doresSelecionadas.includes(item);
 
                       return (
@@ -5142,9 +5493,13 @@ export default function DiagnosticoPrototipo() {
                 <div style={{ borderTop: "1px solid #E6E9EF", paddingTop: 14 }}>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: "0 0 4px" }}>
                     {trilhaHoldingAtiva
-                      ? "Quais frentes da holding merecem mais atenção?"
+                      ? "Quais frentes patrimoniais merecem mais atenção?"
                       : trilhaPFAtiva
                       ? "Quais áreas da sua vida financeira merecem mais atenção?"
+                      : trilhaGrupoAtiva
+                      ? "Quais frentes do grupo empresarial merecem mais atenção?"
+                      : trilhaSPEAtiva
+                      ? "Quais frentes da SPE merecem mais atenção?"
                       : "Quais áreas merecem mais atenção?"}
                   </p>
 
@@ -5153,12 +5508,7 @@ export default function DiagnosticoPrototipo() {
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {(trilhaHoldingAtiva
-                      ? AREAS_HOLDING
-                      : trilhaPFAtiva
-                      ? AREAS_PF
-                      : AREAS
-                    ).map(({ id, label, Icon }) => {
+                    {areasDaEstrutura.map(({ id, label, Icon }) => {
                       const selecionada = dores.includes(id);
                       const bloqueada = !selecionada && dores.length >= MAX_DORES;
 
@@ -5497,6 +5847,12 @@ export default function DiagnosticoPrototipo() {
                 <p style={sectionTitleStyle}>
                   {trilhaPFAtiva
                     ? "O que entendemos sobre sua vida financeira"
+                    : trilhaHoldingAtiva
+                    ? "O que entendemos sobre sua estrutura patrimonial"
+                    : trilhaGrupoAtiva
+                    ? "O que entendemos sobre o grupo empresarial"
+                    : trilhaSPEAtiva
+                    ? "O que entendemos sobre a SPE"
                     : "O que entendemos sobre o seu negócio"}
                 </p>
                 <div style={{ background: "#F7F8FB", borderRadius: 12, padding: 13, marginBottom: 14, border: "1px solid #E6E9EF" }}>
