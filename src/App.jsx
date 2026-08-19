@@ -748,6 +748,32 @@ const IMPACTOS_DOR = [
   "Dificuldade de crescimento",
 ];
 
+const IMPACTOS_HOLDING = [
+  "Risco sucessório",
+  "Conflito entre herdeiros ou sócios",
+  "Patrimônio desorganizado",
+  "Carga tributária patrimonial elevada",
+  "Risco fiscal ou jurídico",
+  "Dificuldade para administrar imóveis",
+  "Dificuldade para transferir ou vender bens",
+  "Falta de governança",
+  "Exposição patrimonial",
+  "Decisões sem planejamento",
+];
+
+const IMPACTOS_PF = [
+  "Falta de dinheiro no fim do mês",
+  "Dificuldade para poupar",
+  "Endividamento",
+  "Ausência de reserva de emergência",
+  "Aposentadoria insuficiente",
+  "Investimentos sem estratégia",
+  "Patrimônio desorganizado",
+  "Insegurança financeira",
+  "Dependência da renda atual",
+  "Dificuldade para atingir objetivos",
+];
+
 const CHECKLISTS = {
   marketing: [
     { tema: "Aquisição e conversão", dica: "Mapear o funil completo e acompanhar CAC e ROI mês a mês", perguntas: [
@@ -1096,6 +1122,24 @@ export default function DiagnosticoPrototipo() {
   const fluxoSemCnpj =
     trilhaPFAtiva ||
     avaliarHoldingAtiva;
+
+  const impactosDisponiveis =
+    trilhaPFAtiva
+      ? IMPACTOS_PF
+      : trilhaHoldingAtiva
+      ? IMPACTOS_HOLDING
+      : IMPACTOS_DOR;
+
+  const tituloContextoDiagnostico =
+    trilhaPFAtiva
+      ? "sua vida financeira"
+      : trilhaHoldingAtiva
+      ? (
+          avaliarHoldingAtiva
+            ? "sua necessidade de estrutura patrimonial"
+            : "sua holding e estrutura patrimonial"
+        )
+      : "seu negócio";
 
   const perfilPF = {
     ativo: trilhaPFAtiva,
@@ -4951,11 +4995,15 @@ export default function DiagnosticoPrototipo() {
 
                 <div>
                   <p style={{ ...labelStyle, marginBottom: 8 }}>
-                    Qual impacto esse problema está causando?
+                    {trilhaPFAtiva
+                      ? "Como esse problema está afetando sua vida financeira?"
+                      : trilhaHoldingAtiva
+                      ? "Qual impacto essa situação está causando no patrimônio ou na estrutura?"
+                      : "Qual impacto esse problema está causando?"}
                   </p>
 
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                    {IMPACTOS_DOR.map((impacto) => {
+                    {impactosDisponiveis.map((impacto) => {
                       const ativo = impactosDor.includes(impacto);
 
                       return (
@@ -5058,10 +5106,18 @@ export default function DiagnosticoPrototipo() {
                 <Loader2 size={34} color={CORAL} className="spin" />
                 <div>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 700, color: NAVY, margin: "0 0 6px" }}>
-                    Entendendo o seu negócio
+                    {trilhaPFAtiva
+                      ? "Entendendo sua vida financeira"
+                      : trilhaHoldingAtiva
+                      ? "Entendendo sua estrutura patrimonial"
+                      : "Entendendo o seu negócio"}
                   </p>
                   <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, maxWidth: 360, margin: 0 }}>
-                    Cruzando CNAEs, atividade informada, descrição do negócio, dores e departamentos selecionados para montar perguntas específicas.
+                    {trilhaPFAtiva
+                      ? "Cruzando seus objetivos, renda, gastos, reserva, dores e áreas selecionadas para montar perguntas específicas."
+                      : trilhaHoldingAtiva
+                      ? "Cruzando objetivos patrimoniais, bens, receitas, sucessão, dores e áreas selecionadas para montar perguntas específicas."
+                      : "Cruzando CNAEs, atividade informada, descrição do negócio, dores e departamentos selecionados para montar perguntas específicas."}
                   </p>
                 </div>
               </div>
@@ -5071,14 +5127,61 @@ export default function DiagnosticoPrototipo() {
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
                 <div>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 700, color: NAVY, margin: "6px 0 5px" }}>
-                    Foi assim que entendemos seu negócio
+                    {trilhaPFAtiva
+                      ? "Foi assim que entendemos sua situação financeira"
+                      : trilhaHoldingAtiva
+                      ? (
+                          avaliarHoldingAtiva
+                            ? "Foi assim que entendemos sua necessidade de avaliar uma holding"
+                            : "Foi assim que entendemos sua estrutura patrimonial"
+                        )
+                      : "Foi assim que entendemos seu negócio"}
                   </p>
                   <p style={{ fontSize: 12, color: MUTED, margin: 0, lineHeight: 1.5 }}>
-                    Confirme antes de responder. Se a interpretação estiver errada, ajuste a descrição e gere novamente.
+                    {trilhaPFAtiva
+                      ? "Confirme antes de responder. Se algo não representar sua realidade financeira, volte e ajuste suas escolhas."
+                      : trilhaHoldingAtiva
+                      ? "Confirme antes de responder. Se algo não representar seu patrimônio ou objetivo, volte e ajuste as informações."
+                      : "Confirme antes de responder. Se a interpretação estiver errada, ajuste a descrição e gere novamente."}
                   </p>
                 </div>
 
-                {negocioInterpretado ? (
+                {trilhaPFAtiva ? (
+                  <div style={{ background: "#EEF8F3", border: "1px solid #C9E8D8", borderRadius: 12, padding: 13 }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 0 7px" }}>
+                      Consultoria financeira pessoal
+                    </p>
+                    <p style={{ fontSize: 11.2, color: MUTED, margin: "0 0 6px", lineHeight: 1.5 }}>
+                      <strong>Objetivos:</strong> {objetivosPF
+                        .map((id) => OBJETIVOS_PF.find((item) => item.id === id)?.label)
+                        .filter(Boolean)
+                        .join(" · ") || "Diagnóstico financeiro geral"}
+                    </p>
+                    <p style={{ fontSize: 11.2, color: MUTED, margin: 0, lineHeight: 1.5 }}>
+                      <strong>Prioridade declarada:</strong> {dor90Dias || "Não informada"}
+                    </p>
+                  </div>
+                ) : trilhaHoldingAtiva ? (
+                  <div style={{ background: "#EEF8F3", border: "1px solid #C9E8D8", borderRadius: 12, padding: 13 }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 0 7px" }}>
+                      {avaliarHoldingAtiva ? "Avaliação de viabilidade de Holding" : "Holding / Estrutura patrimonial"}
+                    </p>
+                    <p style={{ fontSize: 11.2, color: MUTED, margin: "0 0 6px", lineHeight: 1.5 }}>
+                      <strong>Objetivos:</strong> {objetivosHolding.join(" · ") || "Avaliação patrimonial geral"}
+                    </p>
+                    {tiposHolding.length > 0 && (
+                      <p style={{ fontSize: 11.2, color: MUTED, margin: "0 0 6px", lineHeight: 1.5 }}>
+                        <strong>Hipótese de estrutura:</strong> {tiposHolding
+                          .map((id) => TIPOS_HOLDING.find((item) => item.id === id)?.label)
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    )}
+                    <p style={{ fontSize: 11.2, color: MUTED, margin: 0, lineHeight: 1.5 }}>
+                      <strong>Prioridade declarada:</strong> {dor90Dias || "Não informada"}
+                    </p>
+                  </div>
+                ) : negocioInterpretado ? (
                   <div style={{ background: "#EEF8F3", border: "1px solid #C9E8D8", borderRadius: 12, padding: 13 }}>
                     <p style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, margin: "0 0 5px" }}>
                       {negocioInterpretado.subsegmento || negocioInterpretado.segmento || "Negócio interpretado"}
@@ -5104,20 +5207,22 @@ export default function DiagnosticoPrototipo() {
                   </div>
                 )}
 
-                <div>
-                  <label style={labelStyle}>Ajuste a descrição, se necessário</label>
-                  <textarea
-                    value={descricaoNegocio}
-                    onChange={(e) => setDescricaoNegocio(e.target.value)}
-                    rows={4}
-                    style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
-                  />
-                </div>
+                {!fluxoSemCnpj && (
+                  <div>
+                    <label style={labelStyle}>Ajuste a descrição, se necessário</label>
+                    <textarea
+                      value={descricaoNegocio}
+                      onChange={(e) => setDescricaoNegocio(e.target.value)}
+                      rows={4}
+                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
+                    />
+                  </div>
+                )}
 
                 {perguntasDinamicas.length > 0 && (
                   <div style={{ background: ICE, borderRadius: 10, padding: 10 }}>
                     <p style={{ fontSize: 11.3, color: NAVY, margin: 0, lineHeight: 1.45 }}>
-                      <strong>{perguntasDinamicas.length} perguntas personalizadas</strong> foram montadas para {dores.map(areaLabel).join(", ")}.
+                      <strong>{perguntasDinamicas.length} perguntas personalizadas</strong> foram montadas para {dores.map(labelAreaAtual).join(", ")}.
                     </p>
                   </div>
                 )}
@@ -5126,7 +5231,10 @@ export default function DiagnosticoPrototipo() {
                   <button
                     type="button"
                     onClick={gerarPerguntasPersonalizadas}
-                    disabled={gerandoPerguntas || descricaoNegocio.trim().length < 20}
+                    disabled={
+                      gerandoPerguntas ||
+                      (!fluxoSemCnpj && descricaoNegocio.trim().length < 20)
+                    }
                     style={{ ...chipStyle(false), flex: 1 }}
                   >
                     Reanalisar
