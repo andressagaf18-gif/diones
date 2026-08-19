@@ -774,6 +774,75 @@ const IMPACTOS_PF = [
   "Dificuldade para atingir objetivos",
 ];
 
+const CHECKLISTS_PF = {
+  financeiro: [
+    {
+      tema: "Organização financeira",
+      dica: "Entender renda, gastos, previsibilidade e capacidade real de poupança.",
+      perguntas: [
+        { id: "pf_fin_1", text: "Você acompanha mensalmente quanto recebe, quanto gasta e quanto consegue poupar?", risco: "Baixa visibilidade financeira pessoal.", importancia: 3 },
+        { id: "pf_fin_2", text: "Seus gastos fixos e variáveis estão organizados por categoria e prioridade?", risco: "Dificuldade para identificar excessos e ajustar o orçamento.", importancia: 2 },
+        { id: "pf_fin_3", text: "Você consegue prever seus compromissos financeiros dos próximos 3 meses?", risco: "Risco de falta de liquidez e decisões reativas.", importancia: 2 },
+      ],
+    },
+  ],
+  aposentadoria: [
+    {
+      tema: "Planejamento de aposentadoria",
+      dica: "Transformar o objetivo de renda futura em prazo, patrimônio-alvo e capacidade de aporte.",
+      perguntas: [
+        { id: "pf_apo_1", text: "Você já definiu com que idade gostaria de reduzir ou encerrar sua atividade profissional?", risco: "Aposentadoria sem horizonte definido.", importancia: 2 },
+        { id: "pf_apo_2", text: "Você sabe qual renda mensal gostaria de ter na aposentadoria, em valores atuais?", risco: "Meta de aposentadoria sem valor de referência.", importancia: 3 },
+        { id: "pf_apo_3", text: "Você conhece aproximadamente quanto já possui acumulado para esse objetivo e quanto consegue aportar por mês?", risco: "Distância entre patrimônio atual e objetivo futuro desconhecida.", importancia: 3 },
+      ],
+    },
+  ],
+  investimentos: [
+    {
+      tema: "Investimentos",
+      dica: "Avaliar objetivos, prazo, liquidez e organização da carteira antes de discutir produtos.",
+      perguntas: [
+        { id: "pf_inv_1", text: "Seus investimentos estão separados de acordo com objetivos de curto, médio e longo prazo?", risco: "Carteira sem relação clara com os objetivos pessoais.", importancia: 3 },
+        { id: "pf_inv_2", text: "Você mantém sua reserva de emergência separada dos investimentos de longo prazo?", risco: "Liquidez inadequada para emergências.", importancia: 3 },
+        { id: "pf_inv_3", text: "Você entende o nível de risco e liquidez dos principais investimentos que possui?", risco: "Exposição a produtos incompatíveis com necessidades e prazo.", importancia: 2 },
+      ],
+    },
+  ],
+  patrimonio: [
+    {
+      tema: "Organização patrimonial",
+      dica: "Consolidar bens, investimentos e obrigações em uma visão patrimonial única.",
+      perguntas: [
+        { id: "pf_pat_1", text: "Você possui uma relação atualizada dos seus principais bens, investimentos e dívidas?", risco: "Patrimônio fragmentado e sem visão consolidada.", importancia: 2 },
+        { id: "pf_pat_2", text: "Você sabe quanto do seu patrimônio está concentrado em imóveis, investimentos financeiros e outros ativos?", risco: "Concentração patrimonial não monitorada.", importancia: 2 },
+        { id: "pf_pat_3", text: "Há decisões patrimoniais relevantes previstas para os próximos anos, como compra, venda, herança ou doação?", risco: "Decisões patrimoniais relevantes sem planejamento prévio.", importancia: 3 },
+      ],
+    },
+  ],
+  protecao: [
+    {
+      tema: "Proteção financeira",
+      dica: "Avaliar reserva, dependentes e vulnerabilidades que podem comprometer renda e patrimônio.",
+      perguntas: [
+        { id: "pf_pro_1", text: "Sua reserva de emergência seria suficiente para manter seus principais gastos por alguns meses?", risco: "Baixa capacidade de absorver imprevistos.", importancia: 3 },
+        { id: "pf_pro_2", text: "Existem pessoas que dependem financeiramente da sua renda?", risco: "Dependentes expostos à interrupção de renda.", importancia: 3 },
+        { id: "pf_pro_3", text: "Você já avaliou quais eventos poderiam comprometer significativamente sua renda ou patrimônio?", risco: "Riscos pessoais e familiares não mapeados.", importancia: 2 },
+      ],
+    },
+  ],
+  organizacao: [
+    {
+      tema: "Planejamento financeiro",
+      dica: "Transformar objetivos em prioridades, prazo e ações mensuráveis.",
+      perguntas: [
+        { id: "pf_org_1", text: "Você possui metas financeiras definidas com valor e prazo?", risco: "Objetivos financeiros sem plano de execução.", importancia: 2 },
+        { id: "pf_org_2", text: "Você revisa periodicamente se suas decisões financeiras estão aproximando você dos seus objetivos?", risco: "Ausência de acompanhamento e correção de rota.", importancia: 2 },
+        { id: "pf_org_3", text: "Você sabe qual é hoje a prioridade financeira mais importante para você?", risco: "Recursos dispersos entre objetivos concorrentes.", importancia: 3 },
+      ],
+    },
+  ],
+};
+
 const CHECKLISTS = {
   marketing: [
     { tema: "Aquisição e conversão", dica: "Mapear o funil completo e acompanhar CAC e ROI mês a mês", perguntas: [
@@ -1249,12 +1318,30 @@ export default function DiagnosticoPrototipo() {
     );
   }
 
+  function checklistBaseAtual(id) {
+    if (
+      trilhaPFAtiva &&
+      CHECKLISTS_PF[id]
+    ) {
+      return CHECKLISTS_PF[id];
+    }
+
+    return CHECKLISTS[id] || null;
+  }
+
   const gruposEstaticos = areasDoDiagnostico
-    .filter((id) => CHECKLISTS[id])
+    .filter(
+      (id) =>
+        checklistBaseAtual(id)
+    )
     .map((id) => ({
       id,
-      label: labelAreaAtual(id),
-      subtemas: checklistEnxuto(CHECKLISTS[id]),
+      label:
+        labelAreaAtual(id),
+      subtemas:
+        checklistEnxuto(
+          checklistBaseAtual(id)
+        ),
     }));
 
   const gruposDinamicos = areasDoDiagnostico
@@ -2371,15 +2458,34 @@ export default function DiagnosticoPrototipo() {
         invert: false,
       }));
 
-      setPerguntasDinamicas(perguntas);
+      // Se a IA não devolver perguntas, mantemos o fluxo com
+      // o checklist local da estrutura selecionada.
+      setPerguntasDinamicas(
+        perguntas.length > 0
+          ? perguntas
+          : []
+      );
       setNegocioInterpretado(data.negocioInterpretado || null);
       setRespostas({});
       setStep("confirmarNegocio");
     } catch (error) {
       console.error("Erro ao gerar perguntas:", error);
-      setErroPerguntas(error?.message || "Não foi possível gerar perguntas personalizadas.");
+
+      setErroPerguntas(
+        fluxoSemCnpj
+          ? "Usaremos as perguntas específicas da estrutura escolhida para continuar o diagnóstico."
+          : error?.message ||
+            "Não foi possível gerar perguntas personalizadas."
+      );
+
       setPerguntasDinamicas([]);
-      setNegocioInterpretado(null);
+
+      // PF e avaliação/holding sem CNPJ não dependem de uma
+      // interpretação empresarial para continuar.
+      if (!fluxoSemCnpj) {
+        setNegocioInterpretado(null);
+      }
+
       setStep("confirmarNegocio");
     } finally {
       setGerandoPerguntas(false);
@@ -5219,10 +5325,21 @@ export default function DiagnosticoPrototipo() {
                   </div>
                 )}
 
-                {perguntasDinamicas.length > 0 && (
+                {todasPerguntas.length > 0 && (
                   <div style={{ background: ICE, borderRadius: 10, padding: 10 }}>
                     <p style={{ fontSize: 11.3, color: NAVY, margin: 0, lineHeight: 1.45 }}>
-                      <strong>{perguntasDinamicas.length} perguntas personalizadas</strong> foram montadas para {dores.map(labelAreaAtual).join(", ")}.
+                      <strong>
+                        {todasPerguntas.length} perguntas
+                        {perguntasDinamicas.length > 0
+                          ? " personalizadas"
+                          : " específicas"}
+                      </strong>
+                      {" "}foram preparadas para{" "}
+                      {dores
+                        .map(
+                          labelAreaAtual
+                        )
+                        .join(", ")}.
                     </p>
                   </div>
                 )}
@@ -5240,8 +5357,13 @@ export default function DiagnosticoPrototipo() {
                     Reanalisar
                   </button>
                   <PrimaryButton
-                    disabled={perguntasDinamicas.length === 0}
-                    onClick={() => setStep("checklist")}
+                    disabled={
+                      todasPerguntas.length ===
+                      0
+                    }
+                    onClick={() =>
+                      setStep("checklist")
+                    }
                     style={{ flex: 1 }}
                   >
                     Está correto <ArrowRight size={16} />
