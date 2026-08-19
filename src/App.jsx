@@ -1451,9 +1451,16 @@ export default function DiagnosticoPrototipo() {
   const areasFallbackCategoria = CATEGORY_AREA_FALLBACK[categoriaPrincipal] || [];
   const areasSugeridas = [...new Set([...areasSugeridasApi, ...areasFallbackCategoria])];
 
-  const areasDoDiagnostico = dores.length > 0
-    ? dores
-    : areasSugeridas.slice(0, MAX_DORES);
+  // O diagnóstico cobre TODOS os eixos da estrutura.
+  // "dores" passa a representar somente as prioridades
+  // escolhidas para aprofundamento.
+  const areasDoDiagnostico =
+    areasDaEstrutura.map(
+      (item) => item.id
+    );
+
+  const prioridadesDiagnostico =
+    dores;
 
   function labelAreaAtual(id) {
     return (
@@ -2262,7 +2269,7 @@ export default function DiagnosticoPrototipo() {
           ]
         : [
             `Atividade-base: ${atividadePredominante?.descricao || categoriaPrincipal}`,
-            `Analisando as áreas: ${labels.join(", ")}`,
+            `Aprofundando prioridades: ${prioridadesDiagnostico.map(labelAreaAtual).join(", ") || "visão geral"}`,
             "Cruzando respostas com o contexto do segmento",
             "Estimando carga tributária de referência",
             "Calculando índice de maturidade por departamento",
@@ -2348,13 +2355,40 @@ export default function DiagnosticoPrototipo() {
       pessoaFisica: perfilPF,
       grupo: perfilGrupo,
       spe: perfilSPE,
+
       doresSelecionadas,
+
+      prioridadesSelecionadas:
+        prioridadesDiagnostico.map(
+          (id) => ({
+            id,
+            label:
+              labelAreaAtual(id),
+          })
+        ),
+
+      eixosObrigatorios:
+        areasDaEstrutura.map(
+          (item) => ({
+            id:
+              item.id,
+            label:
+              item.label,
+          })
+        ),
+
       dorPrincipal: doresSelecionadas[0] || "",
       dor90Dias,
       impactosDor,
       areas: gruposSelecionados.map((g) => ({
         id: g.id,
         area: g.label,
+
+        prioridade:
+          prioridadesDiagnostico.includes(
+            g.id
+          ),
+
         score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
         subtemas: g.subtemas.map((s) => ({
           tema: s.tema,
@@ -2797,21 +2831,37 @@ export default function DiagnosticoPrototipo() {
         objetivo90Dias: dor90Dias,
         impactos: impactosDor,
       },
+      // Áreas selecionadas = prioridades de aprofundamento.
       areasSelecionadas:
-        dores.map((id) => {
-          const area =
-            areasDaEstrutura.find(
-              (item) =>
-                item.id === id
-            );
+        prioridadesDiagnostico.map(
+          (id) => {
+            const area =
+              areasDaEstrutura.find(
+                (item) =>
+                  item.id === id
+              );
 
-          return {
-            id,
+            return {
+              id,
+              label:
+                area?.label ||
+                areaLabel(id),
+              prioridade:
+                true,
+            };
+          }
+        ),
+
+      // O motor deve cobrir todos estes eixos.
+      eixosObrigatorios:
+        areasDaEstrutura.map(
+          (item) => ({
+            id:
+              item.id,
             label:
-              area?.label ||
-              areaLabel(id),
-          };
-        }),
+              item.label,
+          })
+        ),
     };
 
     try {
@@ -5767,8 +5817,32 @@ export default function DiagnosticoPrototipo() {
                       : "Quais áreas merecem mais atenção?"}
                   </p>
 
-                  <p style={{ fontSize: 11, color: dores.length === MAX_DORES ? CORAL : "#9AA3B5", margin: "0 0 8px", fontWeight: 600 }}>
-                    Escolha até {MAX_DORES} áreas · {dores.length} selecionada(s)
+                  <p
+                    style={{
+                      fontSize: 11,
+                      color:
+                        dores.length ===
+                        MAX_DORES
+                          ? CORAL
+                          : "#9AA3B5",
+                      margin:
+                        "0 0 4px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Escolha até {MAX_DORES} prioridades · {dores.length} selecionada(s)
+                  </p>
+
+                  <p
+                    style={{
+                      fontSize: 10.3,
+                      color: MUTED,
+                      margin:
+                        "0 0 10px",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    O diagnóstico avaliará todas as frentes da estrutura. As opções marcadas receberão perguntas mais profundas.
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -5989,7 +6063,7 @@ export default function DiagnosticoPrototipo() {
             {step === "checklist" && gruposSelecionados.length > 0 && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                 <p style={{ fontFamily: DISPLAY_FONT, fontSize: 19, fontWeight: 700, color: NAVY, margin: "6px 0 2px" }}>
-                  Checklist — {gruposSelecionados.map((g) => g.label).join(", ")}
+                  Diagnóstico completo — {areasDaEstrutura.length} frentes
                 </p>
                 <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 12px" }}>
                   {todasPerguntas.length} perguntas · personalizadas para {
@@ -6008,6 +6082,23 @@ export default function DiagnosticoPrototipo() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 22, overflowY: "auto", maxHeight: 440, paddingRight: 2 }}>
                   {gruposSelecionados.map((g) => (
                     <div key={g.id}>
+                      {prioridadesDiagnostico.includes(g.id) && (
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            marginBottom: 7,
+                            background: "#FFF3EF",
+                            color: CORAL,
+                            borderRadius: 20,
+                            padding: "3px 7px",
+                            fontSize: 9,
+                            fontWeight: 800,
+                          }}
+                        >
+                          PRIORIDADE · APROFUNDAMENTO
+                        </div>
+                      )}
+
                       {gruposSelecionados.length > 1 && (
                         <p style={{
                           fontSize: 12.5, fontWeight: 700, color: NAVY, background: ICE,
