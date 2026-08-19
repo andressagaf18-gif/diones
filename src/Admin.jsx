@@ -4536,6 +4536,430 @@ function AtendimentosDepartamento({
     setEdicoes,
   ] = useState({});
 
+  // Atendimento aberto = "caso" operacional do consultor.
+  const [
+    atendimentoAberto,
+    setAtendimentoAberto,
+  ] = useState(null);
+
+  const [
+    diagnosticoAtendimento,
+    setDiagnosticoAtendimento,
+  ] = useState(null);
+
+  const [
+    historicoAtendimento,
+    setHistoricoAtendimento,
+  ] = useState([]);
+
+  const [
+    carregandoCaso,
+    setCarregandoCaso,
+  ] = useState(false);
+
+  const [
+    salvandoAcionamento,
+    setSalvandoAcionamento,
+  ] = useState(false);
+
+  const [
+    tipoAcionamento,
+    setTipoAcionamento,
+  ] = useState("WHATSAPP");
+
+  const [
+    resultadoAcionamento,
+    setResultadoAcionamento,
+  ] = useState("");
+
+  const [
+    descricaoAcionamento,
+    setDescricaoAcionamento,
+  ] = useState("");
+
+  const [
+    proximaAcaoCaso,
+    setProximaAcaoCaso,
+  ] = useState("");
+
+  const [
+    proximoContatoCaso,
+    setProximoContatoCaso,
+  ] = useState("");
+
+  const [
+    statusCaso,
+    setStatusCaso,
+  ] = useState("NAO_INICIADO");
+
+  const [
+    oportunidadeCaso,
+    setOportunidadeCaso,
+  ] = useState("NAO_ANALISADA");
+
+  function rotuloTipoAcionamento(tipo) {
+    const mapa = {
+      WHATSAPP: "WhatsApp",
+      LIGACAO: "Ligação",
+      EMAIL: "E-mail",
+      REUNIAO: "Reunião",
+      VIDEOCONFERENCIA: "Videoconferência",
+      PROPOSTA: "Proposta",
+      ANALISE_INTERNA: "Análise interna",
+      DOCUMENTOS: "Documentos",
+      OUTRO: "Outro",
+      ALTERACAO: "Alteração",
+    };
+
+    return mapa[tipo] || tipo || "Registro";
+  }
+
+  function formatarDataHora(valor) {
+    if (!valor) return "-";
+
+    try {
+      return new Date(valor).toLocaleString(
+        "pt-BR",
+        {
+          dateStyle: "short",
+          timeStyle: "short",
+        }
+      );
+    } catch {
+      return String(valor);
+    }
+  }
+
+  async function carregarHistorico(
+    atendimentoId
+  ) {
+    const resposta =
+      await fetch(
+        `/api/crm?action=listar-historico&atendimentoId=${encodeURIComponent(
+          atendimentoId
+        )}`,
+        {
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+          },
+        }
+      );
+
+    const data =
+      await resposta
+        .json()
+        .catch(() => null);
+
+    if (
+      !resposta.ok ||
+      !data?.sucesso
+    ) {
+      throw new Error(
+        data?.error ||
+        "Não foi possível carregar o histórico."
+      );
+    }
+
+    setHistoricoAtendimento(
+      Array.isArray(
+        data.historico
+      )
+        ? data.historico
+        : []
+    );
+  }
+
+  async function abrirAtendimento(
+    atendimento
+  ) {
+    setAtendimentoAberto(
+      atendimento
+    );
+
+    setStatusCaso(
+      atendimento.statusAtendimento ||
+      "NAO_INICIADO"
+    );
+
+    setOportunidadeCaso(
+      atendimento.statusOportunidade ||
+      "NAO_ANALISADA"
+    );
+
+    setProximaAcaoCaso(
+      atendimento.proximaAcao ||
+      ""
+    );
+
+    setProximoContatoCaso(
+      atendimento.proximoContato
+        ? new Date(
+            atendimento.proximoContato
+          )
+            .toISOString()
+            .slice(0, 16)
+        : ""
+    );
+
+    setCarregandoCaso(true);
+    setErro("");
+
+    try {
+      const requisicoes = [
+        carregarHistorico(
+          atendimento.id
+        ),
+      ];
+
+      if (
+        atendimento.diagnosticoId
+      ) {
+        requisicoes.push(
+          fetch(
+            `/api/ver-diagnostico?id=${encodeURIComponent(
+              atendimento.diagnosticoId
+            )}`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          )
+            .then(
+              async (resp) => {
+                const data =
+                  await resp
+                    .json()
+                    .catch(
+                      () => null
+                    );
+
+                if (
+                  !resp.ok ||
+                  !data?.sucesso
+                ) {
+                  throw new Error(
+                    data?.error ||
+                    "Não foi possível carregar o diagnóstico do departamento."
+                  );
+                }
+
+                setDiagnosticoAtendimento(
+                  data.diagnostico ||
+                  null
+                );
+              }
+            )
+        );
+      } else {
+        setDiagnosticoAtendimento(
+          null
+        );
+      }
+
+      await Promise.all(
+        requisicoes
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao abrir atendimento."
+      );
+    } finally {
+      setCarregandoCaso(false);
+    }
+  }
+
+  async function registrarAcionamentoCaso() {
+    if (!atendimentoAberto) {
+      return;
+    }
+
+    if (
+      !descricaoAcionamento.trim() &&
+      !resultadoAcionamento.trim()
+    ) {
+      setErro(
+        "Informe o resultado ou uma observação do acionamento."
+      );
+      return;
+    }
+
+    setSalvandoAcionamento(true);
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=registrar-acionamento",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              atendimentoId:
+                atendimentoAberto.id,
+
+              tipoAcionamento,
+
+              resultado:
+                resultadoAcionamento.trim(),
+
+              descricao:
+                descricaoAcionamento.trim(),
+
+              proximaAcao:
+                proximaAcaoCaso.trim(),
+
+              proximoContato:
+                proximoContatoCaso
+                  ? new Date(
+                      proximoContatoCaso
+                    ).toISOString()
+                  : null,
+
+              statusAtendimento:
+                statusCaso,
+
+              statusOportunidade:
+                oportunidadeCaso,
+
+              responsavelId:
+                atendimentoAberto.responsavelId ||
+                "",
+
+              responsavelNome:
+                atendimentoAberto.responsavelNome ||
+                "",
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível registrar o acionamento."
+        );
+      }
+
+      setResultadoAcionamento("");
+      setDescricaoAcionamento("");
+
+      await Promise.all([
+        carregarHistorico(
+          atendimentoAberto.id
+        ),
+        carregarTudo(),
+      ]);
+
+      setAtendimentoAberto(
+        (atual) => ({
+          ...atual,
+          statusAtendimento:
+            statusCaso,
+          statusOportunidade:
+            oportunidadeCaso,
+          proximaAcao:
+            proximaAcaoCaso,
+          proximoContato:
+            proximoContatoCaso ||
+            null,
+          ultimoAcionamento:
+            new Date().toISOString(),
+        })
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao registrar acionamento."
+      );
+    } finally {
+      setSalvandoAcionamento(false);
+    }
+  }
+
+  function eixoDoAtendimento() {
+    if (
+      !atendimentoAberto ||
+      !diagnosticoAtendimento
+    ) {
+      return null;
+    }
+
+    const resultado =
+      diagnosticoAtendimento.resultado ||
+      {};
+
+    const completo =
+      resultado.resultadoCompleto ||
+      {};
+
+    const eixos =
+      Array.isArray(
+        completo.eixos
+      )
+        ? completo.eixos
+        : [];
+
+    const alvo =
+      areaCanonica(
+        atendimentoAberto.area
+      );
+
+    return (
+      eixos.find(
+        (eixo) =>
+          areaCanonica(
+            eixo.label ||
+            eixo.id
+          ) === alvo
+      ) ||
+      null
+    );
+  }
+
+  function perguntasDoAtendimento() {
+    if (
+      !atendimentoAberto ||
+      !diagnosticoAtendimento
+    ) {
+      return [];
+    }
+
+    const perguntas =
+      normalizarLista(
+        diagnosticoAtendimento
+          .perguntasRespostas
+      );
+
+    const alvo =
+      areaCanonica(
+        atendimentoAberto.area
+      );
+
+    return perguntas.filter(
+      (item) =>
+        areaCanonica(
+          item.area ||
+          item.areaId
+        ) === alvo
+    );
+  }
+
   async function carregarTudo() {
     setCarregando(true);
     setErro("");
@@ -5304,6 +5728,870 @@ function AtendimentosDepartamento({
         </div>
       </Card>
 
+      {atendimentoAberto && (
+        <div
+          style={{
+            marginBottom: 20,
+            border:
+              "2px solid #17233D",
+            borderRadius: 14,
+            background: WHITE,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              background: NAVY,
+              color: WHITE,
+              padding: "14px 16px",
+              display: "flex",
+              justifyContent:
+                "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 9.5,
+                  opacity: 0.75,
+                  fontWeight: 800,
+                  marginBottom: 3,
+                }}
+              >
+                ATENDIMENTO · {atendimentoAberto.area}
+              </div>
+
+              <strong
+                style={{
+                  fontSize: 17,
+                }}
+              >
+                {(
+                  mapaLeads[
+                    String(
+                      atendimentoAberto.diagnosticoId ||
+                      atendimentoAberto.leadId ||
+                      ""
+                    )
+                  ] ||
+                  {}
+                ).razaoSocial ||
+                  (
+                    mapaLeads[
+                      String(
+                        atendimentoAberto.diagnosticoId ||
+                        atendimentoAberto.leadId ||
+                        ""
+                      )
+                    ] ||
+                    {}
+                  ).nome ||
+                  `Diagnóstico ${atendimentoAberto.diagnosticoId || ""}`}
+              </strong>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAtendimentoAberto(
+                  null
+                );
+                setDiagnosticoAtendimento(
+                  null
+                );
+                setHistoricoAtendimento(
+                  []
+                );
+              }}
+              style={{
+                border:
+                  "1px solid rgba(255,255,255,.45)",
+                background:
+                  "transparent",
+                color: WHITE,
+                borderRadius: 8,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              Fechar
+            </button>
+          </div>
+
+          {carregandoCaso ? (
+            <div
+              style={{
+                padding: 18,
+              }}
+            >
+              Carregando atendimento...
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: 16,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(150px,1fr))",
+                  gap: 9,
+                  marginBottom: 16,
+                }}
+              >
+                {[
+                  [
+                    "Responsável",
+                    atendimentoAberto.responsavelNome ||
+                      "Não atribuído",
+                  ],
+                  [
+                    "Departamento",
+                    atendimentoAberto.area,
+                  ],
+                  [
+                    "Score",
+                    atendimentoAberto.scoreArea ??
+                      "-",
+                  ],
+                  [
+                    "Status",
+                    statusAtendimentoLabel(
+                      atendimentoAberto.statusAtendimento
+                    ),
+                  ],
+                  [
+                    "Oportunidade",
+                    statusOportunidadeLabel(
+                      atendimentoAberto.statusOportunidade ||
+                      "NAO_ANALISADA"
+                    ),
+                  ],
+                  [
+                    "Último acionamento",
+                    formatarDataHora(
+                      atendimentoAberto.ultimoAcionamento
+                    ),
+                  ],
+                  [
+                    "Próxima ação",
+                    atendimentoAberto.proximaAcao ||
+                      "Não definida",
+                  ],
+                  [
+                    "Próximo contato",
+                    formatarDataHora(
+                      atendimentoAberto.proximoContato
+                    ),
+                  ],
+                ].map(
+                  ([titulo, valor]) => (
+                    <div
+                      key={titulo}
+                      style={{
+                        background:
+                          "#F7F8FB",
+                        borderRadius: 9,
+                        padding: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 8.8,
+                          color: MUTED,
+                          fontWeight: 900,
+                          marginBottom: 3,
+                        }}
+                      >
+                        {titulo.toUpperCase()}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {valor}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* RELATÓRIO DO DEPARTAMENTO */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "minmax(0,1.35fr) minmax(300px,.65fr)",
+                  gap: 14,
+                  alignItems: "start",
+                }}
+              >
+                <div>
+                  <h3
+                    style={{
+                      fontFamily:
+                        DISPLAY_FONT,
+                      margin:
+                        "0 0 10px",
+                      fontSize: 20,
+                    }}
+                  >
+                    Relatório do consultor · {atendimentoAberto.area}
+                  </h3>
+
+                  {(() => {
+                    const eixo =
+                      eixoDoAtendimento();
+
+                    if (!eixo) {
+                      return (
+                        <Card>
+                          O diagnóstico completo ainda não possui conteúdo estruturado para este departamento.
+                        </Card>
+                      );
+                    }
+
+                    return (
+                      <>
+                        <Card
+                          style={{
+                            marginBottom: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent:
+                                "space-between",
+                              gap: 10,
+                              alignItems:
+                                "flex-start",
+                            }}
+                          >
+                            <div>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: CORAL,
+                                  fontWeight: 900,
+                                  marginBottom: 4,
+                                }}
+                              >
+                                SITUAÇÃO IDENTIFICADA
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  lineHeight: 1.6,
+                                }}
+                              >
+                                {normalizarLista(
+                                  eixo.achados
+                                ).length
+                                  ? textoSeguro(
+                                      normalizarLista(
+                                        eixo.achados
+                                      )[0]
+                                    )
+                                  : "Consulte os pontos abaixo para aprofundamento."}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                background:
+                                  scoreInfo(
+                                    eixo.score
+                                  ).bg,
+                                color:
+                                  scoreInfo(
+                                    eixo.score
+                                  ).color,
+                                padding:
+                                  "8px 11px",
+                                borderRadius: 10,
+                                fontWeight: 900,
+                                fontSize: 18,
+                              }}
+                            >
+                              {eixo.score ??
+                                atendimentoAberto.scoreArea ??
+                                "-"}
+                            </div>
+                          </div>
+                        </Card>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit,minmax(210px,1fr))",
+                            gap: 9,
+                            marginBottom: 14,
+                          }}
+                        >
+                          <ListaInterna
+                            titulo="Achados"
+                            itens={
+                              eixo.achados
+                            }
+                          />
+
+                          <ListaInterna
+                            titulo="Riscos"
+                            itens={
+                              eixo.riscos
+                            }
+                          />
+
+                          <ListaInterna
+                            titulo="Pontos fortes"
+                            itens={
+                              eixo.pontosFortes
+                            }
+                          />
+
+                          <ListaInterna
+                            titulo="Recomendações"
+                            itens={
+                              eixo.recomendacoes
+                            }
+                          />
+                        </div>
+
+                        <h3
+                          style={{
+                            fontFamily:
+                              DISPLAY_FONT,
+                            margin:
+                              "18px 0 9px",
+                            fontSize: 17,
+                          }}
+                        >
+                          Respostas que originaram o diagnóstico
+                        </h3>
+
+                        <Card
+                          style={{
+                            padding: 0,
+                            overflowX:
+                              "auto",
+                          }}
+                        >
+                          <table
+                            style={{
+                              width:
+                                "100%",
+                              minWidth: 620,
+                              borderCollapse:
+                                "collapse",
+                            }}
+                          >
+                            <thead>
+                              <tr>
+                                <th style={thStyle}>Tema</th>
+                                <th style={thStyle}>Pergunta</th>
+                                <th style={thStyle}>Resposta</th>
+                              </tr>
+                            </thead>
+
+                            <tbody>
+                              {perguntasDoAtendimento().length ? (
+                                perguntasDoAtendimento().map(
+                                  (
+                                    item,
+                                    index
+                                  ) => (
+                                    <tr key={index}>
+                                      <td style={tdStyle}>
+                                        {textoSeguro(
+                                          item.tema
+                                        ) || "-"}
+                                      </td>
+                                      <td style={tdStyle}>
+                                        {textoSeguro(
+                                          item.pergunta
+                                        ) || "-"}
+                                      </td>
+                                      <td
+                                        style={{
+                                          ...tdStyle,
+                                          fontWeight: 800,
+                                        }}
+                                      >
+                                        {textoSeguro(
+                                          item.resposta
+                                        ) || "-"}
+                                      </td>
+                                    </tr>
+                                  )
+                                )
+                              ) : (
+                                <tr>
+                                  <td
+                                    colSpan="3"
+                                    style={{
+                                      ...tdStyle,
+                                      textAlign:
+                                        "center",
+                                    }}
+                                  >
+                                    Nenhuma resposta específica armazenada para este departamento.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </Card>
+
+                        <h3
+                          style={{
+                            fontFamily:
+                              DISPLAY_FONT,
+                            margin:
+                              "18px 0 9px",
+                            fontSize: 17,
+                          }}
+                        >
+                          Histórico do atendimento
+                        </h3>
+
+                        {historicoAtendimento.length ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection:
+                                "column",
+                              gap: 9,
+                            }}
+                          >
+                            {historicoAtendimento.map(
+                              (hist) => (
+                                <div
+                                  key={hist.id}
+                                  style={{
+                                    borderLeft:
+                                      `4px solid ${CORAL}`,
+                                    background:
+                                      "#F7F8FB",
+                                    borderRadius: 10,
+                                    padding: 11,
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent:
+                                        "space-between",
+                                      gap: 8,
+                                      flexWrap:
+                                        "wrap",
+                                      marginBottom: 5,
+                                    }}
+                                  >
+                                    <strong
+                                      style={{
+                                        fontSize: 11,
+                                      }}
+                                    >
+                                      {hist.tipoEvento ===
+                                      "ALTERACAO"
+                                        ? "Alteração do atendimento"
+                                        : rotuloTipoAcionamento(
+                                            hist.tipoAcionamento
+                                          )}
+                                    </strong>
+
+                                    <span
+                                      style={{
+                                        fontSize: 9.5,
+                                        color: MUTED,
+                                      }}
+                                    >
+                                      {formatarDataHora(
+                                        hist.criadoEm
+                                      )}
+                                    </span>
+                                  </div>
+
+                                  {hist.responsavelNome && (
+                                    <div
+                                      style={{
+                                        fontSize: 10,
+                                        color: MUTED,
+                                        marginBottom: 4,
+                                      }}
+                                    >
+                                      Por {hist.responsavelNome}
+                                    </div>
+                                  )}
+
+                                  {hist.resultado && (
+                                    <div
+                                      style={{
+                                        fontSize: 11.5,
+                                        fontWeight: 800,
+                                        marginBottom: 3,
+                                      }}
+                                    >
+                                      {hist.resultado}
+                                    </div>
+                                  )}
+
+                                  {hist.descricao && (
+                                    <div
+                                      style={{
+                                        fontSize: 11,
+                                        lineHeight: 1.5,
+                                      }}
+                                    >
+                                      {hist.descricao}
+                                    </div>
+                                  )}
+
+                                  {(hist.statusAnterior !==
+                                    hist.statusNovo ||
+                                    hist.oportunidadeAnterior !==
+                                      hist.oportunidadeNova) && (
+                                    <div
+                                      style={{
+                                        marginTop: 7,
+                                        fontSize: 9.8,
+                                        color: MUTED,
+                                      }}
+                                    >
+                                      {hist.statusAnterior !==
+                                        hist.statusNovo && (
+                                        <span>
+                                          Status:{" "}
+                                          {statusAtendimentoLabel(
+                                            hist.statusAnterior
+                                          )}{" "}
+                                          →{" "}
+                                          {statusAtendimentoLabel(
+                                            hist.statusNovo
+                                          )}
+                                        </span>
+                                      )}
+
+                                      {hist.statusAnterior !==
+                                        hist.statusNovo &&
+                                        hist.oportunidadeAnterior !==
+                                          hist.oportunidadeNova &&
+                                        " · "}
+
+                                      {hist.oportunidadeAnterior !==
+                                        hist.oportunidadeNova && (
+                                        <span>
+                                          Oportunidade:{" "}
+                                          {statusOportunidadeLabel(
+                                            hist.oportunidadeAnterior
+                                          )}{" "}
+                                          →{" "}
+                                          {statusOportunidadeLabel(
+                                            hist.oportunidadeNova
+                                          )}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {hist.proximaAcao && (
+                                    <div
+                                      style={{
+                                        marginTop: 7,
+                                        background:
+                                          "#FFF3EF",
+                                        borderRadius: 7,
+                                        padding: 7,
+                                        fontSize: 10.5,
+                                      }}
+                                    >
+                                      <strong>Próxima ação:</strong>{" "}
+                                      {hist.proximaAcao}
+                                      {hist.proximoContato
+                                        ? ` · ${formatarDataHora(
+                                            hist.proximoContato
+                                          )}`
+                                        : ""}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <Card>
+                            Nenhum acionamento registrado ainda.
+                          </Card>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* REGISTRO DO ACIONAMENTO */}
+                <div
+                  style={{
+                    position: "sticky",
+                    top: 12,
+                  }}
+                >
+                  <Card>
+                    <div
+                      style={{
+                        color: CORAL,
+                        fontWeight: 900,
+                        fontSize: 10,
+                        marginBottom: 4,
+                      }}
+                    >
+                      NOVO ACIONAMENTO
+                    </div>
+
+                    <h3
+                      style={{
+                        margin:
+                          "0 0 12px",
+                        fontFamily:
+                          DISPLAY_FONT,
+                        fontSize: 18,
+                      }}
+                    >
+                      Registrar andamento
+                    </h3>
+
+                    <label style={{ fontSize: 9.5, fontWeight: 800 }}>
+                      TIPO
+                    </label>
+
+                    <select
+                      value={tipoAcionamento}
+                      onChange={(e) =>
+                        setTipoAcionamento(
+                          e.target.value
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "8px 9px",
+                        margin:
+                          "4px 0 10px",
+                        background: WHITE,
+                      }}
+                    >
+                      <option value="WHATSAPP">WhatsApp</option>
+                      <option value="LIGACAO">Ligação</option>
+                      <option value="EMAIL">E-mail</option>
+                      <option value="REUNIAO">Reunião</option>
+                      <option value="VIDEOCONFERENCIA">Videoconferência</option>
+                      <option value="PROPOSTA">Proposta</option>
+                      <option value="ANALISE_INTERNA">Análise interna</option>
+                      <option value="DOCUMENTOS">Documentos</option>
+                      <option value="OUTRO">Outro</option>
+                    </select>
+
+                    <label style={{ fontSize: 9.5, fontWeight: 800 }}>
+                      RESULTADO
+                    </label>
+
+                    <input
+                      value={resultadoAcionamento}
+                      onChange={(e) =>
+                        setResultadoAcionamento(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Ex.: cliente pediu proposta"
+                      style={{
+                        width: "100%",
+                        boxSizing:
+                          "border-box",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "8px 9px",
+                        margin:
+                          "4px 0 10px",
+                      }}
+                    />
+
+                    <label style={{ fontSize: 9.5, fontWeight: 800 }}>
+                      OBSERVAÇÃO
+                    </label>
+
+                    <textarea
+                      value={descricaoAcionamento}
+                      onChange={(e) =>
+                        setDescricaoAcionamento(
+                          e.target.value
+                        )
+                      }
+                      rows={4}
+                      placeholder="O que aconteceu neste contato?"
+                      style={{
+                        width: "100%",
+                        boxSizing:
+                          "border-box",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "8px 9px",
+                        margin:
+                          "4px 0 10px",
+                        resize: "vertical",
+                        fontFamily:
+                          BODY_FONT,
+                      }}
+                    />
+
+                    <label style={{ fontSize: 9.5, fontWeight: 800 }}>
+                      STATUS DO ATENDIMENTO
+                    </label>
+
+                    <select
+                      value={statusCaso}
+                      onChange={(e) =>
+                        setStatusCaso(
+                          e.target.value
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "8px 9px",
+                        margin:
+                          "4px 0 10px",
+                        background: WHITE,
+                      }}
+                    >
+                      <option value="NAO_INICIADO">Novo / não iniciado</option>
+                      <option value="EM_ANALISE">Avaliando</option>
+                      <option value="REUNIAO_AGENDADA">Reunião agendada</option>
+                      <option value="EM_ATENDIMENTO">Em tratativa</option>
+                      <option value="PLANO_APRESENTADO">Aguardando / proposta apresentada</option>
+                      <option value="CONCLUIDO">Concluído</option>
+                    </select>
+
+                    <label style={{ fontSize: 9.5, fontWeight: 800 }}>
+                      OPORTUNIDADE
+                    </label>
+
+                    <select
+                      value={oportunidadeCaso}
+                      onChange={(e) =>
+                        setOportunidadeCaso(
+                          e.target.value
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "8px 9px",
+                        margin:
+                          "4px 0 10px",
+                        background: WHITE,
+                      }}
+                    >
+                      <option value="NAO_ANALISADA">Não analisada</option>
+                      <option value="EM_ANALISE">Em análise</option>
+                      <option value="OPORTUNIDADE_IDENTIFICADA">Oportunidade identificada</option>
+                      <option value="PROPOSTA">Proposta</option>
+                      <option value="CONTRATADO">Contratado</option>
+                      <option value="SEM_OPORTUNIDADE">Sem oportunidade</option>
+                    </select>
+
+                    <label style={{ fontSize: 9.5, fontWeight: 800 }}>
+                      PRÓXIMA AÇÃO
+                    </label>
+
+                    <input
+                      value={proximaAcaoCaso}
+                      onChange={(e) =>
+                        setProximaAcaoCaso(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Ex.: enviar proposta"
+                      style={{
+                        width: "100%",
+                        boxSizing:
+                          "border-box",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "8px 9px",
+                        margin:
+                          "4px 0 10px",
+                      }}
+                    />
+
+                    <label style={{ fontSize: 9.5, fontWeight: 800 }}>
+                      DATA DO PRÓXIMO CONTATO
+                    </label>
+
+                    <input
+                      type="datetime-local"
+                      value={proximoContatoCaso}
+                      onChange={(e) =>
+                        setProximoContatoCaso(
+                          e.target.value
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        boxSizing:
+                          "border-box",
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: "8px 9px",
+                        margin:
+                          "4px 0 12px",
+                      }}
+                    />
+
+                    <Botao
+                      onClick={
+                        registrarAcionamentoCaso
+                      }
+                      disabled={
+                        salvandoAcionamento
+                      }
+                      style={{
+                        width: "100%",
+                      }}
+                    >
+                      <Save size={13} />
+                      {salvandoAcionamento
+                        ? "Salvando..."
+                        : "Salvar acionamento"}
+                    </Botao>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {erro && (
         <div
           style={{
@@ -5442,6 +6730,42 @@ function AtendimentosDepartamento({
                           : ""}
                       </div>
 
+                      {(atendimento.proximaAcao ||
+                        atendimento.proximoContato) && (
+                        <div
+                          style={{
+                            marginTop: 7,
+                            fontSize: 10.2,
+                            color: MUTED,
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {atendimento.proximaAcao && (
+                            <>
+                              <strong
+                                style={{
+                                  color: NAVY,
+                                }}
+                              >
+                                Próxima ação:
+                              </strong>{" "}
+                              {atendimento.proximaAcao}
+                            </>
+                          )}
+
+                          {atendimento.proximoContato && (
+                            <>
+                              {atendimento.proximaAcao
+                                ? " · "
+                                : ""}
+                              {formatarDataHora(
+                                atendimento.proximoContato
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       <div
                         style={{
                           display: "flex",
@@ -5511,29 +6835,58 @@ function AtendimentosDepartamento({
                         )}
                       </div>
 
-                      {atendimento.diagnosticoId && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          marginTop: 10,
+                          flexWrap: "wrap",
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() =>
-                            onAbrirDiagnostico(
-                              atendimento.diagnosticoId
+                            abrirAtendimento(
+                              atendimento
                             )
                           }
                           style={{
-                            marginTop: 10,
-                            background:
-                              "transparent",
+                            background: CORAL,
                             border: 0,
-                            color: CORAL,
-                            fontSize: 10.5,
-                            fontWeight: 800,
-                            padding: 0,
+                            color: WHITE,
+                            borderRadius: 8,
+                            padding: "7px 10px",
+                            fontSize: 10,
+                            fontWeight: 900,
                             cursor: "pointer",
                           }}
                         >
-                          Abrir diagnóstico completo →
+                          Abrir atendimento
                         </button>
-                      )}
+
+                        {atendimento.diagnosticoId && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onAbrirDiagnostico(
+                                atendimento.diagnosticoId
+                              )
+                            }
+                            style={{
+                              background:
+                                "transparent",
+                              border: 0,
+                              color: CORAL,
+                              fontSize: 10,
+                              fontWeight: 800,
+                              padding: 0,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Diagnóstico completo →
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div
