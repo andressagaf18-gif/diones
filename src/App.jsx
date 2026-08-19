@@ -3,7 +3,7 @@ import {
   QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
   CalendarCheck, RotateCcw, Megaphone, Scale, Calculator, Wallet,
   ClipboardList, Target, Settings2, Building2, Sparkles, Users, TrendingUp,
-  AlertTriangle, Percent, Cpu, Flame, X, Plus,
+  AlertTriangle, Percent, Cpu, Flame, X, Plus, User,
 } from "lucide-react";
 
 const NAVY = "#17233D";
@@ -1081,12 +1081,21 @@ export default function DiagnosticoPrototipo() {
 
   const empresaPrincipal = empresas[0] || null;
 
+  const avaliarHoldingAtiva =
+    estruturaNegocio === "avaliar_holding";
+
   const trilhaHoldingAtiva =
     estruturaNegocio === "holding" ||
-    estruturaNegocio === "avaliar_holding";
+    avaliarHoldingAtiva;
 
   const trilhaPFAtiva =
     estruturaNegocio === "pessoa_fisica";
+
+  // PF e "quero avaliar se uma holding faz sentido"
+  // não exigem CNPJ para seguir no diagnóstico.
+  const fluxoSemCnpj =
+    trilhaPFAtiva ||
+    avaliarHoldingAtiva;
 
   const perfilPF = {
     ativo: trilhaPFAtiva,
@@ -1136,6 +1145,13 @@ export default function DiagnosticoPrototipo() {
     "Contabilidade": "contabilidade",
     "Financeiro": "financeiro",
     "Financeiro PF/PJ": "financeiro",
+    "Finanças pessoais": "financeiro",
+    "Patrimônio / Financeiro": "financeiro",
+    "Aposentadoria": "aposentadoria",
+    "Investimentos": "investimentos",
+    "Patrimônio": "patrimonio",
+    "Proteção financeira": "protecao",
+    "Organização / Planejamento": "organizacao",
     "Administrativo": "administrativo",
     "Gestão": "gestao",
     "Operacional": "operacional",
@@ -1882,7 +1898,7 @@ export default function DiagnosticoPrototipo() {
     if (
       step !== "analisando" ||
       (
-        !trilhaPFAtiva &&
+        !fluxoSemCnpj &&
         !empresaPrincipal
       ) ||
       gruposSelecionados.length === 0
@@ -1959,7 +1975,7 @@ export default function DiagnosticoPrototipo() {
       atividadesSelecionadas: atividadesSelecionadasObjetos,
       atividadePredominante,
       empresas:
-        trilhaPFAtiva
+        fluxoSemCnpj
           ? []
           : empresas.map((e) => ({
               razao: e.razao,
@@ -2137,7 +2153,7 @@ export default function DiagnosticoPrototipo() {
 
   async function gerarPerguntasPersonalizadas() {
     if (
-      !trilhaPFAtiva &&
+      !fluxoSemCnpj &&
       !empresaPrincipal
     ) {
       showToast("Adicione pelo menos um CNPJ.");
@@ -2145,7 +2161,7 @@ export default function DiagnosticoPrototipo() {
     }
 
     if (
-      !trilhaPFAtiva &&
+      !fluxoSemCnpj &&
       descricaoNegocio.trim().length < 20
     ) {
       showToast("Descreva brevemente o que o negócio realmente faz.");
@@ -2153,7 +2169,7 @@ export default function DiagnosticoPrototipo() {
     }
 
     if (
-      !trilhaPFAtiva &&
+      !fluxoSemCnpj &&
       !atividadePredominante
     ) {
       showToast("Selecione a atividade predominante.");
@@ -2223,6 +2239,9 @@ export default function DiagnosticoPrototipo() {
             "Não presumir que constituir holding é vantajoso; admitir conclusão de que a estrutura não é recomendada sem estudo adicional.",
             "Na Reforma Tributária, separar locação, venda, administração, intermediação e demais operações imobiliárias antes de qualquer projeção.",
             "As perguntas devem partir das dores específicas selecionadas pelo usuário e não de um checklist empresarial genérico.",
+            "Se o usuário escolheu 'Quero avaliar se uma holding faz sentido', não presumir que já existe CNPJ nem que uma holding será recomendada. O objetivo é avaliar viabilidade e necessidade.",
+            "Nesse caso, perguntar sobre quantidade e tipo de bens, titularidade PF/PJ, imóveis financiados, receitas de aluguel, participações societárias, herdeiros, intenção sucessória, compras e vendas futuras, endividamento e objetivos patrimoniais.",
+            "Ao final, admitir três conclusões possíveis: holding aparenta fazer sentido e merece estudo; ainda faltam dados para concluir; ou não há evidência suficiente de benefício neste momento.",
             "Se a dor envolver sucessão, investigar herdeiros, doação de quotas, usufruto, administração, continuidade e conflitos potenciais.",
             "Se a dor envolver patrimônio ou imóveis, investigar titularidade, valor aproximado, financiamento, locação, venda, integralização e objetivo dos ativos.",
             "Se a dor envolver participações societárias ou grupo empresarial, investigar empresas controladas, percentuais, governança, distribuição de resultados e dependência entre empresas.",
@@ -2240,7 +2259,7 @@ export default function DiagnosticoPrototipo() {
             "Os próximos passos devem mostrar somente ações relacionadas aos objetivos selecionados e às prioridades identificadas.",
           ]
         : [],
-      empresas: trilhaPFAtiva ? [] : empresas.map((e) => ({
+      empresas: fluxoSemCnpj ? [] : empresas.map((e) => ({
         razao: e.razao,
         cnpj: e.cnpjDigits,
         segmento: e.segmento,
@@ -2676,7 +2695,7 @@ export default function DiagnosticoPrototipo() {
   async function enviarRelatorioPorEmail() {
     if (
       (
-        !trilhaPFAtiva &&
+        !fluxoSemCnpj &&
         !empresaPrincipal
       ) ||
       relatorioEnviadoRef.current
@@ -2770,9 +2789,13 @@ export default function DiagnosticoPrototipo() {
         email,
         consentimentoEmail,
       },
-      empresa: trilhaPFAtiva
+      empresa: fluxoSemCnpj
         ? {
-            razao: nome || "Pessoa Física",
+            razao:
+              trilhaPFAtiva
+                ? nome || "Pessoa Física"
+                : "Avaliação de Holding",
+
             nomeFantasia: "",
             cnpj: "",
             cnae: "",
@@ -2780,8 +2803,17 @@ export default function DiagnosticoPrototipo() {
             cnaesSecundarios: [],
             atividadesSelecionadas: [],
             atividadePredominante: null,
-            categoria: "Pessoa Física",
-            segmento: "Pessoa Física / Consultoria Financeira",
+
+            categoria:
+              trilhaPFAtiva
+                ? "Pessoa Física"
+                : "Avaliação de Holding",
+
+            segmento:
+              trilhaPFAtiva
+                ? "Pessoa Física / Consultoria Financeira"
+                : "Holding / Estrutura Patrimonial",
+
             porte: "",
             endereco: {},
           }
@@ -4100,7 +4132,9 @@ export default function DiagnosticoPrototipo() {
                           color: NAVY,
                         }}
                       >
-                        Trilha especializada de Holding
+                        {avaliarHoldingAtiva
+                          ? "Avaliação de viabilidade de Holding"
+                          : "Trilha especializada de Holding"}
                       </strong>
                     </div>
 
@@ -4112,14 +4146,15 @@ export default function DiagnosticoPrototipo() {
                         lineHeight: 1.5,
                       }}
                     >
-                      Selecione as características que mais se aproximam da estrutura
-                      atual ou do que pretende construir. Essas respostas serão usadas
-                      para gerar perguntas específicas de patrimônio, sucessão,
-                      tributação, governança e participações.
+                      {avaliarHoldingAtiva
+                        ? "Você ainda não precisa saber qual tipo de holding seria adequado. Informe seus objetivos e, se souber, algumas características do patrimônio. O diagnóstico fará perguntas para avaliar se a estrutura faz sentido e qual caminho merece estudo."
+                        : "Selecione as características que mais se aproximam da estrutura atual. Essas respostas serão usadas para gerar perguntas específicas de patrimônio, sucessão, tributação, governança e participações."}
                     </p>
 
                     <label style={labelStyle}>
-                      Tipo ou finalidade da holding
+                      {avaliarHoldingAtiva
+                        ? "Tipo de holding, se você já tiver alguma hipótese (opcional)"
+                        : "Tipo ou finalidade da holding"}
                     </label>
 
                     <div
@@ -4280,11 +4315,15 @@ export default function DiagnosticoPrototipo() {
                   disabled={
                     !estruturaNegocio ||
                     (
-                      trilhaHoldingAtiva &&
+                      estruturaNegocio === "holding" &&
                       (
                         tiposHolding.length === 0 ||
                         objetivosHolding.length === 0
                       )
+                    ) ||
+                    (
+                      avaliarHoldingAtiva &&
+                      objetivosHolding.length === 0
                     ) ||
                     (
                       trilhaPFAtiva &&
@@ -4293,7 +4332,7 @@ export default function DiagnosticoPrototipo() {
                   }
                   onClick={() =>
                     setStep(
-                      trilhaPFAtiva
+                      fluxoSemCnpj
                         ? "dor"
                         : "cnpj"
                     )
@@ -5164,7 +5203,7 @@ export default function DiagnosticoPrototipo() {
             )}
 
             {step === "analisando" &&
-              (trilhaPFAtiva || empresaPrincipal) &&
+              (fluxoSemCnpj || empresaPrincipal) &&
               gruposSelecionados.length > 0 && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
                 <Loader2 size={34} color={CORAL} className="spin" />
@@ -5193,7 +5232,7 @@ export default function DiagnosticoPrototipo() {
             )}
 
             {step === "resultado" &&
-              (trilhaPFAtiva || empresaPrincipal) &&
+              (fluxoSemCnpj || empresaPrincipal) &&
               gruposSelecionados.length > 0 &&
               areaMaisFraca && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -5213,11 +5252,15 @@ export default function DiagnosticoPrototipo() {
                 <p style={{ fontSize: 12, color: MUTED, textAlign: "center", margin: "0 0 4px", fontWeight: 700 }}>
                   {trilhaPFAtiva
                     ? nome
+                    : avaliarHoldingAtiva
+                    ? "Avaliação de Holding"
                     : empresaPrincipal?.razao}
                 </p>
                 <p style={{ fontSize: 11, color: "#9AA3B5", textAlign: "center", margin: "0 0 17px", lineHeight: 1.4 }}>
                   {trilhaPFAtiva
                     ? `Pessoa Física · ${gruposSelecionados.map((g) => g.label).join(", ")}`
+                    : avaliarHoldingAtiva
+                    ? `Avaliação de viabilidade · ${gruposSelecionados.map((g) => g.label).join(", ")}`
                     : `${categoriaPrincipal} · ${colaboradores} colaboradores · ${gruposSelecionados.map((g) => g.label).join(", ")}`}
                 </p>
 
