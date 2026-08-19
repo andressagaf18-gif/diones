@@ -4,7 +4,6 @@ import * as XLSX from "xlsx";
 import {
   Search,
   Building2,
-  User,
   ArrowLeft,
   LogOut,
   RefreshCcw,
@@ -6020,7 +6019,7 @@ function DetalheDiagnostico({
                 )
               }
             >
-              <User size={14} />
+              <Users size={14} />
               Relatório Cliente
             </Botao>
 
@@ -6059,7 +6058,7 @@ function DetalheDiagnostico({
           }}
         >
           <Card>
-            <User
+            <Users
               size={18}
               color={CORAL}
             />
