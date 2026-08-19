@@ -2562,8 +2562,6 @@ export default function DiagnosticoPrototipo() {
         });
       }
 
-});
-      }
 
       setStep("resultado");
     });
