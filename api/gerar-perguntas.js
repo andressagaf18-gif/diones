@@ -126,7 +126,9 @@ export default async function handler(req, res) {
   const areasSelecionadas =
     lista(body.areasSelecionadas);
 
-  const eixosSelecionados =
+  // As áreas escolhidas pelo participante passam a ser PRIORIDADES.
+  // Elas não limitam o escopo do diagnóstico.
+  const prioridadesSelecionadas =
     areasSelecionadas
       .map(
         (item) =>
@@ -137,27 +139,44 @@ export default async function handler(req, res) {
       )
       .filter(Boolean);
 
-  // Para estruturas especializadas, se os IDs selecionados vierem
-  // do frontend antigo e não coincidirem com o motor, usamos os
-  // eixos obrigatórios da própria estrutura.
+  // O relatório completo sempre cobre todos os eixos do motor.
   const eixosDoMotor =
     motor.eixos || [];
 
   const eixosParaPerguntas =
-    estrutura === "pessoa_fisica" ||
-    estrutura === "avaliar_holding"
-      ? eixosDoMotor
-      : (
-          eixosSelecionados.length
-            ? eixosSelecionados
-            : eixosDoMotor
-        );
+    eixosDoMotor;
 
-  const fallback =
+  const fallbackCompleto =
     perguntasBaseDaEstrutura(
       estrutura,
       eixosParaPerguntas
     );
+
+  // Eixos comuns: até 2 perguntas essenciais.
+  // Eixos prioritários: até 5 perguntas de aprofundamento.
+  const fallback = [];
+
+  for (const eixoId of eixosParaPerguntas) {
+    const perguntasEixo =
+      fallbackCompleto.filter(
+        (q) =>
+          q.areaId === eixoId
+      );
+
+    const limite =
+      prioridadesSelecionadas.includes(
+        eixoId
+      )
+        ? 5
+        : 2;
+
+    fallback.push(
+      ...perguntasEixo.slice(
+        0,
+        limite
+      )
+    );
+  }
 
   // Se não houver chave de IA, as trilhas que possuem catálogo local
   // continuam funcionando em vez de travar o diagnóstico.
@@ -194,8 +213,11 @@ Gerar perguntas aprofundadas e altamente específicas para a estrutura escolhida
 ESTRUTURA:
 ${motor.label}
 
-EIXOS A INVESTIGAR:
+EIXOS OBRIGATÓRIOS A INVESTIGAR:
 ${eixosParaPerguntas.join(", ")}
+
+PRIORIDADES DE APROFUNDAMENTO:
+${prioridadesSelecionadas.length ? prioridadesSelecionadas.join(", ") : "Nenhuma prioridade específica informada"}
 
 DORES DECLARADAS:
 ${JSON.stringify(dores)}
@@ -210,7 +232,10 @@ CONTEXTO COMPLETO:
 ${JSON.stringify(body)}
 
 REGRAS:
-- Gere de 2 a 5 perguntas por eixo relevante.
+- TODOS os eixos obrigatórios precisam ter cobertura.
+- Para eixo NÃO prioritário: gere 1 a 2 perguntas essenciais.
+- Para eixo PRIORITÁRIO: gere 3 a 5 perguntas de aprofundamento.
+- As prioridades aumentam a profundidade; não excluem os demais eixos.
 - Não faça perguntas que já estejam respondidas claramente no contexto.
 - As perguntas precisam descobrir causa, impacto, risco e capacidade de ação.
 - Pessoa Física: não mencionar CNAE, faturamento empresarial, margem,
@@ -354,31 +379,93 @@ FORMATO:
           !idsIA.has(q.id)
       );
 
-    const minimo =
-      Math.max(
-        8,
-        eixosParaPerguntas.length * 2
+    const eixosCobertosIA =
+      new Set(
+        perguntasIA
+          .map(
+            (q) => q.areaId
+          )
+          .filter(Boolean)
       );
 
-    const perguntas =
+    const coberturaCompleta =
+      eixosParaPerguntas.every(
+        (id) =>
+          eixosCobertosIA.has(id)
+      );
+
+    const minimo =
+      eixosParaPerguntas.length +
+      prioridadesSelecionadas.length * 2;
+
+    let perguntas =
+      coberturaCompleta &&
       perguntasIA.length >= minimo
         ? perguntasIA
         : [
             ...perguntasIA,
             ...complementares,
-          ].slice(
-            0,
-            Math.max(
-              minimo,
-              30
+          ];
+
+    // Remove duplicidades.
+    const vistos =
+      new Set();
+
+    perguntas =
+      perguntas.filter(
+        (q) => {
+          const chave =
+            q.id ||
+            `${q.areaId}:${q.pergunta}`;
+
+          if (
+            vistos.has(chave)
+          ) {
+            return false;
+          }
+
+          vistos.add(chave);
+          return true;
+        }
+      );
+
+    // Controla o tamanho do questionário por eixo.
+    const porEixo =
+      {};
+
+    perguntas =
+      perguntas.filter(
+        (q) => {
+          const id =
+            q.areaId;
+
+          porEixo[id] =
+            (porEixo[id] || 0) + 1;
+
+          const limite =
+            prioridadesSelecionadas.includes(
+              id
             )
+              ? 5
+              : 2;
+
+          return (
+            porEixo[id] <=
+            limite
           );
+        }
+      );
 
     return res.status(200).json({
       sucesso: true,
       estrutura,
       fallback:
+        !coberturaCompleta ||
         perguntasIA.length < minimo,
+
+      prioridadesSelecionadas,
+      eixosCobertos:
+        eixosParaPerguntas,
 
       interpretacaoNegocio:
         resultado?.interpretacaoNegocio ||
