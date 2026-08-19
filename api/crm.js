@@ -168,6 +168,9 @@ async function prepararSchema() {
 
       responsavel_finder TEXT NOT NULL DEFAULT '',
 
+      estrutura_negocio TEXT NOT NULL DEFAULT 'operacional',
+      contexto_cliente JSONB NOT NULL DEFAULT '{}'::jsonb,
+
       score_comercial INTEGER NOT NULL DEFAULT 0,
       prioridade_comercial TEXT NOT NULL DEFAULT '',
       temperatura_comercial TEXT NOT NULL DEFAULT '',
@@ -181,6 +184,18 @@ async function prepararSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS estrutura_negocio
+    TEXT NOT NULL DEFAULT 'operacional'
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS contexto_cliente
+    JSONB NOT NULL DEFAULT '{}'::jsonb
   `;
 
   await sql`
@@ -771,6 +786,22 @@ async function atualizarLead(req, res) {
         )
       : atual.responsavel_finder;
 
+  const estruturaNegocio =
+    body.estruturaNegocio !== undefined
+      ? texto(
+          body.estruturaNegocio,
+          80
+        ) || "operacional"
+      : atual.estrutura_negocio || "operacional";
+
+  const contextoCliente =
+    body.contextoCliente !== undefined &&
+    body.contextoCliente &&
+    typeof body.contextoCliente === "object" &&
+    !Array.isArray(body.contextoCliente)
+      ? body.contextoCliente
+      : atual.contexto_cliente || {};
+
   const notaSatisfacao =
     body.notaSatisfacao !== undefined
       ? (
@@ -834,6 +865,14 @@ async function atualizarLead(req, res) {
 
         responsavel_finder =
           ${responsavelFinder},
+
+        estrutura_negocio =
+          ${estruturaNegocio},
+
+        contexto_cliente =
+          ${JSON.stringify(
+            contextoCliente
+          )}::jsonb,
 
         ultima_atividade =
           NOW(),
@@ -909,6 +948,14 @@ async function atualizarLead(req, res) {
 
             responsavelFinder:
               lead.responsavel_finder,
+
+            estruturaNegocio:
+              lead.estrutura_negocio ||
+              "operacional",
+
+            contextoCliente:
+              lead.contexto_cliente ||
+              {},
 
             primeiroAcesso:
               lead.primeiro_acesso,
@@ -1426,6 +1473,14 @@ function mapearLead(lead) {
     responsavelFinder:
       lead.responsavel_finder,
 
+    estruturaNegocio:
+      lead.estrutura_negocio ||
+      "operacional",
+
+    contextoCliente:
+      lead.contexto_cliente ||
+      {},
+
     scoreComercial:
       numero(
         lead.score_comercial,
@@ -1566,6 +1621,9 @@ async function listarLeads(req, res) {
         intencao,
 
         responsavel_finder,
+
+        estrutura_negocio,
+        contexto_cliente,
 
         score_comercial,
         prioridade_comercial,
