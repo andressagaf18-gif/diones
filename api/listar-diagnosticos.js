@@ -1,362 +1,238 @@
-// api/listar-diagnosticos.js
-
 import { neon } from "@neondatabase/serverless";
 
-function responderErro(
-  res,
-  status,
-  etapa,
-  mensagem
-) {
-  return res.status(status).json({
-    sucesso: false,
-    etapa,
-    error: mensagem,
-  });
+const sql = neon(process.env.DATABASE_URL);
+
+function autorizado(req) {
+  const adminToken =
+    process.env.ADMIN_TOKEN ||
+    process.env.ADMIN_PASSWORD ||
+    "";
+
+  if (!adminToken) return true;
+
+  const authorization =
+    req.headers?.authorization || "";
+
+  const bearer =
+    authorization.startsWith("Bearer ")
+      ? authorization.slice(7)
+      : "";
+
+  return (
+    bearer === adminToken ||
+    req.query?.token === adminToken
+  );
+}
+
+function objeto(valor) {
+  return (
+    valor &&
+    typeof valor === "object" &&
+    !Array.isArray(valor)
+  )
+    ? valor
+    : {};
+}
+
+function lista(valor) {
+  return Array.isArray(valor)
+    ? valor
+    : [];
+}
+
+function estruturaDe(row) {
+  const completo =
+    objeto(row.dados_completos);
+
+  const perfil =
+    objeto(completo.perfil);
+
+  if (perfil.estruturaNegocio) {
+    return perfil.estruturaNegocio;
+  }
+
+  const segmento =
+    String(row.segmento || "")
+      .toLowerCase();
+
+  const razao =
+    String(row.razao_social || "")
+      .toLowerCase();
+
+  if (
+    segmento.includes("pessoa física") ||
+    segmento.includes("pessoa fisica")
+  ) {
+    return "pessoa_fisica";
+  }
+
+  if (
+    razao.includes("avaliação de holding") ||
+    razao.includes("avaliacao de holding")
+  ) {
+    return "avaliar_holding";
+  }
+
+  if (
+    segmento.includes("holding") ||
+    razao.includes("holding")
+  ) {
+    return "holding";
+  }
+
+  if (
+    segmento.includes("grupo empresarial")
+  ) {
+    return "grupo";
+  }
+
+  if (segmento.includes("spe")) {
+    return "spe";
+  }
+
+  return "operacional";
 }
 
 export default async function handler(req, res) {
-  console.log(
-    "[listar-diagnosticos] INICIO"
-  );
-
-  // =========================================================
-  // 1. MÉTODO
-  // =========================================================
-
   if (req.method !== "GET") {
-    return responderErro(
-      res,
-      405,
-      "metodo",
-      "Método não permitido."
-    );
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
   }
 
-  // =========================================================
-  // 2. CONFIGURAÇÃO DO BANCO
-  // =========================================================
-
-  if (!process.env.DATABASE_URL) {
-    console.error(
-      "[listar-diagnosticos] DATABASE_URL ausente"
-    );
-
-    return responderErro(
-      res,
-      500,
-      "configuracao_banco",
-      "DATABASE_URL não configurada."
-    );
+  if (!autorizado(req)) {
+    return res.status(401).json({
+      sucesso: false,
+      error: "Não autorizado.",
+    });
   }
-
-  // =========================================================
-  // 3. SEGURANÇA DO ADMIN
-  // =========================================================
-
-  if (!process.env.ADMIN_TOKEN) {
-    console.error(
-      "[listar-diagnosticos] ADMIN_TOKEN ausente"
-    );
-
-    return responderErro(
-      res,
-      500,
-      "configuracao_admin",
-      "ADMIN_TOKEN não configurado."
-    );
-  }
-
-  const authorization =
-    String(
-      req.headers.authorization ||
-      ""
-    );
-
-  const tokenRecebido =
-    authorization.startsWith(
-      "Bearer "
-    )
-      ? authorization
-          .slice(7)
-          .trim()
-      : "";
-
-  if (
-    !tokenRecebido ||
-    tokenRecebido !==
-      process.env.ADMIN_TOKEN
-  ) {
-    console.warn(
-      "[listar-diagnosticos] Acesso não autorizado"
-    );
-
-    return responderErro(
-      res,
-      401,
-      "autenticacao",
-      "Acesso não autorizado."
-    );
-  }
-
-  // =========================================================
-  // 4. CONECTAR AO NEON
-  // =========================================================
-
-  let sql;
-
-  try {
-    sql = neon(
-      process.env.DATABASE_URL
-    );
-  } catch (error) {
-    console.error(
-      "[listar-diagnosticos] ERRO_CONEXAO:",
-      error?.message || error
-    );
-
-    return responderErro(
-      res,
-      500,
-      "conexao_banco",
-      "Erro ao conectar ao banco."
-    );
-  }
-
-  // =========================================================
-  // 5. PARÂMETROS
-  // =========================================================
 
   const busca =
-    String(
-      req.query?.busca ||
-      ""
-    )
-      .trim()
-      .slice(0, 120);
+    String(req.query?.busca || "")
+      .trim();
 
-  let limite =
-    Number(
-      req.query?.limite
+  const limite =
+    Math.max(
+      1,
+      Math.min(
+        300,
+        Number(req.query?.limite || 100)
+      )
     );
 
-  let offset =
-    Number(
-      req.query?.offset
+  const offset =
+    Math.max(
+      0,
+      Number(req.query?.offset || 0)
     );
-
-  if (
-    !Number.isFinite(limite) ||
-    limite < 1
-  ) {
-    limite = 50;
-  }
-
-  if (limite > 100) {
-    limite = 100;
-  }
-
-  if (
-    !Number.isFinite(offset) ||
-    offset < 0
-  ) {
-    offset = 0;
-  }
-
-  // =========================================================
-  // 6. CONSULTAR
-  // =========================================================
 
   try {
-    let registros;
-    let totalResult;
+    const termo =
+      `%${busca}%`;
 
-    if (busca) {
-      const termo =
-        `%${busca}%`;
+    const rows = await sql`
+      SELECT
+        id,
+        criado_em,
+        nome,
+        cargo,
+        telefone,
+        email,
+        cnpj,
+        razao_social,
+        descricao_negocio,
+        segmento,
+        subsegmento,
+        score,
+        dores,
+        areas_selecionadas,
+        dados_completos
+      FROM diagnosticos
+      WHERE
+        (
+          ${busca} = ''
+          OR nome ILIKE ${termo}
+          OR email ILIKE ${termo}
+          OR telefone ILIKE ${termo}
+          OR cnpj ILIKE ${termo}
+          OR razao_social ILIKE ${termo}
+          OR segmento ILIKE ${termo}
+          OR subsegmento ILIKE ${termo}
+        )
+      ORDER BY criado_em DESC
+      LIMIT ${limite}
+      OFFSET ${offset}
+    `;
 
-      registros =
-        await sql`
-          SELECT
-            id,
-            criado_em,
-            nome,
-            cargo,
-            telefone,
-            email,
-            cnpj,
-            razao_social,
-            descricao_negocio,
-            segmento,
-            subsegmento,
-            score,
-            dores,
-            areas_selecionadas
-          FROM diagnosticos
-          WHERE
-            nome ILIKE ${termo}
-            OR razao_social ILIKE ${termo}
-            OR cnpj ILIKE ${termo}
-            OR email ILIKE ${termo}
-            OR telefone ILIKE ${termo}
-            OR segmento ILIKE ${termo}
-            OR subsegmento ILIKE ${termo}
-          ORDER BY criado_em DESC
-          LIMIT ${limite}
-          OFFSET ${offset}
-        `;
+    const contagem = await sql`
+      SELECT COUNT(*)::INTEGER AS total
+      FROM diagnosticos
+      WHERE
+        (
+          ${busca} = ''
+          OR nome ILIKE ${termo}
+          OR email ILIKE ${termo}
+          OR telefone ILIKE ${termo}
+          OR cnpj ILIKE ${termo}
+          OR razao_social ILIKE ${termo}
+          OR segmento ILIKE ${termo}
+          OR subsegmento ILIKE ${termo}
+        )
+    `;
 
-      totalResult =
-        await sql`
-          SELECT
-            COUNT(*)::int AS total
-          FROM diagnosticos
-          WHERE
-            nome ILIKE ${termo}
-            OR razao_social ILIKE ${termo}
-            OR cnpj ILIKE ${termo}
-            OR email ILIKE ${termo}
-            OR telefone ILIKE ${termo}
-            OR segmento ILIKE ${termo}
-            OR subsegmento ILIKE ${termo}
-        `;
-    } else {
-      registros =
-        await sql`
-          SELECT
-            id,
-            criado_em,
-            nome,
-            cargo,
-            telefone,
-            email,
-            cnpj,
-            razao_social,
-            descricao_negocio,
-            segmento,
-            subsegmento,
-            score,
-            dores,
-            areas_selecionadas
-          FROM diagnosticos
-          ORDER BY criado_em DESC
-          LIMIT ${limite}
-          OFFSET ${offset}
-        `;
+    const diagnosticos =
+      (rows || []).map(
+        (row) => {
+          const completo =
+            objeto(row.dados_completos);
 
-      totalResult =
-        await sql`
-          SELECT
-            COUNT(*)::int AS total
-          FROM diagnosticos
-        `;
-    }
+          const perfil =
+            objeto(completo.perfil);
 
-    const total =
-      Number(
-        totalResult?.[0]?.total ||
-        0
+          return {
+            id: row.id,
+            criadoEm: row.criado_em,
+            nome: row.nome,
+            cargo: row.cargo,
+            telefone: row.telefone,
+            email: row.email,
+            cnpj: row.cnpj,
+            razaoSocial: row.razao_social,
+            descricaoNegocio:
+              row.descricao_negocio,
+            segmento: row.segmento,
+            subsegmento: row.subsegmento,
+            score: row.score,
+            dores: lista(row.dores),
+            areas:
+              lista(row.areas_selecionadas),
+            estruturaNegocio:
+              estruturaDe(row),
+            perfil,
+          };
+        }
       );
-
-    console.log(
-      "[listar-diagnosticos] Registros:",
-      registros.length,
-      "Total:",
-      total
-    );
 
     return res.status(200).json({
       sucesso: true,
-
-      total,
-
-      limite,
-
-      offset,
-
-      busca,
-
-      diagnosticos:
-        registros.map(
-          (item) => ({
-            id:
-              item.id,
-
-            criadoEm:
-              item.criado_em,
-
-            nome:
-              item.nome ||
-              "",
-
-            cargo:
-              item.cargo ||
-              "",
-
-            telefone:
-              item.telefone ||
-              "",
-
-            email:
-              item.email ||
-              "",
-
-            cnpj:
-              item.cnpj ||
-              "",
-
-            razaoSocial:
-              item.razao_social ||
-              "",
-
-            descricaoNegocio:
-              item.descricao_negocio ||
-              "",
-
-            segmento:
-              item.segmento ||
-              "",
-
-            subsegmento:
-              item.subsegmento ||
-              "",
-
-            score:
-              item.score === null
-                ? null
-                : Number(
-                    item.score
-                  ),
-
-            dores:
-              Array.isArray(
-                item.dores
-              )
-                ? item.dores
-                : [],
-
-            areas:
-              Array.isArray(
-                item.areas_selecionadas
-              )
-                ? item.areas_selecionadas
-                : [],
-          })
-        ),
+      total:
+        Number(
+          contagem?.[0]?.total
+        ) || 0,
+      diagnosticos,
     });
-
   } catch (error) {
     console.error(
-      "[listar-diagnosticos] ERRO_CONSULTA:",
-      error?.message ||
+      "[listar-diagnosticos]",
       error
     );
 
-    return responderErro(
-      res,
-      500,
-      "consulta_banco",
-      "Não foi possível consultar os diagnósticos."
-    );
+    return res.status(500).json({
+      sucesso: false,
+      error:
+        "Não foi possível listar os diagnósticos.",
+    });
   }
 }
