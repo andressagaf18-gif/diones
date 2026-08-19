@@ -110,6 +110,128 @@ function normalizarLista(valor) {
   return Array.isArray(valor) ? valor : [];
 }
 
+function estruturaDiagnostico(item = {}) {
+  const direto =
+    item.estruturaNegocio ||
+    item.estrutura_negocio ||
+    item?.perfil?.estruturaNegocio ||
+    item?.perfil?.estrutura_negocio ||
+    item?.resultado?.estruturaNegocio ||
+    item?.resultado?.estrutura_negocio ||
+    "";
+
+  if (direto) {
+    return String(direto);
+  }
+
+  const segmento =
+    String(
+      item.segmento ||
+      item?.empresa?.segmento ||
+      ""
+    ).toLowerCase();
+
+  const razao =
+    String(
+      item.razaoSocial ||
+      item?.empresa?.razaoSocial ||
+      ""
+    ).toLowerCase();
+
+  const cnpj =
+    String(
+      item.cnpj ||
+      item?.empresa?.cnpj ||
+      ""
+    ).replace(/\D/g, "");
+
+  if (
+    segmento.includes("pessoa física") ||
+    segmento.includes("pessoa fisica")
+  ) {
+    return "pessoa_fisica";
+  }
+
+  if (
+    razao.includes("avaliação de holding") ||
+    razao.includes("avaliacao de holding")
+  ) {
+    return "avaliar_holding";
+  }
+
+  if (
+    segmento.includes("holding") ||
+    razao.includes("holding")
+  ) {
+    return "holding";
+  }
+
+  if (
+    segmento.includes("grupo empresarial")
+  ) {
+    return "grupo";
+  }
+
+  if (
+    segmento.includes("spe")
+  ) {
+    return "spe";
+  }
+
+  if (!cnpj && segmento.includes("financeira")) {
+    return "pessoa_fisica";
+  }
+
+  return "operacional";
+}
+
+function labelEstruturaDiagnostico(valor) {
+  const mapa = {
+    operacional: "Empresa operacional",
+    holding: "Holding",
+    avaliar_holding: "Avaliação de Holding",
+    grupo: "Grupo empresarial",
+    spe: "SPE",
+    pessoa_fisica: "Pessoa Física",
+  };
+
+  return mapa[valor] || valor || "Empresa operacional";
+}
+
+function corEstruturaDiagnostico(valor) {
+  const mapa = {
+    operacional: {
+      bg: "#EEF3FF",
+      color: "#31589C",
+    },
+    holding: {
+      bg: "#FFF3EF",
+      color: "#993C1D",
+    },
+    avaliar_holding: {
+      bg: "#FAEEDA",
+      color: "#854F0B",
+    },
+    grupo: {
+      bg: "#E1F5EE",
+      color: "#0F6E56",
+    },
+    spe: {
+      bg: "#F3EEFF",
+      color: "#6843A3",
+    },
+    pessoa_fisica: {
+      bg: "#F1F3F7",
+      color: NAVY,
+    },
+  };
+
+  return (
+    mapa[valor] ||
+    mapa.operacional
+  );
+}
+
 function areaCanonica(valor = "") {
   const texto = String(valor || "")
     .normalize("NFD")
@@ -706,6 +828,11 @@ function ListaDiagnosticos({
   ] = useState("");
 
   const [
+    estruturaFiltro,
+    setEstruturaFiltro,
+  ] = useState("");
+
+  const [
     total,
     setTotal,
   ] = useState(0);
@@ -838,8 +965,43 @@ function ListaDiagnosticos({
   function limparBusca() {
     setBusca("");
     setBuscaAplicada("");
+    setEstruturaFiltro("");
     carregar("");
   }
+
+  const diagnosticosFiltrados =
+    useMemo(() => {
+      if (!estruturaFiltro) {
+        return diagnosticos;
+      }
+
+      return diagnosticos.filter(
+        (item) =>
+          estruturaDiagnostico(item) ===
+          estruturaFiltro
+      );
+    }, [
+      diagnosticos,
+      estruturaFiltro,
+    ]);
+
+  const estruturasResumo =
+    useMemo(() => {
+      return diagnosticos.reduce(
+        (acc, item) => {
+          const estrutura =
+            estruturaDiagnostico(
+              item
+            );
+
+          acc[estrutura] =
+            (acc[estrutura] || 0) + 1;
+
+          return acc;
+        },
+        {}
+      );
+    }, [diagnosticos]);
 
   // =======================================================
   // SCORE MÉDIO
@@ -848,7 +1010,7 @@ function ListaDiagnosticos({
   const mediaScore =
     useMemo(() => {
       const scores =
-        diagnosticos
+        diagnosticosFiltrados
           .map(
             (d) =>
               Number(
@@ -982,6 +1144,13 @@ function ListaDiagnosticos({
                       "pt-BR"
                     )
                   : "",
+
+              "Estrutura":
+                labelEstruturaDiagnostico(
+                  estruturaDiagnostico(
+                    item
+                  )
+                ),
 
               "Empresa":
                 empresa.razaoSocial ||
@@ -1816,7 +1985,7 @@ function ListaDiagnosticos({
                 fontWeight: 800,
               }}
             >
-              {diagnosticos.length}
+              {diagnosticosFiltrados.length}
             </div>
           </Card>
 
@@ -1925,6 +2094,57 @@ function ListaDiagnosticos({
               />
             </div>
 
+            <select
+              value={
+                estruturaFiltro
+              }
+              onChange={(e) =>
+                setEstruturaFiltro(
+                  e.target.value
+                )
+              }
+              style={{
+                minWidth: 210,
+                border:
+                  "1px solid #D8DEEA",
+                borderRadius: 9,
+                padding:
+                  "10px 12px",
+                background: WHITE,
+                fontFamily: BODY_FONT,
+                fontSize: 12,
+                color: NAVY,
+              }}
+            >
+              <option value="">
+                Todas as estruturas
+              </option>
+
+              <option value="operacional">
+                Empresa operacional ({estruturasResumo.operacional || 0})
+              </option>
+
+              <option value="holding">
+                Holding ({estruturasResumo.holding || 0})
+              </option>
+
+              <option value="avaliar_holding">
+                Avaliação de Holding ({estruturasResumo.avaliar_holding || 0})
+              </option>
+
+              <option value="grupo">
+                Grupo empresarial ({estruturasResumo.grupo || 0})
+              </option>
+
+              <option value="spe">
+                SPE ({estruturasResumo.spe || 0})
+              </option>
+
+              <option value="pessoa_fisica">
+                Pessoa Física ({estruturasResumo.pessoa_fisica || 0})
+              </option>
+            </select>
+
             <Botao
               onClick={
                 pesquisar
@@ -1937,7 +2157,7 @@ function ListaDiagnosticos({
               Buscar
             </Botao>
 
-            {buscaAplicada && (
+            {(buscaAplicada || estruturaFiltro) && (
               <Botao
                 secundario
                 onClick={
@@ -2044,7 +2264,7 @@ function ListaDiagnosticos({
             Carregando diagnósticos...
           </Card>
 
-        ) : diagnosticos.length ===
+        ) : diagnosticosFiltrados.length ===
           0 ? (
           <Card>
             Nenhum diagnóstico encontrado.
@@ -2059,7 +2279,7 @@ function ListaDiagnosticos({
               gap: 10,
             }}
           >
-            {diagnosticos.map(
+            {diagnosticosFiltrados.map(
               (item) => {
                 const score =
                   scoreInfo(
@@ -2123,6 +2343,61 @@ function ListaDiagnosticos({
                     }}
                   >
                     <div>
+                      {(() => {
+                        const estrutura =
+                          estruturaDiagnostico(
+                            item
+                          );
+
+                        const cor =
+                          corEstruturaDiagnostico(
+                            estrutura
+                          );
+
+                        return (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              background:
+                                cor.bg,
+                              color:
+                                cor.color,
+                              borderRadius: 20,
+                              padding:
+                                "4px 8px",
+                              fontSize: 9,
+                              fontWeight: 900,
+                              marginBottom: 7,
+                            }}
+                          >
+                            ESTRUTURA ·{" "}
+                            {labelEstruturaDiagnostico(
+                              estrutura
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      <div
+                        style={{
+                          fontSize:
+                            9.5,
+                          color:
+                            MUTED,
+                          fontWeight:
+                            800,
+                          marginBottom:
+                            3,
+                        }}
+                      >
+                        {estruturaDiagnostico(item) ===
+                        "pessoa_fisica"
+                          ? "PESSOA"
+                          : "EMPRESA"}
+                      </div>
+
                       <div
                         style={{
                           fontSize:
@@ -2136,7 +2411,20 @@ function ListaDiagnosticos({
                         }}
                       >
                         {item.razaoSocial ||
-                          "Empresa não informada"}
+                          item.nome ||
+                          (
+                            estruturaDiagnostico(
+                              item
+                            ) ===
+                            "pessoa_fisica"
+                              ? "Pessoa física"
+                              : estruturaDiagnostico(
+                                  item
+                                ) ===
+                                "avaliar_holding"
+                              ? "Avaliação de Holding"
+                              : "Empresa não informada"
+                          )}
                       </div>
 
                       <div
@@ -2157,11 +2445,13 @@ function ListaDiagnosticos({
                             "wrap",
                         }}
                       >
-                        <span>
-                          {formatarCnpj(
-                            item.cnpj
-                          )}
-                        </span>
+                        {item.cnpj && (
+                          <span>
+                            {formatarCnpj(
+                              item.cnpj
+                            )}
+                          </span>
+                        )}
 
                         {item.segmento && (
                           <span>
@@ -5726,6 +6016,21 @@ function DetalheDiagnostico({
       item.score
     );
 
+  const estruturaAtual =
+    estruturaDiagnostico(
+      item
+    );
+
+  const estruturaAtualLabel =
+    labelEstruturaDiagnostico(
+      estruturaAtual
+    );
+
+  const estruturaAtualCor =
+    corEstruturaDiagnostico(
+      estruturaAtual
+    );
+
   const areasEquipeDisponiveis =
     [
       ...new Set(
@@ -5893,7 +6198,12 @@ function DetalheDiagnostico({
                   6,
               }}
             >
-              DIAGNÓSTICO EMPRESARIAL
+              {estruturaAtual === "pessoa_fisica"
+                ? "DIAGNÓSTICO FINANCEIRO PESSOAL"
+                : estruturaAtual === "holding" ||
+                  estruturaAtual === "avaliar_holding"
+                ? "DIAGNÓSTICO PATRIMONIAL / HOLDING"
+                : "DIAGNÓSTICO EMPRESARIAL"}
             </div>
 
             <h1
@@ -5908,9 +6218,34 @@ function DetalheDiagnostico({
                   "0 0 7px",
               }}
             >
-              {empresa.razaoSocial ||
-                "Empresa"}
+              {estruturaAtual === "pessoa_fisica"
+                ? participante.nome ||
+                  "Pessoa Física"
+                : estruturaAtual === "avaliar_holding"
+                ? "Avaliação de Holding"
+                : empresa.razaoSocial ||
+                  "Empresa"}
             </h1>
+
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                background:
+                  estruturaAtualCor.bg,
+                color:
+                  estruturaAtualCor.color,
+                borderRadius: 20,
+                padding:
+                  "4px 8px",
+                fontSize: 9.5,
+                fontWeight: 900,
+                marginBottom: 8,
+              }}
+            >
+              ESTRUTURA ·{" "}
+              {estruturaAtualLabel}
+            </div>
 
             <div
               style={{
@@ -5924,12 +6259,14 @@ function DetalheDiagnostico({
                   1.6,
               }}
             >
-              {formatarCnpj(
-                empresa.cnpj
-              )}
+              {empresa.cnpj
+                ? formatarCnpj(
+                    empresa.cnpj
+                  )
+                : ""}
 
               {empresa.segmento
-                ? ` · ${empresa.segmento}`
+                ? `${empresa.cnpj ? " · " : ""}${empresa.segmento}`
                 : ""}
 
               {empresa.subsegmento
@@ -6091,13 +6428,38 @@ function DetalheDiagnostico({
           </Card>
 
           <Card>
+            <Target
+              size={18}
+              color={CORAL}
+            />
+
+            <h3>
+              Estrutura
+            </h3>
+
+            <p>
+              <strong>
+                {estruturaAtualLabel}
+              </strong>
+            </p>
+          </Card>
+
+          <Card>
             <Building2
               size={18}
               color={CORAL}
             />
 
             <h3>
-              Negócio
+              {estruturaAtual ===
+              "pessoa_fisica"
+                ? "Contexto"
+                : estruturaAtual ===
+                    "holding" ||
+                  estruturaAtual ===
+                    "avaliar_holding"
+                ? "Estrutura patrimonial"
+                : "Negócio"}
             </h3>
 
             <p>
