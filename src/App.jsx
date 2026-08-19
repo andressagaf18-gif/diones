@@ -48,6 +48,66 @@ const FATURAMENTOS = [
 const COLABORADORES = ["Até 5", "6 a 20", "21 a 50", "51 a 200", "Mais de 200"];
 const REGIMES = ["Simples Nacional", "Lucro Presumido", "Lucro Real", "Não sei"];
 
+// =========================================================
+// TRILHA ESPECIALIZADA — HOLDING
+// =========================================================
+const ESTRUTURAS_NEGOCIO = [
+  { id: "operacional", label: "Empresa operacional" },
+  { id: "holding", label: "Holding" },
+  { id: "grupo", label: "Grupo empresarial" },
+  { id: "spe", label: "SPE" },
+  { id: "avaliar_holding", label: "Quero avaliar se uma holding faz sentido" },
+];
+
+const TIPOS_HOLDING = [
+  {
+    id: "patrimonial",
+    label: "Patrimonial / Imobiliária",
+    descricao: "Organização e administração de imóveis, participações e outros ativos patrimoniais.",
+  },
+  {
+    id: "familiar",
+    label: "Familiar / Sucessória",
+    descricao: "Estrutura voltada à organização familiar, sucessão, governança e continuidade patrimonial.",
+  },
+  {
+    id: "participacoes",
+    label: "Participações societárias",
+    descricao: "Concentração de quotas ou ações de outras empresas e organização das participações.",
+  },
+  {
+    id: "controle",
+    label: "Controle empresarial",
+    descricao: "Estrutura para centralizar controle, governança e decisões sobre empresas do grupo.",
+  },
+  {
+    id: "pura",
+    label: "Holding pura",
+    descricao: "Sociedade cuja atividade predominante é participar de outras sociedades.",
+  },
+  {
+    id: "mista",
+    label: "Holding mista",
+    descricao: "Além de participações societárias, também exerce outras atividades econômicas.",
+  },
+  {
+    id: "nao_sei",
+    label: "Não sei / quero avaliação",
+    descricao: "A Finder avalia finalidade, patrimônio, receitas, sucessão e estrutura antes de recomendar um modelo.",
+  },
+];
+
+const OBJETIVOS_HOLDING = [
+  "Organizar patrimônio",
+  "Planejar sucessão familiar",
+  "Centralizar participações societárias",
+  "Administrar imóveis e receitas de locação",
+  "Melhorar governança do grupo",
+  "Avaliar eficiência tributária",
+  "Preparar compra, venda ou integralização de bens",
+  "Ainda não sei — quero uma avaliação",
+];
+
 // Estimativa simplificada de carga tributária — referência, não é cálculo fiscal real.
 const SIMPLES_FAIXAS = [180000, 360000, 720000, 1800000, 3600000, 4800000];
 const SIMPLES_ALIQUOTAS = {
@@ -888,6 +948,12 @@ export default function DiagnosticoPrototipo() {
   const [atividadesSelecionadas, setAtividadesSelecionadas] = useState([]);
   const [atividadePredominante, setAtividadePredominante] = useState(null);
   const [descricaoNegocio, setDescricaoNegocio] = useState("");
+  const [estruturaNegocio, setEstruturaNegocio] = useState("operacional");
+  const [tiposHolding, setTiposHolding] = useState([]);
+  const [objetivosHolding, setObjetivosHolding] = useState([]);
+  const [patrimonioHolding, setPatrimonioHolding] = useState("");
+  const [receitasHolding, setReceitasHolding] = useState("");
+  const [sucessaoHolding, setSucessaoHolding] = useState("");
   const [perguntasDinamicas, setPerguntasDinamicas] = useState([]);
   const [negocioInterpretado, setNegocioInterpretado] = useState(null);
   const [gerandoPerguntas, setGerandoPerguntas] = useState(false);
@@ -917,6 +983,20 @@ export default function DiagnosticoPrototipo() {
   const ultimaAtualizacaoLeadRef = useRef("");
 
   const empresaPrincipal = empresas[0] || null;
+
+  const trilhaHoldingAtiva =
+    estruturaNegocio === "holding" ||
+    estruturaNegocio === "avaliar_holding";
+
+  const perfilHolding = {
+    ativo: trilhaHoldingAtiva,
+    estruturaNegocio,
+    tipos: tiposHolding,
+    objetivos: objetivosHolding,
+    patrimonioAproximado: patrimonioHolding,
+    receitasPatrimoniais: receitasHolding,
+    situacaoSucessoria: sucessaoHolding,
+  };
 
   const atividadesSelecionadasObjetos = cnaesEmpresa.filter((atividade) =>
     atividadesSelecionadas.includes(String(atividade.codigo))
@@ -1707,6 +1787,8 @@ export default function DiagnosticoPrototipo() {
       observacao,
       descricaoNegocio,
       negocioInterpretado,
+      estruturaNegocio,
+      holding: perfilHolding,
       doresSelecionadas,
       dorPrincipal: doresSelecionadas[0] || "",
       dor90Dias,
@@ -1822,6 +1904,22 @@ export default function DiagnosticoPrototipo() {
       clearInterval(interval);
     };
   }, [step]);
+  function toggleTipoHolding(id) {
+    setTiposHolding((atuais) =>
+      atuais.includes(id)
+        ? atuais.filter((item) => item !== id)
+        : [...atuais, id]
+    );
+  }
+
+  function toggleObjetivoHolding(valor) {
+    setObjetivosHolding((atuais) =>
+      atuais.includes(valor)
+        ? atuais.filter((item) => item !== valor)
+        : [...atuais, valor]
+    );
+  }
+
   function toggleDorSelecionada(valor) {
     setDoresSelecionadas((prev) =>
       prev.includes(valor)
@@ -1863,6 +1961,17 @@ export default function DiagnosticoPrototipo() {
       atividadesSelecionadas: atividadesSelecionadasObjetos,
       atividadePredominante,
       descricaoNegocio: descricaoNegocio.trim(),
+      estruturaNegocio,
+      holding: perfilHolding,
+      instrucoesEspeciais: trilhaHoldingAtiva
+        ? [
+            "Tratar a holding como estrutura especializada, e não como simples empresa de serviços.",
+            "Investigar patrimônio, imóveis, participações societárias, receitas patrimoniais, governança, sucessão e tributação.",
+            "Diferenciar holding patrimonial, familiar/sucessória, participações/controle, pura e mista conforme as respostas.",
+            "Não presumir que constituir holding é vantajoso; admitir conclusão de que a estrutura não é recomendada sem estudo adicional.",
+            "Na Reforma Tributária, separar locação, venda, administração, intermediação e demais operações imobiliárias antes de qualquer projeção.",
+          ]
+        : [],
       empresas: empresas.map((e) => ({
         razao: e.razao,
         cnpj: e.cnpjDigits,
@@ -2385,6 +2494,8 @@ export default function DiagnosticoPrototipo() {
         observacao: observacao || "",
         descricaoNegocio: descricaoNegocio || "",
         negocioInterpretado: negocioInterpretado || null,
+        estruturaNegocio,
+        holding: perfilHolding,
         doresSelecionadas,
         dorPrincipal: doresSelecionadas[0] || "",
         dor90Dias,
@@ -2733,6 +2844,12 @@ export default function DiagnosticoPrototipo() {
     setAtividadesSelecionadas([]);
     setAtividadePredominante(null);
     setDescricaoNegocio("");
+    setEstruturaNegocio("operacional");
+    setTiposHolding([]);
+    setObjetivosHolding([]);
+    setPatrimonioHolding("");
+    setReceitasHolding("");
+    setSucessaoHolding("");
     setPerguntasDinamicas([]);
     setNegocioInterpretado(null);
     setGerandoPerguntas(false);
@@ -2977,6 +3094,9 @@ export default function DiagnosticoPrototipo() {
     <strong>${escaparHtml(negocioInterpretado?.subsegmento || negocioInterpretado?.segmento || categoriaPrincipal)}</strong>
     <p>${escaparHtml(descricaoNegocio || "Descrição do negócio não informada.")}</p>
     ${negocioInterpretado?.modeloOperacional ? `<p><strong>Modelo operacional:</strong> ${escaparHtml(negocioInterpretado.modeloOperacional)}</p>` : ""}
+    ${trilhaHoldingAtiva ? `<p><strong>Estrutura especial:</strong> Holding / avaliação de holding</p>` : ""}
+    ${trilhaHoldingAtiva && tiposHolding.length ? `<p><strong>Perfil informado:</strong> ${escaparHtml(tiposHolding.map((id) => TIPOS_HOLDING.find((t) => t.id === id)?.label || id).join(" · "))}</p>` : ""}
+    ${trilhaHoldingAtiva && objetivosHolding.length ? `<p><strong>Objetivos:</strong> ${escaparHtml(objetivosHolding.join(" · "))}</p>` : ""}
   </div>
 
   ${resumoExecutivo ? `
@@ -3698,6 +3818,119 @@ export default function DiagnosticoPrototipo() {
                   </div>
                 )}
 
+                {empresaPrincipal && (
+                  <div style={{ marginTop: 14, padding: 14, borderRadius: 12, background: "#F7F8FB", border: "1px solid #E3E7EF" }}>
+                    <label style={{ ...labelStyle, fontSize: 12 }}>
+                      Estrutura do negócio
+                    </label>
+                    <p style={{ fontSize: 10.5, color: MUTED, margin: "0 0 9px", lineHeight: 1.45 }}>
+                      Isso permite ativar diagnósticos especializados sem alterar o fluxo das empresas operacionais.
+                    </p>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                      {ESTRUTURAS_NEGOCIO.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setEstruturaNegocio(item.id);
+                            if (!["holding", "avaliar_holding"].includes(item.id)) {
+                              setTiposHolding([]);
+                              setObjetivosHolding([]);
+                              setPatrimonioHolding("");
+                              setReceitasHolding("");
+                              setSucessaoHolding("");
+                            }
+                          }}
+                          style={{ ...chipStyle(estruturaNegocio === item.id), width: "100%", minHeight: 42 }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {trilhaHoldingAtiva && (
+                      <div style={{ marginTop: 15, paddingTop: 14, borderTop: "1px solid #D8DEEA" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+                          <Building2 size={16} color={CORAL} />
+                          <strong style={{ fontSize: 13, color: NAVY }}>
+                            Diagnóstico especializado de Holding
+                          </strong>
+                        </div>
+
+                        <p style={{ fontSize: 10.5, color: MUTED, margin: "0 0 12px", lineHeight: 1.5 }}>
+                          Selecione todas as características aplicáveis. Patrimonial e familiar indicam finalidade; pura e mista descrevem a forma de atuação da sociedade e podem coexistir com outras características.
+                        </p>
+
+                        <label style={labelStyle}>Tipo ou finalidade da holding</label>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 14 }}>
+                          {TIPOS_HOLDING.map((tipo) => {
+                            const selecionado = tiposHolding.includes(tipo.id);
+                            return (
+                              <button
+                                key={tipo.id}
+                                type="button"
+                                title={tipo.descricao}
+                                onClick={() => toggleTipoHolding(tipo.id)}
+                                style={{ ...chipStyle(selecionado), width: "100%", minHeight: 48, textAlign: "left" }}
+                              >
+                                {tipo.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <label style={labelStyle}>O que você pretende resolver com essa estrutura?</label>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 14 }}>
+                          {OBJETIVOS_HOLDING.map((objetivo) => (
+                            <button
+                              key={objetivo}
+                              type="button"
+                              onClick={() => toggleObjetivoHolding(objetivo)}
+                              style={{ ...chipStyle(objetivosHolding.includes(objetivo)), width: "100%", minHeight: 44, textAlign: "left" }}
+                            >
+                              {objetivo}
+                            </button>
+                          ))}
+                        </div>
+
+                        <label style={labelStyle}>Patrimônio aproximado / principais ativos</label>
+                        <textarea
+                          value={patrimonioHolding}
+                          onChange={(e) => setPatrimonioHolding(e.target.value)}
+                          placeholder="Ex.: 6 imóveis, participações em 2 empresas, veículos e aplicações. Valor aproximado, se souber."
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
+                        />
+
+                        <label style={labelStyle}>Receitas patrimoniais ou imobiliárias</label>
+                        <textarea
+                          value={receitasHolding}
+                          onChange={(e) => setReceitasHolding(e.target.value)}
+                          placeholder="Ex.: aluguel mensal, venda eventual de imóveis, dividendos ou outras receitas."
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
+                        />
+
+                        <label style={labelStyle}>Situação sucessória / familiar</label>
+                        <textarea
+                          value={sucessaoHolding}
+                          onChange={(e) => setSucessaoHolding(e.target.value)}
+                          placeholder="Ex.: existem herdeiros, doação de quotas, usufruto, regras de administração ou sucessão ainda não planejada."
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
+                        />
+
+                        <div style={{ marginTop: 10, background: "#FFF3EF", borderRadius: 9, padding: 10, borderLeft: `4px solid ${CORAL}` }}>
+                          <p style={{ margin: 0, fontSize: 10.5, color: NAVY, lineHeight: 1.5 }}>
+                            <strong>Como a Finder deve tratar:</strong> primeiro diagnosticar patrimônio, finalidade, receitas, sucessão, governança e tributação; somente depois indicar constituição, reorganização ou manutenção da estrutura atual. O sistema não deve presumir que holding é vantajosa em todos os casos.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {empresas.length > 1 && (
                   <p style={{ fontSize: 11, color: CORAL, fontWeight: 600, margin: "10px 0 0" }}>
                     Segmento predominante do grupo: {segmentoPredominante}
@@ -3710,7 +3943,9 @@ export default function DiagnosticoPrototipo() {
                     empresas.length === 0 ||
                     atividadesSelecionadas.length === 0 ||
                     !atividadePredominante ||
-                    descricaoNegocio.trim().length < 20
+                    descricaoNegocio.trim().length < 20 ||
+                    (trilhaHoldingAtiva && tiposHolding.length === 0) ||
+                    (trilhaHoldingAtiva && objetivosHolding.length === 0)
                   }
                   onClick={() => setStep("porte")}
                 >
