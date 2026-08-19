@@ -57,6 +57,7 @@ const ESTRUTURAS_NEGOCIO = [
   { id: "grupo", label: "Grupo empresarial" },
   { id: "spe", label: "SPE" },
   { id: "avaliar_holding", label: "Quero avaliar se uma holding faz sentido" },
+  { id: "pessoa_fisica", label: "Pessoa Física / Consultoria pessoal" },
 ];
 
 const TIPOS_HOLDING = [
@@ -106,6 +107,43 @@ const OBJETIVOS_HOLDING = [
   "Avaliar eficiência tributária",
   "Preparar compra, venda ou integralização de bens",
   "Ainda não sei — quero uma avaliação",
+];
+
+const OBJETIVOS_PF = [
+  { id: "financeiro", label: "Organização financeira" },
+  { id: "aposentadoria", label: "Planejamento de aposentadoria" },
+  { id: "investimentos", label: "Investimentos" },
+  { id: "dividas", label: "Dívidas e reorganização financeira" },
+  { id: "patrimonio", label: "Organização patrimonial" },
+  { id: "renda", label: "Aumentar capacidade de poupança" },
+  { id: "protecao", label: "Proteção financeira" },
+  { id: "nao_sei", label: "Não sei por onde começar" },
+];
+
+const DORES_PF = [
+  "Não consigo organizar minhas finanças",
+  "Gasto mais do que gostaria",
+  "Não consigo formar reserva de emergência",
+  "Tenho dívidas ou parcelas pesando no orçamento",
+  "Não sei quanto preciso guardar para aposentadoria",
+  "Não sei se meus investimentos estão adequados",
+  "Tenho dinheiro parado ou mal distribuído",
+  "Tenho medo de investir errado",
+  "Não sei quanto posso investir por mês",
+  "Quero organizar meu patrimônio",
+  "Tenho dependentes e quero melhorar minha proteção financeira",
+  "Minha renda varia muito ao longo do mês",
+  "Não sei qual deve ser minha prioridade agora",
+  "Outro",
+];
+
+const AREAS_PF = [
+  { id: "financeiro", label: "Finanças pessoais", Icon: Wallet },
+  { id: "aposentadoria", label: "Aposentadoria", Icon: Target },
+  { id: "investimentos", label: "Investimentos", Icon: TrendingUp },
+  { id: "patrimonio", label: "Patrimônio", Icon: Building2 },
+  { id: "protecao", label: "Proteção financeira", Icon: ShieldCheck },
+  { id: "organizacao", label: "Organização / Planejamento", Icon: ClipboardList },
 ];
 
 // Estimativa simplificada de carga tributária — referência, não é cálculo fiscal real.
@@ -651,6 +689,54 @@ const DORES_EVENTO = [
   "Outro",
 ];
 
+const DORES_HOLDING = [
+  "Patrimônio desorganizado entre pessoa física e jurídica",
+  "Sucessão familiar ainda não planejada",
+  "Imóveis ou participações sem estrutura definida",
+  "Dúvida se a holding atual ainda faz sentido",
+  "Carga tributária sobre aluguéis, imóveis ou participações",
+  "Risco de conflito entre sócios ou herdeiros",
+  "Falta de regras de governança e administração",
+  "Dificuldade para centralizar empresas e participações",
+  "Pretendo transferir ou integralizar bens para a holding",
+  "Pretendo comprar ou vender imóveis ou participações",
+  "Não sei qual tipo de holding é adequado",
+  "Outro",
+];
+
+const AREAS_HOLDING = [
+  {
+    id: "financeiro",
+    label: "Patrimônio / Financeiro",
+    Icon: Wallet,
+  },
+  {
+    id: "juridico",
+    label: "Societário / Jurídico",
+    Icon: Scale,
+  },
+  {
+    id: "contabilidade",
+    label: "Contábil / Fiscal",
+    Icon: Calculator,
+  },
+  {
+    id: "gestao",
+    label: "Governança / Gestão",
+    Icon: Target,
+  },
+  {
+    id: "administrativo",
+    label: "Documentação / Administração",
+    Icon: ClipboardList,
+  },
+  {
+    id: "operacional",
+    label: "Estrutura Patrimonial / Operacional",
+    Icon: Settings2,
+  },
+];
+
 const IMPACTOS_DOR = [
   "Perda de vendas",
   "Redução da margem",
@@ -954,6 +1040,17 @@ export default function DiagnosticoPrototipo() {
   const [patrimonioHolding, setPatrimonioHolding] = useState("");
   const [receitasHolding, setReceitasHolding] = useState("");
   const [sucessaoHolding, setSucessaoHolding] = useState("");
+
+  const [objetivosPF, setObjetivosPF] = useState([]);
+  const [rendaMensalPF, setRendaMensalPF] = useState("");
+  const [gastosMensaisPF, setGastosMensaisPF] = useState("");
+  const [dividasPF, setDividasPF] = useState("");
+  const [reservaPF, setReservaPF] = useState("");
+  const [patrimonioPF, setPatrimonioPF] = useState("");
+  const [investimentosPF, setInvestimentosPF] = useState("");
+  const [aposentadoriaPF, setAposentadoriaPF] = useState("");
+  const [dependentesPF, setDependentesPF] = useState("");
+
   const [perguntasDinamicas, setPerguntasDinamicas] = useState([]);
   const [negocioInterpretado, setNegocioInterpretado] = useState(null);
   const [gerandoPerguntas, setGerandoPerguntas] = useState(false);
@@ -987,6 +1084,22 @@ export default function DiagnosticoPrototipo() {
   const trilhaHoldingAtiva =
     estruturaNegocio === "holding" ||
     estruturaNegocio === "avaliar_holding";
+
+  const trilhaPFAtiva =
+    estruturaNegocio === "pessoa_fisica";
+
+  const perfilPF = {
+    ativo: trilhaPFAtiva,
+    objetivos: objetivosPF,
+    rendaMensal: rendaMensalPF,
+    gastosMensais: gastosMensaisPF,
+    dividas: dividasPF,
+    reservaEmergencia: reservaPF,
+    patrimonio: patrimonioPF,
+    investimentosAtuais: investimentosPF,
+    aposentadoria: aposentadoriaPF,
+    dependentes: dependentesPF,
+  };
 
   const perfilHolding = {
     ativo: trilhaHoldingAtiva,
@@ -1618,9 +1731,10 @@ export default function DiagnosticoPrototipo() {
     const progressoBase = {
       intro: 0,
       cadastro: 10,
-      cnpj: 20,
-      porte: 35,
-      dor: 50,
+      estrutura: 18,
+      cnpj: 28,
+      porte: 40,
+      dor: 52,
       gerandoPerguntas: 60,
       confirmarNegocio: 65,
       checklist: 70,
@@ -1789,6 +1903,7 @@ export default function DiagnosticoPrototipo() {
       negocioInterpretado,
       estruturaNegocio,
       holding: perfilHolding,
+      pessoaFisica: perfilPF,
       doresSelecionadas,
       dorPrincipal: doresSelecionadas[0] || "",
       dor90Dias,
@@ -1920,6 +2035,14 @@ export default function DiagnosticoPrototipo() {
     );
   }
 
+  function toggleObjetivoPF(id) {
+    setObjetivosPF((atuais) =>
+      atuais.includes(id)
+        ? atuais.filter((item) => item !== id)
+        : [...atuais, id]
+    );
+  }
+
   function toggleDorSelecionada(valor) {
     setDoresSelecionadas((prev) =>
       prev.includes(valor)
@@ -1954,8 +2077,43 @@ export default function DiagnosticoPrototipo() {
     setStep("gerandoPerguntas");
 
     const payload = {
-      segmentoAtual: segmentoPredominante,
-      categoriaAtual: categoriaPrincipal,
+      segmentoAtual:
+        trilhaHoldingAtiva
+          ? "Holding / Estrutura Patrimonial"
+          : trilhaPFAtiva
+          ? "Pessoa Física / Consultoria Financeira"
+          : segmentoPredominante,
+
+      categoriaAtual:
+        trilhaHoldingAtiva
+          ? (
+              tiposHolding
+                .map(
+                  (id) =>
+                    TIPOS_HOLDING.find(
+                      (tipo) =>
+                        tipo.id === id
+                    )?.label
+                )
+                .filter(Boolean)
+                .join(" + ") ||
+              "Holding"
+            )
+          : trilhaPFAtiva
+          ? (
+              objetivosPF
+                .map(
+                  (id) =>
+                    OBJETIVOS_PF.find(
+                      (objetivo) =>
+                        objetivo.id === id
+                    )?.label
+                )
+                .filter(Boolean)
+                .join(" + ") ||
+              "Pessoa Física"
+            )
+          : categoriaPrincipal,
       cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
       cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
       atividadesSelecionadas: atividadesSelecionadasObjetos,
@@ -1963,6 +2121,7 @@ export default function DiagnosticoPrototipo() {
       descricaoNegocio: descricaoNegocio.trim(),
       estruturaNegocio,
       holding: perfilHolding,
+      pessoaFisica: perfilPF,
       instrucoesEspeciais: trilhaHoldingAtiva
         ? [
             "Tratar a holding como estrutura especializada, e não como simples empresa de serviços.",
@@ -1970,9 +2129,25 @@ export default function DiagnosticoPrototipo() {
             "Diferenciar holding patrimonial, familiar/sucessória, participações/controle, pura e mista conforme as respostas.",
             "Não presumir que constituir holding é vantajoso; admitir conclusão de que a estrutura não é recomendada sem estudo adicional.",
             "Na Reforma Tributária, separar locação, venda, administração, intermediação e demais operações imobiliárias antes de qualquer projeção.",
+            "As perguntas devem partir das dores específicas selecionadas pelo usuário e não de um checklist empresarial genérico.",
+            "Se a dor envolver sucessão, investigar herdeiros, doação de quotas, usufruto, administração, continuidade e conflitos potenciais.",
+            "Se a dor envolver patrimônio ou imóveis, investigar titularidade, valor aproximado, financiamento, locação, venda, integralização e objetivo dos ativos.",
+            "Se a dor envolver participações societárias ou grupo empresarial, investigar empresas controladas, percentuais, governança, distribuição de resultados e dependência entre empresas.",
+            "Se a dor envolver tributação, investigar regime, origem das receitas, locações, alienações, dividendos, custos, créditos e necessidade de simulação individualizada.",
+          ]
+        : trilhaPFAtiva
+        ? [
+            "Tratar este diagnóstico como consultoria financeira para Pessoa Física, não como empresa.",
+            "As perguntas devem seguir os objetivos escolhidos e as dores declaradas.",
+            "Se houver organização financeira, investigar orçamento, gastos, capacidade de poupança, dívidas, reserva e estabilidade da renda.",
+            "Se houver aposentadoria, investigar idade, prazo, renda desejada, patrimônio acumulado e capacidade de aporte.",
+            "Se houver investimentos, investigar objetivos, horizonte, liquidez necessária, tolerância a risco e diversificação, sem recomendar produto específico.",
+            "Se houver dívidas, investigar saldo, custo, prazo, parcelas e impacto no orçamento antes de sugerir estratégia.",
+            "Se houver patrimônio ou proteção, investigar bens, dependentes, reserva e vulnerabilidades financeiras.",
+            "Os próximos passos devem mostrar somente ações relacionadas aos objetivos selecionados e às prioridades identificadas.",
           ]
         : [],
-      empresas: empresas.map((e) => ({
+      empresas: trilhaPFAtiva ? [] : empresas.map((e) => ({
         razao: e.razao,
         cnpj: e.cnpjDigits,
         segmento: e.segmento,
@@ -1991,7 +2166,28 @@ export default function DiagnosticoPrototipo() {
         objetivo90Dias: dor90Dias,
         impactos: impactosDor,
       },
-      areasSelecionadas: dores.map((id) => ({ id, label: areaLabel(id) })),
+      areasSelecionadas:
+        dores.map((id) => {
+          const origemArea =
+            trilhaHoldingAtiva
+              ? AREAS_HOLDING
+              : trilhaPFAtiva
+              ? AREAS_PF
+              : AREAS;
+
+          const area =
+            origemArea.find(
+              (item) =>
+                item.id === id
+            );
+
+          return {
+            id,
+            label:
+              area?.label ||
+              areaLabel(id),
+          };
+        }),
     };
 
     try {
@@ -2496,6 +2692,7 @@ export default function DiagnosticoPrototipo() {
         negocioInterpretado: negocioInterpretado || null,
         estruturaNegocio,
         holding: perfilHolding,
+        pessoaFisica: perfilPF,
         doresSelecionadas,
         dorPrincipal: doresSelecionadas[0] || "",
         dor90Dias,
@@ -2850,6 +3047,17 @@ export default function DiagnosticoPrototipo() {
     setPatrimonioHolding("");
     setReceitasHolding("");
     setSucessaoHolding("");
+
+    setObjetivosPF([]);
+    setRendaMensalPF("");
+    setGastosMensaisPF("");
+    setDividasPF("");
+    setReservaPF("");
+    setPatrimonioPF("");
+    setInvestimentosPF("");
+    setAposentadoriaPF("");
+    setDependentesPF("");
+
     setPerguntasDinamicas([]);
     setNegocioInterpretado(null);
     setGerandoPerguntas(false);
@@ -2966,6 +3174,62 @@ export default function DiagnosticoPrototipo() {
       enviarRelatorioPorEmail();
     }
   }, [step]);
+
+  function proximosPassosAdaptaveisPF() {
+    if (!trilhaPFAtiva) return [];
+
+    const passos = [];
+
+    if (objetivosPF.includes("financeiro") || objetivosPF.includes("renda")) {
+      passos.push(
+        "Organizar receitas, gastos fixos, gastos variáveis e capacidade real de poupança."
+      );
+      passos.push(
+        "Definir uma meta de reserva de emergência compatível com a estabilidade da renda e os compromissos mensais."
+      );
+    }
+
+    if (objetivosPF.includes("dividas")) {
+      passos.push(
+        "Mapear todas as dívidas por saldo, taxa, parcela e prazo antes de definir a ordem de quitação."
+      );
+    }
+
+    if (objetivosPF.includes("aposentadoria")) {
+      passos.push(
+        "Definir idade-alvo, renda desejada e patrimônio necessário para aposentadoria, estimando o aporte mensal necessário."
+      );
+    }
+
+    if (objetivosPF.includes("investimentos")) {
+      passos.push(
+        "Separar objetivos por prazo e liquidez antes de revisar a distribuição dos investimentos."
+      );
+      passos.push(
+        "Distinguir reserva de emergência, objetivos de curto prazo e investimentos de longo prazo."
+      );
+    }
+
+    if (objetivosPF.includes("patrimonio")) {
+      passos.push(
+        "Consolidar bens, investimentos e obrigações em uma visão patrimonial única."
+      );
+    }
+
+    if (objetivosPF.includes("protecao")) {
+      passos.push(
+        "Avaliar dependentes, reserva e principais riscos capazes de comprometer a renda ou o patrimônio familiar."
+      );
+    }
+
+    if (objetivosPF.includes("nao_sei") && passos.length === 0) {
+      passos.push(
+        "Começar pela organização financeira básica: renda, gastos, dívidas, reserva e objetivos."
+      );
+    }
+
+    return passos;
+  }
 
   function gerarPdf() {
     if (!empresaPrincipal) {
@@ -3407,17 +3671,508 @@ export default function DiagnosticoPrototipo() {
 
                 <div style={{ flex: 1 }} />
                 
-                <PrimaryButton disabled={!nome || !cargo || telefone.replace(/\D/g, "").length < 10 || !email.includes("@")} onClick={() => setStep("cnpj")}>
+                <PrimaryButton
+                  disabled={
+                    !nome ||
+                    !cargo ||
+                    telefone.replace(/\D/g, "").length < 10 ||
+                    !email.includes("@")
+                  }
+                  onClick={() => setStep("estrutura")}
+                >
                   Continuar <ArrowRight size={16} />
+                </PrimaryButton>
+              </div>
+            )}
+
+            {step === "estrutura" && (
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <p
+                  style={{
+                    fontFamily: DISPLAY_FONT,
+                    fontSize: 21,
+                    fontWeight: 700,
+                    color: NAVY,
+                    margin: "6px 0 4px",
+                  }}
+                >
+                  Estrutura do negócio
+                </p>
+
+                <p
+                  style={{
+                    fontSize: 12.5,
+                    color: MUTED,
+                    margin: "0 0 16px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Antes de analisar a operação, precisamos entender qual estrutura
+                  representa melhor o negócio. Isso define o fluxo, as dores e as
+                  perguntas do diagnóstico.
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                    marginBottom: 14,
+                  }}
+                >
+                  {ESTRUTURAS_NEGOCIO.map((item) => {
+                    const selecionada =
+                      estruturaNegocio === item.id;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setEstruturaNegocio(item.id);
+
+                          // Ao trocar a estrutura, limpamos seleções específicas
+                          // para evitar que dores de Holding contaminem outro fluxo.
+                          setDoresSelecionadas([]);
+                          setDores([]);
+                          setDor90Dias("");
+                          setImpactosDor([]);
+
+                          if (
+                            ![
+                              "holding",
+                              "avaliar_holding",
+                            ].includes(item.id)
+                          ) {
+                            setTiposHolding([]);
+                            setObjetivosHolding([]);
+                            setPatrimonioHolding("");
+                            setReceitasHolding("");
+                            setSucessaoHolding("");
+                          }
+
+                          if (item.id !== "pessoa_fisica") {
+                            setObjetivosPF([]);
+                            setRendaMensalPF("");
+                            setGastosMensaisPF("");
+                            setDividasPF("");
+                            setReservaPF("");
+                            setPatrimonioPF("");
+                            setInvestimentosPF("");
+                            setAposentadoriaPF("");
+                            setDependentesPF("");
+                          }
+                        }}
+                        style={{
+                          ...chipStyle(
+                            selecionada
+                          ),
+                          width: "100%",
+                          minHeight: 48,
+                          textAlign: "left",
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {trilhaPFAtiva && (
+                  <div
+                    style={{
+                      background: "#F7F8FB",
+                      border: "1px solid #E3E7EF",
+                      borderRadius: 12,
+                      padding: 14,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+                      <User size={16} color={CORAL} />
+                      <strong style={{ fontSize: 13, color: NAVY }}>
+                        Consultoria para Pessoa Física
+                      </strong>
+                    </div>
+
+                    <p style={{ fontSize: 10.7, color: MUTED, margin: "0 0 13px", lineHeight: 1.5 }}>
+                      Escolha o que você quer organizar ou melhorar. As perguntas e os próximos passos serão adaptados às suas escolhas.
+                    </p>
+
+                    <label style={labelStyle}>Quais objetivos você quer trabalhar?</label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 14 }}>
+                      {OBJETIVOS_PF.map((objetivo) => (
+                        <button
+                          key={objetivo.id}
+                          type="button"
+                          onClick={() => toggleObjetivoPF(objetivo.id)}
+                          style={{
+                            ...chipStyle(objetivosPF.includes(objetivo.id)),
+                            width: "100%",
+                            minHeight: 46,
+                            textAlign: "left",
+                          }}
+                        >
+                          {objetivo.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <label style={labelStyle}>Renda mensal aproximada</label>
+                    <input
+                      value={rendaMensalPF}
+                      onChange={(e) => setRendaMensalPF(e.target.value)}
+                      placeholder="Ex.: R$ 8.000"
+                      style={{ ...inputStyle, marginBottom: 10 }}
+                    />
+
+                    <label style={labelStyle}>Gastos mensais aproximados</label>
+                    <input
+                      value={gastosMensaisPF}
+                      onChange={(e) => setGastosMensaisPF(e.target.value)}
+                      placeholder="Ex.: R$ 6.000"
+                      style={{ ...inputStyle, marginBottom: 10 }}
+                    />
+
+                    <label style={labelStyle}>Dívidas ou parcelas relevantes</label>
+                    <textarea
+                      value={dividasPF}
+                      onChange={(e) => setDividasPF(e.target.value)}
+                      placeholder="Ex.: financiamento, cartão, consignado, empréstimos ou nenhuma dívida relevante."
+                      rows={2}
+                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
+                    />
+
+                    <label style={labelStyle}>Reserva de emergência</label>
+                    <textarea
+                      value={reservaPF}
+                      onChange={(e) => setReservaPF(e.target.value)}
+                      placeholder="Ex.: não tenho reserva; tenho 3 meses de gastos; tenho R$ 30 mil reservados."
+                      rows={2}
+                      style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
+                    />
+
+                    {objetivosPF.includes("investimentos") && (
+                      <>
+                        <label style={labelStyle}>Investimentos atuais</label>
+                        <textarea
+                          value={investimentosPF}
+                          onChange={(e) => setInvestimentosPF(e.target.value)}
+                          placeholder="Ex.: poupança, CDB, Tesouro, fundos, ações, previdência privada ou ainda não invisto."
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
+                        />
+                      </>
+                    )}
+
+                    {objetivosPF.includes("aposentadoria") && (
+                      <>
+                        <label style={labelStyle}>Objetivo de aposentadoria</label>
+                        <textarea
+                          value={aposentadoriaPF}
+                          onChange={(e) => setAposentadoriaPF(e.target.value)}
+                          placeholder="Ex.: quero me aposentar aos 60 anos com renda mensal de R$ 10 mil."
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
+                        />
+                      </>
+                    )}
+
+                    {(objetivosPF.includes("patrimonio") || objetivosPF.includes("protecao")) && (
+                      <>
+                        <label style={labelStyle}>Patrimônio e dependentes</label>
+                        <textarea
+                          value={patrimonioPF}
+                          onChange={(e) => setPatrimonioPF(e.target.value)}
+                          placeholder="Ex.: imóvel próprio, veículo, investimentos e outros bens."
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
+                        />
+                        <textarea
+                          value={dependentesPF}
+                          onChange={(e) => setDependentesPF(e.target.value)}
+                          placeholder="Ex.: cônjuge, filhos, pais ou outras pessoas dependentes."
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {trilhaHoldingAtiva && (
+                  <div
+                    style={{
+                      background: "#F7F8FB",
+                      border: "1px solid #E3E7EF",
+                      borderRadius: 12,
+                      padding: 14,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                        marginBottom: 5,
+                      }}
+                    >
+                      <Building2
+                        size={16}
+                        color={CORAL}
+                      />
+
+                      <strong
+                        style={{
+                          fontSize: 13,
+                          color: NAVY,
+                        }}
+                      >
+                        Trilha especializada de Holding
+                      </strong>
+                    </div>
+
+                    <p
+                      style={{
+                        fontSize: 10.7,
+                        color: MUTED,
+                        margin: "0 0 13px",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Selecione as características que mais se aproximam da estrutura
+                      atual ou do que pretende construir. Essas respostas serão usadas
+                      para gerar perguntas específicas de patrimônio, sucessão,
+                      tributação, governança e participações.
+                    </p>
+
+                    <label style={labelStyle}>
+                      Tipo ou finalidade da holding
+                    </label>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 7,
+                        marginBottom: 14,
+                      }}
+                    >
+                      {TIPOS_HOLDING.map(
+                        (tipo) => {
+                          const selecionado =
+                            tiposHolding.includes(
+                              tipo.id
+                            );
+
+                          return (
+                            <button
+                              key={tipo.id}
+                              type="button"
+                              title={
+                                tipo.descricao
+                              }
+                              onClick={() =>
+                                toggleTipoHolding(
+                                  tipo.id
+                                )
+                              }
+                              style={{
+                                ...chipStyle(
+                                  selecionado
+                                ),
+                                width: "100%",
+                                minHeight: 48,
+                                textAlign: "left",
+                              }}
+                            >
+                              {tipo.label}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+
+                    <label style={labelStyle}>
+                      O que você pretende resolver com essa estrutura?
+                    </label>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 7,
+                        marginBottom: 14,
+                      }}
+                    >
+                      {OBJETIVOS_HOLDING.map(
+                        (objetivo) => (
+                          <button
+                            key={objetivo}
+                            type="button"
+                            onClick={() =>
+                              toggleObjetivoHolding(
+                                objetivo
+                              )
+                            }
+                            style={{
+                              ...chipStyle(
+                                objetivosHolding.includes(
+                                  objetivo
+                                )
+                              ),
+                              width: "100%",
+                              minHeight: 44,
+                              textAlign: "left",
+                            }}
+                          >
+                            {objetivo}
+                          </button>
+                        )
+                      )}
+                    </div>
+
+                    <label style={labelStyle}>
+                      Patrimônio aproximado / principais ativos
+                    </label>
+
+                    <textarea
+                      value={
+                        patrimonioHolding
+                      }
+                      onChange={(e) =>
+                        setPatrimonioHolding(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Ex.: 6 imóveis, participação em 2 empresas, veículos e aplicações."
+                      rows={2}
+                      style={{
+                        ...inputStyle,
+                        resize: "vertical",
+                        fontFamily: BODY_FONT,
+                        marginBottom: 10,
+                      }}
+                    />
+
+                    <label style={labelStyle}>
+                      Receitas patrimoniais ou imobiliárias
+                    </label>
+
+                    <textarea
+                      value={
+                        receitasHolding
+                      }
+                      onChange={(e) =>
+                        setReceitasHolding(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Ex.: aluguéis, dividendos, venda eventual de imóveis ou outras receitas."
+                      rows={2}
+                      style={{
+                        ...inputStyle,
+                        resize: "vertical",
+                        fontFamily: BODY_FONT,
+                        marginBottom: 10,
+                      }}
+                    />
+
+                    <label style={labelStyle}>
+                      Situação sucessória / familiar
+                    </label>
+
+                    <textarea
+                      value={
+                        sucessaoHolding
+                      }
+                      onChange={(e) =>
+                        setSucessaoHolding(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Ex.: herdeiros, doação de quotas, usufruto, regras de administração ou sucessão ainda não planejada."
+                      rows={2}
+                      style={{
+                        ...inputStyle,
+                        resize: "vertical",
+                        fontFamily: BODY_FONT,
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div style={{ flex: 1 }} />
+
+                <PrimaryButton
+                  disabled={
+                    !estruturaNegocio ||
+                    (
+                      trilhaHoldingAtiva &&
+                      (
+                        tiposHolding.length === 0 ||
+                        objetivosHolding.length === 0
+                      )
+                    ) ||
+                    (
+                      trilhaPFAtiva &&
+                      objetivosPF.length === 0
+                    )
+                  }
+                  onClick={() =>
+                    setStep(
+                      trilhaPFAtiva
+                        ? "dor"
+                        : "cnpj"
+                    )
+                  }
+                >
+                  Continuar
+                  <ArrowRight size={16} />
                 </PrimaryButton>
               </div>
             )}
 
             {step === "cnpj" && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: NAVY, margin: "6px 0 4px" }}>CNPJ da empresa</p>
-                <p style={{ fontSize: 12.5, color: MUTED, margin: "0 0 14px" }}>
-                  Adicione o CNPJ da empresa que será a base do diagnóstico. Se houver outras empresas no grupo, você pode adicionar até {MAX_EMPRESAS} CNPJs.
+                <p
+                  style={{
+                    fontFamily: DISPLAY_FONT,
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: NAVY,
+                    margin: "6px 0 4px",
+                  }}
+                >
+                  {trilhaHoldingAtiva
+                    ? "CNPJ da holding ou empresa-base"
+                    : estruturaNegocio === "grupo"
+                    ? "CNPJs do grupo empresarial"
+                    : estruturaNegocio === "spe"
+                    ? "CNPJ da SPE"
+                    : "CNPJ da empresa"}
+                </p>
+
+                <p
+                  style={{
+                    fontSize: 12.5,
+                    color: MUTED,
+                    margin: "0 0 14px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {trilhaHoldingAtiva
+                    ? "Informe o CNPJ da holding, caso ela já exista. Se você está avaliando constituir uma holding, informe o CNPJ da principal empresa relacionada ao patrimônio ou ao grupo."
+                    : estruturaNegocio === "grupo"
+                    ? `Adicione a empresa-base e, se necessário, outras empresas do grupo. Você pode adicionar até ${MAX_EMPRESAS} CNPJs.`
+                    : "Adicione o CNPJ que será a base do diagnóstico."}
                 </p>
 
                 <label style={labelStyle}>CNPJ</label>
@@ -3805,7 +4560,9 @@ export default function DiagnosticoPrototipo() {
                       value={descricaoNegocio}
                       onChange={(e) => setDescricaoNegocio(e.target.value)}
                       placeholder={
-                        empresas.length > 1
+                        trilhaHoldingAtiva
+                          ? "Ex.: A holding concentra imóveis de locação e participações em duas empresas da família. Hoje a principal preocupação é organizar sucessão, tributação e regras entre os herdeiros."
+                          : empresas.length > 1
                           ? "Ex.: A empresa A fabrica churrasqueiras metálicas e a empresa B realiza a comercialização e instalação dos produtos."
                           : "Ex.: Fabricamos churrasqueiras metálicas, com modelos de linha e projetos sob medida, vendendo para consumidor final, lojistas e construtoras."
                       }
@@ -3813,121 +4570,10 @@ export default function DiagnosticoPrototipo() {
                       style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 6 }}
                     />
                     <p style={{ fontSize: 10.5, color: MUTED, margin: "0 0 8px", lineHeight: 1.4 }}>
-                      Não se limite ao CNAE. Explique o que vocês produzem, vendem ou entregam, para quem e como a operação funciona.
+                      {trilhaHoldingAtiva
+                        ? "Não se limite ao CNAE. Explique quais bens, imóveis ou participações a estrutura possui ou pretende possuir, de onde vêm as receitas e qual é o objetivo da holding."
+                        : "Não se limite ao CNAE. Explique o que vocês produzem, vendem ou entregam, para quem e como a operação funciona."}
                     </p>
-                  </div>
-                )}
-
-                {empresaPrincipal && (
-                  <div style={{ marginTop: 14, padding: 14, borderRadius: 12, background: "#F7F8FB", border: "1px solid #E3E7EF" }}>
-                    <label style={{ ...labelStyle, fontSize: 12 }}>
-                      Estrutura do negócio
-                    </label>
-                    <p style={{ fontSize: 10.5, color: MUTED, margin: "0 0 9px", lineHeight: 1.45 }}>
-                      Isso permite ativar diagnósticos especializados sem alterar o fluxo das empresas operacionais.
-                    </p>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-                      {ESTRUTURAS_NEGOCIO.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setEstruturaNegocio(item.id);
-                            if (!["holding", "avaliar_holding"].includes(item.id)) {
-                              setTiposHolding([]);
-                              setObjetivosHolding([]);
-                              setPatrimonioHolding("");
-                              setReceitasHolding("");
-                              setSucessaoHolding("");
-                            }
-                          }}
-                          style={{ ...chipStyle(estruturaNegocio === item.id), width: "100%", minHeight: 42 }}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {trilhaHoldingAtiva && (
-                      <div style={{ marginTop: 15, paddingTop: 14, borderTop: "1px solid #D8DEEA" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                          <Building2 size={16} color={CORAL} />
-                          <strong style={{ fontSize: 13, color: NAVY }}>
-                            Diagnóstico especializado de Holding
-                          </strong>
-                        </div>
-
-                        <p style={{ fontSize: 10.5, color: MUTED, margin: "0 0 12px", lineHeight: 1.5 }}>
-                          Selecione todas as características aplicáveis. Patrimonial e familiar indicam finalidade; pura e mista descrevem a forma de atuação da sociedade e podem coexistir com outras características.
-                        </p>
-
-                        <label style={labelStyle}>Tipo ou finalidade da holding</label>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 14 }}>
-                          {TIPOS_HOLDING.map((tipo) => {
-                            const selecionado = tiposHolding.includes(tipo.id);
-                            return (
-                              <button
-                                key={tipo.id}
-                                type="button"
-                                title={tipo.descricao}
-                                onClick={() => toggleTipoHolding(tipo.id)}
-                                style={{ ...chipStyle(selecionado), width: "100%", minHeight: 48, textAlign: "left" }}
-                              >
-                                {tipo.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <label style={labelStyle}>O que você pretende resolver com essa estrutura?</label>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 14 }}>
-                          {OBJETIVOS_HOLDING.map((objetivo) => (
-                            <button
-                              key={objetivo}
-                              type="button"
-                              onClick={() => toggleObjetivoHolding(objetivo)}
-                              style={{ ...chipStyle(objetivosHolding.includes(objetivo)), width: "100%", minHeight: 44, textAlign: "left" }}
-                            >
-                              {objetivo}
-                            </button>
-                          ))}
-                        </div>
-
-                        <label style={labelStyle}>Patrimônio aproximado / principais ativos</label>
-                        <textarea
-                          value={patrimonioHolding}
-                          onChange={(e) => setPatrimonioHolding(e.target.value)}
-                          placeholder="Ex.: 6 imóveis, participações em 2 empresas, veículos e aplicações. Valor aproximado, se souber."
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
-                        />
-
-                        <label style={labelStyle}>Receitas patrimoniais ou imobiliárias</label>
-                        <textarea
-                          value={receitasHolding}
-                          onChange={(e) => setReceitasHolding(e.target.value)}
-                          placeholder="Ex.: aluguel mensal, venda eventual de imóveis, dividendos ou outras receitas."
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT, marginBottom: 10 }}
-                        />
-
-                        <label style={labelStyle}>Situação sucessória / familiar</label>
-                        <textarea
-                          value={sucessaoHolding}
-                          onChange={(e) => setSucessaoHolding(e.target.value)}
-                          placeholder="Ex.: existem herdeiros, doação de quotas, usufruto, regras de administração ou sucessão ainda não planejada."
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical", fontFamily: BODY_FONT }}
-                        />
-
-                        <div style={{ marginTop: 10, background: "#FFF3EF", borderRadius: 9, padding: 10, borderLeft: `4px solid ${CORAL}` }}>
-                          <p style={{ margin: 0, fontSize: 10.5, color: NAVY, lineHeight: 1.5 }}>
-                            <strong>Como a Finder deve tratar:</strong> primeiro diagnosticar patrimônio, finalidade, receitas, sucessão, governança e tributação; somente depois indicar constituição, reorganização ou manutenção da estrutura atual. O sistema não deve presumir que holding é vantajosa em todos os casos.
-                          </p>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -3943,9 +4589,7 @@ export default function DiagnosticoPrototipo() {
                     empresas.length === 0 ||
                     atividadesSelecionadas.length === 0 ||
                     !atividadePredominante ||
-                    descricaoNegocio.trim().length < 20 ||
-                    (trilhaHoldingAtiva && tiposHolding.length === 0) ||
-                    (trilhaHoldingAtiva && objetivosHolding.length === 0)
+                    descricaoNegocio.trim().length < 20
                   }
                   onClick={() => setStep("porte")}
                 >
@@ -4000,16 +4644,28 @@ export default function DiagnosticoPrototipo() {
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "6px 0 5px" }}>
-                    Vamos entender sua principal dor
+                    {trilhaHoldingAtiva
+                      ? "Vamos entender os pontos críticos da holding"
+                      : trilhaPFAtiva
+                      ? "Vamos entender sua vida financeira"
+                      : "Vamos entender sua principal dor"}
                   </p>
                   <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5, margin: 0 }}>
-                    Essas respostas serão cruzadas com o CNAE e com o checklist para tornar o relatório mais específico.
+                    {trilhaHoldingAtiva
+                      ? "Essas respostas serão cruzadas com patrimônio, finalidade da holding, CNAEs, sucessão e estrutura societária para gerar perguntas específicas."
+                      : trilhaPFAtiva
+                      ? "As respostas serão cruzadas com os objetivos escolhidos para que o diagnóstico e os próximos passos sejam personalizados."
+                      : "Essas respostas serão cruzadas com o CNAE e com o checklist para tornar o relatório mais específico."}
                   </p>
                 </div>
 
                 <div>
                   <p style={{ ...labelStyle, fontSize: 12, marginBottom: 5 }}>
-                    Quais problemas mais incomodam sua empresa hoje?
+                    {trilhaHoldingAtiva
+                      ? "Quais situações mais preocupam na holding ou no patrimônio hoje?"
+                      : trilhaPFAtiva
+                      ? "Quais situações mais incomodam sua vida financeira hoje?"
+                      : "Quais problemas mais incomodam sua empresa hoje?"}
                   </p>
 
                   <p style={{ fontSize: 10.8, color: MUTED, lineHeight: 1.4, margin: "0 0 9px" }}>
@@ -4017,7 +4673,12 @@ export default function DiagnosticoPrototipo() {
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {DORES_EVENTO.map((item) => {
+                    {(trilhaHoldingAtiva
+                      ? DORES_HOLDING
+                      : trilhaPFAtiva
+                      ? DORES_PF
+                      : DORES_EVENTO
+                    ).map((item) => {
                       const selecionada = doresSelecionadas.includes(item);
 
                       return (
@@ -4052,13 +4713,23 @@ export default function DiagnosticoPrototipo() {
 
                 <div>
                   <label style={labelStyle}>
-                    Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?
+                    {trilhaHoldingAtiva
+                      ? "Qual decisão ou problema patrimonial você gostaria de resolver primeiro?"
+                      : trilhaPFAtiva
+                      ? "Qual objetivo financeiro você gostaria de priorizar agora?"
+                      : "Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?"}
                   </label>
 
                   <textarea
                     value={dor90Dias}
                     onChange={(e) => setDor90Dias(e.target.value)}
-                    placeholder="Ex.: aumentar vendas; descobrir por que o caixa não sobra; reduzir retrabalho..."
+                    placeholder={
+                      trilhaHoldingAtiva
+                        ? "Ex.: definir se vale a pena integralizar os imóveis; organizar sucessão; revisar tributação dos aluguéis; estruturar regras entre os herdeiros..."
+                        : trilhaPFAtiva
+                        ? "Ex.: organizar meu orçamento; quitar dívidas; formar reserva; começar a investir; planejar aposentadoria..."
+                        : "Ex.: aumentar vendas; descobrir por que o caixa não sobra; reduzir retrabalho..."
+                    }
                     rows={3}
                     style={{
                       width: "100%",
@@ -4112,7 +4783,11 @@ export default function DiagnosticoPrototipo() {
 
                 <div style={{ borderTop: "1px solid #E6E9EF", paddingTop: 14 }}>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY, margin: "0 0 4px" }}>
-                    Quais áreas merecem mais atenção?
+                    {trilhaHoldingAtiva
+                      ? "Quais frentes da holding merecem mais atenção?"
+                      : trilhaPFAtiva
+                      ? "Quais áreas da sua vida financeira merecem mais atenção?"
+                      : "Quais áreas merecem mais atenção?"}
                   </p>
 
                   <p style={{ fontSize: 11, color: dores.length === MAX_DORES ? CORAL : "#9AA3B5", margin: "0 0 8px", fontWeight: 600 }}>
@@ -4120,7 +4795,12 @@ export default function DiagnosticoPrototipo() {
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {AREAS.map(({ id, label, Icon }) => {
+                    {(trilhaHoldingAtiva
+                      ? AREAS_HOLDING
+                      : trilhaPFAtiva
+                      ? AREAS_PF
+                      : AREAS
+                    ).map(({ id, label, Icon }) => {
                       const selecionada = dores.includes(id);
                       const bloqueada = !selecionada && dores.length >= MAX_DORES;
 
