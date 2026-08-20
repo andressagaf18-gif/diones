@@ -5127,19 +5127,19 @@ function AtendimentosDepartamento({
   ) {
     const mapa = {
       NAO_INICIADO:
-        "Não iniciado",
+        "Novo",
 
       EM_ANALISE:
-        "Em análise",
+        "Avaliando",
 
       REUNIAO_AGENDADA:
         "Reunião agendada",
 
       EM_ATENDIMENTO:
-        "Em atendimento",
+        "Em tratativa",
 
       PLANO_APRESENTADO:
-        "Plano apresentado",
+        "Proposta / plano apresentado",
 
       CONCLUIDO:
         "Concluído",
@@ -5149,6 +5149,79 @@ function AtendimentosDepartamento({
       mapa[status] ||
       status ||
       "-"
+    );
+  }
+
+  const etapasAtendimento = [
+    {
+      id: "NAO_INICIADO",
+      label: "Novo",
+    },
+    {
+      id: "EM_ANALISE",
+      label: "Avaliando",
+    },
+    {
+      id: "REUNIAO_AGENDADA",
+      label: "Reunião",
+    },
+    {
+      id: "EM_ATENDIMENTO",
+      label: "Tratativa",
+    },
+    {
+      id: "PLANO_APRESENTADO",
+      label: "Proposta",
+    },
+    {
+      id: "CONCLUIDO",
+      label: "Concluído",
+    },
+  ];
+
+  function indiceEtapaAtendimento(
+    status
+  ) {
+    const indice =
+      etapasAtendimento.findIndex(
+        (item) =>
+          item.id === status
+      );
+
+    return indice >= 0
+      ? indice
+      : 0;
+  }
+
+  function sugestaoProximaAcao(
+    atendimento
+  ) {
+    if (
+      atendimento?.proximaAcao
+    ) {
+      return atendimento.proximaAcao;
+    }
+
+    const mapa = {
+      NAO_INICIADO:
+        "Abrir o diagnóstico da área e iniciar a avaliação.",
+      EM_ANALISE:
+        "Validar os achados e realizar o primeiro contato com o cliente.",
+      REUNIAO_AGENDADA:
+        "Preparar a reunião usando as respostas e riscos do diagnóstico.",
+      EM_ATENDIMENTO:
+        "Registrar o resultado da tratativa e definir o próximo passo.",
+      PLANO_APRESENTADO:
+        "Realizar follow-up da proposta ou plano apresentado.",
+      CONCLUIDO:
+        "Atendimento concluído. Verifique se o histórico está completo.",
+    };
+
+    return (
+      mapa[
+        atendimento?.statusAtendimento
+      ] ||
+      "Defina a próxima ação."
     );
   }
 
@@ -5397,6 +5470,9 @@ function AtendimentosDepartamento({
       }
     );
 
+  const agoraAtendimentos =
+    new Date();
+
   const resumo = {
     total:
       atendimentos.length,
@@ -5426,6 +5502,32 @@ function AtendimentosDepartamento({
         (item) =>
           item.statusAtendimento ===
           "CONCLUIDO"
+      ).length,
+
+    atrasados:
+      atendimentos.filter(
+        (item) => {
+          if (
+            !item.proximoContato ||
+            item.statusAtendimento ===
+              "CONCLUIDO"
+          ) {
+            return false;
+          }
+
+          const data =
+            new Date(
+              item.proximoContato
+            );
+
+          return (
+            Number.isFinite(
+              data.getTime()
+            ) &&
+            data <
+              agoraAtendimentos
+          );
+        }
       ).length,
   };
 
@@ -5543,7 +5645,145 @@ function AtendimentosDepartamento({
             {resumo.concluidos}
           </div>
         </Card>
+
+        <Card
+          style={{
+            background:
+              resumo.atrasados > 0
+                ? "#FCEBEB"
+                : WHITE,
+            borderColor:
+              resumo.atrasados > 0
+                ? "#F0C5C5"
+                : "#E3E7EF",
+          }}
+        >
+          <AlertTriangle
+            size={18}
+            color={
+              resumo.atrasados > 0
+                ? "#791F1F"
+                : MUTED
+            }
+          />
+
+          <div
+            style={{
+              color:
+                resumo.atrasados > 0
+                  ? "#791F1F"
+                  : MUTED,
+              fontSize: 10,
+              marginTop: 8,
+            }}
+          >
+            RETORNOS ATRASADOS
+          </div>
+
+          <div
+            style={{
+              fontSize: 29,
+              fontWeight: 900,
+              color:
+                resumo.atrasados > 0
+                  ? "#791F1F"
+                  : NAVY,
+            }}
+          >
+            {resumo.atrasados}
+          </div>
+        </Card>
       </div>
+
+      <Card
+        style={{
+          marginBottom: 14,
+          background: "#17233D",
+          color: WHITE,
+          borderColor: "#17233D",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "minmax(220px,1fr) repeat(3,minmax(150px,.7fr))",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#FFB7A7",
+                fontWeight: 900,
+                marginBottom: 4,
+              }}
+            >
+              COMO USAR ATENDIMENTOS
+            </div>
+
+            <strong
+              style={{
+                fontSize: 16,
+              }}
+            >
+              Esta é sua fila de trabalho.
+            </strong>
+
+            <div
+              style={{
+                marginTop: 4,
+                color: "#D8DEEA",
+                fontSize: 10.5,
+                lineHeight: 1.45,
+              }}
+            >
+              Abra um caso, consulte apenas o diagnóstico do departamento,
+              registre o contato e deixe sempre uma próxima ação.
+            </div>
+          </div>
+
+          {[
+            ["1", "Abrir atendimento"],
+            ["2", "Registrar o que aconteceu"],
+            ["3", "Definir próxima ação e data"],
+          ].map(
+            ([numero, titulo]) => (
+              <div
+                key={numero}
+                style={{
+                  border:
+                    "1px solid rgba(255,255,255,.18)",
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <div
+                  style={{
+                    color: CORAL,
+                    fontSize: 17,
+                    fontWeight: 900,
+                  }}
+                >
+                  {numero}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    marginTop: 2,
+                  }}
+                >
+                  {titulo}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </Card>
 
       <Card
         style={{
@@ -5835,6 +6075,154 @@ function AtendimentosDepartamento({
                 padding: 16,
               }}
             >
+              <Card
+                style={{
+                  marginBottom: 12,
+                  background: "#F7F8FB",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent:
+                      "space-between",
+                    alignItems:
+                      "center",
+                    gap: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: 11.5,
+                    }}
+                  >
+                    Etapa do atendimento
+                  </strong>
+
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      color: MUTED,
+                    }}
+                  >
+                    {statusAtendimentoLabel(
+                      atendimentoAberto.statusAtendimento
+                    )}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      `repeat(${etapasAtendimento.length},1fr)`,
+                    gap: 5,
+                  }}
+                >
+                  {etapasAtendimento.map(
+                    (etapa, index) => {
+                      const atual =
+                        indiceEtapaAtendimento(
+                          atendimentoAberto.statusAtendimento
+                        );
+
+                      const concluida =
+                        index <= atual;
+
+                      return (
+                        <div
+                          key={etapa.id}
+                          style={{
+                            minWidth: 0,
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: 6,
+                              borderRadius: 20,
+                              background:
+                                concluida
+                                  ? CORAL
+                                  : "#D8DEEA",
+                              marginBottom: 5,
+                            }}
+                          />
+
+                          <div
+                            style={{
+                              fontSize: 8.5,
+                              color:
+                                concluida
+                                  ? NAVY
+                                  : MUTED,
+                              fontWeight:
+                                concluida
+                                  ? 800
+                                  : 500,
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {etapa.label}
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              </Card>
+
+              <div
+                style={{
+                  background: "#FFF3EF",
+                  borderLeft:
+                    `4px solid ${CORAL}`,
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 900,
+                    color: "#993C1D",
+                    marginBottom: 4,
+                  }}
+                >
+                  O QUE FAZER AGORA
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {sugestaoProximaAcao(
+                    atendimentoAberto
+                  )}
+                </div>
+
+                {atendimentoAberto.proximoContato && (
+                  <div
+                    style={{
+                      marginTop: 5,
+                      fontSize: 10.5,
+                      color: MUTED,
+                    }}
+                  >
+                    Prazo registrado:{" "}
+                    <strong>
+                      {formatarDataHora(
+                        atendimentoAberto.proximoContato
+                      )}
+                    </strong>
+                  </div>
+                )}
+              </div>
+
               <div
                 style={{
                   display: "grid",
@@ -6404,6 +6792,115 @@ function AtendimentosDepartamento({
                       <option value="OUTRO">Outro</option>
                     </select>
 
+                    <div
+                      style={{
+                        fontSize: 9.5,
+                        fontWeight: 800,
+                        marginBottom: 5,
+                      }}
+                    >
+                      AÇÕES RÁPIDAS
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 5,
+                        marginBottom: 10,
+                      }}
+                    >
+                      {[
+                        {
+                          label:
+                            "Cliente respondeu",
+                          resultado:
+                            "Cliente respondeu ao contato.",
+                          status:
+                            "EM_ATENDIMENTO",
+                        },
+                        {
+                          label:
+                            "Sem retorno",
+                          resultado:
+                            "Contato realizado, sem retorno do cliente.",
+                          status:
+                            statusCaso,
+                        },
+                        {
+                          label:
+                            "Reunião marcada",
+                          resultado:
+                            "Reunião agendada com o cliente.",
+                          status:
+                            "REUNIAO_AGENDADA",
+                        },
+                        {
+                          label:
+                            "Pediu proposta",
+                          resultado:
+                            "Cliente solicitou proposta.",
+                          status:
+                            "EM_ATENDIMENTO",
+                          oportunidade:
+                            "OPORTUNIDADE_IDENTIFICADA",
+                        },
+                        {
+                          label:
+                            "Proposta enviada",
+                          resultado:
+                            "Proposta apresentada ao cliente.",
+                          status:
+                            "PLANO_APRESENTADO",
+                          oportunidade:
+                            "PROPOSTA",
+                        },
+                      ].map(
+                        (acao) => (
+                          <button
+                            key={
+                              acao.label
+                            }
+                            type="button"
+                            onClick={() => {
+                              setResultadoAcionamento(
+                                acao.resultado
+                              );
+
+                              setStatusCaso(
+                                acao.status
+                              );
+
+                              if (
+                                acao.oportunidade
+                              ) {
+                                setOportunidadeCaso(
+                                  acao.oportunidade
+                                );
+                              }
+                            }}
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              background:
+                                WHITE,
+                              color:
+                                NAVY,
+                              borderRadius: 20,
+                              padding:
+                                "5px 8px",
+                              fontSize: 8.8,
+                              fontWeight: 700,
+                              cursor:
+                                "pointer",
+                            }}
+                          >
+                            {acao.label}
+                          </button>
+                        )
+                      )}
+                    </div>
+
                     <label style={{ fontSize: 9.5, fontWeight: 800 }}>
                       RESULTADO
                     </label>
@@ -6861,7 +7358,7 @@ function AtendimentosDepartamento({
                             cursor: "pointer",
                           }}
                         >
-                          Abrir atendimento
+                          Abrir caso / atendimento
                         </button>
 
                         {atendimento.diagnosticoId && (
