@@ -5295,6 +5295,54 @@ function AtendimentosDepartamento({
     return mapa;
   }, [leads]);
 
+  function leadDoAtendimento(
+    atendimento
+  ) {
+    if (
+      atendimento?.lead &&
+      (
+        atendimento.lead.razaoSocial ||
+        atendimento.lead.nome ||
+        atendimento.lead.cnpj ||
+        atendimento.lead.telefone
+      )
+    ) {
+      return atendimento.lead;
+    }
+
+    return (
+      mapaLeads[
+        String(
+          atendimento?.diagnosticoId ||
+          ""
+        )
+      ] ||
+      mapaLeads[
+        String(
+          atendimento?.leadId ||
+          ""
+        )
+      ] ||
+      {}
+    );
+  }
+
+  function normalizarFiltro(
+    valor
+  ) {
+    return String(
+      valor ||
+      ""
+    )
+      .normalize("NFD")
+      .replace(
+        /[\u0300-\u036f]/g,
+        ""
+      )
+      .trim()
+      .toLowerCase();
+  }
+
   const areasDisponiveis =
     useMemo(
       () =>
@@ -5588,25 +5636,14 @@ function AtendimentosDepartamento({
     atendimentos.filter(
       (atendimento) => {
         const lead =
-          mapaLeads[
-            String(
-              atendimento.diagnosticoId ||
-              atendimento.leadId ||
-              ""
-            )
-          ] ||
-          mapaLeads[
-            String(
-              atendimento.leadId ||
-              ""
-            )
-          ] ||
-          {};
+          leadDoAtendimento(
+            atendimento
+          );
 
         const termo =
-          busca
-            .trim()
-            .toLowerCase();
+          normalizarFiltro(
+            busca
+          );
 
         const bateBusca =
           !termo ||
@@ -5618,21 +5655,29 @@ function AtendimentosDepartamento({
             atendimento.leadId,
             lead.razaoSocial,
             lead.nome,
+            lead.email,
             lead.cnpj,
             lead.telefone,
+            lead.estruturaNegocio,
           ]
             .filter(Boolean)
             .some(
               (valor) =>
-                String(valor)
-                  .toLowerCase()
-                  .includes(termo)
+                normalizarFiltro(
+                  valor
+                ).includes(
+                  termo
+                )
             );
 
         const bateArea =
           !areaFiltro ||
-          atendimento.area ===
-            areaFiltro;
+          normalizarFiltro(
+            atendimento.area
+          ) ===
+            normalizarFiltro(
+              areaFiltro
+            );
 
         const bateStatus =
           !statusFiltro ||
@@ -6144,6 +6189,20 @@ function AtendimentosDepartamento({
 
           <Botao
             secundario
+            onClick={() => {
+              setBusca("");
+              setAreaFiltro("");
+              setStatusFiltro("");
+              setOportunidadeFiltro("");
+              setResponsavelFiltro("");
+            }}
+          >
+            <X size={14} />
+            Limpar
+          </Botao>
+
+          <Botao
+            secundario
             onClick={
               carregarTudo
             }
@@ -6156,6 +6215,25 @@ function AtendimentosDepartamento({
           </Botao>
         </div>
       </Card>
+
+      <div
+        style={{
+          margin:
+            "-6px 0 12px",
+          color: MUTED,
+          fontSize: 10.5,
+        }}
+      >
+        Exibindo{" "}
+        <strong>
+          {filtrados.length}
+        </strong>{" "}
+        de{" "}
+        <strong>
+          {atendimentos.length}
+        </strong>{" "}
+        atendimentos
+      </div>
 
       {atendimentoAberto && (
         <div
@@ -6197,27 +6275,13 @@ function AtendimentosDepartamento({
                   fontSize: 17,
                 }}
               >
-                {(
-                  mapaLeads[
-                    String(
-                      atendimentoAberto.diagnosticoId ||
-                      atendimentoAberto.leadId ||
-                      ""
-                    )
-                  ] ||
-                  {}
+                {leadDoAtendimento(
+                  atendimentoAberto
                 ).razaoSocial ||
-                  (
-                    mapaLeads[
-                      String(
-                        atendimentoAberto.diagnosticoId ||
-                        atendimentoAberto.leadId ||
-                        ""
-                      )
-                    ] ||
-                    {}
+                  leadDoAtendimento(
+                    atendimentoAberto
                   ).nome ||
-                  `Diagnóstico ${atendimentoAberto.diagnosticoId || ""}`}
+                  "Cliente sem identificação"}
               </strong>
             </div>
 
@@ -7337,20 +7401,9 @@ function AtendimentosDepartamento({
           {filtrados.map(
             (atendimento) => {
               const lead =
-                mapaLeads[
-                  String(
-                    atendimento.diagnosticoId ||
-                    atendimento.leadId ||
-                    ""
-                  )
-                ] ||
-                mapaLeads[
-                  String(
-                    atendimento.leadId ||
-                    ""
-                  )
-                ] ||
-                {};
+                leadDoAtendimento(
+                  atendimento
+                );
 
               const infoScore =
                 scoreInfo(
@@ -7414,7 +7467,7 @@ function AtendimentosDepartamento({
                       >
                         {lead.razaoSocial ||
                           lead.nome ||
-                          `Diagnóstico ${atendimento.diagnosticoId}`}
+                          "Cliente sem identificação"}
                       </strong>
 
                       <div
@@ -7437,6 +7490,16 @@ function AtendimentosDepartamento({
 
                         {lead.telefone
                           ? ` · ${lead.telefone}`
+                          : ""}
+
+                        {lead.email
+                          ? ` · ${lead.email}`
+                          : ""}
+
+                        {lead.estruturaNegocio
+                          ? ` · ${rotuloEstrutura(
+                              lead.estruturaNegocio
+                            )}`
                           : ""}
                       </div>
 
