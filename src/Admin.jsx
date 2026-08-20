@@ -5497,6 +5497,26 @@ function AtendimentosDepartamento({
     );
   }
 
+  function statusDiagnosticoLabelLocal(
+    status
+  ) {
+    const mapa = {
+      ACESSOU: "Acessou",
+      EM_PREENCHIMENTO:
+        "Em preenchimento",
+      NAO_CONCLUIDO:
+        "Não concluído",
+      CONCLUIDO:
+        "Concluído",
+    };
+
+    return (
+      mapa[status] ||
+      status ||
+      "-"
+    );
+  }
+
   function nomeClienteAtendimento(
     atendimento
   ) {
@@ -7791,7 +7811,7 @@ function AtendimentosDepartamento({
                           : ""}
 
                         {lead.statusDiagnostico
-                          ? ` · ${statusDiagnosticoLabel(
+                          ? ` · ${statusDiagnosticoLabelLocal(
                               lead.statusDiagnostico
                             )}`
                           : ""}
