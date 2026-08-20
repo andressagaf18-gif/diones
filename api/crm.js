@@ -3116,6 +3116,9 @@ async function listarAtendimentosDepartamento(
         l.status_diagnostico
           AS lead_status_diagnostico,
 
+        l.origem
+          AS lead_origem,
+
         l.diagnostico_id
           AS lead_diagnostico_id
 
@@ -3307,6 +3310,10 @@ async function listarAtendimentosDepartamento(
                   statusDiagnostico:
                     item.lead_status_diagnostico ||
                     "",
+
+                  origem:
+                    item.lead_origem ||
+                    "direto",
 
                   diagnosticoId:
                     item.lead_diagnostico_id ||
@@ -4330,6 +4337,100 @@ async function salvarResponsavel(req, res) {
   });
 }
 
+
+async function excluirLead(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ sucesso: false, error: "Método não permitido." });
+  }
+  if (!exigirAdmin(req, res)) return;
+
+  const leadId = texto(req.body?.leadId, 140);
+  if (!leadId) {
+    return res.status(400).json({ sucesso: false, error: "leadId é obrigatório." });
+  }
+
+  const encontrados = await sql`
+    SELECT id, diagnostico_id
+    FROM diagnostico_leads
+    WHERE id = ${leadId}
+    LIMIT 1
+  `;
+  const lead = encontrados?.[0];
+
+  if (!lead) {
+    return res.status(404).json({ sucesso: false, error: "Lead não encontrado." });
+  }
+
+  const diagnosticoId = lead.diagnostico_id || "";
+
+  await sql`
+    DELETE FROM crm_atendimento_historico
+    WHERE lead_id = ${leadId}
+       OR (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
+  `;
+
+  await sql`
+    DELETE FROM crm_atendimentos_departamento
+    WHERE lead_id = ${leadId}
+       OR (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
+  `;
+
+  await sql`DELETE FROM crm_atribuicoes WHERE lead_id = ${leadId}`;
+  await sql`DELETE FROM diagnostico_leads WHERE id = ${leadId}`;
+
+  return res.status(200).json({ sucesso: true, leadId, diagnosticoId });
+}
+
+async function excluirResponsavel(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ sucesso: false, error: "Método não permitido." });
+  }
+  if (!exigirAdmin(req, res)) return;
+
+  const responsavelId = texto(req.body?.responsavelId, 140);
+  if (!responsavelId) {
+    return res.status(400).json({ sucesso: false, error: "responsavelId é obrigatório." });
+  }
+
+  const abertos = await sql`
+    SELECT COUNT(*)::INTEGER AS total
+    FROM crm_atendimentos_departamento
+    WHERE responsavel_id = ${responsavelId}
+      AND status_atendimento <> 'CONCLUIDO'
+  `;
+  const totalAbertos = numero(abertos?.[0]?.total, 0);
+
+  if (totalAbertos > 0 && req.body?.forcar !== true) {
+    return res.status(409).json({
+      sucesso: false,
+      possuiAtendimentosAbertos: true,
+      totalAbertos,
+      error: "Este membro possui atendimentos abertos.",
+    });
+  }
+
+  if (req.body?.forcar === true) {
+    await sql`
+      UPDATE crm_atendimentos_departamento
+      SET responsavel_id = '', updated_at = NOW()
+      WHERE responsavel_id = ${responsavelId}
+        AND status_atendimento <> 'CONCLUIDO'
+    `;
+  }
+
+  await sql`
+    UPDATE diagnostico_leads
+    SET responsavel_finder = '', updated_at = NOW()
+    WHERE responsavel_finder = ${responsavelId}
+  `;
+  await sql`DELETE FROM crm_atribuicoes WHERE responsavel_id = ${responsavelId}`;
+  await sql`DELETE FROM crm_responsaveis WHERE id = ${responsavelId}`;
+
+  return res.status(200).json({ sucesso: true, responsavelId });
+}
+
 async function atribuirLead(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -4641,6 +4742,12 @@ export default async function handler(req, res) {
           res
         );
 
+      case "excluir-lead":
+        return excluirLead(req, res);
+
+      case "excluir-responsavel":
+        return excluirResponsavel(req, res);
+
       case "criar-atendimentos":
         return criarAtendimentosDepartamento(
           req,
@@ -4686,6 +4793,8 @@ export default async function handler(req, res) {
             "listar-responsaveis",
             "salvar-responsavel",
             "atribuir-lead",
+            "excluir-lead",
+            "excluir-responsavel",
             "criar-atendimentos",
             "listar-atendimentos",
             "atualizar-atendimento",
