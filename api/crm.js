@@ -4407,45 +4407,123 @@ async function salvarResponsavel(req, res) {
 async function excluirLead(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
-    return res.status(405).json({ sucesso: false, error: "Método não permitido." });
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
   }
+
   if (!exigirAdmin(req, res)) return;
 
-  const leadId = texto(req.body?.leadId, 140);
-  if (!leadId) {
-    return res.status(400).json({ sucesso: false, error: "leadId é obrigatório." });
+  const body = req.body || {};
+
+  const atendimentoId =
+    texto(body.atendimentoId, 140);
+
+  let leadId =
+    texto(body.leadId, 140);
+
+  let diagnosticoId =
+    texto(body.diagnosticoId, 180);
+
+  if (!atendimentoId && !leadId && !diagnosticoId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "atendimentoId, leadId ou diagnosticoId é obrigatório.",
+    });
   }
 
-  const encontrados = await sql`
-    SELECT id, diagnostico_id
-    FROM diagnostico_leads
-    WHERE id = ${leadId}
-    LIMIT 1
-  `;
-  const lead = encontrados?.[0];
+  if (atendimentoId) {
+    const encontrados = await sql`
+      SELECT id, lead_id, diagnostico_id
+      FROM crm_atendimentos_departamento
+      WHERE id = ${atendimentoId}
+      LIMIT 1
+    `;
 
-  if (!lead) {
-    return res.status(404).json({ sucesso: false, error: "Lead não encontrado." });
+    const atual = encontrados?.[0];
+
+    if (atual) {
+      leadId = leadId || atual.lead_id || "";
+      diagnosticoId =
+        diagnosticoId ||
+        atual.diagnostico_id ||
+        "";
+    }
   }
 
-  const diagnosticoId = lead.diagnostico_id || "";
+  if (leadId && !diagnosticoId) {
+    const leads = await sql`
+      SELECT diagnostico_id
+      FROM diagnostico_leads
+      WHERE id = ${leadId}
+      LIMIT 1
+    `;
 
-  await sql`
-    DELETE FROM crm_atendimento_historico
-    WHERE lead_id = ${leadId}
-       OR (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
-  `;
+    diagnosticoId =
+      leads?.[0]?.diagnostico_id ||
+      "";
+  }
 
-  await sql`
-    DELETE FROM crm_atendimentos_departamento
-    WHERE lead_id = ${leadId}
-       OR (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
-  `;
+  if (atendimentoId) {
+    await sql`
+      DELETE FROM crm_atendimento_historico
+      WHERE atendimento_id = ${atendimentoId}
+    `;
+  }
 
-  await sql`DELETE FROM crm_atribuicoes WHERE lead_id = ${leadId}`;
-  await sql`DELETE FROM diagnostico_leads WHERE id = ${leadId}`;
+  if (leadId || diagnosticoId) {
+    await sql`
+      DELETE FROM crm_atendimento_historico
+      WHERE
+        (${leadId} <> '' AND lead_id = ${leadId})
+        OR
+        (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
+    `;
+  }
 
-  return res.status(200).json({ sucesso: true, leadId, diagnosticoId });
+  if (atendimentoId) {
+    await sql`
+      DELETE FROM crm_atendimentos_departamento
+      WHERE id = ${atendimentoId}
+    `;
+  }
+
+  if (leadId || diagnosticoId) {
+    await sql`
+      DELETE FROM crm_atendimentos_departamento
+      WHERE
+        (${leadId} <> '' AND lead_id = ${leadId})
+        OR
+        (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
+    `;
+  }
+
+  if (leadId) {
+    await sql`
+      DELETE FROM crm_atribuicoes
+      WHERE lead_id = ${leadId}
+    `;
+
+    await sql`
+      DELETE FROM diagnostico_leads
+      WHERE id = ${leadId}
+    `;
+  }
+
+  if (diagnosticoId) {
+    await sql`
+      DELETE FROM diagnostico_leads
+      WHERE diagnostico_id = ${diagnosticoId}
+    `;
+  }
+
+  return res.status(200).json({
+    sucesso: true,
+    atendimentoId,
+    leadId,
+    diagnosticoId,
+  });
 }
 
 async function excluirResponsavel(req, res) {
