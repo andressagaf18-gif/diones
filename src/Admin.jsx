@@ -342,6 +342,195 @@ function resumoSeguro(valor) {
   return "";
 }
 
+
+function limparTextoCliente(valor) {
+  const texto =
+    textoSeguro(valor)
+      .replace(
+        /\(\s*[a-zA-Z0-9_]+\s*=\s*['"][^'"]+['"]\s*\)\.?/g,
+        ""
+      )
+      .replace(
+        /(?:—|-)?\s*Id:\s*[a-zA-Z0-9_-]+/gi,
+        ""
+      )
+      .replace(
+        /(?:—|-)?\s*Tipo:\s*[a-zA-Z0-9_-]+/gi,
+        ""
+      )
+      .replace(
+        /(?:—|-)?\s*(?:Regra|Rule):\s*[^—\n]+/gi,
+        ""
+      )
+      .replace(
+        /\s{2,}/g,
+        " "
+      )
+      .replace(
+        /^[\s·—-]+|[\s·—-]+$/g,
+        ""
+      )
+      .trim();
+
+  // Se depois da limpeza sobrar apenas estrutura técnica,
+  // não mostramos nada ao cliente.
+  if (
+    !texto ||
+    /^[()[\]{}=_:'".\-\s]+$/.test(
+      texto
+    )
+  ) {
+    return "";
+  }
+
+  return texto;
+}
+
+function limparListaCliente(valor) {
+  const lista =
+    listaFlexivel(valor);
+
+  return lista
+    .map((item) => {
+      if (
+        item === null ||
+        item === undefined
+      ) {
+        return null;
+      }
+
+      if (
+        typeof item === "string" ||
+        typeof item === "number"
+      ) {
+        const limpo =
+          limparTextoCliente(item);
+
+        return limpo
+          ? limpo
+          : null;
+      }
+
+      if (Array.isArray(item)) {
+        const itens =
+          limparListaCliente(item);
+
+        return itens.length
+          ? itens
+          : null;
+      }
+
+      if (
+        typeof item === "object"
+      ) {
+        // Remove metadados internos do motor.
+        const proibidos =
+          new Set([
+            "id",
+            "tipo",
+            "regra",
+            "condicao",
+            "condição",
+            "expressao",
+            "expressão",
+            "formula",
+            "fórmula",
+            "codigo",
+            "código",
+            "areaId",
+            "eixoId",
+            "perguntaId",
+          ]);
+
+        const novo = {};
+
+        Object.entries(item)
+          .forEach(
+            ([chave, valorInterno]) => {
+              if (
+                proibidos.has(chave)
+              ) {
+                return;
+              }
+
+              if (
+                typeof valorInterno ===
+                "string"
+              ) {
+                const limpo =
+                  limparTextoCliente(
+                    valorInterno
+                  );
+
+                if (limpo) {
+                  novo[chave] =
+                    limpo;
+                }
+
+                return;
+              }
+
+              if (
+                Array.isArray(
+                  valorInterno
+                )
+              ) {
+                const arr =
+                  limparListaCliente(
+                    valorInterno
+                  );
+
+                if (
+                  arr.length
+                ) {
+                  novo[chave] =
+                    arr;
+                }
+
+                return;
+              }
+
+              if (
+                valorInterno &&
+                typeof valorInterno ===
+                  "object"
+              ) {
+                const arr =
+                  limparListaCliente([
+                    valorInterno,
+                  ]);
+
+                if (
+                  arr.length
+                ) {
+                  novo[chave] =
+                    arr[0];
+                }
+
+                return;
+              }
+
+              if (
+                valorInterno !== null &&
+                valorInterno !== undefined
+              ) {
+                novo[chave] =
+                  valorInterno;
+              }
+            }
+          );
+
+        return Object.keys(novo)
+          .length
+          ? novo
+          : null;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
 function textoSeguro(valor) {
   if (valor === null || valor === undefined) return "";
   if (typeof valor === "string" || typeof valor === "number") return String(valor);
@@ -7110,8 +7299,32 @@ function AtendimentosDepartamento({
           Carregando atendimentos...
         </Card>
       ) : filtrados.length === 0 ? (
-        <Card>
-          Nenhum atendimento encontrado.
+        <Card
+          style={{
+            borderLeft:
+              `4px solid ${CORAL}`,
+          }}
+        >
+          <strong
+            style={{
+              display: "block",
+              marginBottom: 5,
+            }}
+          >
+            Nenhum atendimento disponível nesta fila.
+          </strong>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 11,
+              lineHeight: 1.5,
+            }}
+          >
+            O botão <strong>Abrir atendimento</strong> aparece dentro de cada caso.
+            Se não houver casos, conclua um novo diagnóstico que gere oportunidade
+            departamental ou limpe os filtros acima.
+          </div>
         </Card>
       ) : (
         <div
@@ -7334,10 +7547,7 @@ function AtendimentosDepartamento({
 
                       <div
                         style={{
-                          display: "flex",
-                          gap: 10,
-                          marginTop: 10,
-                          flexWrap: "wrap",
+                          marginTop: 12,
                         }}
                       >
                         <button
@@ -7348,20 +7558,28 @@ function AtendimentosDepartamento({
                             )
                           }
                           style={{
+                            width: "100%",
                             background: CORAL,
                             border: 0,
                             color: WHITE,
-                            borderRadius: 8,
-                            padding: "7px 10px",
-                            fontSize: 10,
+                            borderRadius: 10,
+                            padding: "10px 12px",
+                            fontSize: 11,
                             fontWeight: 900,
                             cursor: "pointer",
+                            boxShadow:
+                              "0 6px 16px rgba(255,107,74,.20)",
                           }}
                         >
-                          Abrir caso / atendimento
+                          Abrir atendimento
                         </button>
 
                         {atendimento.diagnosticoId && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                            }}
+                          >
                           <button
                             type="button"
                             onClick={() =>
@@ -7382,6 +7600,7 @@ function AtendimentosDepartamento({
                           >
                             Diagnóstico completo →
                           </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -10334,10 +10553,10 @@ function DetalheDiagnostico({
                     fontSize: 12.5,
                   }}
                 >
-                  {
+                  {limparTextoCliente(
                     diagnosticoGeral
                       .resumoExecutivo
-                  }
+                  )}
                 </p>
               </BlocoDossie>
             )}
@@ -10352,10 +10571,10 @@ function DetalheDiagnostico({
                     fontSize: 12.5,
                   }}
                 >
-                  {
+                  {limparTextoCliente(
                     diagnosticoGeral
                       .alertaEstrategico
-                  }
+                  )}
                 </p>
               </BlocoDossie>
             )}
@@ -10465,8 +10684,10 @@ function DetalheDiagnostico({
                                 12,
                             }}
                           >
-                            {resumoSeguro(
-                              area.resumo
+                            {limparTextoCliente(
+                              resumoSeguro(
+                                area.resumo
+                              )
                             )}
                           </p>
                         )}
@@ -10483,14 +10704,18 @@ function DetalheDiagnostico({
                           <ListaInterna
                             titulo="Pontos identificados"
                             itens={
-                              area.achados
+                              limparListaCliente(
+                                area.achados
+                              )
                             }
                           />
 
                           <ListaInterna
                             titulo="Riscos"
                             itens={
-                              area.riscos
+                              limparListaCliente(
+                                area.riscos
+                              )
                             }
                           />
 
@@ -10500,7 +10725,9 @@ function DetalheDiagnostico({
                             <ListaInterna
                               titulo="Pontos fortes"
                               itens={
-                                area.pontosFortes
+                                limparListaCliente(
+                                  area.pontosFortes
+                                )
                               }
                             />
                           )}
@@ -10508,7 +10735,9 @@ function DetalheDiagnostico({
                           <ListaInterna
                             titulo="Recomendações"
                             itens={
-                              area.recomendacoes
+                              limparListaCliente(
+                                area.recomendacoes
+                              )
                             }
                           />
                         </div>
@@ -10536,7 +10765,9 @@ function DetalheDiagnostico({
               <BlocoDossie titulo="Ações de curto prazo">
                 <ListaDossie
                   itens={
-                    quickWins
+                    limparListaCliente(
+                      quickWins
+                    )
                   }
                 />
               </BlocoDossie>
@@ -10548,7 +10779,9 @@ function DetalheDiagnostico({
               <BlocoDossie titulo="Indicadores recomendados">
                 <ListaDossie
                   itens={
-                    kpisRecomendados
+                    limparListaCliente(
+                      kpisRecomendados
+                    )
                   }
                 />
               </BlocoDossie>
@@ -10796,6 +11029,23 @@ function DetalheDiagnostico({
                 Selecione o departamento para visualizar apenas as informações
                 técnicas necessárias ao especialista responsável.
               </p>
+
+              <div
+                style={{
+                  background: "#FFF3EF",
+                  borderLeft:
+                    `4px solid ${CORAL}`,
+                  borderRadius: 9,
+                  padding: 10,
+                  marginBottom: 12,
+                  fontSize: 10.5,
+                  color: "#993C1D",
+                  lineHeight: 1.45,
+                }}
+              >
+                Para registrar contatos, andamento, próxima ação e histórico,
+                utilize a aba <strong>Atendimentos</strong> do painel.
+              </div>
             </div>
 
             {carregandoEquipe ? (
