@@ -2571,6 +2571,415 @@ async function criarAtendimentosDepartamento(
   });
 }
 
+
+async function sincronizarAtendimentosSalvos() {
+  const diagnosticosSemAtendimento =
+    await sql`
+      SELECT
+        d.id,
+        d.score,
+        d.areas_selecionadas,
+        d.diagnostico,
+        l.id AS lead_id
+      FROM diagnosticos d
+      LEFT JOIN diagnostico_leads l
+        ON l.diagnostico_id =
+          d.id::text
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM crm_atendimentos_departamento a
+        WHERE a.diagnostico_id =
+          d.id::text
+      )
+      ORDER BY
+        d.criado_em DESC
+      LIMIT 100
+    `;
+
+  if (
+    !diagnosticosSemAtendimento?.length
+  ) {
+    return {
+      sincronizados: 0,
+      atendimentosCriados: 0,
+    };
+  }
+
+  const equipeDisponivel =
+    await sql`
+      SELECT
+        r.id,
+        r.nome,
+        r.areas,
+        r.capacidade_diaria,
+        COUNT(a.id) FILTER (
+          WHERE a.status_atendimento <> 'CONCLUIDO'
+        )::int AS atendimentos_abertos
+      FROM crm_responsaveis r
+      LEFT JOIN crm_atendimentos_departamento a
+        ON a.responsavel_id = r.id
+      WHERE r.ativo = TRUE
+      GROUP BY
+        r.id,
+        r.nome,
+        r.areas,
+        r.capacidade_diaria
+      ORDER BY
+        atendimentos_abertos ASC,
+        r.nome ASC
+    `;
+
+  let diagnosticosSincronizados = 0;
+  let atendimentosCriados = 0;
+
+  for (
+    const diagnostico of
+    diagnosticosSemAtendimento
+  ) {
+    const resultado =
+      diagnostico.diagnostico &&
+      typeof diagnostico.diagnostico ===
+        "object"
+        ? diagnostico.diagnostico
+        : {};
+
+    const areasResultado =
+      Array.isArray(
+        resultado.areas
+      )
+        ? resultado.areas
+        : [];
+
+    const areasBanco =
+      Array.isArray(
+        diagnostico.areas_selecionadas
+      )
+        ? diagnostico.areas_selecionadas
+        : [];
+
+    const mapa = new Map();
+
+    [
+      ...areasBanco,
+      ...areasResultado,
+    ].forEach(
+      (item) => {
+        if (!item) return;
+
+        const area =
+          texto(
+            item.area ||
+            item.label ||
+            item.nome,
+            120
+          );
+
+        if (!area) return;
+
+        const anterior =
+          mapa.get(area) ||
+          {};
+
+        mapa.set(
+          area,
+          {
+            ...anterior,
+            ...item,
+            area,
+          }
+        );
+      }
+    );
+
+    const areasElegiveis =
+      [...mapa.values()]
+        .filter(
+          (item) => {
+            const score =
+              item.score === null ||
+              item.score === undefined
+                ? null
+                : numero(
+                    item.score,
+                    0
+                  );
+
+            const riscos =
+              normalizarArray(
+                item.riscos
+              );
+
+            const recomendacoes =
+              normalizarArray(
+                item.recomendacoes
+              );
+
+            const oportunidades =
+              normalizarArray(
+                item.oportunidades ||
+                item.oportunidadesConsultoria
+              );
+
+            const planoAcao =
+              normalizarArray(
+                item.planoAcao ||
+                item.plano_acao
+              );
+
+            const prioridade =
+              item.prioridade === true;
+
+            return (
+              (
+                score !== null &&
+                score < 60
+              ) ||
+              prioridade ||
+              riscos.length > 0 ||
+              recomendacoes.length > 0 ||
+              oportunidades.length > 0 ||
+              planoAcao.length > 0
+            );
+          }
+        );
+
+    if (
+      !areasElegiveis.length
+    ) {
+      continue;
+    }
+
+    let criouNesteDiagnostico =
+      false;
+
+    for (
+      const areaItem of
+      areasElegiveis
+    ) {
+      const area =
+        texto(
+          areaItem.area,
+          120
+        );
+
+      if (!area) continue;
+
+      const areaCanonica =
+        areaCanonicaCRM(
+          areaItem.areaId ||
+          area
+        );
+
+      const candidatos =
+        (equipeDisponivel || [])
+          .filter(
+            (responsavel) =>
+              normalizarArray(
+                responsavel.areas
+              ).some(
+                (
+                  areaResponsavel
+                ) => {
+                  const canonica =
+                    areaCanonicaCRM(
+                      areaResponsavel
+                    );
+
+                  return (
+                    canonica ===
+                      areaCanonica ||
+                    canonica ===
+                      areaCanonicaCRM(
+                        area
+                      )
+                  );
+                }
+              )
+          )
+          .sort(
+            (a, b) =>
+              (
+                Number(
+                  a.atendimentos_abertos
+                ) || 0
+              ) -
+              (
+                Number(
+                  b.atendimentos_abertos
+                ) || 0
+              )
+          );
+
+      const responsavel =
+        candidatos[0] ||
+        null;
+
+      const id =
+        gerarId("atd");
+
+      const scoreArea =
+        areaItem.score === null ||
+        areaItem.score === undefined
+          ? null
+          : Math.max(
+              0,
+              Math.min(
+                100,
+                Math.round(
+                  numero(
+                    areaItem.score,
+                    0
+                  )
+                )
+              )
+            );
+
+      const nivelArea =
+        texto(
+          areaItem.nivel,
+          80
+        );
+
+      const oportunidades =
+        normalizarArray(
+          areaItem.oportunidades ||
+          areaItem.oportunidadesConsultoria
+        );
+
+      const riscos =
+        normalizarArray(
+          areaItem.riscos
+        );
+
+      const recomendacoes =
+        normalizarArray(
+          areaItem.recomendacoes
+        );
+
+      const planoAcao =
+        normalizarArray(
+          areaItem.planoAcao ||
+          areaItem.plano_acao
+        );
+
+      const orientacaoTecnica =
+        texto(
+          areaItem.orientacaoTecnica ||
+          areaItem.resumo,
+          5000
+        );
+
+      const inseridos =
+        await sql`
+          INSERT INTO crm_atendimentos_departamento (
+            id,
+            diagnostico_id,
+            lead_id,
+            area,
+            score_area,
+            nivel_area,
+            responsavel_id,
+            oportunidades,
+            riscos,
+            recomendacoes,
+            plano_acao,
+            orientacao_tecnica,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ${id},
+            ${String(diagnostico.id)},
+            ${diagnostico.lead_id || ""},
+            ${area},
+            ${scoreArea},
+            ${nivelArea},
+            ${responsavel?.id || ""},
+            ${JSON.stringify(oportunidades)}::jsonb,
+            ${JSON.stringify(riscos)}::jsonb,
+            ${JSON.stringify(recomendacoes)}::jsonb,
+            ${JSON.stringify(planoAcao)}::jsonb,
+            ${orientacaoTecnica},
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (
+            diagnostico_id,
+            area
+          )
+          DO NOTHING
+          RETURNING id
+        `;
+
+      if (
+        inseridos?.[0]?.id
+      ) {
+        criouNesteDiagnostico =
+          true;
+
+        atendimentosCriados +=
+          1;
+
+        await sql`
+          INSERT INTO crm_atendimento_historico (
+            id,
+            atendimento_id,
+            diagnostico_id,
+            lead_id,
+            tipo_evento,
+            descricao,
+            status_anterior,
+            status_novo,
+            oportunidade_anterior,
+            oportunidade_nova,
+            responsavel_id,
+            responsavel_nome,
+            created_at
+          )
+          VALUES (
+            ${gerarId("hist")},
+            ${inseridos[0].id},
+            ${String(diagnostico.id)},
+            ${diagnostico.lead_id || ""},
+            'CRIACAO',
+            'Atendimento criado automaticamente a partir de diagnóstico já salvo.',
+            '',
+            'NAO_INICIADO',
+            '',
+            'NAO_ANALISADA',
+            ${responsavel?.id || ""},
+            ${responsavel?.nome || ""},
+            NOW()
+          )
+        `;
+
+        if (responsavel) {
+          responsavel.atendimentos_abertos =
+            (
+              Number(
+                responsavel.atendimentos_abertos
+              ) || 0
+            ) + 1;
+        }
+      }
+    }
+
+    if (
+      criouNesteDiagnostico
+    ) {
+      diagnosticosSincronizados +=
+        1;
+    }
+  }
+
+  return {
+    sincronizados:
+      diagnosticosSincronizados,
+
+    atendimentosCriados,
+  };
+}
+
 async function listarAtendimentosDepartamento(
   req,
   res
@@ -2590,6 +2999,17 @@ async function listarAtendimentosDepartamento(
 
   if (!exigirAdmin(req, res)) {
     return;
+  }
+
+  // Recupera automaticamente diagnósticos antigos que ainda
+  // não possuem casos na fila de Atendimentos.
+  try {
+    await sincronizarAtendimentosSalvos();
+  } catch (erroSincronizacao) {
+    console.warn(
+      "[CRM] Não foi possível sincronizar atendimentos antigos:",
+      erroSincronizacao
+    );
   }
 
   const diagnosticoId =
@@ -2759,6 +3179,22 @@ async function listarAtendimentosDepartamento(
 
           statusAtendimento:
             item.status_atendimento,
+
+          statusOportunidade:
+            item.status_oportunidade ||
+            "NAO_ANALISADA",
+
+          proximaAcao:
+            item.proxima_acao ||
+            "",
+
+          proximoContato:
+            item.proximo_contato ||
+            null,
+
+          ultimoAcionamento:
+            item.ultimo_acionamento ||
+            null,
 
           oportunidades:
             Array.isArray(
