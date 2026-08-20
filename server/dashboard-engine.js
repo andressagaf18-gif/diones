@@ -1433,7 +1433,13 @@ export async function dashboardHandler(
           )
       ).length;
 
+    // A aba "Diagnósticos" é alimentada pela tabela `diagnosticos`.
+    // Para o Dashboard reconciliar com ela, usamos a quantidade de
+    // diagnósticos realmente salvos, não apenas o status do lead.
     const diagnosticosConcluidos =
+      diagnosticosFiltrados.length;
+
+    const leadsMarcadosConcluidos =
       leadsFiltrados.filter(
         (lead) =>
           lead
@@ -1524,12 +1530,7 @@ export async function dashboardHandler(
       ).length;
 
     const concluiram =
-      leadsFiltrados.filter(
-        (lead) =>
-          lead
-            .status_diagnostico ===
-          "CONCLUIDO"
-      ).length;
+      diagnosticosFiltrados.length;
 
     const funil = [
       {
@@ -2378,6 +2379,103 @@ export async function dashboardHandler(
         );
 
     // -----------------------------------------------------
+    // VALIDAÇÃO / RECONCILIAÇÃO DOS INDICADORES
+    // -----------------------------------------------------
+
+    const leadsSemDiagnostico =
+      leadsFiltrados.filter(
+        (lead) =>
+          !lead?.diagnostico_id
+      ).length;
+
+    const diagnosticosSemLead =
+      diagnosticosFiltrados.filter(
+        (item) =>
+          !leadPorDiagnostico.has(
+            String(item.id)
+          )
+      ).length;
+
+    const diferencaConcluidos =
+      diagnosticosConcluidos -
+      leadsMarcadosConcluidos;
+
+    const validacao = {
+      periodo: {
+        leadsNaTelaCRM:
+          leadsFiltrados.length,
+
+        diagnosticosNaTabela:
+          diagnosticosFiltrados.length,
+
+        leadsMarcadosComoConcluidos:
+          leadsMarcadosConcluidos,
+
+        atendimentosNaTabela:
+          atendimentosFiltrados.length,
+      },
+
+      integridade: {
+        leadsSemDiagnostico,
+        diagnosticosSemLead,
+        diferencaConcluidos,
+
+        conciliado:
+          diferencaConcluidos === 0 &&
+          diagnosticosSemLead === 0,
+      },
+
+      fontes: [
+        {
+          indicador:
+            "Leads",
+          fonte:
+            "diagnostico_leads",
+        },
+        {
+          indicador:
+            "Diagnósticos concluídos",
+          fonte:
+            "diagnosticos",
+        },
+        {
+          indicador:
+            "Atendimentos",
+          fonte:
+            "crm_atendimentos_departamento",
+        },
+        {
+          indicador:
+            "Equipe",
+          fonte:
+            "crm_responsaveis",
+        },
+      ],
+
+      alertas: [
+        ...(diferencaConcluidos !== 0
+          ? [
+              `${Math.abs(
+                diferencaConcluidos
+              )} diagnóstico(s) apresentam diferença entre a tabela de relatórios e o status CONCLUIDO dos leads.`,
+            ]
+          : []),
+
+        ...(diagnosticosSemLead > 0
+          ? [
+              `${diagnosticosSemLead} diagnóstico(s) salvo(s) não possuem lead vinculado.`,
+            ]
+          : []),
+
+        ...(leadsSemDiagnostico > 0
+          ? [
+              `${leadsSemDiagnostico} lead(s) do período ainda não possuem diagnóstico vinculado.`,
+            ]
+          : []),
+      ],
+    };
+
+    // -----------------------------------------------------
     // INSIGHTS
     // -----------------------------------------------------
 
@@ -2440,6 +2538,7 @@ export async function dashboardHandler(
         taxaConclusao:
           percentual(
             diagnosticosConcluidos,
+            diagnosticosIniciados ||
             leadsTotal
           ),
 
@@ -2480,6 +2579,8 @@ export async function dashboardHandler(
       mapaCalor,
 
       insights,
+
+      validacao,
 
       registros,
 
@@ -2638,6 +2739,23 @@ export async function dashboardHandler(
           "C",
           "D",
         ],
+      },
+
+      metodologia: {
+        leads:
+          "Quantidade de registros em diagnostico_leads no período e filtros selecionados.",
+
+        diagnosticosConcluidos:
+          "Quantidade de relatórios efetivamente salvos na tabela diagnosticos.",
+
+        diagnosticosIniciados:
+          "Leads com status EM_PREENCHIMENTO, NAO_CONCLUIDO ou CONCLUIDO.",
+
+        atendimentos:
+          "Registros em crm_atendimentos_departamento.",
+
+        oportunidades:
+          "Atendimentos com status OPORTUNIDADE_IDENTIFICADA, PROPOSTA ou CONTRATADO.",
       },
 
       disponibilidadeDados: {
