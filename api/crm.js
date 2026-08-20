@@ -3095,32 +3095,80 @@ async function listarAtendimentosDepartamento(
         l.id
           AS lead_id_real,
 
-        l.nome
+        COALESCE(
+          NULLIF(l.nome, ''),
+          NULLIF(d.nome, '')
+        )
           AS lead_nome,
 
-        l.email
+        COALESCE(
+          NULLIF(l.email, ''),
+          NULLIF(d.email, '')
+        )
           AS lead_email,
 
-        l.telefone
+        COALESCE(
+          NULLIF(l.telefone, ''),
+          NULLIF(d.telefone, '')
+        )
           AS lead_telefone,
 
-        l.cnpj
+        COALESCE(
+          NULLIF(l.cnpj, ''),
+          NULLIF(d.cnpj, '')
+        )
           AS lead_cnpj,
 
-        l.razao_social
+        COALESCE(
+          NULLIF(l.razao_social, ''),
+          NULLIF(d.razao_social, '')
+        )
           AS lead_razao_social,
 
-        l.estrutura_negocio
+        COALESCE(
+          NULLIF(l.estrutura_negocio, ''),
+          NULLIF(
+            d.dados_completos
+              -> 'perfil'
+              ->> 'estruturaNegocio',
+            ''
+          ),
+          'operacional'
+        )
           AS lead_estrutura_negocio,
 
-        l.status_diagnostico
+        COALESCE(
+          NULLIF(l.status_diagnostico, ''),
+          'CONCLUIDO'
+        )
           AS lead_status_diagnostico,
 
-        l.origem
+        COALESCE(
+          NULLIF(l.origem, ''),
+          'diagnostico_salvo'
+        )
           AS lead_origem,
 
-        l.diagnostico_id
-          AS lead_diagnostico_id
+        COALESCE(
+          NULLIF(l.diagnostico_id, ''),
+          d.id::text
+        )
+          AS lead_diagnostico_id,
+
+        d.nome
+          AS diagnostico_nome,
+
+        d.email
+          AS diagnostico_email,
+
+        d.telefone
+          AS diagnostico_telefone,
+
+        d.cnpj
+          AS diagnostico_cnpj,
+
+        d.razao_social
+          AS diagnostico_razao_social
 
       FROM crm_atendimentos_departamento a
 
@@ -3139,6 +3187,11 @@ async function listarAtendimentosDepartamento(
               a.diagnostico_id
           )
         )
+
+      LEFT JOIN diagnosticos d
+        ON
+          d.id::text =
+            a.diagnostico_id
 
       WHERE
         (
@@ -3275,7 +3328,9 @@ async function listarAtendimentosDepartamento(
             (
               item.lead_id_real ||
               item.lead_nome ||
-              item.lead_razao_social
+              item.lead_razao_social ||
+              item.diagnostico_nome ||
+              item.diagnostico_razao_social
             )
               ? {
                   leadId:
@@ -3285,22 +3340,33 @@ async function listarAtendimentosDepartamento(
 
                   nome:
                     item.lead_nome ||
+                    item.diagnostico_nome ||
                     "",
+
+                  fonteDados:
+                    item.lead_id_real
+                      ? "lead"
+                      : "diagnostico",
+
 
                   email:
                     item.lead_email ||
+                    item.diagnostico_email ||
                     "",
 
                   telefone:
                     item.lead_telefone ||
+                    item.diagnostico_telefone ||
                     "",
 
                   cnpj:
                     item.lead_cnpj ||
+                    item.diagnostico_cnpj ||
                     "",
 
                   razaoSocial:
                     item.lead_razao_social ||
+                    item.diagnostico_razao_social ||
                     "",
 
                   estruturaNegocio:
