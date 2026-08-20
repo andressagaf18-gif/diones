@@ -20,7 +20,9 @@ import {
   Gauge,
   Save,
   X,
+  LayoutDashboard,
 } from "lucide-react";
+import Dashboard from "./Dashboard";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -12347,7 +12349,7 @@ export default function Admin() {
   const [
     aba,
     setAba,
-  ] = useState("leads");
+  ] = useState("dashboard");
 
   function sair() {
     sessionStorage.removeItem(
@@ -12356,7 +12358,45 @@ export default function Admin() {
 
     setToken("");
     setDiagnosticoId(null);
+    setAba("dashboard");
+  }
+
+  function abrirDiagnosticoDashboard(
+    id
+  ) {
+    if (!id) {
+      return;
+    }
+
+    setDiagnosticoId(id);
+  }
+
+  function abrirLeadDashboard(
+    leadId
+  ) {
+    setDiagnosticoId(null);
     setAba("leads");
+
+    if (leadId) {
+      sessionStorage.setItem(
+        "finder_dashboard_lead_id",
+        String(leadId)
+      );
+    }
+  }
+
+  function abrirAtendimentoDashboard(
+    atendimentoId
+  ) {
+    setDiagnosticoId(null);
+    setAba("atendimentos");
+
+    if (atendimentoId) {
+      sessionStorage.setItem(
+        "finder_dashboard_atendimento_id",
+        String(atendimentoId)
+      );
+    }
   }
 
   function BarraAbas() {
@@ -12372,6 +12412,23 @@ export default function Admin() {
           flexWrap: "wrap",
         }}
       >
+        <Botao
+          secundario={
+            aba !==
+            "dashboard"
+          }
+          onClick={() =>
+            setAba(
+              "dashboard"
+            )
+          }
+        >
+          <LayoutDashboard
+            size={14}
+          />
+          Dashboard
+        </Botao>
+
         <Botao
           secundario={aba !== "leads"}
           onClick={() =>
@@ -12546,6 +12603,45 @@ export default function Admin() {
           )
         }
       />
+    );
+  }
+
+  if (
+    aba ===
+    "dashboard"
+  ) {
+    return (
+      <div
+        style={{
+          minHeight:
+            "100vh",
+          background:
+            BG,
+          fontFamily:
+            BODY_FONT,
+          color:
+            NAVY,
+        }}
+      >
+        <Cabecalho
+          titulo="Dashboard"
+          subtitulo="Inteligência gerencial e comercial da Finder"
+        />
+
+        <BarraAbas />
+
+        <Dashboard
+          onAbrirLead={
+            abrirLeadDashboard
+          }
+          onAbrirDiagnostico={
+            abrirDiagnosticoDashboard
+          }
+          onAbrirAtendimento={
+            abrirAtendimentoDashboard
+          }
+        />
+      </div>
     );
   }
 
