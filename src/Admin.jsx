@@ -5497,6 +5497,39 @@ function AtendimentosDepartamento({
     );
   }
 
+  function nomeClienteAtendimento(
+    atendimento
+  ) {
+    const lead =
+      leadDoAtendimento(
+        atendimento
+      );
+
+    const estrutura =
+      normalizarFiltro(
+        lead.estruturaNegocio
+      );
+
+    if (
+      estrutura ===
+        "pessoa_fisica" ||
+      estrutura ===
+        "avaliar_holding"
+    ) {
+      return (
+        lead.nome ||
+        lead.razaoSocial ||
+        "Cliente sem identificação"
+      );
+    }
+
+    return (
+      lead.razaoSocial ||
+      lead.nome ||
+      "Cliente sem identificação"
+    );
+  }
+
   function normalizarFiltro(
     valor
   ) {
@@ -6525,13 +6558,9 @@ function AtendimentosDepartamento({
                   fontSize: 17,
                 }}
               >
-                {leadDoAtendimento(
+                {nomeClienteAtendimento(
                   atendimentoAberto
-                ).razaoSocial ||
-                  leadDoAtendimento(
-                    atendimentoAberto
-                  ).nome ||
-                  "Cliente sem identificação"}
+                )}
               </strong>
             </div>
 
@@ -7715,9 +7744,9 @@ function AtendimentosDepartamento({
                           fontSize: 14,
                         }}
                       >
-                        {lead.razaoSocial ||
-                          lead.nome ||
-                          "Cliente sem identificação"}
+                        {nomeClienteAtendimento(
+                          atendimento
+                        )}
                       </strong>
 
                       <div
@@ -7744,6 +7773,11 @@ function AtendimentosDepartamento({
 
                         {lead.email
                           ? ` · ${lead.email}`
+                          : ""}
+
+                        {!lead.cnpj &&
+                        lead.nome
+                          ? ` · ${lead.nome}`
                           : ""}
 
                         {lead.estruturaNegocio
