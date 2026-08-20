@@ -3090,7 +3090,34 @@ async function listarAtendimentosDepartamento(
           AS responsavel_perfil,
 
         r.permissoes
-          AS responsavel_permissoes
+          AS responsavel_permissoes,
+
+        l.id
+          AS lead_id_real,
+
+        l.nome
+          AS lead_nome,
+
+        l.email
+          AS lead_email,
+
+        l.telefone
+          AS lead_telefone,
+
+        l.cnpj
+          AS lead_cnpj,
+
+        l.razao_social
+          AS lead_razao_social,
+
+        l.estrutura_negocio
+          AS lead_estrutura_negocio,
+
+        l.status_diagnostico
+          AS lead_status_diagnostico,
+
+        l.diagnostico_id
+          AS lead_diagnostico_id
 
       FROM crm_atendimentos_departamento a
 
@@ -3098,6 +3125,17 @@ async function listarAtendimentosDepartamento(
         ON
           r.id =
             a.responsavel_id
+
+      LEFT JOIN diagnostico_leads l
+        ON (
+          l.id =
+            a.lead_id
+          OR (
+            a.diagnostico_id <> ''
+            AND l.diagnostico_id =
+              a.diagnostico_id
+          )
+        )
 
       WHERE
         (
@@ -3229,6 +3267,53 @@ async function listarAtendimentosDepartamento(
 
           observacoesEspecialista:
             item.observacoes_especialista,
+
+          lead:
+            (
+              item.lead_id_real ||
+              item.lead_nome ||
+              item.lead_razao_social
+            )
+              ? {
+                  leadId:
+                    item.lead_id_real ||
+                    item.lead_id ||
+                    "",
+
+                  nome:
+                    item.lead_nome ||
+                    "",
+
+                  email:
+                    item.lead_email ||
+                    "",
+
+                  telefone:
+                    item.lead_telefone ||
+                    "",
+
+                  cnpj:
+                    item.lead_cnpj ||
+                    "",
+
+                  razaoSocial:
+                    item.lead_razao_social ||
+                    "",
+
+                  estruturaNegocio:
+                    item.lead_estrutura_negocio ||
+                    "operacional",
+
+                  statusDiagnostico:
+                    item.lead_status_diagnostico ||
+                    "",
+
+                  diagnosticoId:
+                    item.lead_diagnostico_id ||
+                    item.diagnostico_id ||
+                    "",
+                }
+              : null,
 
           responsavel: item.responsavel_id
             ? {
