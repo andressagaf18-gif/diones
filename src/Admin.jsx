@@ -344,13 +344,15 @@ function resumoSeguro(valor) {
 }
 
 
-function limparTextoCliente(valor) {
+function limparTextoRelatorio(valor) {
   const texto =
     textoSeguro(valor)
+      // Regras técnicas do motor, ex.: (contabil_fiscal_1 = 'nao').
       .replace(
-        /\(\s*[a-zA-Z0-9_]+\s*=\s*['"][^'"]+['"]\s*\)\.?/g,
+        /\(\s*[a-zA-Z0-9_]+\s*=\s*['"][^'"]*['"]\s*\)\.?/g,
         ""
       )
+      // IDs e tipos técnicos.
       .replace(
         /(?:—|-)?\s*Id:\s*[a-zA-Z0-9_-]+/gi,
         ""
@@ -359,9 +361,23 @@ function limparTextoCliente(valor) {
         /(?:—|-)?\s*Tipo:\s*[a-zA-Z0-9_-]+/gi,
         ""
       )
+      // Referências internas de ligação/rastreabilidade.
+      .replace(
+        /(?:—|-)?\s*Ligado\s*A:\s*[a-zA-Z0-9_,\s-]+/gi,
+        ""
+      )
+      .replace(
+        /(?:—|-)?\s*Risco\s*Mitigado:\s*[a-zA-Z0-9_,\s-]+/gi,
+        ""
+      )
       .replace(
         /(?:—|-)?\s*(?:Regra|Rule):\s*[^—\n]+/gi,
         ""
+      )
+      // Restos de pontuação e espaços.
+      .replace(
+        /\s+([,.;:])/g,
+        "$1"
       )
       .replace(
         /\s{2,}/g,
@@ -373,11 +389,9 @@ function limparTextoCliente(valor) {
       )
       .trim();
 
-  // Se depois da limpeza sobrar apenas estrutura técnica,
-  // não mostramos nada ao cliente.
   if (
     !texto ||
-    /^[()[\]{}=_:'".\-\s]+$/.test(
+    /^[()[\]{}=_:'".,\-\s]+$/.test(
       texto
     )
   ) {
@@ -387,7 +401,7 @@ function limparTextoCliente(valor) {
   return texto;
 }
 
-function limparListaCliente(valor) {
+function limparListaRelatorio(valor) {
   const lista =
     listaFlexivel(valor);
 
@@ -405,7 +419,7 @@ function limparListaCliente(valor) {
         typeof item === "number"
       ) {
         const limpo =
-          limparTextoCliente(item);
+          limparTextoRelatorio(item);
 
         return limpo
           ? limpo
@@ -414,7 +428,7 @@ function limparListaCliente(valor) {
 
       if (Array.isArray(item)) {
         const itens =
-          limparListaCliente(item);
+          limparListaRelatorio(item);
 
         return itens.length
           ? itens
@@ -424,7 +438,6 @@ function limparListaCliente(valor) {
       if (
         typeof item === "object"
       ) {
-        // Remove metadados internos do motor.
         const proibidos =
           new Set([
             "id",
@@ -441,6 +454,10 @@ function limparListaCliente(valor) {
             "areaId",
             "eixoId",
             "perguntaId",
+            "ligadoA",
+            "ligado_a",
+            "riscoMitigado",
+            "risco_mitigado",
           ]);
 
         const novo = {};
@@ -459,7 +476,7 @@ function limparListaCliente(valor) {
                 "string"
               ) {
                 const limpo =
-                  limparTextoCliente(
+                  limparTextoRelatorio(
                     valorInterno
                   );
 
@@ -477,13 +494,11 @@ function limparListaCliente(valor) {
                 )
               ) {
                 const arr =
-                  limparListaCliente(
+                  limparListaRelatorio(
                     valorInterno
                   );
 
-                if (
-                  arr.length
-                ) {
+                if (arr.length) {
                   novo[chave] =
                     arr;
                 }
@@ -497,13 +512,11 @@ function limparListaCliente(valor) {
                   "object"
               ) {
                 const arr =
-                  limparListaCliente([
+                  limparListaRelatorio([
                     valorInterno,
                   ]);
 
-                if (
-                  arr.length
-                ) {
+                if (arr.length) {
                   novo[chave] =
                     arr[0];
                 }
@@ -531,6 +544,8 @@ function limparListaCliente(valor) {
     })
     .filter(Boolean);
 }
+
+
 
 function textoSeguro(valor) {
   if (valor === null || valor === undefined) return "";
@@ -11197,7 +11212,7 @@ function DetalheDiagnostico({
                     fontSize: 12.5,
                   }}
                 >
-                  {limparTextoCliente(
+                  {limparTextoRelatorio(
                     diagnosticoGeral
                       .resumoExecutivo
                   )}
@@ -11215,7 +11230,7 @@ function DetalheDiagnostico({
                     fontSize: 12.5,
                   }}
                 >
-                  {limparTextoCliente(
+                  {limparTextoRelatorio(
                     diagnosticoGeral
                       .alertaEstrategico
                   )}
@@ -11328,7 +11343,7 @@ function DetalheDiagnostico({
                                 12,
                             }}
                           >
-                            {limparTextoCliente(
+                            {limparTextoRelatorio(
                               resumoSeguro(
                                 area.resumo
                               )
@@ -11348,7 +11363,7 @@ function DetalheDiagnostico({
                           <ListaInterna
                             titulo="Pontos identificados"
                             itens={
-                              limparListaCliente(
+                              limparListaRelatorio(
                                 area.achados
                               )
                             }
@@ -11357,7 +11372,7 @@ function DetalheDiagnostico({
                           <ListaInterna
                             titulo="Riscos"
                             itens={
-                              limparListaCliente(
+                              limparListaRelatorio(
                                 area.riscos
                               )
                             }
@@ -11369,7 +11384,7 @@ function DetalheDiagnostico({
                             <ListaInterna
                               titulo="Pontos fortes"
                               itens={
-                                limparListaCliente(
+                                limparListaRelatorio(
                                   area.pontosFortes
                                 )
                               }
@@ -11379,7 +11394,7 @@ function DetalheDiagnostico({
                           <ListaInterna
                             titulo="Recomendações"
                             itens={
-                              limparListaCliente(
+                              limparListaRelatorio(
                                 area.recomendacoes
                               )
                             }
@@ -11409,7 +11424,7 @@ function DetalheDiagnostico({
               <BlocoDossie titulo="Ações de curto prazo">
                 <ListaDossie
                   itens={
-                    limparListaCliente(
+                    limparListaRelatorio(
                       quickWins
                     )
                   }
@@ -11423,7 +11438,7 @@ function DetalheDiagnostico({
               <BlocoDossie titulo="Indicadores recomendados">
                 <ListaDossie
                   itens={
-                    limparListaCliente(
+                    limparListaRelatorio(
                       kpisRecomendados
                     )
                   }
