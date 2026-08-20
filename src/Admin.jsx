@@ -5497,6 +5497,36 @@ function AtendimentosDepartamento({
     );
   }
 
+  function rotuloEstruturaAtendimento(
+    valor
+  ) {
+    const mapa = {
+      operacional:
+        "Empresa operacional",
+      holding:
+        "Holding",
+      grupo:
+        "Grupo empresarial",
+      spe:
+        "SPE",
+      avaliar_holding:
+        "Avaliar Holding",
+      pessoa_fisica:
+        "Pessoa Física",
+    };
+
+    return (
+      mapa[
+        String(
+          valor ||
+          ""
+        ).toLowerCase()
+      ] ||
+      valor ||
+      "-"
+    );
+  }
+
   function statusDiagnosticoLabelLocal(
     status
   ) {
@@ -7801,7 +7831,7 @@ function AtendimentosDepartamento({
                           : ""}
 
                         {lead.estruturaNegocio
-                          ? ` · ${rotuloEstrutura(
+                          ? ` · ${rotuloEstruturaAtendimento(
                               lead.estruturaNegocio
                             )}`
                           : ""}
