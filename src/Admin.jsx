@@ -3711,6 +3711,11 @@ function EquipeCapacidade({
   ] = useState([]);
 
   const [
+    editandoId,
+    setEditandoId,
+  ] = useState("");
+
+  const [
     nome,
     setNome,
   ] = useState("");
@@ -3957,6 +3962,10 @@ function EquipeCapacidade({
             },
 
             body: JSON.stringify({
+              id:
+                editandoId ||
+                undefined,
+
               nome:
                 nome.trim(),
 
@@ -3998,6 +4007,7 @@ function EquipeCapacidade({
         );
       }
 
+      setEditandoId("");
       setNome("");
       setEmail("");
       setTelefone("");
@@ -4027,6 +4037,64 @@ function EquipeCapacidade({
       );
     } finally {
       setSalvando(false);
+    }
+  }
+
+  function editarResponsavel(responsavel) {
+    setEditandoId(responsavel.id);
+    setNome(responsavel.nome || "");
+    setEmail(responsavel.email || "");
+    setTelefone(responsavel.telefone || "");
+    setCapacidadeDiaria(String(responsavel.capacidadeDiaria ?? 3));
+    setAreas(Array.isArray(responsavel.areas) ? responsavel.areas : []);
+    setPerfil(responsavel.perfil || "ESPECIALISTA");
+    setPermissoes(responsavel.permissoes || permissoes);
+    setSucesso("Editando membro da equipe.");
+  }
+
+  async function excluirResponsavelAdmin(responsavel) {
+    if (!window.confirm(`Excluir ${responsavel.nome} da equipe?`)) return;
+
+    try {
+      let resposta = await fetch("/api/crm?action=excluir-responsavel", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ responsavelId: responsavel.id }),
+      });
+
+      let data = await resposta.json().catch(() => null);
+
+      if (resposta.status === 409 && data?.possuiAtendimentosAbertos) {
+        const confirmar = window.confirm(
+          `${responsavel.nome} possui ${data.totalAbertos} atendimento(s) aberto(s). Excluir mesmo assim e deixar os casos sem responsável?`
+        );
+        if (!confirmar) return;
+
+        resposta = await fetch("/api/crm?action=excluir-responsavel", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            responsavelId: responsavel.id,
+            forcar: true,
+          }),
+        });
+
+        data = await resposta.json().catch(() => null);
+      }
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(data?.error || "Não foi possível excluir o membro.");
+      }
+
+      await carregar();
+    } catch (error) {
+      setErro(error?.message || "Erro ao excluir membro.");
     }
   }
 
@@ -4411,6 +4479,8 @@ function EquipeCapacidade({
 
             {salvando
               ? "Salvando..."
+              : editandoId
+              ? "Salvar alterações"
               : "Salvar responsável"}
           </Botao>
         </Card>
@@ -4646,6 +4716,50 @@ function EquipeCapacidade({
                           </span>
                         )
                       )}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 7,
+                        marginTop: 12,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => editarResponsavel(responsavel)}
+                        style={{
+                          flex: 1,
+                          border: "1px solid #D8DEEA",
+                          background: WHITE,
+                          color: NAVY,
+                          borderRadius: 8,
+                          padding: "7px 9px",
+                          fontSize: 9.5,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Editar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => excluirResponsavelAdmin(responsavel)}
+                        style={{
+                          flex: 1,
+                          border: "1px solid #E2B8B8",
+                          background: "#FFF7F7",
+                          color: "#A12B2B",
+                          borderRadius: 8,
+                          padding: "7px 9px",
+                          fontSize: 9.5,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Excluir
+                      </button>
+                    </div>
+
                     </div>
                   </Card>
                 )
@@ -4704,6 +4818,21 @@ function AtendimentosDepartamento({
   const [
     oportunidadeFiltro,
     setOportunidadeFiltro,
+  ] = useState("");
+
+  const [
+    statusDiagnosticoFiltro,
+    setStatusDiagnosticoFiltro,
+  ] = useState("");
+
+  const [
+    origemFiltro,
+    setOrigemFiltro,
+  ] = useState("");
+
+  const [
+    estruturaFiltro,
+    setEstruturaFiltro,
   ] = useState("");
 
   const [
@@ -5148,6 +5277,46 @@ function AtendimentosDepartamento({
           item.areaId
         ) === alvo
     );
+  }
+
+  async function excluirLeadAtendimento(atendimento) {
+    const lead = leadDoAtendimento(atendimento);
+    const leadIdExcluir = lead?.leadId || atendimento?.leadId || "";
+
+    if (!leadIdExcluir) {
+      setErro("Não foi possível identificar o lead deste atendimento.");
+      return;
+    }
+
+    const nomeLead = lead.razaoSocial || lead.nome || "este lead";
+
+    if (!window.confirm(
+      `Excluir ${nomeLead} e os atendimentos vinculados? Esta ação não pode ser desfeita.`
+    )) {
+      return;
+    }
+
+    try {
+      const resposta = await fetch("/api/crm?action=excluir-lead", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ leadId: leadIdExcluir }),
+      });
+
+      const data = await resposta.json().catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(data?.error || "Não foi possível excluir o lead.");
+      }
+
+      setAtendimentoAberto(null);
+      await carregarTudo();
+    } catch (error) {
+      setErro(error?.message || "Erro ao excluir lead.");
+    }
   }
 
   async function carregarTudo() {
@@ -5695,12 +5864,30 @@ function AtendimentosDepartamento({
           (atendimento.statusOportunidade || "NAO_ANALISADA") ===
             oportunidadeFiltro;
 
+        const bateStatusDiagnostico =
+          !statusDiagnosticoFiltro ||
+          normalizarFiltro(lead.statusDiagnostico) ===
+            normalizarFiltro(statusDiagnosticoFiltro);
+
+        const bateOrigem =
+          !origemFiltro ||
+          normalizarFiltro(lead.origem) ===
+            normalizarFiltro(origemFiltro);
+
+        const bateEstrutura =
+          !estruturaFiltro ||
+          normalizarFiltro(lead.estruturaNegocio) ===
+            normalizarFiltro(estruturaFiltro);
+
         return (
           bateBusca &&
           bateArea &&
           bateStatus &&
           bateResponsavel &&
-          bateOportunidade
+          bateOportunidade &&
+          bateStatusDiagnostico &&
+          bateOrigem &&
+          bateEstrutura
         );
       }
     );
@@ -6188,6 +6375,65 @@ function AtendimentosDepartamento({
             )}
           </select>
 
+
+          <select
+            value={statusDiagnosticoFiltro}
+            onChange={(e) => setStatusDiagnosticoFiltro(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todos os diagnósticos</option>
+            <option value="ACESSOU">Acessou</option>
+            <option value="EM_PREENCHIMENTO">Em preenchimento</option>
+            <option value="NAO_CONCLUIDO">Não concluído</option>
+            <option value="CONCLUIDO">Concluído</option>
+          </select>
+
+          <select
+            value={origemFiltro}
+            onChange={(e) => setOrigemFiltro(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todas as origens</option>
+            {[...new Set(
+              atendimentos
+                .map((item) => leadDoAtendimento(item).origem)
+                .filter(Boolean)
+            )].map((origem) => (
+              <option key={origem} value={origem}>
+                {origem}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={estruturaFiltro}
+            onChange={(e) => setEstruturaFiltro(e.target.value)}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="">Todas as estruturas</option>
+            <option value="operacional">Empresa operacional</option>
+            <option value="holding">Holding</option>
+            <option value="grupo">Grupo empresarial</option>
+            <option value="spe">SPE</option>
+            <option value="avaliar_holding">Avaliar Holding</option>
+            <option value="pessoa_fisica">Pessoa Física</option>
+          </select>
+
           <Botao
             secundario
             onClick={() => {
@@ -6196,6 +6442,9 @@ function AtendimentosDepartamento({
               setStatusFiltro("");
               setOportunidadeFiltro("");
               setResponsavelFiltro("");
+              setStatusDiagnosticoFiltro("");
+              setOrigemFiltro("");
+              setEstruturaFiltro("");
             }}
           >
             <X size={14} />
@@ -7502,6 +7751,16 @@ function AtendimentosDepartamento({
                               lead.estruturaNegocio
                             )}`
                           : ""}
+
+                        {lead.origem
+                          ? ` · Origem: ${lead.origem}`
+                          : ""}
+
+                        {lead.statusDiagnostico
+                          ? ` · ${statusDiagnosticoLabel(
+                              lead.statusDiagnostico
+                            )}`
+                          : ""}
                       </div>
 
                       {(atendimento.proximaAcao ||
@@ -7636,6 +7895,25 @@ function AtendimentosDepartamento({
                           }}
                         >
                           Abrir atendimento
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => excluirLeadAtendimento(atendimento)}
+                          style={{
+                            width: "100%",
+                            marginTop: 7,
+                            background: WHITE,
+                            border: "1px solid #E2B8B8",
+                            color: "#A12B2B",
+                            borderRadius: 10,
+                            padding: "8px 10px",
+                            fontSize: 10,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Excluir lead / teste
                         </button>
 
                         {atendimento.diagnosticoId && (
