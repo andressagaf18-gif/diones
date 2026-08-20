@@ -52,14 +52,19 @@ function fmt(v) {
 
 function authHeaders() {
   const token =
-    localStorage.getItem("adminToken") ||
-    sessionStorage.getItem("adminToken") ||
-    localStorage.getItem("ADMIN_TOKEN") ||
-    sessionStorage.getItem("ADMIN_TOKEN") ||
+    sessionStorage.getItem(
+      "finder_admin_token"
+    ) ||
+    localStorage.getItem(
+      "finder_admin_token"
+    ) ||
     "";
 
   return token
-    ? { Authorization: `Bearer ${token}` }
+    ? {
+        Authorization:
+          `Bearer ${token}`,
+      }
     : {};
 }
 
@@ -448,7 +453,11 @@ export default function Dashboard({
 
     try {
       const resposta = await fetch(
-        `/api/dashboard?${query}`,
+        `/api/crm?action=dashboard${
+          query
+            ? `&${query}`
+            : ""
+        }`,
         {
           headers: {
             ...authHeaders(),
@@ -456,7 +465,33 @@ export default function Dashboard({
         }
       );
 
-      const json = await resposta.json();
+      const tipoConteudo =
+        resposta.headers.get(
+          "content-type"
+        ) || "";
+
+      let json = null;
+
+      if (
+        tipoConteudo.includes(
+          "application/json"
+        )
+      ) {
+        json =
+          await resposta.json();
+      } else {
+        const textoResposta =
+          await resposta.text();
+
+        throw new Error(
+          textoResposta
+            ? `A API do Dashboard respondeu em formato inválido: ${textoResposta.slice(
+                0,
+                180
+              )}`
+            : "A API do Dashboard não retornou JSON."
+        );
+      }
 
       if (!resposta.ok || !json?.sucesso) {
         throw new Error(
