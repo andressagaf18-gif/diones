@@ -1471,16 +1471,34 @@ export default function DiagnosticoPrototipo() {
   const areasFallbackCategoria = CATEGORY_AREA_FALLBACK[categoriaPrincipal] || [];
   const areasSugeridas = [...new Set([...areasSugeridasApi, ...areasFallbackCategoria])];
 
-  // O diagnóstico cobre TODOS os eixos da estrutura.
-  // "dores" passa a representar somente as prioridades
-  // escolhidas para aprofundamento.
-  const areasDoDiagnostico =
-    areasDaEstrutura.map(
-      (item) => item.id
-    );
-
+  // EMPRESA OPERACIONAL:
+  // se o usuário escolheu um ou mais departamentos, o checklist
+  // deve conter SOMENTE esses departamentos.
+  //
+  // Demais estruturas especializadas continuam usando todos os
+  // eixos estruturais do respectivo motor, pois nesses fluxos os
+  // eixos fazem parte da avaliação da própria estrutura.
   const prioridadesDiagnostico =
     dores;
+
+  const areasOperacionaisSelecionadas =
+    prioridadesDiagnostico.filter(
+      (id) =>
+        areasDaEstrutura.some(
+          (area) =>
+            area.id === id
+        )
+    );
+
+  const areasDoDiagnostico =
+    estruturaNegocio ===
+      "operacional" &&
+    areasOperacionaisSelecionadas.length >
+      0
+      ? areasOperacionaisSelecionadas
+      : areasDaEstrutura.map(
+          (item) => item.id
+        );
 
   function labelAreaAtual(id) {
     return (
@@ -2883,9 +2901,23 @@ export default function DiagnosticoPrototipo() {
           }
         ),
 
-      // O motor deve cobrir todos estes eixos.
+      // Na empresa operacional, o escopo obrigatório é exatamente
+      // o conjunto de departamentos selecionados pelo usuário.
+      // Nas demais estruturas, preservamos os eixos estruturais.
       eixosObrigatorios:
-        areasDaEstrutura.map(
+        (
+          estruturaNegocio ===
+            "operacional" &&
+          areasOperacionaisSelecionadas.length >
+            0
+            ? areasDaEstrutura.filter(
+                (item) =>
+                  areasOperacionaisSelecionadas.includes(
+                    item.id
+                  )
+              )
+            : areasDaEstrutura
+        ).map(
           (item) => ({
             id:
               item.id,
