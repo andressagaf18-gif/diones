@@ -5281,14 +5281,30 @@ function AtendimentosDepartamento({
 
   async function excluirLeadAtendimento(atendimento) {
     const lead = leadDoAtendimento(atendimento);
-    const leadIdExcluir = lead?.leadId || atendimento?.leadId || "";
+    const leadIdExcluir =
+      lead?.leadId ||
+      atendimento?.leadId ||
+      "";
 
-    if (!leadIdExcluir) {
-      setErro("Não foi possível identificar o lead deste atendimento.");
+    const diagnosticoIdExcluir =
+      lead?.diagnosticoId ||
+      atendimento?.diagnosticoId ||
+      "";
+
+    if (
+      !leadIdExcluir &&
+      !diagnosticoIdExcluir
+    ) {
+      setErro(
+        "Não foi possível identificar o registro deste atendimento."
+      );
       return;
     }
 
-    const nomeLead = lead.razaoSocial || lead.nome || "este lead";
+    const nomeLead =
+      lead.razaoSocial ||
+      lead.nome ||
+      "este registro";
 
     if (!window.confirm(
       `Excluir ${nomeLead} e os atendimentos vinculados? Esta ação não pode ser desfeita.`
@@ -5303,7 +5319,17 @@ function AtendimentosDepartamento({
           "content-type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ leadId: leadIdExcluir }),
+        body: JSON.stringify({
+          atendimentoId:
+            atendimento?.id ||
+            undefined,
+          leadId:
+            leadIdExcluir ||
+            undefined,
+          diagnosticoId:
+            diagnosticoIdExcluir ||
+            undefined,
+        }),
       });
 
       const data = await resposta.json().catch(() => null);
@@ -7837,7 +7863,12 @@ function AtendimentosDepartamento({
                           : ""}
 
                         {lead.origem
-                          ? ` · Origem: ${lead.origem}`
+                          ? ` · Origem: ${
+                              lead.origem ===
+                              "diagnostico_salvo"
+                                ? "Diagnóstico"
+                                : lead.origem
+                            }`
                           : ""}
 
                         {lead.statusDiagnostico
