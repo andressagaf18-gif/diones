@@ -2060,12 +2060,23 @@ export default function DiagnosticoPrototipo() {
         !resposta.ok ||
         !data?.sucesso
       ) {
-        console.warn(
-          "[CRM] Não foi possível criar atendimentos por departamento:",
-          data
+        const mensagem =
+          data?.error ||
+          "Não foi possível criar atendimentos por departamento.";
+
+        console.error(
+          "[CRM] Falha ao criar atendimentos:",
+          {
+            status: resposta.status,
+            diagnosticoId: idDiagnostico,
+            totalAreas: areasValidas.length,
+            resposta: data,
+          }
         );
 
-        return null;
+        throw new Error(
+          mensagem
+        );
       }
 
       console.info(
@@ -3576,13 +3587,25 @@ export default function DiagnosticoPrototipo() {
         return;
       }
 
-      relatorioEnviadoRef.current = true;
-
       const idSalvo =
         data?.id ||
         data?.diagnosticoId ||
         data?.diagnostico?.id ||
+        data?.registro?.id ||
+        data?.registroSalvo?.id ||
+        data?.salvo?.id ||
+        data?.resultado?.id ||
         "";
+
+      if (!idSalvo) {
+        console.warn(
+          "[DIAGNÓSTICO] Relatório salvo/enviado, mas a resposta não trouxe o ID do diagnóstico.",
+          data
+        );
+      }
+
+      // Só marcamos o relatório como processado depois que
+      // tentamos também alimentar o CRM/Atendimentos.
 
       if (idSalvo) {
         setDiagnosticoIdSalvo(
@@ -3886,7 +3909,7 @@ export default function DiagnosticoPrototipo() {
       // O relatório atual do cliente permanece inalterado.
       // ===================================================
 
-      await Promise.allSettled([
+      const tarefasPosDiagnostico = [
         classificarLeadCRM({
           scoreDiagnostico:
             score,
@@ -3918,20 +3941,54 @@ export default function DiagnosticoPrototipo() {
               ),
             ],
         }),
+      ];
 
-        criarAtendimentosDepartamentoCRM({
-          diagnosticoId:
-            idSalvo
-              ? String(
-                  idSalvo
-                )
-              : "",
+      if (
+        idSalvo &&
+        areasParaAtendimento.length > 0
+      ) {
+        tarefasPosDiagnostico.push(
+          criarAtendimentosDepartamentoCRM({
+            diagnosticoId:
+              String(idSalvo),
 
-          areas:
-            areasParaAtendimento,
-        }),
-      ]);
+            areas:
+              areasParaAtendimento,
+          })
+        );
+      } else {
+        console.warn(
+          "[CRM] Atendimento não enviado no pós-diagnóstico:",
+          {
+            idSalvo,
+            totalAreas:
+              areasParaAtendimento.length,
+          }
+        );
+      }
 
+      const resultadosPosDiagnostico =
+        await Promise.allSettled(
+          tarefasPosDiagnostico
+        );
+
+      const falhasPosDiagnostico =
+        resultadosPosDiagnostico.filter(
+          (item) =>
+            item.status ===
+            "rejected"
+        );
+
+      if (
+        falhasPosDiagnostico.length
+      ) {
+        console.error(
+          "[CRM] Uma ou mais rotinas pós-diagnóstico falharam:",
+          falhasPosDiagnostico
+        );
+      }
+
+      relatorioEnviadoRef.current = true;
       setEnvioRelatorio("sent");
     } catch (error) {
       console.error("Erro no envio do relatório:", error);
