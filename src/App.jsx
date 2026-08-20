@@ -1182,6 +1182,26 @@ function PrimaryButton({ children, onClick, disabled, style }) {
 }
 
 export default function DiagnosticoPrototipo() {
+  const SENHA_ACESSO_APP = "181022";
+  const [acessoLiberado, setAcessoLiberado] = useState(() => {
+    try { return sessionStorage.getItem("finder_app_acesso") === "liberado"; }
+    catch { return false; }
+  });
+  const [senhaAcesso, setSenhaAcesso] = useState("");
+  const [erroSenhaAcesso, setErroSenhaAcesso] = useState("");
+
+  function validarAcessoApp(event) {
+    event?.preventDefault?.();
+    if (senhaAcesso === SENHA_ACESSO_APP) {
+      try { sessionStorage.setItem("finder_app_acesso", "liberado"); } catch {}
+      setAcessoLiberado(true);
+      setErroSenhaAcesso("");
+      setSenhaAcesso("");
+      return;
+    }
+    setErroSenhaAcesso("Senha incorreta. Tente novamente.");
+  }
+
   const [step, setStep] = useState("intro");
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("");
@@ -4480,6 +4500,27 @@ export default function DiagnosticoPrototipo() {
       console.error("Erro ao gerar relatório executivo:", erro);
       showToast("Não foi possível gerar o relatório executivo.");
     }
+  }
+
+
+  if (!acessoLiberado) {
+    return (
+      <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, boxSizing:"border-box", fontFamily:BODY_FONT }}>
+        <form onSubmit={validarAcessoApp} style={{ width:"100%", maxWidth:390, background:WHITE, borderRadius:18, padding:28, boxShadow:"0 24px 70px rgba(0,0,0,.28)" }}>
+          <div style={{ fontSize:11, fontWeight:900, letterSpacing:1.2, color:CORAL, marginBottom:7 }}>FINDER OF SOLUTIONS</div>
+          <h1 style={{ margin:"0 0 7px", color:NAVY, fontSize:26, lineHeight:1.1, fontFamily:DISPLAY_FONT }}>Acesso ao diagnóstico</h1>
+          <p style={{ margin:"0 0 20px", color:MUTED, fontSize:13, lineHeight:1.55 }}>Digite a senha para acessar o aplicativo.</p>
+          <label htmlFor="senha-acesso-app" style={{ display:"block", color:NAVY, fontSize:11, fontWeight:800, marginBottom:6 }}>SENHA</label>
+          <input id="senha-acesso-app" type="password" inputMode="numeric" autoFocus value={senhaAcesso}
+            onChange={(event)=>{ setSenhaAcesso(event.target.value); setErroSenhaAcesso(""); }}
+            placeholder="Digite a senha"
+            style={{ width:"100%", boxSizing:"border-box", border:erroSenhaAcesso ? "1px solid #D92D20" : "1px solid #D0D5DD", borderRadius:10, padding:"12px 13px", fontSize:15, outline:"none", marginBottom:erroSenhaAcesso ? 7 : 14 }}
+          />
+          {erroSenhaAcesso && <div style={{ color:"#D92D20", fontSize:11.5, marginBottom:12 }}>{erroSenhaAcesso}</div>}
+          <button type="submit" style={{ width:"100%", border:0, borderRadius:10, padding:"12px 14px", background:CORAL, color:WHITE, fontSize:13, fontWeight:900, cursor:"pointer" }}>Entrar</button>
+        </form>
+      </div>
+    );
   }
 
   return (
