@@ -8859,179 +8859,6 @@ function DetalheDiagnostico({
   ]);
 
   if (carregando) {
-    function gerarPdfDiagnostico() {
-    const relatorio =
-      document.getElementById(
-        "relatorio-diagnostico-pdf"
-      );
-
-    if (!relatorio) {
-      window.alert(
-        "Não foi possível localizar o relatório para gerar o PDF."
-      );
-      return;
-    }
-
-    const nomeArquivoBase =
-      estruturaAtual === "pessoa_fisica"
-        ? participante.nome ||
-          "Pessoa Fisica"
-        : empresa.razaoSocial ||
-          participante.nome ||
-          "Diagnostico";
-
-    const tipoRelatorio =
-      abaRelatorio === "administracao"
-        ? "Administracao"
-        : abaRelatorio === "cliente"
-        ? "Cliente"
-        : "Equipe";
-
-    const tituloDocumento =
-      `${nomeArquivoBase} - Relatorio ${tipoRelatorio}`
-        .replace(
-          /[\\/:*?"<>|]+/g,
-          "-"
-        );
-
-    const janela =
-      window.open(
-        "",
-        "_blank",
-        "width=1100,height=850"
-      );
-
-    if (!janela) {
-      window.alert(
-        "O navegador bloqueou a janela do PDF. Libere pop-ups para este site e tente novamente."
-      );
-      return;
-    }
-
-    janela.document.open();
-
-    janela.document.write(`
-      <!doctype html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="utf-8" />
-          <meta
-            name="viewport"
-            content="width=device-width,initial-scale=1"
-          />
-          <title>${tituloDocumento}</title>
-
-          <style>
-            @page {
-              size: A4;
-              margin: 13mm;
-            }
-
-            * {
-              box-sizing: border-box;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-
-            html,
-            body {
-              margin: 0;
-              padding: 0;
-              background: #FFFFFF;
-              color: #17233D;
-              font-family:
-                -apple-system,
-                BlinkMacSystemFont,
-                "Segoe UI",
-                Roboto,
-                Arial,
-                sans-serif;
-            }
-
-            body {
-              font-size: 11px;
-              line-height: 1.45;
-            }
-
-            #pdf-shell {
-              width: 100%;
-              max-width: none;
-            }
-
-            button,
-            select,
-            input,
-            textarea {
-              display: none !important;
-            }
-
-            a {
-              color: inherit !important;
-              text-decoration: none !important;
-            }
-
-            h1,
-            h2,
-            h3 {
-              break-after: avoid;
-              page-break-after: avoid;
-            }
-
-            ul,
-            ol {
-              padding-left: 18px;
-            }
-
-            [style*="position: sticky"],
-            [style*="position:fixed"],
-            [style*="position: fixed"] {
-              position: static !important;
-            }
-
-            [style*="box-shadow"] {
-              box-shadow: none !important;
-            }
-
-            [style*="grid-template-columns"] {
-              max-width: 100% !important;
-            }
-
-            div {
-              max-width: 100%;
-            }
-
-            @media print {
-              .nao-imprimir {
-                display: none !important;
-              }
-
-              body {
-                background: #FFFFFF !important;
-              }
-            }
-          </style>
-        </head>
-
-        <body>
-          <div id="pdf-shell">
-            ${relatorio.outerHTML}
-          </div>
-
-          <script>
-            window.onload = function () {
-              setTimeout(function () {
-                window.focus();
-                window.print();
-              }, 350);
-            };
-          <\/script>
-        </body>
-      </html>
-    `);
-
-    janela.document.close();
-  }
-
   return (
       <div
         style={{
@@ -9687,6 +9514,180 @@ function DetalheDiagnostico({
           null
         )
       : null;
+
+  function gerarPdfDiagnostico() {
+    const relatorio =
+      document.getElementById(
+        "relatorio-diagnostico-pdf"
+      );
+
+    if (!relatorio) {
+      window.alert(
+        "Não foi possível localizar o relatório para gerar o PDF."
+      );
+      return;
+    }
+
+    const nomeArquivoBase =
+      estruturaAtual === "pessoa_fisica"
+        ? participante.nome ||
+          "Pessoa Fisica"
+        : empresa.razaoSocial ||
+          participante.nome ||
+          "Diagnostico";
+
+    const tipoRelatorio =
+      abaRelatorio === "administracao"
+        ? "Administracao"
+        : abaRelatorio === "cliente"
+        ? "Cliente"
+        : "Equipe";
+
+    const tituloDocumento =
+      `${nomeArquivoBase} - Relatorio ${tipoRelatorio}`
+        .replace(
+          /[\\/:*?"<>|]+/g,
+          "-"
+        );
+
+    const janela =
+      window.open(
+        "",
+        "_blank",
+        "width=1100,height=850"
+      );
+
+    if (!janela) {
+      window.alert(
+        "O navegador bloqueou a janela do PDF. Libere pop-ups para este site e tente novamente."
+      );
+      return;
+    }
+
+    janela.document.open();
+
+    janela.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <meta
+            name="viewport"
+            content="width=device-width,initial-scale=1"
+          />
+          <title>${tituloDocumento}</title>
+
+          <style>
+            @page {
+              size: A4;
+              margin: 13mm;
+            }
+
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            html,
+            body {
+              margin: 0;
+              padding: 0;
+              background: #FFFFFF;
+              color: #17233D;
+              font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                Roboto,
+                Arial,
+                sans-serif;
+            }
+
+            body {
+              font-size: 11px;
+              line-height: 1.45;
+            }
+
+            #pdf-shell {
+              width: 100%;
+              max-width: none;
+            }
+
+            button,
+            select,
+            input,
+            textarea {
+              display: none !important;
+            }
+
+            a {
+              color: inherit !important;
+              text-decoration: none !important;
+            }
+
+            h1,
+            h2,
+            h3 {
+              break-after: avoid;
+              page-break-after: avoid;
+            }
+
+            ul,
+            ol {
+              padding-left: 18px;
+            }
+
+            [style*="position: sticky"],
+            [style*="position:fixed"],
+            [style*="position: fixed"] {
+              position: static !important;
+            }
+
+            [style*="box-shadow"] {
+              box-shadow: none !important;
+            }
+
+            [style*="grid-template-columns"] {
+              max-width: 100% !important;
+            }
+
+            div {
+              max-width: 100%;
+            }
+
+            @media print {
+              .nao-imprimir {
+                display: none !important;
+              }
+
+              body {
+                background: #FFFFFF !important;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          <div id="pdf-shell">
+            ${relatorio.outerHTML}
+          </div>
+
+          <script>
+            window.onload = function () {
+              setTimeout(function () {
+                window.focus();
+                window.print();
+              }, 350);
+            };
+          <\/script>
+        </body>
+      </html>
+    `);
+
+    janela.document.close();
+  }
+
 
   return (
     <div
