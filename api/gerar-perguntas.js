@@ -126,8 +126,6 @@ export default async function handler(req, res) {
   const areasSelecionadas =
     lista(body.areasSelecionadas);
 
-  // As áreas escolhidas pelo participante passam a ser PRIORIDADES.
-  // Elas não limitam o escopo do diagnóstico.
   const prioridadesSelecionadas =
     areasSelecionadas
       .map(
@@ -139,12 +137,31 @@ export default async function handler(req, res) {
       )
       .filter(Boolean);
 
-  // O relatório completo sempre cobre todos os eixos do motor.
   const eixosDoMotor =
     motor.eixos || [];
 
+  // REGRA DE ESCOPO:
+  // Empresa operacional deve perguntar SOMENTE os departamentos
+  // que o participante selecionou.
+  //
+  // Para estruturas especializadas (grupo, SPE, holding,
+  // avaliação de holding e PF), preservamos a cobertura estrutural
+  // integral do motor.
+  const eixosSelecionadosValidos =
+    prioridadesSelecionadas.filter(
+      (id) =>
+        eixosDoMotor.includes(
+          id
+        )
+    );
+
   const eixosParaPerguntas =
-    eixosDoMotor;
+    estrutura ===
+      "operacional" &&
+    eixosSelecionadosValidos.length >
+      0
+      ? eixosSelecionadosValidos
+      : eixosDoMotor;
 
   const fallbackCompleto =
     perguntasBaseDaEstrutura(
@@ -232,10 +249,11 @@ CONTEXTO COMPLETO:
 ${JSON.stringify(body)}
 
 REGRAS:
-- TODOS os eixos obrigatórios precisam ter cobertura.
+- Gere perguntas SOMENTE para os eixos listados em "EIXOS OBRIGATÓRIOS A INVESTIGAR".
+- Na EMPRESA OPERACIONAL, esses eixos correspondem exatamente aos departamentos escolhidos pelo usuário; NÃO inclua departamentos não selecionados.
 - Para eixo NÃO prioritário: gere 1 a 2 perguntas essenciais.
 - Para eixo PRIORITÁRIO: gere 3 a 5 perguntas de aprofundamento.
-- As prioridades aumentam a profundidade; não excluem os demais eixos.
+- Nas estruturas especializadas, os eixos obrigatórios podem representar a cobertura estrutural completa definida pelo motor.
 - Não faça perguntas que já estejam respondidas claramente no contexto.
 - As perguntas precisam descobrir causa, impacto, risco e capacidade de ação.
 - Pessoa Física: não mencionar CNAE, faturamento empresarial, margem,
