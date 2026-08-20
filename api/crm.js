@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
-import dashboardHandler from "./lib/dashboard-engine.js";
+import dashboardHandler from "../server/dashboard-engine.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
