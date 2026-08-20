@@ -1947,6 +1947,14 @@ function tipoAcionamentoValido(valor) {
     : "OUTRO";
 }
 
+function areaCanonicaCRM(valor = "") {
+  return String(valor || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 function normalizarArray(valor) {
   if (!Array.isArray(valor)) {
     return [];
@@ -2102,6 +2110,32 @@ async function criarAtendimentosDepartamento(
 
   const criados = [];
 
+  // Equipe disponível para atribuição automática.
+  // A escolha prioriza especialista compatível com menor carga aberta.
+  const equipeDisponivel =
+    await sql`
+      SELECT
+        r.id,
+        r.nome,
+        r.areas,
+        r.capacidade_diaria,
+        COUNT(a.id) FILTER (
+          WHERE a.status_atendimento <> 'CONCLUIDO'
+        )::int AS atendimentos_abertos
+      FROM crm_responsaveis r
+      LEFT JOIN crm_atendimentos_departamento a
+        ON a.responsavel_id = r.id
+      WHERE r.ativo = TRUE
+      GROUP BY
+        r.id,
+        r.nome,
+        r.areas,
+        r.capacidade_diaria
+      ORDER BY
+        atendimentos_abertos ASC,
+        r.nome ASC
+    `;
+
   for (const areaItem of areas) {
     const area =
       texto(
@@ -2113,6 +2147,91 @@ async function criarAtendimentosDepartamento(
     if (!area) {
       continue;
     }
+
+    const areaCanonica =
+      areaCanonicaCRM(
+        areaItem?.areaId ||
+        area
+      );
+
+    const candidatos =
+      (equipeDisponivel || [])
+        .filter(
+          (responsavel) =>
+            normalizarArray(
+              responsavel.areas
+            ).some(
+              (areaResponsavel) => {
+                const canonicaResponsavel =
+                  areaCanonicaCRM(
+                    areaResponsavel
+                  );
+
+                // aceita tanto o ID do eixo quanto o label exibido
+                return (
+                  canonicaResponsavel ===
+                    areaCanonica ||
+                  canonicaResponsavel ===
+                    areaCanonicaCRM(area)
+                );
+              }
+            )
+        )
+        .sort(
+          (a, b) => {
+            const cargaA =
+              Number(
+                a.atendimentos_abertos
+              ) || 0;
+
+            const cargaB =
+              Number(
+                b.atendimentos_abertos
+              ) || 0;
+
+            if (cargaA !== cargaB) {
+              return cargaA - cargaB;
+            }
+
+            const capacidadeA =
+              Number(
+                a.capacidade_diaria
+              ) || 0;
+
+            const capacidadeB =
+              Number(
+                b.capacidade_diaria
+              ) || 0;
+
+            return (
+              capacidadeB -
+              capacidadeA
+            );
+          }
+        );
+
+    const responsavelAutomatico =
+      candidatos[0] ||
+      null;
+
+    const existente =
+      await sql`
+        SELECT
+          id,
+          responsavel_id
+        FROM crm_atendimentos_departamento
+        WHERE
+          diagnostico_id =
+            ${diagnosticoId}
+          AND area =
+            ${area}
+        LIMIT 1
+      `;
+
+    const jaExistia =
+      Boolean(
+        existente?.[0]
+      );
 
     const scoreArea =
       areaItem?.score !== undefined &&
@@ -2181,6 +2300,7 @@ async function criarAtendimentosDepartamento(
           area,
           score_area,
           nivel_area,
+          responsavel_id,
 
           oportunidades,
           riscos,
@@ -2201,6 +2321,10 @@ async function criarAtendimentosDepartamento(
           ${area},
           ${scoreArea},
           ${nivelArea},
+          ${
+            responsavelAutomatico?.id ||
+            ""
+          },
 
           ${JSON.stringify(
             oportunidades
@@ -2239,6 +2363,13 @@ async function criarAtendimentosDepartamento(
           nivel_area =
             EXCLUDED.nivel_area,
 
+          responsavel_id =
+            CASE
+              WHEN crm_atendimentos_departamento.responsavel_id = ''
+                THEN EXCLUDED.responsavel_id
+              ELSE crm_atendimentos_departamento.responsavel_id
+            END,
+
           oportunidades =
             EXCLUDED.oportunidades,
 
@@ -2266,6 +2397,10 @@ async function criarAtendimentosDepartamento(
           nivel_area,
           responsavel_id,
           status_atendimento,
+          status_oportunidade,
+          proxima_acao,
+          proximo_contato,
+          ultimo_acionamento,
           oportunidades,
           riscos,
           recomendacoes,
@@ -2277,9 +2412,69 @@ async function criarAtendimentosDepartamento(
       `;
 
     if (linhas?.[0]) {
+      const atendimentoCriado =
+        linhas[0];
+
       criados.push(
-        linhas[0]
+        atendimentoCriado
       );
+
+      if (!jaExistia) {
+        const responsavelNome =
+          responsavelAutomatico?.nome ||
+          "";
+
+        await sql`
+          INSERT INTO crm_atendimento_historico (
+            id,
+            atendimento_id,
+            diagnostico_id,
+            lead_id,
+            tipo_evento,
+            descricao,
+            status_anterior,
+            status_novo,
+            oportunidade_anterior,
+            oportunidade_nova,
+            responsavel_id,
+            responsavel_nome,
+            created_at
+          )
+          VALUES (
+            ${gerarId("hist")},
+            ${atendimentoCriado.id},
+            ${diagnosticoId},
+            ${leadId},
+            'CRIACAO',
+            ${
+              responsavelAutomatico
+                ? "Atendimento criado automaticamente e atribuído conforme área/capacidade."
+                : "Atendimento criado automaticamente; aguardando responsável compatível."
+            },
+            '',
+            'NAO_INICIADO',
+            '',
+            'NAO_ANALISADA',
+            ${
+              responsavelAutomatico?.id ||
+              ""
+            },
+            ${responsavelNome},
+            NOW()
+          )
+        `;
+
+        // Atualiza a carga local para distribuir os próximos
+        // atendimentos do mesmo diagnóstico de forma mais equilibrada.
+        if (responsavelAutomatico) {
+          responsavelAutomatico.atendimentos_abertos =
+            (
+              Number(
+                responsavelAutomatico.atendimentos_abertos
+              ) || 0
+            ) + 1;
+        }
+      }
     }
   }
 
