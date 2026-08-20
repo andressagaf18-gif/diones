@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
-import dashboardHandler from "./dashboard.js";
+import dashboardHandler from "./lib/dashboard-engine.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -4899,12 +4899,6 @@ export default async function handler(req, res) {
           res
         );
 
-      case "dashboard":
-        return dashboardHandler(
-          req,
-          res
-        );
-
       case "listar-atendimentos":
         return listarAtendimentosDepartamento(
           req,
@@ -4929,6 +4923,12 @@ export default async function handler(req, res) {
           res
         );
 
+      case "dashboard":
+        return dashboardHandler(
+          req,
+          res
+        );
+
       default:
         return res.status(400).json({
           sucesso: false,
@@ -4947,7 +4947,6 @@ export default async function handler(req, res) {
             "excluir-lead",
             "excluir-responsavel",
             "criar-atendimentos",
-            "dashboard",
             "listar-atendimentos",
             "atualizar-atendimento",
             "registrar-acionamento",
