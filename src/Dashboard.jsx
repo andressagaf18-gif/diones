@@ -13,6 +13,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  Database,
   Filter,
   Flame,
   LayoutDashboard,
@@ -558,6 +559,19 @@ export default function Dashboard({
       (a, b) => num(a.scoreMedio) - num(b.scoreMedio)
     )[0];
 
+
+  const validacao =
+    dados?.validacao ||
+    {};
+
+  const integridade =
+    validacao?.integridade ||
+    {};
+
+  const periodoValidacao =
+    validacao?.periodo ||
+    {};
+
   if (carregando && !dados) {
     return (
       <div
@@ -898,6 +912,157 @@ export default function Dashboard({
             alert={num(kpis.retornosAtrasados) > 0}
           />
         </div>
+
+        {/* VALIDAÇÃO DOS INDICADORES */}
+        <Card
+          style={{
+            padding: 18,
+            marginBottom: 18,
+            borderColor:
+              integridade.conciliado
+                ? "#B8DFC8"
+                : "#F1C8C2",
+          }}
+        >
+          <SectionTitle
+            icon={Database}
+            title="Validação dos indicadores"
+            subtitle="Conciliação do Dashboard com as tabelas operacionais"
+          />
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(190px,1fr))",
+              gap: 10,
+            }}
+          >
+            {[
+              {
+                label:
+                  "Leads no CRM",
+                value:
+                  periodoValidacao.leadsNaTelaCRM,
+                source:
+                  "diagnostico_leads",
+              },
+              {
+                label:
+                  "Diagnósticos salvos",
+                value:
+                  periodoValidacao.diagnosticosNaTabela,
+                source:
+                  "diagnosticos",
+              },
+              {
+                label:
+                  "Leads marcados concluídos",
+                value:
+                  periodoValidacao.leadsMarcadosComoConcluidos,
+                source:
+                  "diagnostico_leads",
+              },
+              {
+                label:
+                  "Atendimentos",
+                value:
+                  periodoValidacao.atendimentosNaTabela,
+                source:
+                  "crm_atendimentos_departamento",
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  background: "#F8FAFD",
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 850,
+                    color: MUTED,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {item.label}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 5,
+                    fontSize: 24,
+                    fontWeight: 900,
+                    color: NAVY,
+                  }}
+                >
+                  {fmt(item.value)}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 9.5,
+                    color: MUTED,
+                  }}
+                >
+                  Fonte: {item.source}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 11,
+              background:
+                integridade.conciliado
+                  ? "#F0FAF4"
+                  : "#FFF4F1",
+              color:
+                integridade.conciliado
+                  ? "#17663B"
+                  : "#963B2D",
+              fontSize: 11.5,
+              lineHeight: 1.55,
+            }}
+          >
+            {integridade.conciliado ? (
+              <strong>
+                Dados conciliados: os diagnósticos salvos estão compatíveis com os vínculos de leads neste recorte.
+              </strong>
+            ) : (
+              <>
+                <strong>
+                  Existem diferenças de integração que merecem revisão.
+                </strong>
+
+                {arr(validacao.alertas).length ? (
+                  <ul
+                    style={{
+                      margin: "7px 0 0",
+                      paddingLeft: 18,
+                    }}
+                  >
+                    {arr(validacao.alertas).map(
+                      (alerta, index) => (
+                        <li key={index}>
+                          {alerta}
+                        </li>
+                      )
+                    )}
+                  </ul>
+                ) : null}
+              </>
+            )}
+          </div>
+        </Card>
 
         {/* INSIGHT EXECUTIVO */}
         <Card
