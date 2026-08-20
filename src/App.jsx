@@ -3634,10 +3634,79 @@ export default function DiagnosticoPrototipo() {
       // sem alterar o relatório já existente.
       // ===================================================
 
+      // ===================================================
+      // ATENDIMENTOS — REGRA DE ENTRADA NA FILA
+      // ===================================================
+      //
+      // Nem todo eixo deve virar atendimento.
+      // Criamos um caso quando houver pelo menos um sinal real:
+      //
+      // - score abaixo de 60;
+      // - eixo escolhido como prioridade;
+      // - risco relevante;
+      // - oportunidade consultiva;
+      // - recomendação que exige atuação;
+      // - plano de ação específico.
+      //
+      // O conteúdo é buscado primeiro no novo resultadoCompleto.eixos
+      // e, por compatibilidade, também no formato antigo iaResultado.areas.
+      // ===================================================
+
+      const eixosResultadoCompleto =
+        Array.isArray(
+          iaResultado?.resultadoCompleto
+            ?.eixos
+        )
+          ? iaResultado.resultadoCompleto
+              .eixos
+          : [];
+
+      const encontrarEixoCompleto =
+        (area) => {
+          const idAlvo =
+            String(
+              area?.id ||
+              ""
+            ).trim();
+
+          const labelAlvo =
+            String(
+              area?.label ||
+              ""
+            ).trim();
+
+          return (
+            eixosResultadoCompleto.find(
+              (eixo) =>
+                String(
+                  eixo?.id ||
+                  ""
+                ).trim() === idAlvo
+            ) ||
+            eixosResultadoCompleto.find(
+              (eixo) =>
+                String(
+                  eixo?.label ||
+                  ""
+                )
+                  .trim()
+                  .toLowerCase() ===
+                labelAlvo
+                  .toLowerCase()
+            ) ||
+            null
+          );
+        };
+
       const areasParaAtendimento =
         areasComScore
           .map((area) => {
-            const diagnosticoArea =
+            const eixoCompleto =
+              encontrarEixoCompleto(
+                area
+              );
+
+            const diagnosticoAreaAntigo =
               iaResultado?.areas?.[
                 area.label
               ] ||
@@ -3645,57 +3714,103 @@ export default function DiagnosticoPrototipo() {
 
             const oportunidades =
               Array.isArray(
-                diagnosticoArea
+                eixoCompleto
                   ?.oportunidades
               )
-                ? diagnosticoArea
+                ? eixoCompleto
                     .oportunidades
                 : Array.isArray(
-                    diagnosticoArea
+                    diagnosticoAreaAntigo
+                      ?.oportunidades
+                  )
+                ? diagnosticoAreaAntigo
+                    .oportunidades
+                : Array.isArray(
+                    diagnosticoAreaAntigo
                       ?.oportunidadesConsultoria
                   )
-                ? diagnosticoArea
+                ? diagnosticoAreaAntigo
                     .oportunidadesConsultoria
                 : [];
 
             const riscos =
               Array.isArray(
-                diagnosticoArea
+                eixoCompleto
                   ?.riscos
               )
-                ? diagnosticoArea
+                ? eixoCompleto
+                    .riscos
+                : Array.isArray(
+                    diagnosticoAreaAntigo
+                      ?.riscos
+                  )
+                ? diagnosticoAreaAntigo
                     .riscos
                 : [];
 
             const recomendacoes =
               Array.isArray(
-                diagnosticoArea
+                eixoCompleto
                   ?.recomendacoes
               )
-                ? diagnosticoArea
+                ? eixoCompleto
+                    .recomendacoes
+                : Array.isArray(
+                    diagnosticoAreaAntigo
+                      ?.recomendacoes
+                  )
+                ? diagnosticoAreaAntigo
                     .recomendacoes
                 : [];
 
             const planoAcao =
               Array.isArray(
-                diagnosticoArea
+                eixoCompleto
                   ?.planoAcao
               )
-                ? diagnosticoArea
+                ? eixoCompleto
+                    .planoAcao
+                : Array.isArray(
+                    diagnosticoAreaAntigo
+                      ?.planoAcao
+                  )
+                ? diagnosticoAreaAntigo
                     .planoAcao
                 : [];
 
+            const achados =
+              Array.isArray(
+                eixoCompleto
+                  ?.achados
+              )
+                ? eixoCompleto
+                    .achados
+                : [];
+
             const orientacaoTecnica =
-              diagnosticoArea
+              eixoCompleto
                 ?.orientacaoTecnica ||
-              diagnosticoArea
+              eixoCompleto
+                ?.resumo ||
+              diagnosticoAreaAntigo
+                ?.orientacaoTecnica ||
+              diagnosticoAreaAntigo
                 ?.resumo ||
               "";
 
+            const prioridade =
+              prioridadesDiagnostico.includes(
+                area.id
+              );
+
+            const riscoRelevante =
+              riscos.length > 0;
+
             const possuiSinalDeAtuacao =
-              area.score < 80 ||
+              Number(area.score) < 60 ||
+              prioridade ||
+              riscoRelevante ||
               oportunidades.length > 0 ||
-              riscos.length > 0 ||
               recomendacoes.length > 0 ||
               planoAcao.length > 0;
 
@@ -3709,13 +3824,21 @@ export default function DiagnosticoPrototipo() {
               area:
                 area.label,
 
+              areaId:
+                area.id,
+
+              prioridade,
+
               score:
                 area.score,
 
               nivel:
+                eixoCompleto?.nivel ||
                 tierDe(
                   area.score
                 ).label,
+
+              achados,
 
               oportunidades,
 
