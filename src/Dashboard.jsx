@@ -448,7 +448,7 @@ export default function Dashboard({
 
     try {
       const resposta = await fetch(
-        `/api/dashboard?${query}`,
+        `/api/crm?action=dashboard${query ? `&${query}` : ""}`,
         {
           headers: {
             ...authHeaders(),
