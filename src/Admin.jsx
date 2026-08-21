@@ -21,6 +21,8 @@ import {
   Save,
   X,
   LayoutDashboard,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import Dashboard from "./Dashboard";
 
@@ -4933,6 +4935,365 @@ function AtendimentosDepartamento({
     setOportunidadeCaso,
   ] = useState("NAO_ANALISADA");
 
+
+  const [
+    propostasAtendimento,
+    setPropostasAtendimento,
+  ] = useState([]);
+
+  const [
+    carregandoPropostas,
+    setCarregandoPropostas,
+  ] = useState(false);
+
+  const [
+    salvandoProposta,
+    setSalvandoProposta,
+  ] = useState(false);
+
+  const [
+    propostaEditandoId,
+    setPropostaEditandoId,
+  ] = useState("");
+
+  const [
+    propostaForm,
+    setPropostaForm,
+  ] = useState({
+    servico: "",
+    descricao: "",
+    tipoReceita: "PONTUAL",
+    valorTotal: "",
+    mensalidade: "",
+    taxaImplantacao: "",
+    status: "RASCUNHO",
+    validade: "",
+    motivoPerda: "",
+    observacoes: "",
+  });
+
+
+  function formatarMoeda(valor) {
+    return Number(
+      valor ||
+      0
+    ).toLocaleString(
+      "pt-BR",
+      {
+        style: "currency",
+        currency: "BRL",
+      }
+    );
+  }
+
+  function statusPropostaLabel(status) {
+    const mapa = {
+      RASCUNHO: "Rascunho",
+      ENVIADA: "Enviada",
+      NEGOCIACAO: "Negociação",
+      GANHA: "Ganha",
+      PERDIDA: "Perdida",
+      CANCELADA: "Cancelada",
+    };
+
+    return mapa[status] || status || "-";
+  }
+
+  function limparFormularioProposta() {
+    setPropostaEditandoId("");
+
+    setPropostaForm({
+      servico: "",
+      descricao: "",
+      tipoReceita: "PONTUAL",
+      valorTotal: "",
+      mensalidade: "",
+      taxaImplantacao: "",
+      status: "RASCUNHO",
+      validade: "",
+      motivoPerda: "",
+      observacoes: "",
+    });
+  }
+
+  function editarCampoProposta(campo, valor) {
+    setPropostaForm(
+      (atual) => ({
+        ...atual,
+        [campo]: valor,
+      })
+    );
+  }
+
+  async function carregarPropostas(atendimentoId) {
+    if (!atendimentoId) {
+      setPropostasAtendimento([]);
+      return;
+    }
+
+    setCarregandoPropostas(true);
+
+    try {
+      const resposta = await fetch(
+        `/api/crm?action=listar-propostas&atendimentoId=${encodeURIComponent(
+          atendimentoId
+        )}`,
+        {
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await resposta
+        .json()
+        .catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar as propostas."
+        );
+      }
+
+      setPropostasAtendimento(
+        Array.isArray(data.propostas)
+          ? data.propostas
+          : []
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar propostas."
+      );
+    } finally {
+      setCarregandoPropostas(false);
+    }
+  }
+
+  async function salvarPropostaCaso() {
+    if (!atendimentoAberto) return;
+
+    if (!propostaForm.servico.trim()) {
+      setErro(
+        "Informe o serviço da proposta."
+      );
+      return;
+    }
+
+    if (
+      propostaForm.status ===
+        "PERDIDA" &&
+      !propostaForm.motivoPerda.trim()
+    ) {
+      setErro(
+        "Informe o motivo da perda."
+      );
+      return;
+    }
+
+    setSalvandoProposta(true);
+    setErro("");
+
+    try {
+      const resposta = await fetch(
+        "/api/crm?action=salvar-proposta",
+        {
+          method: "POST",
+          headers: {
+            "content-type":
+              "application/json",
+            Authorization:
+              `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            propostaId:
+              propostaEditandoId ||
+              undefined,
+            atendimentoId:
+              atendimentoAberto.id,
+            servico:
+              propostaForm.servico.trim(),
+            descricao:
+              propostaForm.descricao.trim(),
+            tipoReceita:
+              propostaForm.tipoReceita,
+            valorTotal:
+              propostaForm.valorTotal,
+            mensalidade:
+              propostaForm.mensalidade,
+            taxaImplantacao:
+              propostaForm.taxaImplantacao,
+            status:
+              propostaForm.status,
+            validade:
+              propostaForm.validade ||
+              null,
+            motivoPerda:
+              propostaForm.motivoPerda.trim(),
+            observacoes:
+              propostaForm.observacoes.trim(),
+            responsavelId:
+              atendimentoAberto.responsavelId ||
+              "",
+            responsavelNome:
+              atendimentoAberto.responsavelNome ||
+              "",
+          }),
+        }
+      );
+
+      const data = await resposta
+        .json()
+        .catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível salvar a proposta."
+        );
+      }
+
+      limparFormularioProposta();
+
+      await Promise.all([
+        carregarPropostas(
+          atendimentoAberto.id
+        ),
+        carregarHistorico(
+          atendimentoAberto.id
+        ),
+        carregarTudo(),
+      ]);
+
+      if (data.statusOportunidade) {
+        setOportunidadeCaso(
+          data.statusOportunidade
+        );
+
+        setAtendimentoAberto(
+          (atual) => ({
+            ...atual,
+            statusOportunidade:
+              data.statusOportunidade,
+          })
+        );
+      }
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao salvar proposta."
+      );
+    } finally {
+      setSalvandoProposta(false);
+    }
+  }
+
+  function carregarPropostaNoFormulario(proposta) {
+    setPropostaEditandoId(
+      proposta.id
+    );
+
+    setPropostaForm({
+      servico:
+        proposta.servico ||
+        "",
+      descricao:
+        proposta.descricao ||
+        "",
+      tipoReceita:
+        proposta.tipoReceita ||
+        "PONTUAL",
+      valorTotal:
+        String(
+          proposta.valorTotal ??
+          ""
+        ),
+      mensalidade:
+        String(
+          proposta.mensalidade ??
+          ""
+        ),
+      taxaImplantacao:
+        String(
+          proposta.taxaImplantacao ??
+          ""
+        ),
+      status:
+        proposta.status ||
+        "RASCUNHO",
+      validade:
+        proposta.validade
+          ? String(
+              proposta.validade
+            ).slice(0, 10)
+          : "",
+      motivoPerda:
+        proposta.motivoPerda ||
+        "",
+      observacoes:
+        proposta.observacoes ||
+        "",
+    });
+  }
+
+  async function excluirPropostaCaso(proposta) {
+    if (
+      !window.confirm(
+        `Excluir a proposta "${proposta.servico}"?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const resposta = await fetch(
+        "/api/crm?action=excluir-proposta",
+        {
+          method: "POST",
+          headers: {
+            "content-type":
+              "application/json",
+            Authorization:
+              `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            propostaId:
+              proposta.id,
+          }),
+        }
+      );
+
+      const data = await resposta
+        .json()
+        .catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível excluir a proposta."
+        );
+      }
+
+      await carregarPropostas(
+        atendimentoAberto.id
+      );
+
+      if (
+        propostaEditandoId ===
+        proposta.id
+      ) {
+        limparFormularioProposta();
+      }
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao excluir proposta."
+      );
+    }
+  }
+
   function rotuloTipoAcionamento(tipo) {
     const mapa = {
       WHATSAPP: "WhatsApp",
@@ -5044,6 +5405,9 @@ function AtendimentosDepartamento({
     try {
       const requisicoes = [
         carregarHistorico(
+          atendimento.id
+        ),
+        carregarPropostas(
           atendimento.id
         ),
       ];
@@ -6669,6 +7033,10 @@ function AtendimentosDepartamento({
                 setHistoricoAtendimento(
                   []
                 );
+                setPropostasAtendimento(
+                  []
+                );
+                limparFormularioProposta();
               }}
               style={{
                 border:
@@ -7165,6 +7533,634 @@ function AtendimentosDepartamento({
                               )}
                             </tbody>
                           </table>
+                        </Card>
+
+                        <h3
+                          style={{
+                            fontFamily:
+                              DISPLAY_FONT,
+                            margin:
+                              "18px 0 9px",
+                            fontSize: 17,
+                          }}
+                        >
+                          Propostas comerciais
+                        </h3>
+
+                        <Card
+                          style={{
+                            marginBottom: 14,
+                            background:
+                              "#FBFCFE",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns:
+                                "repeat(auto-fit,minmax(260px,1fr))",
+                              gap: 12,
+                            }}
+                          >
+                            <div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent:
+                                    "space-between",
+                                  alignItems:
+                                    "center",
+                                  gap: 8,
+                                  marginBottom: 9,
+                                }}
+                              >
+                                <strong
+                                  style={{
+                                    fontSize: 11.5,
+                                  }}
+                                >
+                                  Propostas vinculadas
+                                </strong>
+
+                                <span
+                                  style={{
+                                    background:
+                                      "#EEF0F5",
+                                    borderRadius: 999,
+                                    padding:
+                                      "4px 8px",
+                                    fontSize: 9,
+                                    fontWeight: 900,
+                                  }}
+                                >
+                                  {propostasAtendimento.length}
+                                </span>
+                              </div>
+
+                              {carregandoPropostas ? (
+                                <div
+                                  style={{
+                                    color: MUTED,
+                                    fontSize: 10.5,
+                                  }}
+                                >
+                                  Carregando...
+                                </div>
+                              ) : propostasAtendimento.length ? (
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gap: 8,
+                                  }}
+                                >
+                                  {propostasAtendimento.map(
+                                    (proposta) => (
+                                      <div
+                                        key={proposta.id}
+                                        style={{
+                                          border:
+                                            "1px solid #D8DEEA",
+                                          borderRadius: 9,
+                                          padding: 10,
+                                          background:
+                                            propostaEditandoId ===
+                                            proposta.id
+                                              ? "#FFF7F3"
+                                              : WHITE,
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            justifyContent:
+                                              "space-between",
+                                            gap: 8,
+                                          }}
+                                        >
+                                          <div>
+                                            <strong
+                                              style={{
+                                                fontSize: 11,
+                                              }}
+                                            >
+                                              {proposta.servico}
+                                            </strong>
+
+                                            <div
+                                              style={{
+                                                color: MUTED,
+                                                fontSize: 9,
+                                                marginTop: 2,
+                                              }}
+                                            >
+                                              {statusPropostaLabel(
+                                                proposta.status
+                                              )}{" "}
+                                              ·{" "}
+                                              {proposta.tipoReceita ===
+                                              "RECORRENTE"
+                                                ? "Recorrente"
+                                                : proposta.tipoReceita ===
+                                                  "MISTA"
+                                                ? "Mista"
+                                                : "Pontual"}
+                                            </div>
+                                          </div>
+
+                                          <strong
+                                            style={{
+                                              fontSize: 11,
+                                              color: NAVY,
+                                            }}
+                                          >
+                                            {formatarMoeda(
+                                              proposta.valorTotal
+                                            )}
+                                          </strong>
+                                        </div>
+
+                                        {Number(
+                                          proposta.mensalidade ||
+                                          0
+                                        ) > 0 && (
+                                          <div
+                                            style={{
+                                              marginTop: 5,
+                                              fontSize: 9.5,
+                                              color: MUTED,
+                                            }}
+                                          >
+                                            Mensalidade:{" "}
+                                            <strong>
+                                              {formatarMoeda(
+                                                proposta.mensalidade
+                                              )}
+                                            </strong>
+                                          </div>
+                                        )}
+
+                                        {proposta.status ===
+                                          "PERDIDA" &&
+                                          proposta.motivoPerda && (
+                                            <div
+                                              style={{
+                                                marginTop: 6,
+                                                background:
+                                                  "#FDE9E7",
+                                                color:
+                                                  "#8E352A",
+                                                borderRadius: 6,
+                                                padding: 6,
+                                                fontSize: 9,
+                                              }}
+                                            >
+                                              Motivo:{" "}
+                                              {proposta.motivoPerda}
+                                            </div>
+                                          )}
+
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            gap: 6,
+                                            marginTop: 8,
+                                          }}
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              carregarPropostaNoFormulario(
+                                                proposta
+                                              )
+                                            }
+                                            style={{
+                                              flex: 1,
+                                              border:
+                                                "1px solid #D8DEEA",
+                                              background:
+                                                WHITE,
+                                              borderRadius: 7,
+                                              padding:
+                                                "6px 7px",
+                                              fontSize: 9,
+                                              fontWeight: 800,
+                                              cursor:
+                                                "pointer",
+                                            }}
+                                          >
+                                            Editar
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              excluirPropostaCaso(
+                                                proposta
+                                              )
+                                            }
+                                            style={{
+                                              border:
+                                                "1px solid #E2B8B8",
+                                              background:
+                                                "#FFF7F7",
+                                              color:
+                                                "#A12B2B",
+                                              borderRadius: 7,
+                                              padding:
+                                                "6px 8px",
+                                              cursor:
+                                                "pointer",
+                                            }}
+                                          >
+                                            <Trash2
+                                              size={12}
+                                            />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              ) : (
+                                <div
+                                  style={{
+                                    border:
+                                      "1px dashed #C9D1DF",
+                                    borderRadius: 8,
+                                    padding: 13,
+                                    color: MUTED,
+                                    fontSize: 9.8,
+                                    textAlign:
+                                      "center",
+                                  }}
+                                >
+                                  Nenhuma proposta criada.
+                                </div>
+                              )}
+                            </div>
+
+                            <div
+                              style={{
+                                background:
+                                  "#F4F6FA",
+                                borderRadius: 9,
+                                padding: 11,
+                              }}
+                            >
+                              <strong
+                                style={{
+                                  display: "block",
+                                  fontSize: 11.5,
+                                  marginBottom: 9,
+                                }}
+                              >
+                                {propostaEditandoId
+                                  ? "Editar proposta"
+                                  : "Nova proposta"}
+                              </strong>
+
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gap: 7,
+                                }}
+                              >
+                                <input
+                                  value={propostaForm.servico}
+                                  onChange={(e) =>
+                                    editarCampoProposta(
+                                      "servico",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Serviço / solução"
+                                  style={{
+                                    border:
+                                      "1px solid #D8DEEA",
+                                    borderRadius: 7,
+                                    padding:
+                                      "8px 9px",
+                                  }}
+                                />
+
+                                <textarea
+                                  value={propostaForm.descricao}
+                                  onChange={(e) =>
+                                    editarCampoProposta(
+                                      "descricao",
+                                      e.target.value
+                                    )
+                                  }
+                                  rows={2}
+                                  placeholder="Escopo resumido"
+                                  style={{
+                                    border:
+                                      "1px solid #D8DEEA",
+                                    borderRadius: 7,
+                                    padding:
+                                      "8px 9px",
+                                    resize:
+                                      "vertical",
+                                    fontFamily:
+                                      BODY_FONT,
+                                  }}
+                                />
+
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns:
+                                      "repeat(2,minmax(0,1fr))",
+                                    gap: 7,
+                                  }}
+                                >
+                                  <select
+                                    value={propostaForm.tipoReceita}
+                                    onChange={(e) =>
+                                      editarCampoProposta(
+                                        "tipoReceita",
+                                        e.target.value
+                                      )
+                                    }
+                                    style={{
+                                      border:
+                                        "1px solid #D8DEEA",
+                                      borderRadius: 7,
+                                      padding:
+                                        "8px 9px",
+                                      background:
+                                        WHITE,
+                                    }}
+                                  >
+                                    <option value="PONTUAL">
+                                      Pontual
+                                    </option>
+                                    <option value="RECORRENTE">
+                                      Recorrente
+                                    </option>
+                                    <option value="MISTA">
+                                      Projeto + recorrência
+                                    </option>
+                                  </select>
+
+                                  <select
+                                    value={propostaForm.status}
+                                    onChange={(e) =>
+                                      editarCampoProposta(
+                                        "status",
+                                        e.target.value
+                                      )
+                                    }
+                                    style={{
+                                      border:
+                                        "1px solid #D8DEEA",
+                                      borderRadius: 7,
+                                      padding:
+                                        "8px 9px",
+                                      background:
+                                        WHITE,
+                                    }}
+                                  >
+                                    <option value="RASCUNHO">
+                                      Rascunho
+                                    </option>
+                                    <option value="ENVIADA">
+                                      Enviada
+                                    </option>
+                                    <option value="NEGOCIACAO">
+                                      Negociação
+                                    </option>
+                                    <option value="GANHA">
+                                      Ganha
+                                    </option>
+                                    <option value="PERDIDA">
+                                      Perdida
+                                    </option>
+                                    <option value="CANCELADA">
+                                      Cancelada
+                                    </option>
+                                  </select>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns:
+                                      "repeat(3,minmax(0,1fr))",
+                                    gap: 7,
+                                  }}
+                                >
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={propostaForm.valorTotal}
+                                    onChange={(e) =>
+                                      editarCampoProposta(
+                                        "valorTotal",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Valor total"
+                                    title="Valor total"
+                                    style={{
+                                      border:
+                                        "1px solid #D8DEEA",
+                                      borderRadius: 7,
+                                      padding:
+                                        "8px 9px",
+                                      minWidth: 0,
+                                    }}
+                                  />
+
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={propostaForm.mensalidade}
+                                    onChange={(e) =>
+                                      editarCampoProposta(
+                                        "mensalidade",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Mensalidade"
+                                    title="Mensalidade"
+                                    style={{
+                                      border:
+                                        "1px solid #D8DEEA",
+                                      borderRadius: 7,
+                                      padding:
+                                        "8px 9px",
+                                      minWidth: 0,
+                                    }}
+                                  />
+
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={propostaForm.taxaImplantacao}
+                                    onChange={(e) =>
+                                      editarCampoProposta(
+                                        "taxaImplantacao",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Implantação"
+                                    title="Taxa de implantação"
+                                    style={{
+                                      border:
+                                        "1px solid #D8DEEA",
+                                      borderRadius: 7,
+                                      padding:
+                                        "8px 9px",
+                                      minWidth: 0,
+                                    }}
+                                  />
+                                </div>
+
+                                <input
+                                  type="date"
+                                  value={propostaForm.validade}
+                                  onChange={(e) =>
+                                    editarCampoProposta(
+                                      "validade",
+                                      e.target.value
+                                    )
+                                  }
+                                  style={{
+                                    border:
+                                      "1px solid #D8DEEA",
+                                    borderRadius: 7,
+                                    padding:
+                                      "8px 9px",
+                                  }}
+                                />
+
+                                {propostaForm.status ===
+                                  "PERDIDA" && (
+                                  <textarea
+                                    value={propostaForm.motivoPerda}
+                                    onChange={(e) =>
+                                      editarCampoProposta(
+                                        "motivoPerda",
+                                        e.target.value
+                                      )
+                                    }
+                                    rows={2}
+                                    placeholder="Motivo da perda"
+                                    style={{
+                                      border:
+                                        "1px solid #E2B8B8",
+                                      borderRadius: 7,
+                                      padding:
+                                        "8px 9px",
+                                      resize:
+                                        "vertical",
+                                      fontFamily:
+                                        BODY_FONT,
+                                    }}
+                                  />
+                                )}
+
+                                <textarea
+                                  value={propostaForm.observacoes}
+                                  onChange={(e) =>
+                                    editarCampoProposta(
+                                      "observacoes",
+                                      e.target.value
+                                    )
+                                  }
+                                  rows={2}
+                                  placeholder="Observações internas"
+                                  style={{
+                                    border:
+                                      "1px solid #D8DEEA",
+                                    borderRadius: 7,
+                                    padding:
+                                      "8px 9px",
+                                    resize:
+                                      "vertical",
+                                    fontFamily:
+                                      BODY_FONT,
+                                  }}
+                                />
+
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 7,
+                                  }}
+                                >
+                                  {propostaEditandoId && (
+                                    <button
+                                      type="button"
+                                      onClick={
+                                        limparFormularioProposta
+                                      }
+                                      style={{
+                                        border:
+                                          "1px solid #D8DEEA",
+                                        background:
+                                          WHITE,
+                                        borderRadius: 7,
+                                        padding:
+                                          "8px 10px",
+                                        fontWeight: 800,
+                                        cursor:
+                                          "pointer",
+                                      }}
+                                    >
+                                      Cancelar
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={
+                                      salvarPropostaCaso
+                                    }
+                                    disabled={
+                                      salvandoProposta
+                                    }
+                                    style={{
+                                      flex: 1,
+                                      border: 0,
+                                      background:
+                                        CORAL,
+                                      color:
+                                        WHITE,
+                                      borderRadius: 7,
+                                      padding:
+                                        "8px 10px",
+                                      fontWeight: 900,
+                                      cursor:
+                                        salvandoProposta
+                                          ? "wait"
+                                          : "pointer",
+                                      display:
+                                        "flex",
+                                      alignItems:
+                                        "center",
+                                      justifyContent:
+                                        "center",
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <Plus
+                                      size={13}
+                                    />
+                                    {salvandoProposta
+                                      ? "Salvando..."
+                                      : propostaEditandoId
+                                      ? "Salvar alterações"
+                                      : "Criar proposta"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </Card>
 
                         <h3
