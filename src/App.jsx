@@ -1358,7 +1358,7 @@ function PrimaryButton({ children, onClick, disabled, style }) {
   );
 }
 
-export default function DiagnosticoPrototipo() {
+function DiagnosticoPrototipo() {
   const SENHA_ACESSO_APP = "181022";
   const [acessoLiberado, setAcessoLiberado] = useState(() => {
     try { return sessionStorage.getItem("finder_app_acesso") === "liberado"; }
@@ -3835,6 +3835,59 @@ export default function DiagnosticoPrototipo() {
 
 
 
+
+  function limparCodigoInternoRelatorio(
+    valor
+  ) {
+    return String(
+      valor ||
+      ""
+    )
+      // Ex.: (resposta: 'parcialmente' para fin_q1)
+      .replace(
+        /\s*\(\s*resposta\s*:\s*['"][^'"]*['"]\s+para\s+[a-z0-9_:-]+\s*\)/gi,
+        ""
+      )
+      // Ex.: — Id: c1 — Tipo: fato
+      .replace(
+        /\s*[—-]\s*Id\s*:\s*[a-z0-9_:-]+/gi,
+        ""
+      )
+      .replace(
+        /\s*[—-]\s*Tipo\s*:\s*[a-z0-9_:-]+/gi,
+        ""
+      )
+      // Ex.: — Ligado A: c3
+      .replace(
+        /\s*[—-]\s*Ligado\s*A\s*:\s*[a-z0-9_:-]+/gi,
+        ""
+      )
+      // Ex.: — Risco Mitigado: rc1
+      .replace(
+        /\s*[—-]\s*Risco\s*Mitigado\s*:\s*[a-z0-9_:-]+/gi,
+        ""
+      )
+      // Ex.: (contabil_fiscal_1 = 'nao')
+      .replace(
+        /\s*\([a-z0-9_]+\s*=\s*['"][^'"]*['"]\s*\)/gi,
+        ""
+      )
+      // Ex.: códigos soltos do padrão fin_q1, rc_2, c3 no fim da frase
+      .replace(
+        /\s*[—-]\s*(?:ref|c[oó]digo|codigo)\s*:\s*[a-z0-9_:-]+/gi,
+        ""
+      )
+      .replace(
+        /\s{2,}/g,
+        " "
+      )
+      .replace(
+        /\s+([.,;:])/g,
+        "$1"
+      )
+      .trim();
+  }
+
   function textoIaSeguro(
     valor,
     fallback = ""
@@ -3850,7 +3903,9 @@ export default function DiagnosticoPrototipo() {
       typeof valor ===
       "string"
     ) {
-      return valor.trim();
+      return limparCodigoInternoRelatorio(
+        valor
+      );
     }
 
     if (
@@ -3895,7 +3950,9 @@ export default function DiagnosticoPrototipo() {
         );
 
       if (encontrado) {
-        return encontrado.trim();
+        return limparCodigoInternoRelatorio(
+          encontrado
+        );
       }
 
       try {
@@ -7666,4 +7723,64 @@ function miniChipStyle(active) {
     background: active ? NAVY : WHITE, color: active ? WHITE : MUTED, fontSize: 11.5,
     fontFamily: BODY_FONT, cursor: "pointer", fontWeight: 600,
   };
+}
+
+
+// =========================================================
+// LOGIN DO APP
+// =========================================================
+export default function AppComAcesso() {
+  const [token, setToken] = useState(() => sessionStorage.getItem("finder_app_token") || "");
+  const [usuario, setUsuario] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("finder_app_user") || "{}"); } catch { return {}; }
+  });
+  const [login, setLogin] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+
+  async function entrar() {
+    if (!login.trim() || !senha) { setErro("Digite seu login e senha."); return; }
+    setCarregando(true); setErro("");
+    try {
+      const r = await fetch("/api/acessos?action=login", {
+        method:"POST", headers:{"content-type":"application/json"},
+        body:JSON.stringify({login:login.trim(), senha, tipo:"APP"})
+      });
+      const d = await r.json().catch(()=>null);
+      if (!r.ok || !d?.sucesso || !d?.token) throw new Error(d?.error || "Login ou senha inválidos.");
+      sessionStorage.setItem("finder_app_token", d.token);
+      sessionStorage.setItem("finder_app_user", JSON.stringify(d.usuario || {}));
+      setUsuario(d.usuario || {}); setToken(d.token);
+    } catch(e) { setErro(e?.message || "Não foi possível entrar no App."); }
+    finally { setCarregando(false); }
+  }
+
+  useEffect(() => {
+    if (!token) return;
+    const handler = (ev) => {
+      const el = ev.target?.closest?.("button,a,[role='button']");
+      if (!el) return;
+      const descricao = String(el.innerText || el.getAttribute("aria-label") || "").trim().slice(0,160);
+      if (!descricao) return;
+      fetch("/api/acessos?action=auditar", {method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({acao:"CLICK",modulo:"APP",recurso:"interface",descricao})}).catch(()=>null);
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, [token]);
+
+  if (!token) {
+    return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#F3F5F8",padding:20,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+      <div style={{width:"100%",maxWidth:420,background:"white",borderRadius:20,padding:30,boxShadow:"0 24px 60px rgba(23,35,61,.14)"}}>
+        <img src="/finder-logo.png" alt="Finder of Solutions" style={{width:180,maxWidth:"70%",objectFit:"contain",marginBottom:22}}/>
+        <h1 style={{margin:"0 0 7px",color:"#17233D",fontSize:28}}>Acesso ao Diagnóstico</h1>
+        <p style={{margin:"0 0 22px",fontSize:13,color:"#5B667A"}}>Entre com o usuário criado pelo administrador.</p>
+        <input value={login} onChange={e=>{setLogin(e.target.value);setErro("")}} placeholder="Login ou e-mail" autoComplete="username" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
+        <input type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErro("")}} onKeyDown={e=>e.key==="Enter"&&entrar()} placeholder="Senha" autoComplete="current-password" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
+        {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,fontSize:12,marginBottom:10}}>{erro}</div>}
+        <button onClick={entrar} disabled={carregando} style={{width:"100%",border:0,borderRadius:10,padding:"12px 14px",background:"#17233D",color:"white",fontWeight:700,cursor:"pointer"}}>{carregando?"Validando...":"Entrar"}</button>
+      </div>
+    </div>;
+  }
+  return <DiagnosticoPrototipo usuarioAcesso={usuario} tokenAcesso={token} />;
 }
