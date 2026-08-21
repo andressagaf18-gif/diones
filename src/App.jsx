@@ -14,6 +14,107 @@ const WHITE = "#FFFFFF";
 const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const MAX_DORES = 3;
+
+const finderIaInflight = new Map();
+
+function finderCacheKey(prefixo, payload) {
+  const bruto = JSON.stringify(payload);
+  let hash = 2166136261;
+
+  for (let i = 0; i < bruto.length; i += 1) {
+    hash ^= bruto.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+
+  return `${prefixo}_${(hash >>> 0).toString(16)}`;
+}
+
+function lerCacheIa(chave, ttlMs) {
+  try {
+    const bruto = sessionStorage.getItem(chave);
+    if (!bruto) return null;
+
+    const item = JSON.parse(bruto);
+
+    if (!item?.ts || Date.now() - item.ts > ttlMs) {
+      sessionStorage.removeItem(chave);
+      return null;
+    }
+
+    return item.data || null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarCacheIa(chave, data) {
+  try {
+    sessionStorage.setItem(
+      chave,
+      JSON.stringify({
+        ts: Date.now(),
+        data,
+      })
+    );
+  } catch {
+    // cache é apenas uma otimização
+  }
+}
+
+async function fetchJsonDedupe({
+  chave,
+  url,
+  payload,
+  ttlMs,
+}) {
+  const cache = lerCacheIa(chave, ttlMs);
+
+  if (cache) {
+    return {
+      ...cache,
+      _cacheFrontend: true,
+    };
+  }
+
+  if (finderIaInflight.has(chave)) {
+    return finderIaInflight.get(chave);
+  }
+
+  const requisicao = fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  })
+    .then(async (resposta) => {
+      const data = await resposta
+        .json()
+        .catch(() => null);
+
+      if (!resposta.ok) {
+        throw new Error(
+          data?.error ||
+            "Falha na inteligência artificial."
+        );
+      }
+
+      salvarCacheIa(chave, data);
+      return data;
+    })
+    .finally(() => {
+      finderIaInflight.delete(chave);
+    });
+
+  finderIaInflight.set(chave, requisicao);
+  return requisicao;
+}
+
 const MAX_EMPRESAS = 4;
 
 const AREAS = [
@@ -2470,26 +2571,34 @@ export default function DiagnosticoPrototipo() {
       scoreGeral: scoreDe(todasPerguntas),
     };
 
-    const minDelay = new Promise((resolve) => setTimeout(resolve, 1800));
-    const chamadaIA = fetch("/api/diagnostico", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(async (r) => {
-        if (!r.ok) {
-          const erro = await r.json().catch(() => null);
-          console.error("Erro diagnóstico:", erro);
-          return null;
-        }
-        return r.json();
-      })
-      .catch((erro) => {
-        console.error("Erro ao chamar diagnóstico:", erro);
-        return null;
+    const chaveDiagnostico =
+      finderCacheKey(
+        "finder_diagnostico",
+        payload
+      );
+
+    const chamadaIA =
+      fetchJsonDedupe({
+        chave: chaveDiagnostico,
+        url: "/api/diagnostico",
+        payload,
+        ttlMs:
+          15 * 60 * 1000,
+      }).catch((erro) => {
+        console.error(
+          "Erro ao chamar diagnóstico:",
+          erro
+        );
+
+        return {
+          sucesso: false,
+          error:
+            erro?.message ||
+            "Não foi possível gerar o diagnóstico.",
+        };
       });
 
-    Promise.all([chamadaIA, minDelay]).then(([data]) => {
+    chamadaIA.then((data) => {
       if (cancelado) return;
 
       const diagnostico =
@@ -3118,16 +3227,29 @@ export default function DiagnosticoPrototipo() {
     };
 
     try {
-      const r = await fetch("/api/gerar-perguntas", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const chaveCache =
+        finderCacheKey(
+          "finder_perguntas",
+          payload
+        );
 
-      const data = await r.json().catch(() => null);
+      const data =
+        await fetchJsonDedupe({
+          chave: chaveCache,
+          url: "/api/gerar-perguntas",
+          payload,
+          ttlMs:
+            30 * 60 * 1000,
+        });
 
-      if (!r.ok || !data?.sucesso || !Array.isArray(data?.perguntas)) {
-        throw new Error(data?.error || "Não foi possível gerar as perguntas personalizadas.");
+      if (
+        !data?.sucesso ||
+        !Array.isArray(data?.perguntas)
+      ) {
+        throw new Error(
+          data?.error ||
+            "Não foi possível gerar as perguntas personalizadas."
+        );
       }
 
       const perguntas = data.perguntas
