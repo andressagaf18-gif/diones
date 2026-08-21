@@ -28,6 +28,12 @@ import {
   LayoutDashboard,
   Trash2,
   Plus,
+  Archive,
+  ArchiveRestore,
+  ShieldCheck,
+  KeyRound,
+  History,
+  UserCog,
 } from "lucide-react";
 import Dashboard from "./Dashboard";
 
@@ -861,203 +867,63 @@ function Botao({
 // =========================================================
 
 function LoginAdmin({ onLogin }) {
-  const [token, setToken] =
-    useState("");
-
-  const [erro, setErro] =
-    useState("");
-
-  const [carregando, setCarregando] =
-    useState(false);
+  const [login, setLogin] = useState("");
+  const [senha, setSenha] = useState("");
+  const [modoLegado, setModoLegado] = useState(false);
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
 
   async function entrar() {
-    const valor =
-      token.trim();
-
-    if (!valor) {
-      setErro(
-        "Digite a senha administrativa."
-      );
-
+    if (!senha.trim() || (!modoLegado && !login.trim())) {
+      setErro(modoLegado ? "Digite a senha administrativa." : "Digite seu login e senha.");
       return;
     }
-
-    setCarregando(true);
-    setErro("");
-
+    setCarregando(true); setErro("");
     try {
-      const resposta =
-        await fetch(
-          "/api/listar-diagnosticos?limite=1",
-          {
-            headers: {
-              Authorization:
-                `Bearer ${valor}`,
-            },
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso
-      ) {
-        throw new Error(
-          data?.error ||
-          "Senha administrativa inválida."
-        );
+      if (modoLegado) {
+        const valor = senha.trim();
+        const resposta = await fetch("/api/listar-diagnosticos?limite=1", {
+          headers: { Authorization: `Bearer ${valor}` },
+        });
+        const data = await resposta.json().catch(() => null);
+        if (!resposta.ok || !data?.sucesso) throw new Error(data?.error || "Senha administrativa inválida.");
+        sessionStorage.setItem("finder_admin_token", valor);
+        sessionStorage.setItem("finder_admin_user", JSON.stringify({ nome: "Administrador", login: "legacy", perfil: "ADMIN", tipo: "SISTEMA", legacy: true }));
+        onLogin(valor);
+        return;
       }
-
-      sessionStorage.setItem(
-        "finder_admin_token",
-        valor
-      );
-
-      onLogin(valor);
-
-    } catch (error) {
-      setErro(
-        error?.message ||
-        "Não foi possível acessar o painel."
-      );
-
-    } finally {
-      setCarregando(false);
-    }
+      const resposta = await fetch("/api/acessos?action=login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ login: login.trim(), senha, tipo: "SISTEMA" }),
+      });
+      const data = await resposta.json().catch(() => null);
+      if (!resposta.ok || !data?.sucesso || !data?.token) throw new Error(data?.error || "Login ou senha inválidos.");
+      sessionStorage.setItem("finder_admin_token", data.token);
+      sessionStorage.setItem("finder_admin_user", JSON.stringify(data.usuario || {}));
+      onLogin(data.token);
+    } catch (error) { setErro(error?.message || "Não foi possível acessar o painel."); }
+    finally { setCarregando(false); }
   }
 
+  const inputStyle = { width:"100%", boxSizing:"border-box", border:"1px solid #D8DEEA", borderRadius:10, padding:"12px 13px", fontFamily:BODY_FONT, fontSize:14, color:NAVY, marginBottom:12 };
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: BG,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 20,
-        fontFamily: BODY_FONT,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 430,
-          background: WHITE,
-          borderRadius: 20,
-          padding: 30,
-          boxShadow:
-            "0 24px 60px rgba(23,35,61,0.14)",
-        }}
-      >
-        <img
-          src="/finder-logo.png"
-          alt="Finder of Solutions"
-          style={{
-            width: 180,
-            maxWidth: "70%",
-            objectFit: "contain",
-            marginBottom: 22,
-          }}
-        />
-
-        <h1
-          style={{
-            fontFamily: DISPLAY_FONT,
-            color: NAVY,
-            fontSize: 28,
-            margin: "0 0 7px",
-          }}
-        >
-          Painel de Diagnósticos
-        </h1>
-
-        <p
-          style={{
-            fontSize: 13,
-            color: MUTED,
-            lineHeight: 1.5,
-            margin: "0 0 22px",
-          }}
-        >
-          Área restrita da Finder para consulta
-          dos diagnósticos empresariais realizados.
-        </p>
-
-        <label
-          style={{
-            display: "block",
-            fontSize: 12,
-            fontWeight: 700,
-            color: NAVY,
-            marginBottom: 7,
-          }}
-        >
-          Senha administrativa
-        </label>
-
-        <input
-          type="password"
-          value={token}
-          onChange={(e) => {
-            setToken(
-              e.target.value
-            );
-
-            setErro("");
-          }}
-          onKeyDown={(e) => {
-            if (
-              e.key === "Enter"
-            ) {
-              entrar();
-            }
-          }}
-          autoComplete="current-password"
-          placeholder="Digite o ADMIN_TOKEN"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            border:
-              "1px solid #D8DEEA",
-            borderRadius: 10,
-            padding: "12px 13px",
-            fontFamily: BODY_FONT,
-            fontSize: 14,
-            color: NAVY,
-            marginBottom: 12,
-          }}
-        />
-
-        {erro && (
-          <div
-            style={{
-              background: "#FAECE7",
-              color: "#993C1D",
-              borderRadius: 9,
-              padding: 10,
-              fontSize: 12,
-              marginBottom: 12,
-            }}
-          >
-            {erro}
-          </div>
-        )}
-
-        <Botao
-          onClick={entrar}
-          disabled={carregando}
-          style={{
-            width: "100%",
-          }}
-        >
-          {carregando
-            ? "Validando..."
-            : "Entrar no painel"}
-        </Botao>
+    <div style={{minHeight:"100vh",background:BG,display:"flex",justifyContent:"center",alignItems:"center",padding:20,fontFamily:BODY_FONT}}>
+      <div style={{width:"100%",maxWidth:430,background:WHITE,borderRadius:20,padding:30,boxShadow:"0 24px 60px rgba(23,35,61,0.14)"}}>
+        <img src="/finder-logo.png" alt="Finder of Solutions" style={{width:180,maxWidth:"70%",objectFit:"contain",marginBottom:22}} />
+        <h1 style={{fontFamily:DISPLAY_FONT,color:NAVY,fontSize:28,margin:"0 0 7px"}}>Painel Administrativo</h1>
+        <p style={{fontSize:13,color:MUTED,lineHeight:1.5,margin:"0 0 22px"}}>Acesso individual e auditado ao sistema Finder.</p>
+        {!modoLegado && <>
+          <label style={{display:"block",fontSize:12,fontWeight:700,color:NAVY,marginBottom:7}}>Login ou e-mail</label>
+          <input value={login} onChange={e=>{setLogin(e.target.value);setErro("")}} autoComplete="username" placeholder="seu.login" style={inputStyle}/>
+        </>}
+        <label style={{display:"block",fontSize:12,fontWeight:700,color:NAVY,marginBottom:7}}>{modoLegado ? "Senha administrativa atual" : "Senha"}</label>
+        <input type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErro("")}} onKeyDown={e=>e.key==="Enter"&&entrar()} autoComplete="current-password" placeholder={modoLegado?"ADMIN_TOKEN":"Sua senha"} style={inputStyle}/>
+        {erro && <div style={{background:"#FAECE7",color:"#993C1D",borderRadius:9,padding:10,fontSize:12,marginBottom:12}}>{erro}</div>}
+        <Botao onClick={entrar} disabled={carregando} style={{width:"100%"}}><KeyRound size={15}/>{carregando?"Validando...":"Entrar no painel"}</Botao>
+        <button onClick={()=>{setModoLegado(v=>!v);setErro("");setLogin("");setSenha("")}} style={{width:"100%",marginTop:12,border:0,background:"transparent",color:MUTED,cursor:"pointer",fontSize:12}}>
+          {modoLegado ? "Voltar ao login individual" : "Acesso de contingência com ADMIN_TOKEN"}
+        </button>
       </div>
     </div>
   );
@@ -1092,6 +958,12 @@ function ListaDiagnosticos({
     setEstruturaFiltro,
   ] = useState("");
 
+
+  const [
+    arquivamentoAtendimentos,
+    setArquivamentoAtendimentos,
+  ] = useState("ATIVOS");
+
   const [
     total,
     setTotal,
@@ -1110,6 +982,17 @@ function ListaDiagnosticos({
   const [
     erro,
     setErro,
+  ] = useState("");
+
+
+  const [
+    arquivamentoDiagnosticos,
+    setArquivamentoDiagnosticos,
+  ] = useState("ATIVOS");
+
+  const [
+    processandoDiagnosticoId,
+    setProcessandoDiagnosticoId,
   ] = useState("");
 
   // =======================================================
@@ -1134,6 +1017,11 @@ function ListaDiagnosticos({
       params.set(
         "offset",
         "0"
+      );
+
+      params.set(
+        "arquivamento",
+        arquivamentoDiagnosticos
       );
 
       if (
@@ -1208,6 +1096,85 @@ function ListaDiagnosticos({
   useEffect(() => {
     carregar("");
   }, []);
+
+
+  async function acaoDiagnostico(
+    item,
+    action
+  ) {
+    const excluir =
+      action === "excluir";
+
+    const mensagem =
+      excluir
+        ? `Excluir definitivamente o diagnóstico de "${item.razaoSocial || item.nome || "cliente"}"?\n\nTambém serão removidos lead, atendimentos e históricos vinculados.`
+        : item.arquivado
+        ? "Desarquivar este diagnóstico?"
+        : "Arquivar este diagnóstico? Ele sairá das listas ativas.";
+
+    if (!window.confirm(mensagem)) {
+      return;
+    }
+
+    setProcessandoDiagnosticoId(
+      item.id
+    );
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          `/api/listar-diagnosticos?action=${
+            excluir
+              ? "excluir"
+              : item.arquivado
+              ? "desarquivar"
+              : "arquivar"
+          }`,
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              diagnosticoId:
+                item.id,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível concluir a operação."
+        );
+      }
+
+      await carregar(
+        buscaAplicada
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao processar diagnóstico."
+      );
+    } finally {
+      setProcessandoDiagnosticoId(
+        ""
+      );
+    }
+  }
 
   function pesquisar() {
     const termo =
@@ -2516,6 +2483,50 @@ function ListaDiagnosticos({
           </div>
         )}
 
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            marginBottom: 10,
+          }}
+        >
+          <select
+            value={
+              arquivamentoDiagnosticos
+            }
+            onChange={(e) => {
+              setArquivamentoDiagnosticos(
+                e.target.value
+              );
+              setTimeout(
+                () =>
+                  carregar(
+                    buscaAplicada
+                  ),
+                0
+              );
+            }}
+            style={{
+              border:
+                "1px solid #D8DEEA",
+              borderRadius: 8,
+              padding: "8px 10px",
+              background: WHITE,
+              fontSize: 10.5,
+            }}
+          >
+            <option value="ATIVOS">
+              Ativos
+            </option>
+            <option value="ARQUIVADOS">
+              Arquivados
+            </option>
+            <option value="TODOS">
+              Todos
+            </option>
+          </select>
+        </div>
+
         {/* ================================================= */}
         {/* LISTA */}
         {/* ================================================= */}
@@ -2553,10 +2564,12 @@ function ListaDiagnosticos({
                   );
 
                 return (
-                  <button
+                  <div
                     key={
                       item.id
                     }
+                    role="button"
+                    tabIndex={0}
                     onClick={() =>
                       onAbrir(
                         item.id
@@ -2874,11 +2887,85 @@ function ListaDiagnosticos({
                       </div>
                     </div>
 
-                    <ChevronRight
-                      size={20}
-                      color={MUTED}
-                    />
-                  </button>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                        alignItems: "center",
+                      }}
+                      onClick={(e) =>
+                        e.stopPropagation()
+                      }
+                    >
+                      <ChevronRight
+                        size={20}
+                        color={MUTED}
+                      />
+
+                      <button
+                        type="button"
+                        disabled={
+                          processandoDiagnosticoId ===
+                          item.id
+                        }
+                        onClick={() =>
+                          acaoDiagnostico(
+                            item,
+                            "arquivar"
+                          )
+                        }
+                        title={
+                          item.arquivado
+                            ? "Desarquivar"
+                            : "Arquivar"
+                        }
+                        style={{
+                          border: 0,
+                          background: "transparent",
+                          color: MUTED,
+                          cursor: "pointer",
+                          padding: 2,
+                        }}
+                      >
+                        {item.arquivado ? (
+                          <ArchiveRestore
+                            size={15}
+                          />
+                        ) : (
+                          <Archive
+                            size={15}
+                          />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={
+                          processandoDiagnosticoId ===
+                          item.id
+                        }
+                        onClick={() =>
+                          acaoDiagnostico(
+                            item,
+                            "excluir"
+                          )
+                        }
+                        title="Excluir diagnóstico"
+                        style={{
+                          border: 0,
+                          background: "transparent",
+                          color: "#A12B2B",
+                          cursor: "pointer",
+                          padding: 2,
+                        }}
+                      >
+                        <Trash2
+                          size={15}
+                        />
+                      </button>
+                    </div>
+                  </div>
                 );
               }
             )}
@@ -2934,6 +3021,11 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
         params.set("prioridadeComercial", prioridadeComercial);
       }
 
+      params.set(
+        "arquivamento",
+        arquivamentoLeads
+      );
+
       const resposta = await fetch(
         `/api/crm?action=listar-leads&${params.toString()}`,
         {
@@ -2979,6 +3071,55 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
       setErro(error?.message || "Erro ao carregar leads.");
     } finally {
       setCarregando(false);
+    }
+  }
+
+
+  async function alternarArquivoLead(
+    lead
+  ) {
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=arquivar-lead",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              leadId:
+                lead.leadId,
+              arquivado:
+                !lead.arquivado,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível arquivar o lead."
+        );
+      }
+
+      await carregarLeads();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao arquivar lead."
+      );
     }
   }
 
@@ -3579,6 +3720,45 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
         </div>
       )}
 
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginBottom: 10,
+        }}
+      >
+        <select
+          value={arquivamentoLeads}
+          onChange={(e) => {
+            setArquivamentoLeads(
+              e.target.value
+            );
+            setTimeout(
+              carregarLeads,
+              0
+            );
+          }}
+          style={{
+            border:
+              "1px solid #D8DEEA",
+            borderRadius: 8,
+            padding: "8px 10px",
+            background: WHITE,
+            fontSize: 10.5,
+          }}
+        >
+          <option value="ATIVOS">
+            Ativos
+          </option>
+          <option value="ARQUIVADOS">
+            Arquivados
+          </option>
+          <option value="TODOS">
+            Todos
+          </option>
+        </select>
+      </div>
+
       {leads.length > 0 && (
         <Card
           style={{
@@ -4139,6 +4319,33 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                       <Flame size={14} color={CORAL} />
                       {temperatura(lead)}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        alternarArquivoLead(
+                          lead
+                        )
+                      }
+                      style={{
+                        marginTop: 7,
+                        width: "100%",
+                        border:
+                          "1px solid #D8DEEA",
+                        background:
+                          WHITE,
+                        color: NAVY,
+                        borderRadius: 8,
+                        padding: "7px 8px",
+                        fontSize: 9.8,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {lead.arquivado
+                        ? "Desarquivar lead"
+                        : "Arquivar lead"}
+                    </button>
 
                     {lead.diagnosticoId ? (
                       <button
@@ -6114,6 +6321,55 @@ function AtendimentosDepartamento({
           item.areaId
         ) === alvo
     );
+  }
+
+
+  async function alternarArquivoAtendimento(
+    atendimento
+  ) {
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=arquivar-atendimento",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              atendimentoId:
+                atendimento.id,
+              arquivado:
+                !atendimento.arquivado,
+            }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível arquivar o atendimento."
+        );
+      }
+
+      await carregarTudo();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao arquivar atendimento."
+      );
+    }
   }
 
   async function excluirLeadAtendimento(atendimento) {
@@ -9479,6 +9735,32 @@ function AtendimentosDepartamento({
                           }}
                         >
                           Abrir atendimento
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            alternarArquivoAtendimento(
+                              atendimento
+                            )
+                          }
+                          style={{
+                            width: "100%",
+                            marginTop: 7,
+                            background: WHITE,
+                            border:
+                              "1px solid #D8DEEA",
+                            color: NAVY,
+                            borderRadius: 10,
+                            padding: "8px 10px",
+                            fontSize: 10,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {atendimento.arquivado
+                            ? "Desarquivar atendimento"
+                            : "Arquivar atendimento"}
                         </button>
 
                         <button
@@ -13781,6 +14063,54 @@ function ListaInterna({
   );
 }
 
+
+// =========================================================
+// USUÁRIOS, ACESSOS E AUDITORIA
+// =========================================================
+function UsuariosAcessos({ token }) {
+  const [usuarios,setUsuarios]=useState([]), [erro,setErro]=useState(""), [salvando,setSalvando]=useState(false);
+  const [form,setForm]=useState({nome:"",email:"",login:"",senha:"",tipoAcesso:"SISTEMA",perfil:"CONSULTOR"});
+  async function carregar(){ try{ const r=await fetch("/api/acessos?action=usuarios",{headers:{Authorization:`Bearer ${token}`}}); const d=await r.json().catch(()=>null); if(!r.ok||!d?.sucesso) throw new Error(d?.error||"Erro ao carregar usuários."); setUsuarios(d.usuarios||[]);}catch(e){setErro(e.message)} }
+  useEffect(()=>{carregar()},[]);
+  async function criar(){setSalvando(true);setErro("");try{const r=await fetch("/api/acessos?action=criar-usuario",{method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(form)});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao criar usuário.");setForm({nome:"",email:"",login:"",senha:"",tipoAcesso:"SISTEMA",perfil:"CONSULTOR"});await carregar();}catch(e){setErro(e.message)}finally{setSalvando(false)}}
+  async function alternar(u){setErro("");try{const r=await fetch("/api/acessos?action=alterar-usuario",{method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({id:u.id,ativo:!u.ativo})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao alterar usuário.");await carregar();}catch(e){setErro(e.message)}}
+  const inp={border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 11px",fontSize:12,color:NAVY,background:WHITE};
+  return <div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:10,background:WHITE,borderRadius:16,padding:18,boxShadow:"0 8px 24px rgba(23,35,61,.06)",marginBottom:18}}>
+      <div style={{gridColumn:"1/-1"}}><h2 style={{...tituloSecao,margin:"0 0 4px"}}>Criar usuário</h2><div style={{fontSize:12,color:MUTED}}>Crie acesso separado para o App, Sistema ou ambos.</div></div>
+      <input style={inp} placeholder="Nome" value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})}/>
+      <input style={inp} placeholder="E-mail" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/>
+      <input style={inp} placeholder="Login" value={form.login} onChange={e=>setForm({...form,login:e.target.value})}/>
+      <input style={inp} type="password" placeholder="Senha inicial (mín. 8)" value={form.senha} onChange={e=>setForm({...form,senha:e.target.value})}/>
+      <select style={inp} value={form.tipoAcesso} onChange={e=>setForm({...form,tipoAcesso:e.target.value})}><option value="APP">App</option><option value="SISTEMA">Sistema</option><option value="AMBOS">App + Sistema</option></select>
+      <select style={inp} value={form.perfil} onChange={e=>setForm({...form,perfil:e.target.value})}><option value="ADMIN">Administrador</option><option value="GESTOR">Gestor</option><option value="CONSULTOR">Consultor</option><option value="COMERCIAL">Comercial</option><option value="LEITURA">Somente leitura</option></select>
+      <Botao onClick={criar} disabled={salvando}><UserPlus size={15}/>{salvando?"Criando...":"Criar usuário"}</Botao>
+      {erro&&<div style={{gridColumn:"1/-1",background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,fontSize:12}}>{erro}</div>}
+    </div>
+    <div style={{background:WHITE,borderRadius:16,overflow:"auto",boxShadow:"0 8px 24px rgba(23,35,61,.06)"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}><thead><tr><th style={thStyle}>Usuário</th><th style={thStyle}>Login</th><th style={thStyle}>Acesso</th><th style={thStyle}>Perfil</th><th style={thStyle}>Último acesso</th><th style={thStyle}>Status</th><th style={thStyle}>Ação</th></tr></thead><tbody>
+      {usuarios.map(u=><tr key={u.id}><td style={tdStyle}><strong>{u.nome}</strong><br/><span style={{color:MUTED}}>{u.email}</span></td><td style={tdStyle}>{u.login}</td><td style={tdStyle}>{u.tipo_acesso}</td><td style={tdStyle}>{u.perfil}</td><td style={tdStyle}>{formatarData(u.ultimo_acesso_em)}</td><td style={tdStyle}>{u.ativo?"Ativo":"Bloqueado"}</td><td style={tdStyle}><Botao secundario onClick={()=>alternar(u)}>{u.ativo?"Bloquear":"Ativar"}</Botao></td></tr>)}
+      {!usuarios.length&&<tr><td colSpan={7} style={{...tdStyle,padding:24,textAlign:"center",color:MUTED}}>Nenhum usuário cadastrado.</td></tr>}
+      </tbody></table>
+    </div>
+  </div>;
+}
+
+function AuditoriaSistema({ token }) {
+  const [eventos,setEventos]=useState([]),[erro,setErro]=useState(""),[filtro,setFiltro]=useState("");
+  async function carregar(){try{const r=await fetch("/api/acessos?action=auditoria&limite=500",{headers:{Authorization:`Bearer ${token}`}});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao carregar auditoria.");setEventos(d.eventos||[])}catch(e){setErro(e.message)}}
+  useEffect(()=>{carregar()},[]);
+  const lista=eventos.filter(e=>!filtro||JSON.stringify(e).toLowerCase().includes(filtro.toLowerCase()));
+  return <div>
+    <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}><input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="Filtrar usuário, ação, módulo ou registro..." style={{flex:1,minWidth:260,border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 12px"}}/><Botao secundario onClick={carregar}><RefreshCcw size={14}/>Atualizar</Botao></div>
+    {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,marginBottom:12}}>{erro}</div>}
+    <div style={{background:WHITE,borderRadius:16,overflow:"auto",boxShadow:"0 8px 24px rgba(23,35,61,.06)"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:1000}}><thead><tr><th style={thStyle}>Data/hora</th><th style={thStyle}>Usuário</th><th style={thStyle}>Ação</th><th style={thStyle}>Módulo</th><th style={thStyle}>Registro</th><th style={thStyle}>Detalhes</th></tr></thead><tbody>
+      {lista.map(e=><tr key={e.id}><td style={tdStyle}>{formatarData(e.criado_em)}</td><td style={tdStyle}><strong>{e.usuario_nome||e.usuario_login||"-"}</strong><br/><span style={{color:MUTED}}>{e.usuario_login||""}</span></td><td style={tdStyle}>{e.acao}</td><td style={tdStyle}>{e.modulo||"-"}</td><td style={tdStyle}>{[e.recurso,e.recurso_id].filter(Boolean).join(" #")||"-"}</td><td style={tdStyle}><div>{e.descricao||"-"}</div>{(e.antes||e.depois)&&<details style={{marginTop:5}}><summary style={{cursor:"pointer",color:CORAL}}>Antes / depois</summary><pre style={{whiteSpace:"pre-wrap",fontSize:10,maxWidth:460}}>{JSON.stringify({antes:e.antes,depois:e.depois},null,2)}</pre></details>}</td></tr>)}
+      {!lista.length&&<tr><td colSpan={6} style={{...tdStyle,padding:24,textAlign:"center",color:MUTED}}>Nenhum evento encontrado.</td></tr>}
+    </tbody></table></div>
+  </div>;
+}
+
 // =========================================================
 // COMPONENTE PRINCIPAL
 // =========================================================
@@ -13803,10 +14133,32 @@ export default function Admin() {
     setAba,
   ] = useState("dashboard");
 
+  const usuarioSessao = useMemo(() => {
+    try { return JSON.parse(sessionStorage.getItem("finder_admin_user") || "{}"); }
+    catch { return {}; }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const auditar = (dados) => fetch("/api/acessos?action=auditar", {
+      method:"POST", headers:{"content-type":"application/json",Authorization:`Bearer ${token}`}, body:JSON.stringify(dados)
+    }).catch(()=>null);
+    const clickHandler = (ev) => {
+      const el = ev.target?.closest?.("button,a,[role='button']");
+      if (!el) return;
+      const texto = String(el.innerText || el.getAttribute("aria-label") || el.title || "").trim().slice(0,160);
+      if (!texto) return;
+      auditar({acao:"CLICK",modulo:"PAINEL",recurso:"interface",descricao:texto,detalhes:{aba}});
+    };
+    document.addEventListener("click", clickHandler, true);
+    return () => document.removeEventListener("click", clickHandler, true);
+  }, [token, aba]);
+
   function sair() {
     sessionStorage.removeItem(
       "finder_admin_token"
     );
+    sessionStorage.removeItem("finder_admin_user");
 
     setToken("");
     setDiagnosticoId(null);
@@ -13935,6 +14287,16 @@ export default function Admin() {
           <UserPlus size={14} />
           Equipe / Capacidade
         </Botao>
+
+        <Botao secundario={aba !== "usuarios"} onClick={() => setAba("usuarios")}>
+          <UserCog size={14} />
+          Usuários e Acessos
+        </Botao>
+
+        <Botao secundario={aba !== "auditoria"} onClick={() => setAba("auditoria")}>
+          <History size={14} />
+          Auditoria
+        </Botao>
       </div>
     );
   }
@@ -14008,6 +14370,11 @@ export default function Admin() {
                 {subtitulo}
               </p>
             </div>
+          </div>
+
+          <div style={{marginLeft:"auto",textAlign:"right",fontSize:11,lineHeight:1.35}}>
+            <strong>{usuarioSessao?.nome || "Administrador"}</strong><br/>
+            <span style={{opacity:.7}}>{usuarioSessao?.perfil || "ADMIN"}</span>
           </div>
 
           <button
@@ -14153,6 +14520,22 @@ export default function Admin() {
         </main>
       </div>
     );
+  }
+
+  if (aba === "usuarios") {
+    return <div style={{minHeight:"100vh",background:BG,fontFamily:BODY_FONT,color:NAVY}}>
+      <Cabecalho titulo="Usuários e Acessos" subtitulo="Criação de logins do App e do Sistema" />
+      <BarraAbas />
+      <main style={{maxWidth:1320,margin:"0 auto",padding:"26px 22px 50px"}}><UsuariosAcessos token={token}/></main>
+    </div>;
+  }
+
+  if (aba === "auditoria") {
+    return <div style={{minHeight:"100vh",background:BG,fontFamily:BODY_FONT,color:NAVY}}>
+      <Cabecalho titulo="Auditoria" subtitulo="Histórico de acessos, cliques e alterações" />
+      <BarraAbas />
+      <main style={{maxWidth:1320,margin:"0 auto",padding:"26px 22px 50px"}}><AuditoriaSistema token={token}/></main>
+    </div>;
   }
 
   if (
