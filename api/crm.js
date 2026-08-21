@@ -4928,127 +4928,373 @@ async function salvarResponsavel(req, res) {
 }
 
 
-async function excluirLead(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({
-      sucesso: false,
-      error: "Método não permitido.",
-    });
-  }
 
-  if (!exigirAdmin(req, res)) return;
+async function excluirRegistroLead({
+  atendimentoId = "",
+  leadId = "",
+  diagnosticoId = "",
+}) {
+  let atendimentoIdFinal =
+    texto(
+      atendimentoId,
+      140
+    );
 
-  const body = req.body || {};
+  let leadIdFinal =
+    texto(
+      leadId,
+      140
+    );
 
-  const atendimentoId =
-    texto(body.atendimentoId, 140);
+  let diagnosticoIdFinal =
+    texto(
+      diagnosticoId,
+      180
+    );
 
-  let leadId =
-    texto(body.leadId, 140);
+  if (atendimentoIdFinal) {
+    const encontrados =
+      await sql`
+        SELECT
+          id,
+          lead_id,
+          diagnostico_id
+        FROM crm_atendimentos_departamento
+        WHERE id =
+          ${atendimentoIdFinal}
+        LIMIT 1
+      `;
 
-  let diagnosticoId =
-    texto(body.diagnosticoId, 180);
-
-  if (!atendimentoId && !leadId && !diagnosticoId) {
-    return res.status(400).json({
-      sucesso: false,
-      error: "atendimentoId, leadId ou diagnosticoId é obrigatório.",
-    });
-  }
-
-  if (atendimentoId) {
-    const encontrados = await sql`
-      SELECT id, lead_id, diagnostico_id
-      FROM crm_atendimentos_departamento
-      WHERE id = ${atendimentoId}
-      LIMIT 1
-    `;
-
-    const atual = encontrados?.[0];
+    const atual =
+      encontrados?.[0];
 
     if (atual) {
-      leadId = leadId || atual.lead_id || "";
-      diagnosticoId =
-        diagnosticoId ||
+      leadIdFinal =
+        leadIdFinal ||
+        atual.lead_id ||
+        "";
+
+      diagnosticoIdFinal =
+        diagnosticoIdFinal ||
         atual.diagnostico_id ||
         "";
     }
   }
 
-  if (leadId && !diagnosticoId) {
-    const leads = await sql`
-      SELECT diagnostico_id
-      FROM diagnostico_leads
-      WHERE id = ${leadId}
-      LIMIT 1
-    `;
+  if (
+    leadIdFinal &&
+    !diagnosticoIdFinal
+  ) {
+    const leads =
+      await sql`
+        SELECT diagnostico_id
+        FROM diagnostico_leads
+        WHERE id =
+          ${leadIdFinal}
+        LIMIT 1
+      `;
 
-    diagnosticoId =
-      leads?.[0]?.diagnostico_id ||
+    diagnosticoIdFinal =
+      leads?.[0]
+        ?.diagnostico_id ||
       "";
   }
 
-  if (atendimentoId) {
+  if (atendimentoIdFinal) {
     await sql`
       DELETE FROM crm_atendimento_historico
-      WHERE atendimento_id = ${atendimentoId}
+      WHERE atendimento_id =
+        ${atendimentoIdFinal}
     `;
   }
 
-  if (leadId || diagnosticoId) {
+  if (
+    leadIdFinal ||
+    diagnosticoIdFinal
+  ) {
     await sql`
       DELETE FROM crm_atendimento_historico
       WHERE
-        (${leadId} <> '' AND lead_id = ${leadId})
+        (
+          ${leadIdFinal} <> ''
+          AND lead_id =
+            ${leadIdFinal}
+        )
         OR
-        (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
+        (
+          ${diagnosticoIdFinal} <> ''
+          AND diagnostico_id =
+            ${diagnosticoIdFinal}
+        )
     `;
   }
 
-  if (atendimentoId) {
+  if (atendimentoIdFinal) {
     await sql`
       DELETE FROM crm_atendimentos_departamento
-      WHERE id = ${atendimentoId}
+      WHERE id =
+        ${atendimentoIdFinal}
     `;
   }
 
-  if (leadId || diagnosticoId) {
+  if (
+    leadIdFinal ||
+    diagnosticoIdFinal
+  ) {
     await sql`
       DELETE FROM crm_atendimentos_departamento
       WHERE
-        (${leadId} <> '' AND lead_id = ${leadId})
+        (
+          ${leadIdFinal} <> ''
+          AND lead_id =
+            ${leadIdFinal}
+        )
         OR
-        (${diagnosticoId} <> '' AND diagnostico_id = ${diagnosticoId})
+        (
+          ${diagnosticoIdFinal} <> ''
+          AND diagnostico_id =
+            ${diagnosticoIdFinal}
+        )
     `;
   }
 
-  if (leadId) {
+  if (leadIdFinal) {
     await sql`
       DELETE FROM crm_atribuicoes
-      WHERE lead_id = ${leadId}
+      WHERE lead_id =
+        ${leadIdFinal}
     `;
 
     await sql`
       DELETE FROM diagnostico_leads
-      WHERE id = ${leadId}
+      WHERE id =
+        ${leadIdFinal}
     `;
   }
 
-  if (diagnosticoId) {
+  if (diagnosticoIdFinal) {
     await sql`
       DELETE FROM diagnostico_leads
-      WHERE diagnostico_id = ${diagnosticoId}
+      WHERE diagnostico_id =
+        ${diagnosticoIdFinal}
     `;
   }
 
-  return res.status(200).json({
-    sucesso: true,
-    atendimentoId,
-    leadId,
-    diagnosticoId,
-  });
+  return {
+    atendimentoId:
+      atendimentoIdFinal,
+    leadId:
+      leadIdFinal,
+    diagnosticoId:
+      diagnosticoIdFinal,
+  };
 }
+
+async function excluirLeadsLote(
+  req,
+  res
+) {
+  if (
+    req.method !==
+    "POST"
+  ) {
+    res.setHeader(
+      "Allow",
+      "POST"
+    );
+
+    return res
+      .status(405)
+      .json({
+        sucesso: false,
+        error:
+          "Método não permitido.",
+      });
+  }
+
+  if (
+    !exigirAdmin(
+      req,
+      res
+    )
+  ) {
+    return;
+  }
+
+  const registros =
+    Array.isArray(
+      req.body?.registros
+    )
+      ? req.body.registros
+      : [];
+
+  if (!registros.length) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "Selecione ao menos um lead para excluir.",
+      });
+  }
+
+  if (
+    registros.length >
+    300
+  ) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "O limite por exclusão é de 300 registros.",
+      });
+  }
+
+  const resultados = [];
+  const falhas = [];
+
+  for (
+    const registro of
+    registros
+  ) {
+    try {
+      const resultado =
+        await excluirRegistroLead({
+          leadId:
+            registro?.leadId ||
+            "",
+          diagnosticoId:
+            registro
+              ?.diagnosticoId ||
+            "",
+          atendimentoId:
+            registro
+              ?.atendimentoId ||
+            "",
+        });
+
+      resultados.push(
+        resultado
+      );
+    } catch (error) {
+      console.error(
+        "[crm] exclusão em lote:",
+        error
+      );
+
+      falhas.push({
+        leadId:
+          registro?.leadId ||
+          "",
+        diagnosticoId:
+          registro
+            ?.diagnosticoId ||
+          "",
+        erro:
+          error?.message ||
+          "Erro desconhecido",
+      });
+    }
+  }
+
+  return res
+    .status(
+      falhas.length
+        ? 207
+        : 200
+    )
+    .json({
+      sucesso:
+        falhas.length === 0,
+      excluidos:
+        resultados.length,
+      falhas:
+        falhas.length,
+      resultados,
+      detalhesFalhas:
+        falhas,
+    });
+}
+
+async function excluirLead(req, res) {
+  if (
+    req.method !==
+    "POST"
+  ) {
+    res.setHeader(
+      "Allow",
+      "POST"
+    );
+
+    return res
+      .status(405)
+      .json({
+        sucesso: false,
+        error:
+          "Método não permitido.",
+      });
+  }
+
+  if (
+    !exigirAdmin(
+      req,
+      res
+    )
+  ) {
+    return;
+  }
+
+  const body =
+    req.body || {};
+
+  const atendimentoId =
+    texto(
+      body.atendimentoId,
+      140
+    );
+
+  const leadId =
+    texto(
+      body.leadId,
+      140
+    );
+
+  const diagnosticoId =
+    texto(
+      body.diagnosticoId,
+      180
+    );
+
+  if (
+    !atendimentoId &&
+    !leadId &&
+    !diagnosticoId
+  ) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "atendimentoId, leadId ou diagnosticoId é obrigatório.",
+      });
+  }
+
+  const resultado =
+    await excluirRegistroLead({
+      atendimentoId,
+      leadId,
+      diagnosticoId,
+    });
+
+  return res
+    .status(200)
+    .json({
+      sucesso: true,
+      ...resultado,
+    });
+}
+
 
 async function excluirResponsavel(req, res) {
   if (req.method !== "POST") {
@@ -5412,6 +5658,12 @@ export default async function handler(req, res) {
 
       case "excluir-lead":
         return excluirLead(req, res);
+
+      case "excluir-leads-lote":
+        return excluirLeadsLote(
+          req,
+          res
+        );
 
       case "excluir-responsavel":
         return excluirResponsavel(req, res);
