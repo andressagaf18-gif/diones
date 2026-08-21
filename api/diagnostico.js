@@ -56,6 +56,53 @@ function lista(v) {
 }
 
 
+
+function limparCodigoInternoRelatorio(
+  valor
+) {
+  return String(
+    valor ||
+    ""
+  )
+    .replace(
+      /\s*\(\s*resposta\s*:\s*['"][^'"]*['"]\s+para\s+[a-z0-9_:-]+\s*\)/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Id\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Tipo\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Ligado\s*A\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Risco\s*Mitigado\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*\([a-z0-9_]+\s*=\s*['"][^'"]*['"]\s*\)/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*(?:ref|c[oó]digo|codigo)\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s{2,}/g,
+      " "
+    )
+    .replace(
+      /\s+([.,;:])/g,
+      "$1"
+    )
+    .trim();
+}
+
 function textoSeguroIa(
   valor,
   fallback = ""
@@ -71,7 +118,9 @@ function textoSeguroIa(
     typeof valor ===
     "string"
   ) {
-    return valor.trim();
+    return limparCodigoInternoRelatorio(
+      valor
+    );
   }
 
   if (
@@ -114,7 +163,9 @@ function textoSeguroIa(
       );
 
     if (encontrado) {
-      return encontrado.trim();
+      return limparCodigoInternoRelatorio(
+        encontrado
+      );
     }
 
     try {
@@ -444,6 +495,9 @@ INSTRUÇÕES DE QUALIDADE:
 7. O plano 30/60/90 deve ser compatível com a estrutura.
 8. Não prescreva produtos financeiros específicos.
 9. Não dê certeza jurídica/tributária quando depender de documentos.
+10. NUNCA exponha códigos internos, IDs de perguntas, nomes de variáveis, chaves técnicas ou rastreadores no texto exibido ao cliente.
+11. NUNCA escreva expressões como "(resposta: 'sim' para fin_q1)", "Id: c1", "Tipo: fato", "Ligado A:", "Risco Mitigado:" ou similares.
+12. Use as respostas apenas para construir uma conclusão natural em português. Exemplo: escreva "A conciliação bancária é realizada parcialmente" e NÃO "A conciliação é parcial (resposta: 'parcialmente' para fin_q2)".
 `;
 
   try {
