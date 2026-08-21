@@ -2416,8 +2416,23 @@ export default function DiagnosticoPrototipo() {
           })
         ),
 
+      // No relatório da EMPRESA OPERACIONAL, o escopo deve ser
+      // exatamente o conjunto de departamentos selecionados.
+      // Isso mantém checklist, IA e relatório no mesmo escopo.
       eixosObrigatorios:
-        areasDaEstrutura.map(
+        (
+          estruturaNegocio ===
+            "operacional" &&
+          areasOperacionaisSelecionadas.length >
+            0
+            ? areasDaEstrutura.filter(
+                (item) =>
+                  areasOperacionaisSelecionadas.includes(
+                    item.id
+                  )
+              )
+            : areasDaEstrutura
+        ).map(
           (item) => ({
             id:
               item.id,
@@ -2481,6 +2496,24 @@ export default function DiagnosticoPrototipo() {
         data?.diagnostico ||
         data?.resultado ||
         null;
+
+      // Nunca abre a tela de resultado sem um diagnóstico válido.
+      // Isso evita relatório operacional em branco/incompleto quando
+      // a API ou a IA falhar.
+      if (!diagnostico) {
+        console.error(
+          "[diagnostico] resposta inválida:",
+          data
+        );
+
+        showToast(
+          data?.error ||
+          "Não foi possível gerar o diagnóstico. Tente novamente."
+        );
+
+        setStep("checklist");
+        return;
+      }
 
       if (diagnostico) {
         const mapa = {};
@@ -2959,7 +2992,11 @@ export default function DiagnosticoPrototipo() {
           ? perguntas
           : []
       );
-      setNegocioInterpretado(data.negocioInterpretado || null);
+      setNegocioInterpretado(
+        data.negocioInterpretado ||
+        data.interpretacaoNegocio ||
+        null
+      );
       setRespostas({});
       setStep("confirmarNegocio");
     } catch (error) {
@@ -6276,11 +6313,20 @@ export default function DiagnosticoPrototipo() {
                           : " específicas"}
                       </strong>
                       {" "}foram preparadas para{" "}
-                      {dores
+                      {(
+                        estruturaNegocio ===
+                          "operacional" &&
+                        areasOperacionaisSelecionadas.length >
+                          0
+                          ? areasOperacionaisSelecionadas
+                          : areasDoDiagnostico
+                      )
                         .map(
                           labelAreaAtual
                         )
-                        .join(", ")}.
+                        .filter(Boolean)
+                        .join(", ") ||
+                        "o escopo selecionado"}.
                     </p>
                   </div>
                 )}
