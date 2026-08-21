@@ -133,8 +133,88 @@ export default async function handler(req, res) {
     body?.perfil?.estruturaNegocio
   );
 
-  const motor = obterMotor(estrutura);
-  const contrato = contratoSaida(estrutura);
+  const motor =
+    obterMotor(estrutura);
+
+  // O checklist e o relatório da Empresa Operacional precisam usar
+  // exatamente os departamentos selecionados pelo usuário.
+  const eixosSolicitados =
+    Array.isArray(
+      body?.eixosObrigatorios
+    )
+      ? body.eixosObrigatorios
+          .map(
+            (item) =>
+              String(
+                item?.id ||
+                item ||
+                ""
+              )
+                .trim()
+                .toLowerCase()
+          )
+          .filter(
+            (id) =>
+              motor.eixos.includes(
+                id
+              )
+          )
+      : [];
+
+  const eixosDasRespostas =
+    Array.isArray(
+      body?.areas
+    )
+      ? body.areas
+          .map(
+            (item) =>
+              String(
+                item?.id ||
+                item?.areaId ||
+                ""
+              )
+                .trim()
+                .toLowerCase()
+          )
+          .filter(
+            (id) =>
+              motor.eixos.includes(
+                id
+              )
+          )
+      : [];
+
+  const eixosOperacionais =
+    estrutura ===
+      "operacional"
+      ? [
+          ...new Set([
+            ...eixosSolicitados,
+            ...eixosDasRespostas,
+          ]),
+        ]
+      : null;
+
+  const contrato =
+    contratoSaida(
+      estrutura,
+      eixosOperacionais
+    );
+
+
+  if (
+    estrutura ===
+      "operacional" &&
+    (!eixosOperacionais ||
+      eixosOperacionais.length ===
+        0)
+  ) {
+    return res.status(400).json({
+      sucesso: false,
+      error:
+        "Nenhum departamento selecionado para gerar o relatório da Empresa Operacional.",
+    });
+  }
 
   if (
     motor.exigeCnpj &&
@@ -151,7 +231,10 @@ export default async function handler(req, res) {
   const prompt = `
 Você é o motor de diagnóstico consultivo da Finder of Solutions.
 
-${instrucoesDoMotor(estrutura)}
+${instrucoesDoMotor(
+  estrutura,
+  eixosOperacionais
+)}
 
 OBJETIVO:
 Produzir um diagnóstico profundo, útil e acionável.
@@ -163,9 +246,31 @@ ${JSON.stringify(contrato, null, 2)}
 DADOS RECEBIDOS:
 ${JSON.stringify(body, null, 2)}
 
+ESCOPO EFETIVO DO RELATÓRIO:
+${
+  estrutura === "operacional"
+    ? (
+        eixosOperacionais?.length
+          ? eixosOperacionais.join(", ")
+          : "Nenhum departamento válido identificado"
+      )
+    : motor.eixos.join(", ")
+}
+
+${
+  estrutura === "operacional"
+    ? `REGRA CRÍTICA PARA EMPRESA OPERACIONAL:
+Analise SOMENTE os departamentos acima.
+Não inclua financeiro, tributário, contábil/fiscal, comercial,
+marketing, gestão, RH, operacional ou tecnologia se o respectivo
+departamento não estiver no escopo efetivo.`
+    : ""
+}
+
 INSTRUÇÕES DE QUALIDADE:
 1. "leituraExecutiva" deve ser escrita especificamente para ${motor.label}.
-2. Todos os eixos obrigatórios devem existir na saída.
+2. Todos os eixos listados no CONTRATO DE SAÍDA devem existir na saída.
+   Na Empresa Operacional, NÃO crie departamentos que não foram selecionados.
 3. Se não houver dados suficientes para pontuar um eixo, não invente:
    use score 0 e explique a lacuna nos achados/informacoesFaltantes.
 4. Para Pessoa Física, jamais critique ausência de CNAE, faturamento,
@@ -259,6 +364,11 @@ INSTRUÇÕES DE QUALIDADE:
       estrutura,
       motor: motor.tipo,
       diagnostico,
+      escopoRelatorio:
+        contrato.eixos.map(
+          (eixo) =>
+            eixo.id
+        ),
       uso: data?.usage || null,
     });
   } catch (error) {
