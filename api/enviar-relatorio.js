@@ -820,10 +820,68 @@ export default async function handler(
   // 8. DIAGNÓSTICO
   // =======================================================
 
-  const diagnostico =
+  // Compatibilidade entre o contrato antigo do relatório
+  // e o novo contrato retornado por /api/diagnostico.
+  const diagnosticoBruto =
     objetoSeguro(
-      resultado.diagnosticoGeral
+      resultado.diagnosticoGeral ||
+      resultado.resultadoCompleto ||
+      body.diagnostico ||
+      body.resultadoCompleto
     );
+
+  const diagnostico = {
+    ...diagnosticoBruto,
+
+    resumoExecutivo:
+      diagnosticoBruto.resumoExecutivo ||
+      diagnosticoBruto.leituraExecutiva ||
+      "",
+
+    principaisDores:
+      arraySeguro(
+        diagnosticoBruto.principaisDores ||
+        diagnosticoBruto.doresPrincipais
+      ),
+
+    prioridadesImediatas:
+      arraySeguro(
+        diagnosticoBruto.prioridadesImediatas ||
+        diagnosticoBruto.prioridades
+      ),
+
+    pontosFortes:
+      arraySeguro(
+        diagnosticoBruto.pontosFortes
+      ),
+
+    causasProvaveis:
+      arraySeguro(
+        diagnosticoBruto.causasProvaveis
+      ),
+
+    impactos:
+      arraySeguro(
+        diagnosticoBruto.impactos
+      ),
+
+    proximosPassos:
+      arraySeguro(
+        diagnosticoBruto.proximosPassos
+      ),
+
+    leituraDaDor:
+      diagnosticoBruto.leituraDaDor ||
+      diagnosticoBruto.leituraExecutiva ||
+      "",
+
+    alertaEstrategico:
+      diagnosticoBruto.alertaEstrategico ||
+      arraySeguro(
+        diagnosticoBruto.riscosPrioritarios
+      )[0] ||
+      "",
+  };
 
   const visaoGrupo =
     objetoSeguro(
@@ -840,9 +898,27 @@ export default async function handler(
       resultado.oportunidadesConsultoria
     );
 
+  const areasOrigem =
+    arraySeguro(
+      resultado.areas
+    ).length
+      ? resultado.areas
+      : arraySeguro(
+          diagnosticoBruto.eixos
+        ).map(
+          (eixo) => ({
+            ...eixo,
+            area:
+              eixo?.area ||
+              eixo?.label ||
+              eixo?.id ||
+              "Área",
+          })
+        );
+
   const areas =
     normalizarAreas(
-      resultado.areas
+      areasOrigem
     );
 
   // =======================================================
@@ -1083,6 +1159,13 @@ export default async function handler(
       resultado: {
         ...resultado,
 
+        diagnosticoGeral:
+          diagnostico,
+
+        resultadoCompleto:
+          resultado.resultadoCompleto ||
+          diagnosticoBruto,
+
         areas:
           areasBanco,
       },
@@ -1116,6 +1199,13 @@ export default async function handler(
     const diagnosticoJson =
       JSON.stringify({
         ...resultado,
+
+        diagnosticoGeral:
+          diagnostico,
+
+        resultadoCompleto:
+          resultado.resultadoCompleto ||
+          diagnosticoBruto,
 
         areas:
           areasBanco,
@@ -2507,6 +2597,15 @@ Falar com um especialista
 
   return res.status(200).json({
     sucesso: true,
+
+    // ID também no topo para compatibilidade com App/CRM.
+    id:
+      registroSalvo?.id ||
+      null,
+
+    diagnosticoId:
+      registroSalvo?.id ||
+      null,
 
     mensagem:
       resendConfigurado
