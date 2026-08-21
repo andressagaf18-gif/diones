@@ -363,6 +363,44 @@ async function prepararSchema() {
     )
   `;
 
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS crm_propostas (
+      id TEXT PRIMARY KEY,
+      atendimento_id TEXT NOT NULL,
+      diagnostico_id TEXT NOT NULL DEFAULT '',
+      lead_id TEXT NOT NULL DEFAULT '',
+      area TEXT NOT NULL DEFAULT '',
+      servico TEXT NOT NULL DEFAULT '',
+      descricao TEXT NOT NULL DEFAULT '',
+      tipo_receita TEXT NOT NULL DEFAULT 'PONTUAL',
+      valor_total NUMERIC(14,2) NOT NULL DEFAULT 0,
+      mensalidade NUMERIC(14,2) NOT NULL DEFAULT 0,
+      taxa_implantacao NUMERIC(14,2) NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'RASCUNHO',
+      validade DATE,
+      motivo_perda TEXT NOT NULL DEFAULT '',
+      observacoes TEXT NOT NULL DEFAULT '',
+      responsavel_id TEXT NOT NULL DEFAULT '',
+      responsavel_nome TEXT NOT NULL DEFAULT '',
+      enviado_em TIMESTAMPTZ,
+      ganho_em TIMESTAMPTZ,
+      perdido_em TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_crm_propostas_atendimento
+    ON crm_propostas (atendimento_id, created_at DESC)
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_crm_propostas_status
+    ON crm_propostas (status)
+  `;
+
   await sql`
     CREATE INDEX IF NOT EXISTS idx_crm_atendimento_historico_atendimento
     ON crm_atendimento_historico (atendimento_id, created_at DESC)
@@ -1905,6 +1943,491 @@ function statusAtendimentoValido(valor) {
   return permitidos.includes(status)
     ? status
     : null;
+}
+
+
+function statusPropostaValido(valor) {
+  const permitidos = [
+    "RASCUNHO",
+    "ENVIADA",
+    "NEGOCIACAO",
+    "GANHA",
+    "PERDIDA",
+    "CANCELADA",
+  ];
+
+  const status =
+    texto(valor, 40).toUpperCase();
+
+  return permitidos.includes(status)
+    ? status
+    : null;
+}
+
+function tipoReceitaValido(valor) {
+  const permitidos = [
+    "PONTUAL",
+    "RECORRENTE",
+    "MISTA",
+  ];
+
+  const tipo =
+    texto(valor, 40).toUpperCase();
+
+  return permitidos.includes(tipo)
+    ? tipo
+    : null;
+}
+
+function numeroFinanceiro(valor) {
+  if (
+    valor === null ||
+    valor === undefined ||
+    valor === ""
+  ) {
+    return 0;
+  }
+
+  const n = Number(valor);
+  return Number.isFinite(n)
+    ? Math.max(0, n)
+    : 0;
+}
+
+function mapearProposta(item) {
+  return {
+    id: item.id,
+    atendimentoId: item.atendimento_id,
+    diagnosticoId: item.diagnostico_id,
+    leadId: item.lead_id,
+    area: item.area,
+    servico: item.servico,
+    descricao: item.descricao,
+    tipoReceita: item.tipo_receita,
+    valorTotal: Number(item.valor_total || 0),
+    mensalidade: Number(item.mensalidade || 0),
+    taxaImplantacao: Number(item.taxa_implantacao || 0),
+    status: item.status,
+    validade: item.validade,
+    motivoPerda: item.motivo_perda,
+    observacoes: item.observacoes,
+    responsavelId: item.responsavel_id,
+    responsavelNome: item.responsavel_nome,
+    enviadoEm: item.enviado_em,
+    ganhoEm: item.ganho_em,
+    perdidoEm: item.perdido_em,
+    criadoEm: item.created_at,
+    atualizadoEm: item.updated_at,
+  };
+}
+
+async function listarPropostas(req, res) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) return;
+
+  const atendimentoId =
+    texto(req.query?.atendimentoId, 140);
+
+  if (!atendimentoId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "atendimentoId é obrigatório.",
+    });
+  }
+
+  const linhas = await sql`
+    SELECT *
+    FROM crm_propostas
+    WHERE atendimento_id = ${atendimentoId}
+    ORDER BY created_at DESC
+  `;
+
+  return res.status(200).json({
+    sucesso: true,
+    propostas: linhas.map(mapearProposta),
+  });
+}
+
+async function salvarProposta(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) return;
+
+  const body = req.body || {};
+  const atendimentoId =
+    texto(body.atendimentoId, 140);
+
+  if (!atendimentoId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "atendimentoId é obrigatório.",
+    });
+  }
+
+  const atendimentos = await sql`
+    SELECT *
+    FROM crm_atendimentos_departamento
+    WHERE id = ${atendimentoId}
+    LIMIT 1
+  `;
+
+  const atendimento = atendimentos?.[0];
+
+  if (!atendimento) {
+    return res.status(404).json({
+      sucesso: false,
+      error: "Atendimento não encontrado.",
+    });
+  }
+
+  const propostaId =
+    texto(body.propostaId, 140) ||
+    gerarId("prop");
+
+  const existentes = await sql`
+    SELECT *
+    FROM crm_propostas
+    WHERE id = ${propostaId}
+    LIMIT 1
+  `;
+
+  const atual = existentes?.[0] || null;
+
+  const servico =
+    texto(
+      body.servico !== undefined
+        ? body.servico
+        : atual?.servico,
+      300
+    );
+
+  if (!servico) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "Informe o serviço da proposta.",
+    });
+  }
+
+  const tipoReceita =
+    tipoReceitaValido(
+      body.tipoReceita !== undefined
+        ? body.tipoReceita
+        : atual?.tipo_receita || "PONTUAL"
+    );
+
+  const status =
+    statusPropostaValido(
+      body.status !== undefined
+        ? body.status
+        : atual?.status || "RASCUNHO"
+    );
+
+  if (!tipoReceita || !status) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "Tipo de receita ou status inválido.",
+    });
+  }
+
+  const motivoPerda =
+    texto(
+      body.motivoPerda !== undefined
+        ? body.motivoPerda
+        : atual?.motivo_perda,
+      2000
+    );
+
+  if (status === "PERDIDA" && !motivoPerda) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "Informe o motivo da perda.",
+    });
+  }
+
+  const descricao =
+    texto(
+      body.descricao !== undefined
+        ? body.descricao
+        : atual?.descricao,
+      8000
+    );
+
+  const observacoes =
+    texto(
+      body.observacoes !== undefined
+        ? body.observacoes
+        : atual?.observacoes,
+      8000
+    );
+
+  const valorTotal =
+    numeroFinanceiro(
+      body.valorTotal !== undefined
+        ? body.valorTotal
+        : atual?.valor_total
+    );
+
+  const mensalidade =
+    numeroFinanceiro(
+      body.mensalidade !== undefined
+        ? body.mensalidade
+        : atual?.mensalidade
+    );
+
+  const taxaImplantacao =
+    numeroFinanceiro(
+      body.taxaImplantacao !== undefined
+        ? body.taxaImplantacao
+        : atual?.taxa_implantacao
+    );
+
+  const validade =
+    body.validade
+      ? String(body.validade).slice(0, 10)
+      : atual?.validade || null;
+
+  const responsavelId =
+    texto(
+      body.responsavelId !== undefined
+        ? body.responsavelId
+        : atual?.responsavel_id ||
+          atendimento.responsavel_id ||
+          "",
+      140
+    );
+
+  let responsavelNome =
+    texto(
+      body.responsavelNome !== undefined
+        ? body.responsavelNome
+        : atual?.responsavel_nome,
+      300
+    );
+
+  if (responsavelId && !responsavelNome) {
+    const responsaveis = await sql`
+      SELECT nome
+      FROM crm_responsaveis
+      WHERE id = ${responsavelId}
+      LIMIT 1
+    `;
+    responsavelNome =
+      responsaveis?.[0]?.nome || "";
+  }
+
+  const enviadoEm =
+    status === "ENVIADA"
+      ? atual?.enviado_em || new Date()
+      : atual?.enviado_em || null;
+
+  const ganhoEm =
+    status === "GANHA"
+      ? atual?.ganho_em || new Date()
+      : atual?.ganho_em || null;
+
+  const perdidoEm =
+    status === "PERDIDA"
+      ? atual?.perdido_em || new Date()
+      : atual?.perdido_em || null;
+
+  const linhas = await sql`
+    INSERT INTO crm_propostas (
+      id,
+      atendimento_id,
+      diagnostico_id,
+      lead_id,
+      area,
+      servico,
+      descricao,
+      tipo_receita,
+      valor_total,
+      mensalidade,
+      taxa_implantacao,
+      status,
+      validade,
+      motivo_perda,
+      observacoes,
+      responsavel_id,
+      responsavel_nome,
+      enviado_em,
+      ganho_em,
+      perdido_em,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      ${propostaId},
+      ${atendimentoId},
+      ${atendimento.diagnostico_id || ""},
+      ${atendimento.lead_id || ""},
+      ${atendimento.area || ""},
+      ${servico},
+      ${descricao},
+      ${tipoReceita},
+      ${valorTotal},
+      ${mensalidade},
+      ${taxaImplantacao},
+      ${status},
+      ${validade},
+      ${motivoPerda},
+      ${observacoes},
+      ${responsavelId},
+      ${responsavelNome},
+      ${enviadoEm},
+      ${ganhoEm},
+      ${perdidoEm},
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT (id)
+    DO UPDATE SET
+      servico = EXCLUDED.servico,
+      descricao = EXCLUDED.descricao,
+      tipo_receita = EXCLUDED.tipo_receita,
+      valor_total = EXCLUDED.valor_total,
+      mensalidade = EXCLUDED.mensalidade,
+      taxa_implantacao = EXCLUDED.taxa_implantacao,
+      status = EXCLUDED.status,
+      validade = EXCLUDED.validade,
+      motivo_perda = EXCLUDED.motivo_perda,
+      observacoes = EXCLUDED.observacoes,
+      responsavel_id = EXCLUDED.responsavel_id,
+      responsavel_nome = EXCLUDED.responsavel_nome,
+      enviado_em = EXCLUDED.enviado_em,
+      ganho_em = EXCLUDED.ganho_em,
+      perdido_em = EXCLUDED.perdido_em,
+      updated_at = NOW()
+    RETURNING *
+  `;
+
+  let statusOportunidade =
+    atendimento.status_oportunidade ||
+    "NAO_ANALISADA";
+
+  if (["RASCUNHO", "ENVIADA", "NEGOCIACAO"].includes(status)) {
+    statusOportunidade = "PROPOSTA";
+  } else if (status === "GANHA") {
+    statusOportunidade = "CONTRATADO";
+  } else if (status === "PERDIDA") {
+    statusOportunidade = "SEM_OPORTUNIDADE";
+  }
+
+  await sql`
+    UPDATE crm_atendimentos_departamento
+    SET
+      status_oportunidade = ${statusOportunidade},
+      updated_at = NOW()
+    WHERE id = ${atendimentoId}
+  `;
+
+  const mudouStatus =
+    (atual?.status || "") !== status;
+
+  if (!atual || mudouStatus) {
+    const descricaoHistorico = !atual
+      ? `Proposta criada: ${servico}.`
+      : `Proposta "${servico}" alterada de ${atual.status} para ${status}.`;
+
+    await sql`
+      INSERT INTO crm_atendimento_historico (
+        id,
+        atendimento_id,
+        diagnostico_id,
+        lead_id,
+        tipo_evento,
+        tipo_acionamento,
+        resultado,
+        descricao,
+        status_anterior,
+        status_novo,
+        oportunidade_anterior,
+        oportunidade_nova,
+        proxima_acao,
+        proximo_contato,
+        responsavel_id,
+        responsavel_nome,
+        created_at
+      )
+      VALUES (
+        ${gerarId("hist")},
+        ${atendimentoId},
+        ${atendimento.diagnostico_id || ""},
+        ${atendimento.lead_id || ""},
+        'ACIONAMENTO',
+        'PROPOSTA',
+        ${status},
+        ${descricaoHistorico},
+        ${atendimento.status_atendimento || ""},
+        ${atendimento.status_atendimento || ""},
+        ${atendimento.status_oportunidade || ""},
+        ${statusOportunidade},
+        '',
+        NULL,
+        ${responsavelId},
+        ${responsavelNome},
+        NOW()
+      )
+    `;
+  }
+
+  return res.status(200).json({
+    sucesso: true,
+    proposta: mapearProposta(linhas?.[0]),
+    statusOportunidade,
+  });
+}
+
+async function excluirProposta(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) return;
+
+  const propostaId =
+    texto(req.body?.propostaId, 140);
+
+  if (!propostaId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "propostaId é obrigatório.",
+    });
+  }
+
+  const linhas = await sql`
+    DELETE FROM crm_propostas
+    WHERE id = ${propostaId}
+    RETURNING id
+  `;
+
+  if (!linhas?.[0]) {
+    return res.status(404).json({
+      sucesso: false,
+      error: "Proposta não encontrada.",
+    });
+  }
+
+  return res.status(200).json({
+    sucesso: true,
+    propostaId,
+  });
 }
 
 function statusOportunidadeValido(valor) {
@@ -4919,6 +5442,24 @@ export default async function handler(req, res) {
 
       case "listar-historico":
         return listarHistoricoAtendimento(
+          req,
+          res
+        );
+
+      case "listar-propostas":
+        return listarPropostas(
+          req,
+          res
+        );
+
+      case "salvar-proposta":
+        return salvarProposta(
+          req,
+          res
+        );
+
+      case "excluir-proposta":
+        return excluirProposta(
           req,
           res
         );
