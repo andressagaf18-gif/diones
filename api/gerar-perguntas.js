@@ -60,6 +60,388 @@ function limparJson(valor) {
     .trim();
 }
 
+
+function primeiraEmpresa(body) {
+  return lista(body?.empresas)[0] || {};
+}
+
+function descricaoAtividadeBase(body) {
+  const empresa =
+    primeiraEmpresa(body);
+
+  return texto(
+    empresa?.cnaePrincipal?.descricao ||
+    empresa?.segmento ||
+    empresa?.categoria
+  );
+}
+
+function interpretacaoFallback(
+  body,
+  motor
+) {
+  const empresa =
+    primeiraEmpresa(body);
+
+  const descricao =
+    texto(
+      body?.descricaoNegocio
+    );
+
+  const atividadeBase =
+    descricaoAtividadeBase(body);
+
+  const segmento =
+    texto(
+      empresa?.segmento ||
+      empresa?.categoria ||
+      motor?.label ||
+      "Empresa operacional"
+    );
+
+  const subsegmento =
+    descricao ||
+    atividadeBase ||
+    segmento;
+
+  const justificativaPartes =
+    [
+      atividadeBase
+        ? `Atividade-base: ${atividadeBase}.`
+        : "",
+      descricao
+        ? `Descrição informada: ${descricao}.`
+        : "",
+    ].filter(Boolean);
+
+  return {
+    segmento,
+    subsegmento,
+
+    modeloOperacional:
+      descricao
+        ? `Operação interpretada a partir da descrição "${descricao}".`
+        : atividadeBase
+        ? `Operação compatível com a atividade-base "${atividadeBase}".`
+        : "Operação a confirmar durante o diagnóstico.",
+
+    justificativa:
+      justificativaPartes.join(
+        " "
+      ) ||
+      "Interpretação preliminar baseada nos dados informados.",
+
+    riscosNaturais: [],
+  };
+}
+
+function normalizarInterpretacao(
+  resultado,
+  body,
+  motor
+) {
+  const recebido =
+    resultado?.negocioInterpretado ||
+    resultado?.interpretacaoNegocio ||
+    null;
+
+  const fallback =
+    interpretacaoFallback(
+      body,
+      motor
+    );
+
+  if (
+    !recebido ||
+    typeof recebido !==
+      "object"
+  ) {
+    return fallback;
+  }
+
+  return {
+    segmento:
+      texto(
+        recebido.segmento
+      ) ||
+      fallback.segmento,
+
+    subsegmento:
+      texto(
+        recebido.subsegmento
+      ) ||
+      texto(
+        recebido.resumo
+      ) ||
+      fallback.subsegmento,
+
+    modeloOperacional:
+      texto(
+        recebido.modeloOperacional
+      ) ||
+      texto(
+        recebido.modelo
+      ) ||
+      fallback.modeloOperacional,
+
+    justificativa:
+      texto(
+        recebido.justificativa
+      ) ||
+      texto(
+        recebido.resumo
+      ) ||
+      fallback.justificativa,
+
+    riscosNaturais:
+      lista(
+        recebido.riscosNaturais ||
+        recebido.pontosParaInvestigar
+      )
+        .map(texto)
+        .filter(Boolean),
+  };
+}
+
+function perguntaCompativelComEscala(
+  pergunta
+) {
+  const valor =
+    texto(pergunta)
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(
+        /[\u0300-\u036f]/g,
+        ""
+      );
+
+  if (!valor) {
+    return false;
+  }
+
+  // "Sim / Parcial / Não" funciona melhor para uma única
+  // prática, controle ou condição verificável.
+  const marcadoresAbertos = [
+    "quais ",
+    "qual ",
+    "como ",
+    "por que ",
+    "porque ",
+    "descreva",
+    "explique",
+    "informe",
+    "forneca",
+    "detalhe",
+    "liste",
+    "cite ",
+    "envie",
+    "se sim",
+    "se nao",
+    "quanto ",
+    "quando ",
+  ];
+
+  if (
+    marcadoresAbertos.some(
+      (marcador) =>
+        valor.includes(
+          marcador
+        )
+    )
+  ) {
+    return false;
+  }
+
+  const interrogacoes =
+    (
+      texto(pergunta).match(
+        /\?/g
+      ) ||
+      []
+    ).length;
+
+  if (
+    interrogacoes >
+    1
+  ) {
+    return false;
+  }
+
+  // Evita perguntas "duplas" muito longas que misturam vários
+  // critérios e ficam impossíveis de responder com uma escala única.
+  if (
+    valor.length >
+      240
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+async function repararPerguntasAbertas({
+  perguntas,
+  estrutura,
+  eixosParaPerguntas,
+}) {
+  if (
+    !perguntas.length ||
+    !process.env
+      .OPENAI_API_KEY
+  ) {
+    return perguntas;
+  }
+
+  const invalidas =
+    perguntas.filter(
+      (q) =>
+        !perguntaCompativelComEscala(
+          q.pergunta
+        )
+    );
+
+  if (!invalidas.length) {
+    return perguntas;
+  }
+
+  const promptReparo = `
+Você revisa perguntas de diagnóstico empresarial.
+
+A interface permite SOMENTE estas respostas:
+- Sim
+- Parcial
+- Não
+
+REESCREVA as perguntas abaixo para que cada uma avalie UMA ÚNICA prática, controle ou condição objetiva.
+
+REGRAS OBRIGATÓRIAS:
+- A resposta "Sim", "Parcial" ou "Não" deve fazer sentido sem explicação adicional.
+- NÃO use: "quais", "qual", "como", "descreva", "explique", "informe", "forneça", "detalhe", "liste", "cite", "envie".
+- NÃO peça números, nomes de sistemas, documentos ou exemplos.
+- NÃO coloque duas perguntas no mesmo item.
+- NÃO use "se sim..." ou "se não...".
+- Preserve o mesmo id e areaId.
+- Preserve o assunto e a intenção diagnóstica.
+- Retorne SOMENTE JSON válido.
+
+ESTRUTURA:
+${estrutura}
+
+EIXOS PERMITIDOS:
+${eixosParaPerguntas.join(", ")}
+
+PERGUNTAS A REESCREVER:
+${JSON.stringify(invalidas)}
+
+FORMATO:
+{
+  "perguntas": [
+    {
+      "id": "mesmo id",
+      "areaId": "mesmo areaId",
+      "area": "nome da área",
+      "tema": "tema",
+      "pergunta": "pergunta fechada",
+      "riscoAvaliado": "risco",
+      "motivo": "motivo",
+      "importancia": 1
+    }
+  ]
+}
+`;
+
+  try {
+    const resposta =
+      await fetch(
+        "https://api.openai.com/v1/responses",
+        {
+          method: "POST",
+          headers: {
+            Authorization:
+              `Bearer ${process.env.OPENAI_API_KEY}`,
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            model:
+              process.env.OPENAI_MODEL ||
+              "gpt-5-mini",
+
+            input:
+              promptReparo,
+
+            text: {
+              format: {
+                type:
+                  "json_object",
+              },
+            },
+          }),
+        }
+      );
+
+    const data =
+      await resposta.json();
+
+    if (!resposta.ok) {
+      return perguntas;
+    }
+
+    const bruto =
+      extrairOutputText(
+        data
+      );
+
+    if (!bruto) {
+      return perguntas;
+    }
+
+    const resultado =
+      JSON.parse(
+        limparJson(bruto)
+      );
+
+    const reparadas =
+      lista(
+        resultado?.perguntas
+      )
+        .map(
+          normalizarPergunta
+        )
+        .filter(
+          (q) =>
+            q.pergunta &&
+            q.areaId &&
+            perguntaCompativelComEscala(
+              q.pergunta
+            )
+        );
+
+    const porId =
+      new Map(
+        reparadas.map(
+          (q) => [
+            q.id,
+            q,
+          ]
+        )
+      );
+
+    return perguntas.map(
+      (q) =>
+        porId.get(q.id) ||
+        q
+    );
+  } catch (error) {
+    console.error(
+      "[gerar-perguntas] reparo:",
+      error
+    );
+
+    return perguntas;
+  }
+}
+
 function normalizarPergunta(q, idx) {
   return {
     id:
@@ -195,6 +577,16 @@ export default async function handler(req, res) {
     );
   }
 
+  // Esta rota nunca deve devolver perguntas abertas para uma
+  // interface cuja resposta é somente Sim / Parcial / Não.
+  const fallbackFechado =
+    fallback.filter(
+      (q) =>
+        perguntaCompativelComEscala(
+          q.pergunta
+        )
+    );
+
   // Se não houver chave de IA, as trilhas que possuem catálogo local
   // continuam funcionando em vez de travar o diagnóstico.
   if (!process.env.OPENAI_API_KEY) {
@@ -202,8 +594,17 @@ export default async function handler(req, res) {
       sucesso: true,
       estrutura,
       fallback: true,
-      interpretacaoNegocio: null,
-      perguntas: fallback,
+      negocioInterpretado:
+        interpretacaoFallback(
+          body,
+          motor
+        ),
+      interpretacaoNegocio:
+        interpretacaoFallback(
+          body,
+          motor
+        ),
+      perguntas: fallbackFechado,
     });
   }
 
@@ -225,7 +626,7 @@ Você é o motor de perguntas diagnósticas da Finder of Solutions.
 ${instrucoesDoMotor(estrutura)}
 
 OBJETIVO:
-Gerar perguntas aprofundadas e altamente específicas para a estrutura escolhida.
+Gerar perguntas específicas para a estrutura escolhida, mas TODAS precisam ser respondíveis exclusivamente pela escala "Sim / Parcial / Não".
 
 ESTRUTURA:
 ${motor.label}
@@ -255,7 +656,13 @@ REGRAS:
 - Para eixo PRIORITÁRIO: gere 3 a 5 perguntas de aprofundamento.
 - Nas estruturas especializadas, os eixos obrigatórios podem representar a cobertura estrutural completa definida pelo motor.
 - Não faça perguntas que já estejam respondidas claramente no contexto.
-- As perguntas precisam descobrir causa, impacto, risco e capacidade de ação.
+- CADA ITEM deve avaliar UMA ÚNICA prática, controle ou condição verificável.
+- A resposta "Sim", "Parcial" ou "Não" deve ser suficiente e coerente.
+- NÃO use perguntas abertas como "quais", "qual", "como", "por quê", "descreva", "explique", "informe", "forneça", "detalhe", "liste", "cite" ou "envie".
+- NÃO peça nomes de sistemas, valores, documentos, exemplos ou justificativas no checklist.
+- NÃO use "Se sim..." nem faça uma segunda pergunta dentro do mesmo item.
+- Transforme aprofundamentos em afirmações verificáveis. Exemplo: em vez de "Quais sistemas são usados e quais integrações existem?", use "Os sistemas utilizados na operação estão integrados de forma suficiente para evitar retrabalho?".
+- As perguntas devem detectar maturidade, risco, causa provável e capacidade de ação por meio da escala.
 - Pessoa Física: não mencionar CNAE, faturamento empresarial, margem,
   sócios ou estrutura societária, salvo se o participante declarar empresa própria.
 - Avaliação de Holding: não presumir que a holding existe ou é vantajosa.
@@ -271,10 +678,12 @@ REGRAS:
 
 FORMATO:
 {
-  "interpretacaoNegocio": {
-    "estrutura": "${estrutura}",
-    "resumo": "resumo curto e específico da estrutura",
-    "pontosParaInvestigar": []
+  "negocioInterpretado": {
+    "segmento": "segmento identificado",
+    "subsegmento": "atividade real interpretada em linguagem simples",
+    "modeloOperacional": "como esse negócio normalmente opera, em uma frase",
+    "justificativa": "por que esta interpretação faz sentido com CNAE e descrição informada",
+    "riscosNaturais": ["ponto natural para investigar"]
   },
   "perguntas": [
     {
@@ -333,8 +742,17 @@ FORMATO:
         sucesso: true,
         estrutura,
         fallback: true,
-        interpretacaoNegocio: null,
-        perguntas: fallback,
+        negocioInterpretado:
+          interpretacaoFallback(
+            body,
+            motor
+          ),
+        interpretacaoNegocio:
+          interpretacaoFallback(
+            body,
+            motor
+          ),
+        perguntas: fallbackFechado,
       });
     }
 
@@ -346,8 +764,17 @@ FORMATO:
         sucesso: true,
         estrutura,
         fallback: true,
-        interpretacaoNegocio: null,
-        perguntas: fallback,
+        negocioInterpretado:
+          interpretacaoFallback(
+            body,
+            motor
+          ),
+        interpretacaoNegocio:
+          interpretacaoFallback(
+            body,
+            motor
+          ),
+        perguntas: fallbackFechado,
       });
     }
 
@@ -368,19 +795,50 @@ FORMATO:
         sucesso: true,
         estrutura,
         fallback: true,
-        interpretacaoNegocio: null,
-        perguntas: fallback,
+        negocioInterpretado:
+          interpretacaoFallback(
+            body,
+            motor
+          ),
+        interpretacaoNegocio:
+          interpretacaoFallback(
+            body,
+            motor
+          ),
+        perguntas: fallbackFechado,
       });
     }
 
-    const perguntasIA =
+    let perguntasIA =
       lista(resultado?.perguntas)
         .map(normalizarPergunta)
         .filter(
           (q) =>
             q.pergunta &&
-            q.areaId
+            q.areaId &&
+            eixosParaPerguntas.includes(
+              q.areaId
+            )
         );
+
+    perguntasIA =
+      await repararPerguntasAbertas({
+        perguntas:
+          perguntasIA,
+        estrutura,
+        eixosParaPerguntas,
+      });
+
+    // Qualquer pergunta que continue incompatível com
+    // "Sim / Parcial / Não" é descartada e será substituída
+    // pelo catálogo local fechado.
+    perguntasIA =
+      perguntasIA.filter(
+        (q) =>
+          perguntaCompativelComEscala(
+            q.pergunta
+          )
+      );
 
     // Se a IA devolver poucas perguntas, complementa com o catálogo
     // local em vez de aceitar um diagnóstico raso.
@@ -392,7 +850,7 @@ FORMATO:
       );
 
     const complementares =
-      fallback.filter(
+      fallbackFechado.filter(
         (q) =>
           !idsIA.has(q.id)
       );
@@ -474,6 +932,14 @@ FORMATO:
         }
       );
 
+    const perguntasFinais =
+      perguntas.filter(
+        (q) =>
+          perguntaCompativelComEscala(
+            q.pergunta
+          )
+      );
+
     return res.status(200).json({
       sucesso: true,
       estrutura,
@@ -485,11 +951,22 @@ FORMATO:
       eixosCobertos:
         eixosParaPerguntas,
 
-      interpretacaoNegocio:
-        resultado?.interpretacaoNegocio ||
-        null,
+      negocioInterpretado:
+        normalizarInterpretacao(
+          resultado,
+          body,
+          motor
+        ),
 
-      perguntas,
+      interpretacaoNegocio:
+        normalizarInterpretacao(
+          resultado,
+          body,
+          motor
+        ),
+
+      perguntas:
+        perguntasFinais,
 
       uso:
         data?.usage ||
@@ -505,8 +982,17 @@ FORMATO:
       sucesso: true,
       estrutura,
       fallback: true,
-      interpretacaoNegocio: null,
-      perguntas: fallback,
+      negocioInterpretado:
+        interpretacaoFallback(
+          body,
+          motor
+        ),
+      interpretacaoNegocio:
+        interpretacaoFallback(
+          body,
+          motor
+        ),
+      perguntas: fallbackFechado,
     });
   }
 }
