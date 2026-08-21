@@ -882,7 +882,7 @@ function LoginAdmin({ onLogin }) {
     try {
       if (modoLegado) {
         const valor = senha.trim();
-        const resposta = await fetch("/api/listar-diagnosticos?limite=1", {
+        const resposta = await fetch("/api/diagnosticos?action=listar&limite=1", {
           headers: { Authorization: `Bearer ${valor}` },
         });
         const data = await resposta.json().catch(() => null);
@@ -1035,7 +1035,7 @@ function ListaDiagnosticos({
 
       const resposta =
         await fetch(
-          `/api/listar-diagnosticos?${params.toString()}`,
+          `/api/diagnosticos?action=listar&${params.toString()}`,
           {
             headers: {
               Authorization:
@@ -1124,7 +1124,7 @@ function ListaDiagnosticos({
     try {
       const resposta =
         await fetch(
-          `/api/listar-diagnosticos?action=${
+          `/api/diagnosticos?action=${
             excluir
               ? "excluir"
               : item.arquivado
@@ -1280,7 +1280,7 @@ function ListaDiagnosticos({
     try {
       const resposta =
         await fetch(
-          "/api/exportar-diagnosticos",
+          "/api/diagnosticos?action=exportar",
           {
             method: "GET",
 
@@ -6080,7 +6080,7 @@ function AtendimentosDepartamento({
       ) {
         requisicoes.push(
           fetch(
-            `/api/ver-diagnostico?id=${encodeURIComponent(
+            `/api/diagnosticos?action=ver&id=${encodeURIComponent(
               atendimento.diagnosticoId
             )}`,
             {
@@ -10488,7 +10488,7 @@ function DetalheDiagnostico({
       try {
         const resposta =
           await fetch(
-            `/api/ver-diagnostico?id=${encodeURIComponent(
+            `/api/diagnosticos?action=ver&id=${encodeURIComponent(
               id
             )}`,
             {
