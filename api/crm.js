@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 import dashboardHandler from "../server/dashboard-engine.js";
+import { usuarioAutenticado } from "./lib/auth.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -41,29 +42,8 @@ function percentual(valor) {
 }
 
 function autorizado(req) {
-  const adminToken =
-    process.env.ADMIN_TOKEN ||
-    process.env.ADMIN_PASSWORD ||
-    "";
-
-  if (!adminToken) {
-    return true;
-  }
-
-  const authorization =
-    req.headers?.authorization || "";
-
-  const bearer =
-    authorization.startsWith("Bearer ")
-      ? authorization.slice(7)
-      : "";
-
-  const tokenQuery =
-    req.query?.token || "";
-
-  return (
-    bearer === adminToken ||
-    tokenQuery === adminToken
+  return Boolean(
+    usuarioAutenticado(req)
   );
 }
 
@@ -222,6 +202,26 @@ async function prepararSchema() {
   await sql`
     ALTER TABLE diagnostico_leads
     ADD COLUMN IF NOT EXISTS prazo_atendimento TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT FALSE
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads
+    ADD COLUMN IF NOT EXISTS arquivado_em TIMESTAMPTZ
+  `;
+
+  await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT FALSE
+  `;
+
+  await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS arquivado_em TIMESTAMPTZ
   `;
 
   await sql`
@@ -1612,6 +1612,15 @@ function mapearLead(lead) {
     updatedAt:
       lead.updated_at,
 
+    arquivado:
+      Boolean(
+        lead.arquivado
+      ),
+
+    arquivadoEm:
+      lead.arquivado_em ||
+      null,
+
     temperatura:
       lead.temperatura_comercial ||
       temperaturaFallback(
@@ -1670,6 +1679,13 @@ async function listarLeads(req, res) {
       10
     ).toUpperCase();
 
+
+  const arquivamento =
+    texto(
+      req.query?.arquivamento,
+      20
+    ).toUpperCase();
+
   const limite =
     Math.max(
       1,
@@ -1726,7 +1742,9 @@ async function listarLeads(req, res) {
         ultima_atividade,
 
         created_at,
-        updated_at
+        updated_at,
+        arquivado,
+        arquivado_em
 
       FROM diagnostico_leads
 
@@ -1775,6 +1793,18 @@ async function listarLeads(req, res) {
           ${prioridadeComercial} = ''
           OR prioridade_comercial =
             ${prioridadeComercial}
+        )
+
+        AND (
+          ${arquivamento} = 'TODOS'
+          OR (
+            ${arquivamento} = 'ARQUIVADOS'
+            AND COALESCE(arquivado, FALSE) = TRUE
+          )
+          OR (
+            ${arquivamento} NOT IN ('TODOS', 'ARQUIVADOS')
+            AND COALESCE(arquivado, FALSE) = FALSE
+          )
         )
 
       ORDER BY
@@ -3051,6 +3081,16 @@ async function criarAtendimentosDepartamento(
             item.ultimo_acionamento ||
             null,
 
+
+          arquivado:
+            Boolean(
+              item.arquivado
+            ),
+
+          arquivadoEm:
+            item.arquivado_em ||
+            null,
+
           oportunidades:
             Array.isArray(
               item.oportunidades
@@ -3572,6 +3612,13 @@ async function listarAtendimentosDepartamento(
       60
     ).toUpperCase();
 
+
+  const arquivamento =
+    texto(
+      req.query?.arquivamento,
+      20
+    ).toUpperCase();
+
   const linhas =
     await sql`
       SELECT
@@ -3600,6 +3647,8 @@ async function listarAtendimentosDepartamento(
 
         a.created_at,
         a.updated_at,
+        a.arquivado,
+        a.arquivado_em,
 
         r.nome
           AS responsavel_nome,
@@ -3752,6 +3801,18 @@ async function listarAtendimentosDepartamento(
           ${statusOportunidade} = ''
           OR a.status_oportunidade =
             ${statusOportunidade}
+        )
+
+        AND (
+          ${arquivamento} = 'TODOS'
+          OR (
+            ${arquivamento} = 'ARQUIVADOS'
+            AND COALESCE(a.arquivado, FALSE) = TRUE
+          )
+          OR (
+            ${arquivamento} NOT IN ('TODOS', 'ARQUIVADOS')
+            AND COALESCE(a.arquivado, FALSE) = FALSE
+          )
         )
 
       ORDER BY
@@ -5217,6 +5278,130 @@ async function excluirLeadsLote(
     });
 }
 
+
+async function arquivarLead(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) return;
+
+  const leadId =
+    texto(
+      req.body?.leadId,
+      140
+    );
+
+  const arquivado =
+    req.body?.arquivado !== false;
+
+  if (!leadId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "leadId é obrigatório.",
+    });
+  }
+
+  const rows = await sql`
+    UPDATE diagnostico_leads
+    SET
+      arquivado = ${arquivado},
+      arquivado_em =
+        CASE
+          WHEN ${arquivado}
+            THEN NOW()
+          ELSE NULL
+        END,
+      updated_at = NOW()
+    WHERE id = ${leadId}
+    RETURNING id, diagnostico_id
+  `;
+
+  const lead = rows?.[0];
+
+  if (!lead) {
+    return res.status(404).json({
+      sucesso: false,
+      error: "Lead não encontrado.",
+    });
+  }
+
+  if (arquivado) {
+    await sql`
+      UPDATE crm_atendimentos_departamento
+      SET
+        arquivado = TRUE,
+        arquivado_em = NOW(),
+        updated_at = NOW()
+      WHERE lead_id = ${leadId}
+    `;
+  }
+
+  return res.status(200).json({
+    sucesso: true,
+    leadId,
+    arquivado,
+  });
+}
+
+async function arquivarAtendimento(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) return;
+
+  const atendimentoId =
+    texto(
+      req.body?.atendimentoId,
+      140
+    );
+
+  const arquivado =
+    req.body?.arquivado !== false;
+
+  if (!atendimentoId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "atendimentoId é obrigatório.",
+    });
+  }
+
+  const rows = await sql`
+    UPDATE crm_atendimentos_departamento
+    SET
+      arquivado = ${arquivado},
+      arquivado_em =
+        CASE
+          WHEN ${arquivado}
+            THEN NOW()
+          ELSE NULL
+        END,
+      updated_at = NOW()
+    WHERE id = ${atendimentoId}
+    RETURNING id
+  `;
+
+  if (!rows?.[0]) {
+    return res.status(404).json({
+      sucesso: false,
+      error: "Atendimento não encontrado.",
+    });
+  }
+
+  return res.status(200).json({
+    sucesso: true,
+    atendimentoId,
+    arquivado,
+  });
+}
+
 async function excluirLead(req, res) {
   if (
     req.method !==
@@ -5652,6 +5837,18 @@ export default async function handler(req, res) {
 
       case "atribuir-lead":
         return atribuirLead(
+          req,
+          res
+        );
+
+      case "arquivar-lead":
+        return arquivarLead(
+          req,
+          res
+        );
+
+      case "arquivar-atendimento":
+        return arquivarAtendimento(
           req,
           res
         );
