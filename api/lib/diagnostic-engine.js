@@ -148,8 +148,26 @@ export function obterMotor(estrutura) {
   return ESTRUTURAS[normalizarEstrutura(estrutura)];
 }
 
-export function contratoSaida(estrutura) {
-  const motor = obterMotor(estrutura);
+export function contratoSaida(
+  estrutura,
+  eixosPermitidos = null
+) {
+  const motor =
+    obterMotor(estrutura);
+
+  const eixosDoRelatorio =
+    Array.isArray(
+      eixosPermitidos
+    ) &&
+    eixosPermitidos.length >
+      0
+      ? motor.eixos.filter(
+          (id) =>
+            eixosPermitidos.includes(
+              id
+            )
+        )
+      : motor.eixos;
 
   return {
     estrutura: motor.id,
@@ -160,7 +178,7 @@ export function contratoSaida(estrutura) {
     objetivosDeclarados: [],
     doresPrincipais: [],
     impactos: [],
-    eixos: motor.eixos.map((id) => ({
+    eixos: eixosDoRelatorio.map((id) => ({
       id,
       label: id,
       score: 0,
@@ -203,8 +221,26 @@ export function contratoSaida(estrutura) {
   };
 }
 
-export function instrucoesDoMotor(estrutura) {
-  const motor = obterMotor(estrutura);
+export function instrucoesDoMotor(
+  estrutura,
+  eixosPermitidos = null
+) {
+  const motor =
+    obterMotor(estrutura);
+
+  const eixosDoRelatorio =
+    Array.isArray(
+      eixosPermitidos
+    ) &&
+    eixosPermitidos.length >
+      0
+      ? motor.eixos.filter(
+          (id) =>
+            eixosPermitidos.includes(
+              id
+            )
+        )
+      : motor.eixos;
 
   return `
 ESTRUTURA SELECIONADA: ${motor.label}
@@ -213,7 +249,7 @@ TIPO DE OPERAÇÃO: ${motor.tipo}
 Você DEVE analisar este caso exclusivamente dentro desta estrutura.
 
 EIXOS OBRIGATÓRIOS:
-${motor.eixos.map((x) => `- ${x}`).join("\n")}
+${eixosDoRelatorio.map((x) => `- ${x}`).join("\n")}
 
 FOCO:
 ${motor.foco.map((x) => `- ${x}`).join("\n")}
@@ -224,7 +260,8 @@ REGRAS:
 - Não invente fatos.
 - Diferencie fato informado, inferência e informação faltante.
 - Não penalize o participante por campos que não pertencem a esta estrutura.
-- O relatório precisa ser completo mesmo quando houver lacunas.
+- O relatório precisa ser completo DENTRO DO ESCOPO selecionado, mesmo quando houver lacunas.
+- Não crie eixos/departamentos que não estejam na lista de EIXOS OBRIGATÓRIOS acima.
 - Quando faltar informação, registre em "informacoesFaltantes".
 - Recomendações devem decorrer das respostas.
 - Preserve rastreabilidade entre resposta, achado, risco e recomendação.
