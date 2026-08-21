@@ -6,8 +6,53 @@ import { neon } from "@neondatabase/serverless";
 // FUNÇÕES AUXILIARES
 // =========================================================
 
+
+function limparCodigoInternoRelatorio(
+  valor
+) {
+  return String(
+    valor ||
+    ""
+  )
+    .replace(
+      /\s*\(\s*resposta\s*:\s*['"][^'"]*['"]\s+para\s+[a-z0-9_:-]+\s*\)/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Id\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Tipo\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Ligado\s*A\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*[—-]\s*Risco\s*Mitigado\s*:\s*[a-z0-9_:-]+/gi,
+      ""
+    )
+    .replace(
+      /\s*\([a-z0-9_]+\s*=\s*['"][^'"]*['"]\s*\)/gi,
+      ""
+    )
+    .replace(
+      /\s{2,}/g,
+      " "
+    )
+    .replace(
+      /\s+([.,;:])/g,
+      "$1"
+    )
+    .trim();
+}
+
 function escaparHtml(valor = "") {
-  return String(valor ?? "")
+  return limparCodigoInternoRelatorio(
+    valor
+  )
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
