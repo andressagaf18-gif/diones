@@ -1,6 +1,3 @@
-import React, { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
-
 import {
   Search,
   Building2,
@@ -2901,6 +2898,16 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
 
+  const [
+    leadsSelecionados,
+    setLeadsSelecionados,
+  ] = useState([]);
+
+  const [
+    excluindoLote,
+    setExcluindoLote,
+  ] = useState(false);
+
   async function carregarLeads() {
     setCarregando(true);
     setErro("");
@@ -2936,7 +2943,29 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
         );
       }
 
-      setLeads(Array.isArray(data.leads) ? data.leads : []);
+      const novosLeads =
+        Array.isArray(
+          data.leads
+        )
+          ? data.leads
+          : [];
+
+      setLeads(
+        novosLeads
+      );
+
+      setLeadsSelecionados(
+        (atuais) =>
+          atuais.filter(
+            (id) =>
+              novosLeads.some(
+                (lead) =>
+                  lead.leadId ===
+                  id
+              )
+          )
+      );
+
       setResumo(data.resumo || {});
     } catch (error) {
       setErro(error?.message || "Erro ao carregar leads.");
@@ -3052,6 +3081,190 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
     } finally {
       setAtribuindoLeadId(
         ""
+      );
+    }
+  }
+
+
+  function leadEstaSelecionado(
+    leadId
+  ) {
+    return leadsSelecionados.includes(
+      leadId
+    );
+  }
+
+  function alternarLeadSelecionado(
+    leadId
+  ) {
+    setLeadsSelecionados(
+      (atuais) =>
+        atuais.includes(
+          leadId
+        )
+          ? atuais.filter(
+              (id) =>
+                id !==
+                leadId
+            )
+          : [
+              ...atuais,
+              leadId,
+            ]
+    );
+  }
+
+  function selecionarTodosVisiveis() {
+    const ids =
+      leads
+        .map(
+          (lead) =>
+            lead.leadId
+        )
+        .filter(Boolean);
+
+    const todosJaSelecionados =
+      ids.length > 0 &&
+      ids.every(
+        (id) =>
+          leadsSelecionados.includes(
+            id
+          )
+      );
+
+    if (todosJaSelecionados) {
+      setLeadsSelecionados(
+        (atuais) =>
+          atuais.filter(
+            (id) =>
+              !ids.includes(
+                id
+              )
+          )
+      );
+      return;
+    }
+
+    setLeadsSelecionados(
+      (atuais) => [
+        ...new Set([
+          ...atuais,
+          ...ids,
+        ]),
+      ]
+    );
+  }
+
+  function limparSelecaoLeads() {
+    setLeadsSelecionados(
+      []
+    );
+  }
+
+  async function excluirLeadsSelecionados() {
+    const selecionados =
+      leads.filter(
+        (lead) =>
+          leadsSelecionados.includes(
+            lead.leadId
+          )
+      );
+
+    if (!selecionados.length) {
+      setErro(
+        "Selecione ao menos um lead."
+      );
+      return;
+    }
+
+    const mensagem =
+      selecionados.length ===
+      1
+        ? `Excluir 1 lead selecionado e todos os atendimentos/históricos vinculados?`
+        : `Excluir ${selecionados.length} leads selecionados e todos os atendimentos/históricos vinculados?`;
+
+    if (
+      !window.confirm(
+        `${mensagem}\n\nEsta ação não pode ser desfeita.`
+      )
+    ) {
+      return;
+    }
+
+    setExcluindoLote(
+      true
+    );
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=excluir-leads-lote",
+          {
+            method:
+              "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+            },
+            body:
+              JSON.stringify({
+                registros:
+                  selecionados.map(
+                    (lead) => ({
+                      leadId:
+                        lead.leadId,
+                      diagnosticoId:
+                        lead.diagnosticoId ||
+                        "",
+                    })
+                  ),
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok &&
+        resposta.status !==
+          207
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível excluir os leads selecionados."
+        );
+      }
+
+      if (
+        data?.falhas >
+        0
+      ) {
+        setErro(
+          `${data.excluidos || 0} registro(s) excluído(s), mas ${data.falhas} apresentaram erro.`
+        );
+      }
+
+      setLeadsSelecionados(
+        []
+      );
+
+      await carregarLeads();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao excluir leads em lote."
+      );
+    } finally {
+      setExcluindoLote(
+        false
       );
     }
   }
@@ -3358,6 +3571,188 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
         </div>
       )}
 
+      {leads.length > 0 && (
+        <Card
+          style={{
+            marginBottom: 12,
+            padding: 12,
+            background:
+              leadsSelecionados.length
+                ? "#FFF7F3"
+                : "#FBFCFE",
+            borderColor:
+              leadsSelecionados.length
+                ? "#F2C5B8"
+                : "#D8DEEA",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent:
+                "space-between",
+              alignItems:
+                "center",
+              gap: 10,
+              flexWrap:
+                "wrap",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems:
+                  "center",
+                gap: 9,
+                flexWrap:
+                  "wrap",
+              }}
+            >
+              <label
+                style={{
+                  display: "flex",
+                  alignItems:
+                    "center",
+                  gap: 7,
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  cursor:
+                    "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={
+                    leads.length >
+                      0 &&
+                    leads.every(
+                      (lead) =>
+                        leadsSelecionados.includes(
+                          lead.leadId
+                        )
+                    )
+                  }
+                  onChange={
+                    selecionarTodosVisiveis
+                  }
+                />
+
+                Selecionar todos os exibidos
+              </label>
+
+              <span
+                style={{
+                  background:
+                    leadsSelecionados.length
+                      ? CORAL
+                      : "#E9EDF5",
+                  color:
+                    leadsSelecionados.length
+                      ? WHITE
+                      : MUTED,
+                  borderRadius:
+                    999,
+                  padding:
+                    "5px 9px",
+                  fontSize:
+                    9.5,
+                  fontWeight:
+                    900,
+                }}
+              >
+                {
+                  leadsSelecionados.length
+                }{" "}
+                selecionado(s)
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 7,
+                flexWrap:
+                  "wrap",
+              }}
+            >
+              {leadsSelecionados.length >
+                0 && (
+                <button
+                  type="button"
+                  onClick={
+                    limparSelecaoLeads
+                  }
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    background:
+                      WHITE,
+                    color:
+                      NAVY,
+                    borderRadius:
+                      8,
+                    padding:
+                      "8px 10px",
+                    fontSize:
+                      9.8,
+                    fontWeight:
+                      800,
+                    cursor:
+                      "pointer",
+                  }}
+                >
+                  Limpar seleção
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={
+                  !leadsSelecionados.length ||
+                  excluindoLote
+                }
+                onClick={
+                  excluirLeadsSelecionados
+                }
+                style={{
+                  border:
+                    "1px solid #E2B8B8",
+                  background:
+                    leadsSelecionados.length
+                      ? "#A12B2B"
+                      : "#F3F3F3",
+                  color:
+                    leadsSelecionados.length
+                      ? WHITE
+                      : "#999",
+                  borderRadius:
+                    8,
+                  padding:
+                    "8px 11px",
+                  fontSize:
+                    9.8,
+                  fontWeight:
+                    900,
+                  cursor:
+                    !leadsSelecionados.length ||
+                    excluindoLote
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                {excluindoLote
+                  ? "Excluindo..."
+                  : `Excluir selecionados${
+                      leadsSelecionados.length
+                        ? ` (${leadsSelecionados.length})`
+                        : ""
+                    }`}
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div
         style={{
           display: "flex",
@@ -3404,16 +3799,69 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
             );
 
             return (
-              <Card key={lead.leadId} style={{ padding: 15 }}>
+              <Card
+                key={
+                  lead.leadId
+                }
+                style={{
+                  padding: 15,
+                  borderColor:
+                    leadEstaSelecionado(
+                      lead.leadId
+                    )
+                      ? CORAL
+                      : undefined,
+                  background:
+                    leadEstaSelecionado(
+                      lead.leadId
+                    )
+                      ? "#FFFDFB"
+                      : WHITE,
+                }}
+              >
                 <div
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "minmax(220px,1.5fr) minmax(130px,.75fr) minmax(170px,1fr) minmax(190px,1.1fr) minmax(190px,1.05fr) minmax(150px,.8fr)",
+                      "34px minmax(220px,1.5fr) minmax(130px,.75fr) minmax(170px,1fr) minmax(190px,1.1fr) minmax(190px,1.05fr) minmax(150px,.8fr)",
                     gap: 14,
                     alignItems: "center",
                   }}
                 >
+                  <div
+                    style={{
+                      display:
+                        "flex",
+                      justifyContent:
+                        "center",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={
+                        leadEstaSelecionado(
+                          lead.leadId
+                        )
+                      }
+                      onChange={() =>
+                        alternarLeadSelecionado(
+                          lead.leadId
+                        )
+                      }
+                      aria-label={`Selecionar ${
+                        lead.razaoSocial ||
+                        lead.nome ||
+                        "lead"
+                      }`}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        cursor:
+                          "pointer",
+                      }}
+                    />
+                  </div>
+
                   <div>
                     <strong style={{ fontSize: 13.5 }}>
                       {lead.razaoSocial || lead.nome || "Lead sem identificação"}
