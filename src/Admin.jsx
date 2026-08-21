@@ -34,6 +34,7 @@ import {
   KeyRound,
   History,
   UserCog,
+  Pencil,
 } from "lucide-react";
 import Dashboard from "./Dashboard";
 
@@ -14068,34 +14069,1140 @@ function ListaInterna({
 // USUÁRIOS, ACESSOS E AUDITORIA
 // =========================================================
 function UsuariosAcessos({ token }) {
-  const [usuarios,setUsuarios]=useState([]), [erro,setErro]=useState(""), [salvando,setSalvando]=useState(false);
-  const [form,setForm]=useState({nome:"",email:"",login:"",senha:"",tipoAcesso:"SISTEMA",perfil:"CONSULTOR"});
-  async function carregar(){ try{ const r=await fetch("/api/acessos?action=usuarios",{headers:{Authorization:`Bearer ${token}`}}); const d=await r.json().catch(()=>null); if(!r.ok||!d?.sucesso) throw new Error(d?.error||"Erro ao carregar usuários."); setUsuarios(d.usuarios||[]);}catch(e){setErro(e.message)} }
-  useEffect(()=>{carregar()},[]);
-  async function criar(){setSalvando(true);setErro("");try{const r=await fetch("/api/acessos?action=criar-usuario",{method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(form)});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao criar usuário.");setForm({nome:"",email:"",login:"",senha:"",tipoAcesso:"SISTEMA",perfil:"CONSULTOR"});await carregar();}catch(e){setErro(e.message)}finally{setSalvando(false)}}
-  async function alternar(u){setErro("");try{const r=await fetch("/api/acessos?action=alterar-usuario",{method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({id:u.id,ativo:!u.ativo})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao alterar usuário.");await carregar();}catch(e){setErro(e.message)}}
-  const inp={border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 11px",fontSize:12,color:NAVY,background:WHITE};
-  return <div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:10,background:WHITE,borderRadius:16,padding:18,boxShadow:"0 8px 24px rgba(23,35,61,.06)",marginBottom:18}}>
-      <div style={{gridColumn:"1/-1"}}><h2 style={{...tituloSecao,margin:"0 0 4px"}}>Criar usuário</h2><div style={{fontSize:12,color:MUTED}}>Crie acesso separado para o App, Sistema ou ambos.</div></div>
-      <input style={inp} placeholder="Nome" value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})}/>
-      <input style={inp} placeholder="E-mail" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/>
-      <input style={inp} placeholder="Login" value={form.login} onChange={e=>setForm({...form,login:e.target.value})}/>
-      <input style={inp} type="password" placeholder="Senha inicial (mín. 8)" value={form.senha} onChange={e=>setForm({...form,senha:e.target.value})}/>
-      <select style={inp} value={form.tipoAcesso} onChange={e=>setForm({...form,tipoAcesso:e.target.value})}><option value="APP">App</option><option value="SISTEMA">Sistema</option><option value="AMBOS">App + Sistema</option></select>
-      <select style={inp} value={form.perfil} onChange={e=>setForm({...form,perfil:e.target.value})}><option value="ADMIN">Administrador</option><option value="GESTOR">Gestor</option><option value="CONSULTOR">Consultor</option><option value="COMERCIAL">Comercial</option><option value="LEITURA">Somente leitura</option></select>
-      <Botao onClick={criar} disabled={salvando}><UserPlus size={15}/>{salvando?"Criando...":"Criar usuário"}</Botao>
-      {erro&&<div style={{gridColumn:"1/-1",background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,fontSize:12}}>{erro}</div>}
+  const [usuarios, setUsuarios] =
+    useState([]);
+
+  const [erro, setErro] =
+    useState("");
+
+  const [sucesso, setSucesso] =
+    useState("");
+
+  const [salvando, setSalvando] =
+    useState(false);
+
+  const [editando, setEditando] =
+    useState(null);
+
+  const formVazio = {
+    nome: "",
+    email: "",
+    login: "",
+    senha: "",
+    tipoAcesso: "SISTEMA",
+    perfil: "CONSULTOR",
+  };
+
+  const [form, setForm] =
+    useState(formVazio);
+
+  const inp = {
+    border:
+      "1px solid #D8DEEA",
+
+    borderRadius: 9,
+
+    padding:
+      "10px 11px",
+
+    fontSize: 12,
+
+    color: NAVY,
+
+    background:
+      WHITE,
+
+    width: "100%",
+
+    boxSizing:
+      "border-box",
+  };
+
+  // =====================================================
+  // CARREGAR USUÁRIOS
+  // =====================================================
+
+  async function carregar() {
+    try {
+      setErro("");
+
+      const r =
+        await fetch(
+          "/api/acessos?action=usuarios",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const d =
+        await r
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !r.ok ||
+        !d?.sucesso
+      ) {
+        throw new Error(
+          d?.error ||
+          "Erro ao carregar usuários."
+        );
+      }
+
+      setUsuarios(
+        Array.isArray(
+          d.usuarios
+        )
+          ? d.usuarios
+          : []
+      );
+    } catch (e) {
+      setErro(
+        e?.message ||
+        "Erro ao carregar usuários."
+      );
+    }
+  }
+
+  useEffect(
+    () => {
+      carregar();
+    },
+    []
+  );
+
+  // =====================================================
+  // LIMPAR / CANCELAR EDIÇÃO
+  // =====================================================
+
+  function limparFormulario({
+    manterMensagem = false,
+  } = {}) {
+    setForm({
+      ...formVazio,
+    });
+
+    setEditando(
+      null
+    );
+
+    setErro("");
+
+    if (!manterMensagem) {
+      setSucesso("");
+    }
+  }
+
+  // =====================================================
+  // ABRIR EDIÇÃO
+  // =====================================================
+
+  function editarUsuario(
+    usuario
+  ) {
+    setEditando(
+      usuario
+    );
+
+    setForm({
+      nome:
+        usuario?.nome ||
+        "",
+
+      email:
+        usuario?.email ||
+        "",
+
+      login:
+        usuario?.login ||
+        "",
+
+      // Nunca preenchemos a senha atual.
+      // Se ficar vazio, a senha é mantida.
+      senha: "",
+
+      tipoAcesso:
+        usuario?.tipo_acesso ||
+        usuario?.tipoAcesso ||
+        "SISTEMA",
+
+      perfil:
+        usuario?.perfil ||
+        "CONSULTOR",
+    });
+
+    setErro("");
+    setSucesso(
+      "Modo de edição ativado."
+    );
+
+    window.scrollTo({
+      top: 0,
+      behavior:
+        "smooth",
+    });
+  }
+
+  // =====================================================
+  // VALIDAÇÃO
+  // =====================================================
+
+  function validarFormulario({
+    edicao = false,
+  } = {}) {
+    if (
+      !String(
+        form.nome ||
+        ""
+      ).trim()
+    ) {
+      return "Informe o nome do usuário.";
+    }
+
+    if (
+      !String(
+        form.login ||
+        ""
+      ).trim()
+    ) {
+      return "Informe o login do usuário.";
+    }
+
+    if (
+      !edicao &&
+      String(
+        form.senha ||
+        ""
+      ).length < 8
+    ) {
+      return "A senha inicial deve ter pelo menos 8 caracteres.";
+    }
+
+    if (
+      edicao &&
+      form.senha &&
+      String(
+        form.senha
+      ).length < 8
+    ) {
+      return "A nova senha deve ter pelo menos 8 caracteres.";
+    }
+
+    return "";
+  }
+
+  // =====================================================
+  // CRIAR
+  // =====================================================
+
+  async function criar() {
+    const validacao =
+      validarFormulario({
+        edicao: false,
+      });
+
+    if (validacao) {
+      setErro(
+        validacao
+      );
+
+      return;
+    }
+
+    setSalvando(
+      true
+    );
+
+    setErro("");
+    setSucesso("");
+
+    try {
+      const r =
+        await fetch(
+          "/api/acessos?action=criar-usuario",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify({
+                nome:
+                  form.nome.trim(),
+
+                email:
+                  form.email.trim(),
+
+                login:
+                  form.login.trim(),
+
+                senha:
+                  form.senha,
+
+                tipoAcesso:
+                  form.tipoAcesso,
+
+                perfil:
+                  form.perfil,
+              }),
+          }
+        );
+
+      const d =
+        await r
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !r.ok ||
+        !d?.sucesso
+      ) {
+        throw new Error(
+          d?.error ||
+          "Erro ao criar usuário."
+        );
+      }
+
+      limparFormulario({
+        manterMensagem:
+          true,
+      });
+
+      setSucesso(
+        "Usuário criado com sucesso."
+      );
+
+      await carregar();
+    } catch (e) {
+      setErro(
+        e?.message ||
+        "Erro ao criar usuário."
+      );
+    } finally {
+      setSalvando(
+        false
+      );
+    }
+  }
+
+  // =====================================================
+  // SALVAR EDIÇÃO
+  // =====================================================
+
+  async function salvarEdicao() {
+    if (
+      !editando?.id
+    ) {
+      setErro(
+        "Usuário não identificado para edição."
+      );
+
+      return;
+    }
+
+    const validacao =
+      validarFormulario({
+        edicao: true,
+      });
+
+    if (validacao) {
+      setErro(
+        validacao
+      );
+
+      return;
+    }
+
+    setSalvando(
+      true
+    );
+
+    setErro("");
+    setSucesso("");
+
+    try {
+      const payload = {
+        id:
+          editando.id,
+
+        nome:
+          form.nome.trim(),
+
+        email:
+          form.email.trim(),
+
+        login:
+          form.login.trim(),
+
+        tipoAcesso:
+          form.tipoAcesso,
+
+        perfil:
+          form.perfil,
+
+        ativo:
+          editando.ativo !==
+          false,
+      };
+
+      // Só altera a senha quando uma nova
+      // senha for realmente digitada.
+      if (
+        String(
+          form.senha ||
+          ""
+        ).trim()
+      ) {
+        payload.senha =
+          form.senha;
+      }
+
+      const r =
+        await fetch(
+          "/api/acessos?action=alterar-usuario",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify(
+                payload
+              ),
+          }
+        );
+
+      const d =
+        await r
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !r.ok ||
+        !d?.sucesso
+      ) {
+        throw new Error(
+          d?.error ||
+          "Erro ao alterar usuário."
+        );
+      }
+
+      limparFormulario({
+        manterMensagem:
+          true,
+      });
+
+      setSucesso(
+        "Usuário atualizado com sucesso."
+      );
+
+      await carregar();
+    } catch (e) {
+      setErro(
+        e?.message ||
+        "Erro ao alterar usuário."
+      );
+    } finally {
+      setSalvando(
+        false
+      );
+    }
+  }
+
+  // =====================================================
+  // ATIVAR / BLOQUEAR
+  // =====================================================
+
+  async function alternar(
+    usuario
+  ) {
+    setErro("");
+    setSucesso("");
+
+    try {
+      const r =
+        await fetch(
+          "/api/acessos?action=alterar-usuario",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify({
+                id:
+                  usuario.id,
+
+                ativo:
+                  !usuario.ativo,
+              }),
+          }
+        );
+
+      const d =
+        await r
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !r.ok ||
+        !d?.sucesso
+      ) {
+        throw new Error(
+          d?.error ||
+          "Erro ao alterar usuário."
+        );
+      }
+
+      if (
+        editando?.id ===
+        usuario.id
+      ) {
+        setEditando(
+          (atual) => ({
+            ...atual,
+            ativo:
+              !usuario.ativo,
+          })
+        );
+      }
+
+      setSucesso(
+        usuario.ativo
+          ? "Usuário bloqueado."
+          : "Usuário ativado."
+      );
+
+      await carregar();
+    } catch (e) {
+      setErro(
+        e?.message ||
+        "Erro ao alterar usuário."
+      );
+    }
+  }
+
+  // =====================================================
+  // INTERFACE
+  // =====================================================
+
+  return (
+    <div>
+
+      {/* =================================================
+          CRIAR / EDITAR
+      ================================================= */}
+
+      <div
+        style={{
+          display:
+            "grid",
+
+          gridTemplateColumns:
+            "repeat(auto-fit,minmax(210px,1fr))",
+
+          gap: 10,
+
+          background:
+            WHITE,
+
+          borderRadius: 16,
+
+          padding: 18,
+
+          boxShadow:
+            "0 8px 24px rgba(23,35,61,.06)",
+
+          marginBottom: 18,
+
+          border:
+            editando
+              ? `2px solid ${CORAL}`
+              : "2px solid transparent",
+        }}
+      >
+
+        <div
+          style={{
+            gridColumn:
+              "1/-1",
+
+            display:
+              "flex",
+
+            justifyContent:
+              "space-between",
+
+            alignItems:
+              "flex-start",
+
+            gap: 12,
+
+            flexWrap:
+              "wrap",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                ...tituloSecao,
+                margin:
+                  "0 0 4px",
+              }}
+            >
+              {editando
+                ? "Editar usuário"
+                : "Criar usuário"}
+            </h2>
+
+            <div
+              style={{
+                fontSize: 12,
+                color: MUTED,
+              }}
+            >
+              {editando
+                ? `Editando ${editando.nome || editando.login || "usuário"}`
+                : "Crie acesso para o App, Sistema ou ambos."}
+            </div>
+          </div>
+
+          {editando && (
+            <span
+              style={{
+                background:
+                  "#FFF3EF",
+
+                color:
+                  "#993C1D",
+
+                borderRadius:
+                  999,
+
+                padding:
+                  "5px 9px",
+
+                fontSize:
+                  9.5,
+
+                fontWeight:
+                  900,
+              }}
+            >
+              MODO EDIÇÃO
+            </span>
+          )}
+        </div>
+
+        <input
+          style={inp}
+          placeholder="Nome"
+          value={form.nome}
+          onChange={
+            (e) =>
+              setForm({
+                ...form,
+                nome:
+                  e.target.value,
+              })
+          }
+        />
+
+        <input
+          style={inp}
+          type="email"
+          placeholder="E-mail"
+          value={form.email}
+          onChange={
+            (e) =>
+              setForm({
+                ...form,
+                email:
+                  e.target.value,
+              })
+          }
+        />
+
+        <input
+          style={inp}
+          placeholder="Login"
+          value={form.login}
+          onChange={
+            (e) =>
+              setForm({
+                ...form,
+                login:
+                  e.target.value,
+              })
+          }
+        />
+
+        <input
+          style={inp}
+          type="password"
+          autoComplete="new-password"
+          placeholder={
+            editando
+              ? "Nova senha — deixe vazio para manter"
+              : "Senha inicial (mín. 8 caracteres)"
+          }
+          value={form.senha}
+          onChange={
+            (e) =>
+              setForm({
+                ...form,
+                senha:
+                  e.target.value,
+              })
+          }
+        />
+
+        <select
+          style={inp}
+          value={
+            form.tipoAcesso
+          }
+          onChange={
+            (e) =>
+              setForm({
+                ...form,
+                tipoAcesso:
+                  e.target.value,
+              })
+          }
+        >
+          <option value="APP">
+            App
+          </option>
+
+          <option value="SISTEMA">
+            Sistema
+          </option>
+
+          <option value="AMBOS">
+            App + Sistema
+          </option>
+        </select>
+
+        <select
+          style={inp}
+          value={
+            form.perfil
+          }
+          onChange={
+            (e) =>
+              setForm({
+                ...form,
+                perfil:
+                  e.target.value,
+              })
+          }
+        >
+          <option value="ADMIN">
+            Administrador
+          </option>
+
+          <option value="GESTOR">
+            Gestor
+          </option>
+
+          <option value="CONSULTOR">
+            Consultor
+          </option>
+
+          <option value="COMERCIAL">
+            Comercial
+          </option>
+
+          <option value="LEITURA">
+            Somente leitura
+          </option>
+        </select>
+
+        {editando ? (
+          <>
+            <Botao
+              onClick={
+                salvarEdicao
+              }
+              disabled={
+                salvando
+              }
+            >
+              <Save
+                size={15}
+              />
+
+              {salvando
+                ? "Salvando..."
+                : "Salvar alterações"}
+            </Botao>
+
+            <Botao
+              secundario
+              onClick={
+                () =>
+                  limparFormulario()
+              }
+              disabled={
+                salvando
+              }
+            >
+              <X
+                size={15}
+              />
+
+              Cancelar
+            </Botao>
+          </>
+        ) : (
+          <Botao
+            onClick={
+              criar
+            }
+            disabled={
+              salvando
+            }
+          >
+            <UserPlus
+              size={15}
+            />
+
+            {salvando
+              ? "Criando..."
+              : "Criar usuário"}
+          </Botao>
+        )}
+
+        {erro && (
+          <div
+            style={{
+              gridColumn:
+                "1/-1",
+
+              background:
+                "#FAECE7",
+
+              color:
+                "#993C1D",
+
+              padding: 10,
+
+              borderRadius: 9,
+
+              fontSize: 12,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+
+        {sucesso && (
+          <div
+            style={{
+              gridColumn:
+                "1/-1",
+
+              background:
+                "#E1F5EE",
+
+              color:
+                "#0F6E56",
+
+              padding: 10,
+
+              borderRadius: 9,
+
+              fontSize: 12,
+            }}
+          >
+            {sucesso}
+          </div>
+        )}
+      </div>
+
+      {/* =================================================
+          LISTAGEM
+      ================================================= */}
+
+      <div
+        style={{
+          background:
+            WHITE,
+
+          borderRadius: 16,
+
+          overflow:
+            "auto",
+
+          boxShadow:
+            "0 8px 24px rgba(23,35,61,.06)",
+        }}
+      >
+
+        <table
+          style={{
+            width:
+              "100%",
+
+            borderCollapse:
+              "collapse",
+
+            minWidth:
+              980,
+          }}
+        >
+
+          <thead>
+            <tr>
+              <th style={thStyle}>
+                Usuário
+              </th>
+
+              <th style={thStyle}>
+                Login
+              </th>
+
+              <th style={thStyle}>
+                Acesso
+              </th>
+
+              <th style={thStyle}>
+                Perfil
+              </th>
+
+              <th style={thStyle}>
+                Último acesso
+              </th>
+
+              <th style={thStyle}>
+                Status
+              </th>
+
+              <th style={thStyle}>
+                Ações
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+
+            {usuarios.map(
+              (u) => (
+                <tr key={u.id}>
+
+                  <td style={tdStyle}>
+                    <strong>
+                      {u.nome ||
+                        "-"}
+                    </strong>
+
+                    <br />
+
+                    <span
+                      style={{
+                        color:
+                          MUTED,
+                      }}
+                    >
+                      {u.email ||
+                        "-"}
+                    </span>
+                  </td>
+
+                  <td style={tdStyle}>
+                    {u.login ||
+                      "-"}
+                  </td>
+
+                  <td style={tdStyle}>
+                    {u.tipo_acesso ||
+                      u.tipoAcesso ||
+                      "-"}
+                  </td>
+
+                  <td style={tdStyle}>
+                    {u.perfil ||
+                      "-"}
+                  </td>
+
+                  <td style={tdStyle}>
+                    {formatarData(
+                      u.ultimo_acesso_em ||
+                      u.ultimoAcessoEm
+                    )}
+                  </td>
+
+                  <td style={tdStyle}>
+
+                    <span
+                      style={{
+                        display:
+                          "inline-block",
+
+                        padding:
+                          "4px 8px",
+
+                        borderRadius:
+                          20,
+
+                        fontSize:
+                          10,
+
+                        fontWeight:
+                          800,
+
+                        background:
+                          u.ativo
+                            ? "#E1F5EE"
+                            : "#FCEBEB",
+
+                        color:
+                          u.ativo
+                            ? "#0F6E56"
+                            : "#791F1F",
+                      }}
+                    >
+                      {u.ativo
+                        ? "Ativo"
+                        : "Bloqueado"}
+                    </span>
+
+                  </td>
+
+                  <td style={tdStyle}>
+
+                    <div
+                      style={{
+                        display:
+                          "flex",
+
+                        gap: 6,
+
+                        flexWrap:
+                          "wrap",
+                      }}
+                    >
+
+                      <Botao
+                        secundario
+                        onClick={
+                          () =>
+                            editarUsuario(
+                              u
+                            )
+                        }
+                        style={{
+                          padding:
+                            "7px 9px",
+
+                          fontSize:
+                            10.5,
+                        }}
+                      >
+                        <Pencil
+                          size={13}
+                        />
+
+                        Editar
+                      </Botao>
+
+                      <Botao
+                        secundario
+                        onClick={
+                          () =>
+                            alternar(
+                              u
+                            )
+                        }
+                        style={{
+                          padding:
+                            "7px 9px",
+
+                          fontSize:
+                            10.5,
+
+                          color:
+                            u.ativo
+                              ? "#A12B2B"
+                              : "#0F6E56",
+                        }}
+                      >
+                        {u.ativo
+                          ? "Bloquear"
+                          : "Ativar"}
+                      </Botao>
+
+                    </div>
+
+                  </td>
+                </tr>
+              )
+            )}
+
+            {!usuarios.length && (
+              <tr>
+                <td
+                  colSpan={7}
+                  style={{
+                    ...tdStyle,
+
+                    padding: 24,
+
+                    textAlign:
+                      "center",
+
+                    color:
+                      MUTED,
+                  }}
+                >
+                  Nenhum usuário cadastrado.
+                </td>
+              </tr>
+            )}
+
+          </tbody>
+        </table>
+      </div>
     </div>
-    <div style={{background:WHITE,borderRadius:16,overflow:"auto",boxShadow:"0 8px 24px rgba(23,35,61,.06)"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}><thead><tr><th style={thStyle}>Usuário</th><th style={thStyle}>Login</th><th style={thStyle}>Acesso</th><th style={thStyle}>Perfil</th><th style={thStyle}>Último acesso</th><th style={thStyle}>Status</th><th style={thStyle}>Ação</th></tr></thead><tbody>
-      {usuarios.map(u=><tr key={u.id}><td style={tdStyle}><strong>{u.nome}</strong><br/><span style={{color:MUTED}}>{u.email}</span></td><td style={tdStyle}>{u.login}</td><td style={tdStyle}>{u.tipo_acesso}</td><td style={tdStyle}>{u.perfil}</td><td style={tdStyle}>{formatarData(u.ultimo_acesso_em)}</td><td style={tdStyle}>{u.ativo?"Ativo":"Bloqueado"}</td><td style={tdStyle}><Botao secundario onClick={()=>alternar(u)}>{u.ativo?"Bloquear":"Ativar"}</Botao></td></tr>)}
-      {!usuarios.length&&<tr><td colSpan={7} style={{...tdStyle,padding:24,textAlign:"center",color:MUTED}}>Nenhum usuário cadastrado.</td></tr>}
-      </tbody></table>
-    </div>
-  </div>;
+  );
 }
 
+// =========================================================
+// AUDITORIA
+// =========================================================
 function AuditoriaSistema({ token }) {
   const [eventos,setEventos]=useState([]),[erro,setErro]=useState(""),[filtro,setFiltro]=useState("");
   async function carregar(){try{const r=await fetch("/api/acessos?action=auditoria&limite=500",{headers:{Authorization:`Bearer ${token}`}});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao carregar auditoria.");setEventos(d.eventos||[])}catch(e){setErro(e.message)}}
