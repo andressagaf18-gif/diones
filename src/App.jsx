@@ -2680,6 +2680,13 @@ export default function DiagnosticoPrototipo() {
       scoreGeral: scoreDe(todasPerguntas),
     };
 
+    relatorioEnviadoRef.current =
+      false;
+
+    setEnvioRelatorio(
+      "idle"
+    );
+
     const chamadaIA =
       fetch(
         "/api/diagnostico",
@@ -2845,7 +2852,7 @@ export default function DiagnosticoPrototipo() {
           }
         );
 
-        setIaResultado({
+        const novoIaResultado = {
           areas:
             mapa,
 
@@ -2986,11 +2993,32 @@ export default function DiagnosticoPrototipo() {
           modelo:
             data.motor ||
             "",
-        });
+        };
+
+        setIaResultado(
+          novoIaResultado
+        );
+
+        setStep(
+          "resultado"
+        );
+
+        enviarRelatorioPorEmail(
+          novoIaResultado
+        ).then(
+          (salvou) => {
+            if (!salvou) {
+              console.error(
+                "[relatorio-final] Diagnóstico exibido, mas relatório não salvo."
+              );
+
+              showToast(
+                "Diagnóstico gerado, mas houve falha ao salvar o relatório."
+              );
+            }
+          }
+        );
       }
-
-
-      setStep("resultado");
     });
 
     return () => {
@@ -3836,17 +3864,23 @@ export default function DiagnosticoPrototipo() {
   }
 
 
-  async function enviarRelatorioPorEmail() {
+  async function enviarRelatorioPorEmail(
+    resultadoIaDireto = null
+  ) {
+    const resultadoFonte =
+      resultadoIaDireto ||
+      iaResultado;
+
     if (
       (
         !fluxoSemCnpj &&
         !empresaPrincipal
       ) ||
-      !iaResultado ||
-      !iaResultado?.diagnosticoGeral ||
+      !resultadoFonte ||
+      !resultadoFonte?.diagnosticoGeral ||
       relatorioEnviadoRef.current
     ) {
-      return;
+      return false;
     }
 
     const respostasDetalhadas = gruposSelecionados.map((g) => ({
@@ -4034,63 +4068,63 @@ export default function DiagnosticoPrototipo() {
 
             // Preserva resumo, achados, causas, riscos,
             // recomendações e prioridade gerados pela IA.
-            ...(iaResultado?.areas?.[a.label] || {}),
+            ...(resultadoFonte?.areas?.[a.label] || {}),
           })),
 
         diagnosticoGeral:
-          iaResultado?.diagnosticoGeral || null,
+          resultadoFonte?.diagnosticoGeral || null,
 
         // Diagnóstico completo já existente
         visaoGrupo:
-          iaResultado?.visaoGrupo || null,
+          resultadoFonte?.visaoGrupo || null,
 
         lacunasDiagnostico:
           Array.isArray(
-            iaResultado?.lacunasDiagnostico
+            resultadoFonte?.lacunasDiagnostico
           )
-            ? iaResultado.lacunasDiagnostico
+            ? resultadoFonte.lacunasDiagnostico
             : [],
 
         oportunidadesConsultoria:
           Array.isArray(
-            iaResultado?.oportunidadesConsultoria
+            resultadoFonte?.oportunidadesConsultoria
           )
-            ? iaResultado.oportunidadesConsultoria
+            ? resultadoFonte.oportunidadesConsultoria
             : [],
 
         // Novo dossiê consultivo do administrador
         plano90Dias:
-          iaResultado?.plano90Dias || null,
+          resultadoFonte?.plano90Dias || null,
 
         quickWins:
           Array.isArray(
-            iaResultado?.quickWins
+            resultadoFonte?.quickWins
           )
-            ? iaResultado.quickWins
+            ? resultadoFonte.quickWins
             : [],
 
         kpisRecomendados:
           Array.isArray(
-            iaResultado?.kpisRecomendados
+            resultadoFonte?.kpisRecomendados
           )
-            ? iaResultado.kpisRecomendados
+            ? resultadoFonte.kpisRecomendados
             : [],
 
         perguntasAprofundamento:
           Array.isArray(
-            iaResultado?.perguntasAprofundamento
+            resultadoFonte?.perguntasAprofundamento
           )
-            ? iaResultado.perguntasAprofundamento
+            ? resultadoFonte.perguntasAprofundamento
             : [],
 
         visaoConsultor:
-          iaResultado?.visaoConsultor || null,
+          resultadoFonte?.visaoConsultor || null,
 
         visaoComercial:
-          iaResultado?.visaoComercial || null,
+          resultadoFonte?.visaoComercial || null,
 
         contextoInterpretado:
-          iaResultado?.contextoInterpretado || null,
+          resultadoFonte?.contextoInterpretado || null,
 
         // Inteligência tributária — cliente + administração
         inteligenciaTributaria,
@@ -4100,7 +4134,7 @@ export default function DiagnosticoPrototipo() {
           respostasDetalhadas,
 
         resultadoCompleto:
-          iaResultado?.resultadoCompleto || null,
+          resultadoFonte?.resultadoCompleto || null,
       },
     };
 
@@ -4118,7 +4152,7 @@ export default function DiagnosticoPrototipo() {
       if (!r.ok) {
         console.error("Erro ao enviar relatório:", data);
         setEnvioRelatorio("error");
-        return;
+        return false;
       }
 
       const idSalvo =
@@ -4227,15 +4261,15 @@ export default function DiagnosticoPrototipo() {
       // - plano de ação específico.
       //
       // O conteúdo é buscado primeiro no novo resultadoCompleto.eixos
-      // e, por compatibilidade, também no formato antigo iaResultado.areas.
+      // e, por compatibilidade, também no formato antigo resultadoFonte.areas.
       // ===================================================
 
       const eixosResultadoCompleto =
         Array.isArray(
-          iaResultado?.resultadoCompleto
+          resultadoFonte?.resultadoCompleto
             ?.eixos
         )
-          ? iaResultado.resultadoCompleto
+          ? resultadoFonte.resultadoCompleto
               .eixos
           : [];
 
@@ -4285,7 +4319,7 @@ export default function DiagnosticoPrototipo() {
               );
 
             const diagnosticoAreaAntigo =
-              iaResultado?.areas?.[
+              resultadoFonte?.areas?.[
                 area.label
               ] ||
               {};
@@ -4525,9 +4559,11 @@ export default function DiagnosticoPrototipo() {
 
       relatorioEnviadoRef.current = true;
       setEnvioRelatorio("sent");
+      return true;
     } catch (error) {
       console.error("Erro no envio do relatório:", error);
       setEnvioRelatorio("error");
+      return false;
     }
   }
 
@@ -4699,20 +4735,8 @@ export default function DiagnosticoPrototipo() {
   const oportunidadesConsultoriaIa = iaResultado?.oportunidadesConsultoria || [];
 
 
-  useEffect(() => {
-    if (
-      step === "resultado" &&
-      (fluxoSemCnpj || empresaPrincipal) &&
-      gruposSelecionados.length > 0 &&
-      iaResultado?.diagnosticoGeral &&
-      !relatorioEnviadoRef.current
-    ) {
-      enviarRelatorioPorEmail();
-    }
-  }, [
-    step,
-    iaResultado,
-  ]);
+  // O relatório final é salvo diretamente após o retorno válido da IA.
+  // Isso evita condição de corrida entre setIaResultado e setStep.
 
   function proximosPassosAdaptaveisPF() {
     if (!trilhaPFAtiva) return [];
