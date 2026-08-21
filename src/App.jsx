@@ -2774,6 +2774,163 @@ export default function DiagnosticoPrototipo() {
     );
   }
 
+
+  function interpretacaoNegocioSegura(valor) {
+    const recebido =
+      valor &&
+      typeof valor === "object"
+        ? valor
+        : {};
+
+    const descricao =
+      String(
+        descricaoNegocio ||
+        ""
+      ).trim();
+
+    const atividade =
+      String(
+        empresaPrincipal?.cnaePrincipal?.descricao ||
+        categoriaPrincipal ||
+        ""
+      ).trim();
+
+    const descricaoLower =
+      descricao.toLowerCase();
+
+    let subsegmentoFallback =
+      descricao ||
+      atividade ||
+      "Empresa operacional";
+
+    let modeloFallback =
+      descricao
+        ? `Operação de ${descricao}, com processos recorrentes de atendimento, execução, controle e entrega ao cliente.`
+        : atividade
+        ? `Operação relacionada a ${atividade}.`
+        : "Operação empresarial a ser detalhada no diagnóstico.";
+
+    if (
+      descricaoLower.includes("contabil") ||
+      atividade.toLowerCase().includes("contabil")
+    ) {
+      subsegmentoFallback =
+        "Escritório de contabilidade";
+
+      modeloFallback =
+        "Prestação recorrente de serviços contábeis, fiscais, trabalhistas e de atendimento a empresas, com rotinas de fechamento, apuração, obrigações e relacionamento com clientes.";
+    }
+
+    return {
+      segmento:
+        String(
+          recebido.segmento ||
+          categoriaPrincipal ||
+          "Serviços"
+        ).trim(),
+
+      subsegmento:
+        String(
+          recebido.subsegmento ||
+          recebido.resumo ||
+          subsegmentoFallback
+        ).trim(),
+
+      modeloOperacional:
+        String(
+          recebido.modeloOperacional ||
+          recebido.modelo ||
+          modeloFallback
+        ).trim(),
+
+      justificativa:
+        String(
+          recebido.justificativa ||
+          (
+            descricao
+              ? `Interpretação baseada na descrição informada: "${descricao}".`
+              : atividade
+              ? `Interpretação baseada na atividade principal: ${atividade}.`
+              : ""
+          )
+        ).trim(),
+
+      riscosNaturais:
+        Array.isArray(
+          recebido.riscosNaturais
+        )
+          ? recebido.riscosNaturais
+          : [],
+    };
+  }
+
+  function perguntaServeParaSimParcialNao(textoPergunta) {
+    const original =
+      String(
+        textoPergunta ||
+        ""
+      ).trim();
+
+    const valor =
+      original
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(
+          /[\u0300-\u036f]/g,
+          ""
+        );
+
+    if (!valor) return false;
+
+    const proibidos = [
+      "quais ",
+      "qual ",
+      "como ",
+      "por que ",
+      "porque ",
+      "descreva",
+      "explique",
+      "informe",
+      "forneca",
+      "detalhe",
+      "liste",
+      "cite ",
+      "envie",
+      "se sim",
+      "se nao",
+      "quanto ",
+      "quando ",
+      "exemplo",
+      "e para cada",
+      "principais causas",
+      "e quais",
+    ];
+
+    if (
+      proibidos.some(
+        (item) =>
+          valor.includes(item)
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      (
+        original.match(/\?/g) ||
+        []
+      ).length > 1
+    ) {
+      return false;
+    }
+
+    if (original.length > 220) {
+      return false;
+    }
+
+    return true;
+  }
+
   async function gerarPerguntasPersonalizadas() {
     if (
       !fluxoSemCnpj &&
@@ -2973,17 +3130,39 @@ export default function DiagnosticoPrototipo() {
         throw new Error(data?.error || "Não foi possível gerar as perguntas personalizadas.");
       }
 
-      const perguntas = data.perguntas.map((q, idx) => ({
-        id: q.id || `ia_${idx + 1}`,
-        areaId: q.areaId,
-        area: q.area,
-        tema: q.tema || "Diagnóstico específico",
-        text: q.pergunta,
-        risco: q.riscoAvaliado || "Ponto relevante para aprofundamento",
-        motivo: q.motivo || "",
-        importancia: Number(q.importancia) || 1,
-        invert: false,
-      }));
+      const perguntas = data.perguntas
+        .filter(
+          (q) =>
+            perguntaServeParaSimParcialNao(
+              q?.pergunta
+            )
+        )
+        .map((q, idx) => ({
+          id:
+            q.id ||
+            `ia_${idx + 1}`,
+          areaId:
+            q.areaId,
+          area:
+            q.area,
+          tema:
+            q.tema ||
+            "Diagnóstico específico",
+          text:
+            q.pergunta,
+          risco:
+            q.riscoAvaliado ||
+            "Ponto relevante para aprofundamento",
+          motivo:
+            q.motivo ||
+            "",
+          importancia:
+            Number(
+              q.importancia
+            ) || 1,
+          invert:
+            false,
+        }));
 
       // Se a IA não devolver perguntas, mantemos o fluxo com
       // o checklist local da estrutura selecionada.
@@ -2993,9 +3172,11 @@ export default function DiagnosticoPrototipo() {
           : []
       );
       setNegocioInterpretado(
-        data.negocioInterpretado ||
-        data.interpretacaoNegocio ||
-        null
+        interpretacaoNegocioSegura(
+          data.negocioInterpretado ||
+          data.interpretacaoNegocio ||
+          {}
+        )
       );
       setRespostas({});
       setStep("confirmarNegocio");
@@ -6132,7 +6313,7 @@ export default function DiagnosticoPrototipo() {
                       lineHeight: 1.45,
                     }}
                   >
-                    O diagnóstico avaliará todas as frentes da estrutura. As opções marcadas receberão perguntas mais profundas.
+                    O diagnóstico avaliará somente as frentes selecionadas. Cada pergunta deve poder ser respondida com Sim, Parcial ou Não.
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
