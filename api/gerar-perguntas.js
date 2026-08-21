@@ -1,7 +1,5 @@
 // api/gerar-perguntas.js
-// Finder — geração de perguntas v4 otimizada.
-
-import crypto from "crypto";
+// Finder — geração de perguntas v2 por estrutura.
 
 import {
   obterMotor,
@@ -12,44 +10,6 @@ import {
 import {
   perguntasBaseDaEstrutura,
 } from "./lib/question-engine.js";
-
-
-const CACHE_TTL_MS = 30 * 60 * 1000;
-const cachePerguntas = new Map();
-
-function chaveCache(body) {
-  return crypto
-    .createHash("sha256")
-    .update(JSON.stringify(body))
-    .digest("hex");
-}
-
-function lerCache(chave) {
-  const item = cachePerguntas.get(chave);
-
-  if (!item) return null;
-
-  if (Date.now() - item.ts > CACHE_TTL_MS) {
-    cachePerguntas.delete(chave);
-    return null;
-  }
-
-  return item.data;
-}
-
-function gravarCache(chave, data) {
-  cachePerguntas.set(chave, {
-    ts: Date.now(),
-    data,
-  });
-
-  if (cachePerguntas.size > 250) {
-    const primeiro =
-      cachePerguntas.keys().next().value;
-
-    cachePerguntas.delete(primeiro);
-  }
-}
 
 function lista(v) {
   return Array.isArray(v) ? v : [];
@@ -404,11 +364,8 @@ FORMATO:
           },
           body: JSON.stringify({
             model:
-              process.env.OPENAI_MODEL_FAST ||
               process.env.OPENAI_MODEL ||
               "gpt-5-mini",
-
-            max_output_tokens: 2200,
 
             input:
               promptReparo,
@@ -529,7 +486,6 @@ function normalizarPergunta(q, idx) {
 }
 
 export default async function handler(req, res) {
-  const inicioTotal = Date.now();
   if (req.method !== "POST") {
     return res.status(405).json({
       sucesso: false,
@@ -539,21 +495,6 @@ export default async function handler(req, res) {
 
   const body =
     req.body || {};
-
-  const cacheId = chaveCache(body);
-  const cacheHit = lerCache(cacheId);
-
-  if (cacheHit) {
-    return res.status(200).json({
-      ...cacheHit,
-      performance: {
-        ...(cacheHit.performance || {}),
-        cache: "server",
-        tempoMs:
-          Date.now() - inicioTotal,
-      },
-    });
-  }
 
   const estrutura =
     normalizarEstrutura(
@@ -773,11 +714,8 @@ FORMATO:
           },
           body: JSON.stringify({
             model:
-              process.env.OPENAI_MODEL_FAST ||
               process.env.OPENAI_MODEL ||
               "gpt-5-mini",
-
-            max_output_tokens: 2200,
 
             input:
               prompt,
@@ -883,9 +821,13 @@ FORMATO:
             )
         );
 
-    // Sem segunda chamada à IA para reparo.
-    // Perguntas incompatíveis são descartadas e o catálogo
-    // local fechado completa o questionário.
+    perguntasIA =
+      await repararPerguntasAbertas({
+        perguntas:
+          perguntasIA,
+        estrutura,
+        eixosParaPerguntas,
+      });
 
     // Qualquer pergunta que continue incompatível com
     // "Sim / Parcial / Não" é descartada e será substituída
@@ -998,7 +940,7 @@ FORMATO:
           )
       );
 
-    const respostaFinal = {
+    return res.status(200).json({
       sucesso: true,
       estrutura,
       fallback:
@@ -1029,22 +971,7 @@ FORMATO:
       uso:
         data?.usage ||
         null,
-
-      performance: {
-        cache: false,
-        tempoMs:
-          Date.now() - inicioTotal,
-      },
-    };
-
-    gravarCache(
-      cacheId,
-      respostaFinal
-    );
-
-    return res
-      .status(200)
-      .json(respostaFinal);
+    });
   } catch (error) {
     console.error(
       "[gerar-perguntas-v2]",
