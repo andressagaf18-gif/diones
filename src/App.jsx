@@ -195,7 +195,8 @@ const MAX_EMPRESAS = 4;
 const AREAS = [
   { id: "marketing", label: "Marketing", Icon: Megaphone },
   { id: "juridico", label: "Jurídico", Icon: Scale },
-  { id: "contabilidade", label: "Contábil / Fiscal", Icon: Calculator },
+  { id: "contabil_fiscal", label: "Contábil / Fiscal", Icon: Calculator },
+  { id: "tributario", label: "Tributário", Icon: Calculator },
   { id: "financeiro", label: "Financeiro PF/PJ", Icon: Wallet },
   { id: "administrativo", label: "Administrativo", Icon: ClipboardList },
   { id: "gestao", label: "Gestão", Icon: Target },
@@ -1658,13 +1659,17 @@ export default function DiagnosticoPrototipo() {
     dores;
 
   const areasOperacionaisSelecionadas =
-    prioridadesDiagnostico.filter(
-      (id) =>
-        areasDaEstrutura.some(
-          (area) =>
-            area.id === id
-        )
-    );
+    prioridadesDiagnostico
+      .map(
+        normalizarAreaOperacionalId
+      )
+      .filter(
+        (id) =>
+          areasDaEstrutura.some(
+            (area) =>
+              area.id === id
+          )
+      );
 
   const areasDoDiagnostico =
     estruturaNegocio ===
@@ -1675,6 +1680,33 @@ export default function DiagnosticoPrototipo() {
       : areasDaEstrutura.map(
           (item) => item.id
         );
+
+
+  function normalizarAreaOperacionalId(
+    id
+  ) {
+    const mapa = {
+      contabilidade:
+        "contabil_fiscal",
+      contabil:
+        "contabil_fiscal",
+      fiscal:
+        "contabil_fiscal",
+      contabilidade_fiscal:
+        "contabil_fiscal",
+      recursos_humanos:
+        "rh",
+      vendas:
+        "comercial",
+      comercial_vendas:
+        "comercial",
+    };
+
+    return (
+      mapa[id] ||
+      id
+    );
+  }
 
   function labelAreaAtual(id) {
     return (
@@ -2604,7 +2636,9 @@ export default function DiagnosticoPrototipo() {
             ? areasDaEstrutura.filter(
                 (item) =>
                   areasOperacionaisSelecionadas.includes(
-                    item.id
+                    normalizarAreaOperacionalId(
+                      item.id
+                    )
                   )
               )
             : areasDaEstrutura
@@ -3325,7 +3359,9 @@ export default function DiagnosticoPrototipo() {
             ? areasDaEstrutura.filter(
                 (item) =>
                   areasOperacionaisSelecionadas.includes(
-                    item.id
+                    normalizarAreaOperacionalId(
+                      item.id
+                    )
                   )
               )
             : areasDaEstrutura
@@ -3383,7 +3419,12 @@ export default function DiagnosticoPrototipo() {
             q.id ||
             `ia_${idx + 1}`,
           areaId:
-            q.areaId,
+            estruturaNegocio ===
+              "operacional"
+              ? normalizarAreaOperacionalId(
+                  q.areaId
+                )
+              : q.areaId,
           area:
             q.area,
           tema:
@@ -3801,6 +3842,8 @@ export default function DiagnosticoPrototipo() {
         !fluxoSemCnpj &&
         !empresaPrincipal
       ) ||
+      !iaResultado ||
+      !iaResultado?.diagnosticoGeral ||
       relatorioEnviadoRef.current
     ) {
       return;
@@ -4081,6 +4124,7 @@ export default function DiagnosticoPrototipo() {
       const idSalvo =
         data?.id ||
         data?.diagnosticoId ||
+        data?.banco?.id ||
         data?.diagnostico?.id ||
         data?.registro?.id ||
         data?.registroSalvo?.id ||
@@ -4660,11 +4704,15 @@ export default function DiagnosticoPrototipo() {
       step === "resultado" &&
       (fluxoSemCnpj || empresaPrincipal) &&
       gruposSelecionados.length > 0 &&
+      iaResultado?.diagnosticoGeral &&
       !relatorioEnviadoRef.current
     ) {
       enviarRelatorioPorEmail();
     }
-  }, [step]);
+  }, [
+    step,
+    iaResultado,
+  ]);
 
   function proximosPassosAdaptaveisPF() {
     if (!trilhaPFAtiva) return [];
@@ -6884,6 +6932,67 @@ export default function DiagnosticoPrototipo() {
                     "Calculando índice de maturidade por departamento",
                   ][msgIdx]}
                 </p>
+              </div>
+            )}
+
+            {step === "resultado" &&
+              (
+                !gruposSelecionados.length ||
+                !areaMaisFraca
+              ) && (
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  gap: 12,
+                  textAlign: "center",
+                  padding: "32px 10px",
+                }}
+              >
+                <AlertTriangle
+                  size={30}
+                  color={CORAL}
+                  style={{
+                    margin: "0 auto",
+                  }}
+                />
+
+                <p
+                  style={{
+                    fontFamily:
+                      DISPLAY_FONT,
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: NAVY,
+                    margin: 0,
+                  }}
+                >
+                  Não foi possível montar o diagnóstico
+                </p>
+
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: MUTED,
+                    lineHeight: 1.55,
+                    margin: 0,
+                  }}
+                >
+                  O sistema não encontrou uma área válida para compor o relatório.
+                  Volte ao checklist e gere novamente. Nenhum relatório vazio será exibido.
+                </p>
+
+                <PrimaryButton
+                  onClick={() =>
+                    setStep(
+                      "checklist"
+                    )
+                  }
+                >
+                  Voltar ao checklist
+                </PrimaryButton>
               </div>
             )}
 
