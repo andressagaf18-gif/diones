@@ -15,14 +15,29 @@ const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const MAX_DORES = 3;
 
-const finderIaInflight = new Map();
+const finderIaInflight =
+  new Map();
 
-function finderCacheKey(prefixo, payload) {
-  const bruto = JSON.stringify(payload);
-  let hash = 2166136261;
+function finderCacheKey(
+  prefixo,
+  payload
+) {
+  const bruto =
+    JSON.stringify(
+      payload
+    );
 
-  for (let i = 0; i < bruto.length; i += 1) {
-    hash ^= bruto.charCodeAt(i);
+  let hash =
+    2166136261;
+
+  for (
+    let i = 0;
+    i < bruto.length;
+    i += 1
+  ) {
+    hash ^=
+      bruto.charCodeAt(i);
+
     hash +=
       (hash << 1) +
       (hash << 4) +
@@ -31,38 +46,64 @@ function finderCacheKey(prefixo, payload) {
       (hash << 24);
   }
 
-  return `${prefixo}_${(hash >>> 0).toString(16)}`;
+  return `${prefixo}_${(
+    hash >>> 0
+  ).toString(16)}`;
 }
 
-function lerCacheIa(chave, ttlMs) {
+function lerCacheIa(
+  chave,
+  ttlMs
+) {
   try {
-    const bruto = sessionStorage.getItem(chave);
-    if (!bruto) return null;
+    const bruto =
+      sessionStorage.getItem(
+        chave
+      );
 
-    const item = JSON.parse(bruto);
-
-    if (!item?.ts || Date.now() - item.ts > ttlMs) {
-      sessionStorage.removeItem(chave);
+    if (!bruto) {
       return null;
     }
 
-    return item.data || null;
+    const item =
+      JSON.parse(
+        bruto
+      );
+
+    if (
+      !item?.ts ||
+      Date.now() -
+        item.ts >
+        ttlMs
+    ) {
+      sessionStorage.removeItem(
+        chave
+      );
+      return null;
+    }
+
+    return item.data ||
+      null;
   } catch {
     return null;
   }
 }
 
-function salvarCacheIa(chave, data) {
+function salvarCacheIa(
+  chave,
+  data
+) {
   try {
     sessionStorage.setItem(
       chave,
       JSON.stringify({
-        ts: Date.now(),
+        ts:
+          Date.now(),
         data,
       })
     );
   } catch {
-    // cache é apenas uma otimização
+    // cache não pode bloquear o fluxo
   }
 }
 
@@ -72,46 +113,80 @@ async function fetchJsonDedupe({
   payload,
   ttlMs,
 }) {
-  const cache = lerCacheIa(chave, ttlMs);
+  const cache =
+    lerCacheIa(
+      chave,
+      ttlMs
+    );
 
   if (cache) {
-    return {
-      ...cache,
-      _cacheFrontend: true,
-    };
+    return cache;
   }
 
-  if (finderIaInflight.has(chave)) {
-    return finderIaInflight.get(chave);
+  if (
+    finderIaInflight.has(
+      chave
+    )
+  ) {
+    return finderIaInflight.get(
+      chave
+    );
   }
 
-  const requisicao = fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
-    .then(async (resposta) => {
-      const data = await resposta
-        .json()
-        .catch(() => null);
-
-      if (!resposta.ok) {
-        throw new Error(
-          data?.error ||
-            "Falha na inteligência artificial."
-        );
-      }
-
-      salvarCacheIa(chave, data);
-      return data;
+  const requisicao =
+    fetch(url, {
+      method:
+        "POST",
+      headers: {
+        "content-type":
+          "application/json",
+      },
+      body:
+        JSON.stringify(
+          payload
+        ),
     })
-    .finally(() => {
-      finderIaInflight.delete(chave);
-    });
+      .then(
+        async (
+          resposta
+        ) => {
+          const data =
+            await resposta
+              .json()
+              .catch(
+                () => null
+              );
 
-  finderIaInflight.set(chave, requisicao);
+          if (
+            !resposta.ok
+          ) {
+            throw new Error(
+              data?.error ||
+              "Falha na inteligência artificial."
+            );
+          }
+
+          salvarCacheIa(
+            chave,
+            data
+          );
+
+          return data;
+        }
+      )
+      .finally(
+        () => {
+          finderIaInflight.delete(
+            chave
+          );
+        }
+      );
+
+  finderIaInflight.set(
+    chave,
+    requisicao
+  );
+
   return requisicao;
 }
 
@@ -2571,32 +2646,70 @@ export default function DiagnosticoPrototipo() {
       scoreGeral: scoreDe(todasPerguntas),
     };
 
-    const chaveDiagnostico =
-      finderCacheKey(
-        "finder_diagnostico",
-        payload
-      );
-
     const chamadaIA =
-      fetchJsonDedupe({
-        chave: chaveDiagnostico,
-        url: "/api/diagnostico",
-        payload,
-        ttlMs:
-          15 * 60 * 1000,
-      }).catch((erro) => {
-        console.error(
-          "Erro ao chamar diagnóstico:",
-          erro
-        );
+      fetch(
+        "/api/diagnostico",
+        {
+          method:
+            "POST",
+          headers: {
+            "content-type":
+              "application/json",
+          },
+          body:
+            JSON.stringify(
+              payload
+            ),
+        }
+      )
+        .then(
+          async (
+            r
+          ) => {
+            if (!r.ok) {
+              const erro =
+                await r
+                  .json()
+                  .catch(
+                    () =>
+                      null
+                  );
 
-        return {
-          sucesso: false,
-          error:
-            erro?.message ||
-            "Não foi possível gerar o diagnóstico.",
-        };
-      });
+              console.error(
+                "Erro diagnóstico:",
+                erro
+              );
+
+              return {
+                sucesso:
+                  false,
+                error:
+                  erro?.error ||
+                  "Não foi possível gerar o diagnóstico.",
+              };
+            }
+
+            return r.json();
+          }
+        )
+        .catch(
+          (
+            erro
+          ) => {
+            console.error(
+              "Erro ao chamar diagnóstico:",
+              erro
+            );
+
+            return {
+              sucesso:
+                false,
+              error:
+                erro?.message ||
+                "Não foi possível gerar o diagnóstico.",
+            };
+          }
+        );
 
     chamadaIA.then((data) => {
       if (cancelado) return;
@@ -3235,20 +3348,26 @@ export default function DiagnosticoPrototipo() {
 
       const data =
         await fetchJsonDedupe({
-          chave: chaveCache,
-          url: "/api/gerar-perguntas",
+          chave:
+            chaveCache,
+          url:
+            "/api/gerar-perguntas",
           payload,
           ttlMs:
-            30 * 60 * 1000,
+            15 *
+            60 *
+            1000,
         });
 
       if (
         !data?.sucesso ||
-        !Array.isArray(data?.perguntas)
+        !Array.isArray(
+          data?.perguntas
+        )
       ) {
         throw new Error(
           data?.error ||
-            "Não foi possível gerar as perguntas personalizadas."
+          "Não foi possível gerar as perguntas personalizadas."
         );
       }
 
