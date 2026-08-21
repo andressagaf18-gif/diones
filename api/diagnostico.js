@@ -55,6 +55,93 @@ function lista(v) {
   return Array.isArray(v) ? v : [];
 }
 
+
+function textoSeguroIa(
+  valor,
+  fallback = ""
+) {
+  if (
+    valor === null ||
+    valor === undefined
+  ) {
+    return fallback;
+  }
+
+  if (
+    typeof valor ===
+    "string"
+  ) {
+    return valor.trim();
+  }
+
+  if (
+    typeof valor ===
+      "number" ||
+    typeof valor ===
+      "boolean"
+  ) {
+    return String(valor);
+  }
+
+  if (
+    typeof valor ===
+    "object"
+  ) {
+    const candidatos = [
+      valor.texto,
+      valor.descricao,
+      valor.titulo,
+      valor.label,
+      valor.nome,
+      valor.item,
+      valor.risco,
+      valor.recomendacao,
+      valor.acao,
+      valor.tema,
+      valor.motivo,
+      valor.resumo,
+      valor.achado,
+      valor.impacto,
+      valor.causa,
+    ];
+
+    const encontrado =
+      candidatos.find(
+        (item) =>
+          typeof item ===
+            "string" &&
+          item.trim()
+      );
+
+    if (encontrado) {
+      return encontrado.trim();
+    }
+
+    try {
+      return JSON.stringify(
+        valor
+      );
+    } catch {
+      return fallback;
+    }
+  }
+
+  return String(valor);
+}
+
+function listaTextoIa(
+  valor
+) {
+  return lista(valor)
+    .map(
+      (item) =>
+        textoSeguroIa(
+          item
+        )
+    )
+    .filter(Boolean);
+}
+
 function mesclarContrato(base, ia) {
   const saida = {
     ...base,
@@ -74,37 +161,80 @@ function mesclarContrato(base, ia) {
     return {
       ...eixoBase,
       ...objeto(encontrado),
-      achados: lista(encontrado.achados),
-      riscos: lista(encontrado.riscos),
-      pontosFortes: lista(encontrado.pontosFortes),
-      recomendacoes: lista(encontrado.recomendacoes),
+      achados:
+        listaTextoIa(
+          encontrado.achados
+        ),
+      riscos:
+        listaTextoIa(
+          encontrado.riscos
+        ),
+      pontosFortes:
+        listaTextoIa(
+          encontrado.pontosFortes
+        ),
+      recomendacoes:
+        listaTextoIa(
+          encontrado.recomendacoes
+        ),
     };
   });
 
-  saida.objetivosDeclarados = lista(saida.objetivosDeclarados);
-  saida.doresPrincipais = lista(saida.doresPrincipais);
-  saida.impactos = lista(saida.impactos);
-  saida.causasProvaveis = lista(saida.causasProvaveis);
-  saida.riscosPrioritarios = lista(saida.riscosPrioritarios);
-  saida.pontosFortes = lista(saida.pontosFortes);
-  saida.prioridades = lista(saida.prioridades);
-  saida.recomendacoes = lista(saida.recomendacoes);
-  saida.quickWins = lista(saida.quickWins);
-  saida.indicadores = lista(saida.indicadores);
-  saida.informacoesFaltantes = lista(saida.informacoesFaltantes);
-  saida.proximosPassos = lista(saida.proximosPassos);
+  saida.leituraExecutiva =
+    textoSeguroIa(
+      saida.leituraExecutiva
+    );
+
+  saida.nivelGeral =
+    textoSeguroIa(
+      saida.nivelGeral
+    );
+
+  saida.objetivosDeclarados = listaTextoIa(saida.objetivosDeclarados);
+  saida.doresPrincipais = listaTextoIa(saida.doresPrincipais);
+  saida.impactos = listaTextoIa(saida.impactos);
+  saida.causasProvaveis = listaTextoIa(saida.causasProvaveis);
+  saida.riscosPrioritarios = listaTextoIa(saida.riscosPrioritarios);
+  saida.pontosFortes = listaTextoIa(saida.pontosFortes);
+  saida.prioridades = listaTextoIa(saida.prioridades);
+  saida.recomendacoes = listaTextoIa(saida.recomendacoes);
+  saida.quickWins = listaTextoIa(saida.quickWins);
+  saida.indicadores = listaTextoIa(saida.indicadores);
+  saida.informacoesFaltantes = listaTextoIa(saida.informacoesFaltantes);
+  saida.proximosPassos = listaTextoIa(saida.proximosPassos);
 
   saida.plano90Dias = {
-    dias30: lista(saida?.plano90Dias?.dias30),
-    dias60: lista(saida?.plano90Dias?.dias60),
-    dias90: lista(saida?.plano90Dias?.dias90),
+    dias30:
+      listaTextoIa(
+        saida?.plano90Dias?.dias30
+      ),
+    dias60:
+      listaTextoIa(
+        saida?.plano90Dias?.dias60
+      ),
+    dias90:
+      listaTextoIa(
+        saida?.plano90Dias?.dias90
+      ),
   };
 
   saida.visaoAdministracao = {
-    oportunidades: lista(saida?.visaoAdministracao?.oportunidades),
-    aprofundamentos: lista(saida?.visaoAdministracao?.aprofundamentos),
-    riscosComerciais: lista(saida?.visaoAdministracao?.riscosComerciais),
-    departamentosSugeridos: lista(saida?.visaoAdministracao?.departamentosSugeridos),
+    oportunidades:
+      listaTextoIa(
+        saida?.visaoAdministracao?.oportunidades
+      ),
+    aprofundamentos:
+      listaTextoIa(
+        saida?.visaoAdministracao?.aprofundamentos
+      ),
+    riscosComerciais:
+      listaTextoIa(
+        saida?.visaoAdministracao?.riscosComerciais
+      ),
+    departamentosSugeridos:
+      listaTextoIa(
+        saida?.visaoAdministracao?.departamentosSugeridos
+      ),
   };
 
   return saida;
