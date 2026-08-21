@@ -4146,7 +4146,6 @@ function DiagnosticoPrototipo() {
             endereco: empresaPrincipal?.endereco || {},
           },
       perfil: {
-        estruturaNegocio,
         faturamento: faturamento?.label || "",
         colaboradores: colaboradores || "",
         regime: regime || "",
