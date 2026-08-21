@@ -2791,9 +2791,16 @@ export default function DiagnosticoPrototipo() {
         eixos.forEach(
           (eixo) => {
             const label =
-              eixo.label ||
+              textoIaSeguro(
+                eixo.label
+              ) ||
               labelAreaAtual(
                 eixo.id
+              );
+
+            const achadosSeguros =
+              listaIaSegura(
+                eixo.achados
               );
 
             mapa[label] = {
@@ -2801,7 +2808,9 @@ export default function DiagnosticoPrototipo() {
                 label,
 
               areaId:
-                eixo.id,
+                textoIaSeguro(
+                  eixo.id
+                ),
 
               score:
                 Number(
@@ -2809,45 +2818,32 @@ export default function DiagnosticoPrototipo() {
                 ) || 0,
 
               nivel:
-                eixo.nivel ||
-                "",
+                textoIaSeguro(
+                  eixo.nivel
+                ),
 
               resumo:
-                Array.isArray(
-                  eixo.achados
-                )
-                  ? eixo.achados.join(
-                      " "
-                    )
-                  : "",
+                achadosSeguros.join(
+                  " "
+                ),
 
               achados:
-                Array.isArray(
-                  eixo.achados
-                )
-                  ? eixo.achados
-                  : [],
+                achadosSeguros,
 
               riscos:
-                Array.isArray(
+                listaIaSegura(
                   eixo.riscos
-                )
-                  ? eixo.riscos
-                  : [],
+                ),
 
               pontosFortes:
-                Array.isArray(
+                listaIaSegura(
                   eixo.pontosFortes
-                )
-                  ? eixo.pontosFortes
-                  : [],
+                ),
 
               recomendacoes:
-                Array.isArray(
+                listaIaSegura(
                   eixo.recomendacoes
-                )
-                  ? eixo.recomendacoes
-                  : [],
+                ),
             };
           }
         );
@@ -2858,69 +2854,55 @@ export default function DiagnosticoPrototipo() {
 
           diagnosticoGeral: {
             resumoExecutivo:
-              diagnostico.leituraExecutiva ||
-              "",
+              textoIaSeguro(
+                diagnostico.leituraExecutiva
+              ),
 
             principaisDores:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.doresPrincipais
-              )
-                ? diagnostico.doresPrincipais
-                : [],
+              ),
 
             pontosFortes:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.pontosFortes
-              )
-                ? diagnostico.pontosFortes
-                : [],
+              ),
 
             prioridadesImediatas:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.prioridades
-              )
-                ? diagnostico.prioridades
-                : [],
+              ),
 
             oportunidades:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.recomendacoes
-              )
-                ? diagnostico.recomendacoes
-                : [],
+              ),
 
             causasProvaveis:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.causasProvaveis
-              )
-                ? diagnostico.causasProvaveis
-                : [],
+              ),
 
             impactos:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.impactos
-              )
-                ? diagnostico.impactos
-                : [],
+              ),
 
             proximosPassos:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.proximosPassos
-              )
-                ? diagnostico.proximosPassos
-                : [],
+              ),
 
             leituraDaDor:
-              diagnostico.leituraExecutiva ||
-              "",
+              textoIaSeguro(
+                diagnostico.leituraExecutiva
+              ),
 
             alertaEstrategico:
-              Array.isArray(
+              listaIaSegura(
                 diagnostico.riscosPrioritarios
-              ) &&
-              diagnostico.riscosPrioritarios.length
-                ? diagnostico.riscosPrioritarios[0]
-                : "",
+              )[0] ||
+              "",
           },
 
           visaoGrupo:
@@ -2930,47 +2912,35 @@ export default function DiagnosticoPrototipo() {
               : null,
 
           lacunasDiagnostico:
-            Array.isArray(
+            listaIaSegura(
               diagnostico.informacoesFaltantes
-            )
-              ? diagnostico.informacoesFaltantes
-              : [],
+            ),
 
           oportunidadesConsultoria:
-            Array.isArray(
+            listaIaSegura(
               diagnostico
                 ?.visaoAdministracao
                 ?.oportunidades
-            )
-              ? diagnostico
-                  .visaoAdministracao
-                  .oportunidades
-              : [],
+            ),
 
           plano90Dias:
             diagnostico.plano90Dias ||
             null,
 
           quickWins:
-            Array.isArray(
+            listaIaSegura(
               diagnostico.quickWins
-            )
-              ? diagnostico.quickWins
-              : [],
+            ),
 
           kpisRecomendados:
-            Array.isArray(
+            listaIaSegura(
               diagnostico.indicadores
-            )
-              ? diagnostico.indicadores
-              : [],
+            ),
 
           perguntasAprofundamento:
-            Array.isArray(
+            listaIaSegura(
               diagnostico.informacoesFaltantes
-            )
-              ? diagnostico.informacoesFaltantes
-              : [],
+            ),
 
           visaoConsultor:
             diagnostico.visaoAdministracao ||
@@ -3864,6 +3834,101 @@ export default function DiagnosticoPrototipo() {
   }
 
 
+
+  function textoIaSeguro(
+    valor,
+    fallback = ""
+  ) {
+    if (
+      valor === null ||
+      valor === undefined
+    ) {
+      return fallback;
+    }
+
+    if (
+      typeof valor ===
+      "string"
+    ) {
+      return valor.trim();
+    }
+
+    if (
+      typeof valor ===
+        "number" ||
+      typeof valor ===
+        "boolean"
+    ) {
+      return String(
+        valor
+      );
+    }
+
+    if (
+      typeof valor ===
+      "object"
+    ) {
+      const candidatos = [
+        valor.texto,
+        valor.descricao,
+        valor.titulo,
+        valor.label,
+        valor.nome,
+        valor.item,
+        valor.risco,
+        valor.recomendacao,
+        valor.acao,
+        valor.tema,
+        valor.motivo,
+        valor.resumo,
+        valor.achado,
+        valor.impacto,
+        valor.causa,
+      ];
+
+      const encontrado =
+        candidatos.find(
+          (item) =>
+            typeof item ===
+              "string" &&
+            item.trim()
+        );
+
+      if (encontrado) {
+        return encontrado.trim();
+      }
+
+      try {
+        return JSON.stringify(
+          valor
+        );
+      } catch {
+        return fallback;
+      }
+    }
+
+    return String(
+      valor
+    );
+  }
+
+  function listaIaSegura(
+    valor
+  ) {
+    if (!Array.isArray(valor)) {
+      return [];
+    }
+
+    return valor
+      .map(
+        (item) =>
+          textoIaSeguro(
+            item
+          )
+      )
+      .filter(Boolean);
+  }
+
   async function enviarRelatorioPorEmail(
     resultadoIaDireto = null
   ) {
@@ -4688,12 +4753,49 @@ export default function DiagnosticoPrototipo() {
     : 0;
 
   // Quando a IA responde, seus riscos/recomendações substituem os calculados localmente.
-  const pontosAtencaoFinal = iaResultado
-    ? gruposSelecionados.flatMap((g) => iaResultado?.areas?.[g.label]?.riscos || []).slice(0, 8)
-    : pontosAtencao;
-  const recomendacoesFinal = iaResultado
-    ? gruposSelecionados.flatMap((g) => (iaResultado?.areas?.[g.label]?.recomendacoes || []).map((r) => ({ area: g.label, dica: r }))).slice(0, 6)
-    : subOrdenados.slice(0, 3);
+  const pontosAtencaoFinal =
+    iaResultado
+      ? gruposSelecionados
+          .flatMap(
+            (g) =>
+              listaIaSegura(
+                iaResultado?.areas?.[
+                  g.label
+                ]?.riscos
+              )
+          )
+          .slice(
+            0,
+            8
+          )
+      : pontosAtencao;
+
+  const recomendacoesFinal =
+    iaResultado
+      ? gruposSelecionados
+          .flatMap(
+            (g) =>
+              listaIaSegura(
+                iaResultado?.areas?.[
+                  g.label
+                ]?.recomendacoes
+              ).map(
+                (r) => ({
+                  area:
+                    g.label,
+                  dica:
+                    r,
+                })
+              )
+          )
+          .slice(
+            0,
+            6
+          )
+      : subOrdenados.slice(
+          0,
+          3
+        );
 
   const aliquota = empresaPrincipal && regime ? estimarAliquota(regime, segmentoPredominante, faturamento?.anual || 0) : null;
   const valorAnualImposto = aliquota != null && faturamento ? faturamento.anual * (aliquota / 100) : null;
@@ -4719,17 +4821,59 @@ export default function DiagnosticoPrototipo() {
           reforma: null,
         };
 
-  const diagnosticoGeral = iaResultado?.diagnosticoGeral || null;
-  const resumoExecutivo = diagnosticoGeral?.resumoExecutivo || "";
-  const principaisDoresIa = diagnosticoGeral?.principaisDores || [];
-  const pontosFortesIa = diagnosticoGeral?.pontosFortes || [];
-  const prioridadesIa = diagnosticoGeral?.prioridadesImediatas || [];
-  const oportunidadesIa = diagnosticoGeral?.oportunidades || [];
-  const causasProvaveisIa = diagnosticoGeral?.causasProvaveis || [];
-  const impactosIa = diagnosticoGeral?.impactos || [];
-  const proximosPassosIa = diagnosticoGeral?.proximosPassos || [];
-  const leituraDaDorIa = diagnosticoGeral?.leituraDaDor || "";
-  const alertaEstrategicoIa = diagnosticoGeral?.alertaEstrategico || "";
+  const diagnosticoGeral =
+    iaResultado?.diagnosticoGeral ||
+    null;
+
+  const resumoExecutivo =
+    textoIaSeguro(
+      diagnosticoGeral?.resumoExecutivo
+    );
+
+  const principaisDoresIa =
+    listaIaSegura(
+      diagnosticoGeral?.principaisDores
+    );
+
+  const pontosFortesIa =
+    listaIaSegura(
+      diagnosticoGeral?.pontosFortes
+    );
+
+  const prioridadesIa =
+    listaIaSegura(
+      diagnosticoGeral?.prioridadesImediatas
+    );
+
+  const oportunidadesIa =
+    listaIaSegura(
+      diagnosticoGeral?.oportunidades
+    );
+
+  const causasProvaveisIa =
+    listaIaSegura(
+      diagnosticoGeral?.causasProvaveis
+    );
+
+  const impactosIa =
+    listaIaSegura(
+      diagnosticoGeral?.impactos
+    );
+
+  const proximosPassosIa =
+    listaIaSegura(
+      diagnosticoGeral?.proximosPassos
+    );
+
+  const leituraDaDorIa =
+    textoIaSeguro(
+      diagnosticoGeral?.leituraDaDor
+    );
+
+  const alertaEstrategicoIa =
+    textoIaSeguro(
+      diagnosticoGeral?.alertaEstrategico
+    );
   const visaoGrupoIa = iaResultado?.visaoGrupo || null;
   const lacunasDiagnosticoIa = iaResultado?.lacunasDiagnostico || [];
   const oportunidadesConsultoriaIa = iaResultado?.oportunidadesConsultoria || [];
