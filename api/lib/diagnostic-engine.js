@@ -10,7 +10,7 @@ export const ESTRUTURAS = {
     exigeCnpj: true,
     eixos: [
       "financeiro", "tributario", "contabil_fiscal", "comercial",
-      "marketing", "gestao", "rh", "operacional", "tecnologia"
+      "marketing", "administrativo", "gestao", "rh", "operacional", "tecnologia"
     ],
     proibicoes: [],
     foco: [
@@ -148,6 +148,58 @@ export function obterMotor(estrutura) {
   return ESTRUTURAS[normalizarEstrutura(estrutura)];
 }
 
+
+export const LABELS_EIXOS = {
+  financeiro: "Financeiro",
+  tributario: "Tributário",
+  contabil_fiscal: "Contábil / Fiscal",
+  comercial: "Comercial",
+  marketing: "Marketing",
+  administrativo: "Administrativo",
+  gestao: "Gestão",
+  rh: "Recursos Humanos",
+  operacional: "Operacional",
+  tecnologia: "Tecnologia",
+
+  estrutura_grupo: "Estrutura do grupo",
+  governanca: "Governança",
+  financeiro_consolidado: "Financeiro consolidado",
+  intercompany: "Operações intercompany",
+  pessoas_compartilhadas: "Pessoas compartilhadas",
+  operacoes: "Operações",
+
+  projeto: "Projeto",
+  socios_investidores: "Sócios / investidores",
+  aportes: "Aportes",
+  contratos: "Contratos",
+  riscos: "Riscos",
+  encerramento: "Encerramento",
+
+  patrimonio: "Patrimônio",
+  participacoes: "Participações",
+  imoveis: "Imóveis",
+  receitas_patrimoniais: "Receitas patrimoniais",
+  tributario_patrimonial: "Tributário patrimonial",
+  sucessao: "Sucessão",
+  protecao_patrimonial: "Proteção patrimonial",
+  custos_estrutura: "Custos da estrutura",
+
+  objetivos: "Objetivos",
+  receitas: "Receitas",
+  familia_sucessao: "Família e sucessão",
+  financiamentos: "Financiamentos",
+  custos_viabilidade: "Custos e viabilidade",
+
+  organizacao_financeira: "Organização financeira",
+  fluxo_pessoal: "Fluxo financeiro pessoal",
+  endividamento: "Endividamento",
+  reserva_seguranca: "Reserva de segurança",
+  investimentos: "Investimentos",
+  aposentadoria: "Aposentadoria",
+  protecao_familiar: "Proteção familiar",
+  tributario_pf: "Tributário pessoa física",
+};
+
 export function contratoSaida(
   estrutura,
   eixosPermitidos = null
@@ -180,7 +232,9 @@ export function contratoSaida(
     impactos: [],
     eixos: eixosDoRelatorio.map((id) => ({
       id,
-      label: id,
+      label:
+        LABELS_EIXOS[id] ||
+        id,
       score: 0,
       nivel: "",
       achados: [],
