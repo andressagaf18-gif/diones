@@ -110,6 +110,41 @@ function mesclarContrato(base, ia) {
   return saida;
 }
 
+
+function normalizarAreaOperacionalId(
+  id
+) {
+  const valor =
+    String(
+      id ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const mapa = {
+    contabilidade:
+      "contabil_fiscal",
+    contabil:
+      "contabil_fiscal",
+    fiscal:
+      "contabil_fiscal",
+    contabilidade_fiscal:
+      "contabil_fiscal",
+    recursos_humanos:
+      "rh",
+    vendas:
+      "comercial",
+    comercial_vendas:
+      "comercial",
+  };
+
+  return (
+    mapa[valor] ||
+    valor
+  );
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -145,13 +180,11 @@ export default async function handler(req, res) {
       ? body.eixosObrigatorios
           .map(
             (item) =>
-              String(
+              normalizarAreaOperacionalId(
                 item?.id ||
                 item ||
                 ""
               )
-                .trim()
-                .toLowerCase()
           )
           .filter(
             (id) =>
@@ -168,13 +201,11 @@ export default async function handler(req, res) {
       ? body.areas
           .map(
             (item) =>
-              String(
+              normalizarAreaOperacionalId(
                 item?.id ||
                 item?.areaId ||
                 ""
               )
-                .trim()
-                .toLowerCase()
           )
           .filter(
             (id) =>
@@ -363,13 +394,23 @@ INSTRUÇÕES DE QUALIDADE:
       sucesso: true,
       estrutura,
       motor: motor.tipo,
+
+      // Contrato principal atual
       diagnostico,
+
+      // Compatibilidade com versões antigas do frontend
+      resultado:
+        diagnostico,
+
       escopoRelatorio:
         contrato.eixos.map(
           (eixo) =>
             eixo.id
         ),
-      uso: data?.usage || null,
+
+      uso:
+        data?.usage ||
+        null,
     });
   } catch (error) {
     console.error(
