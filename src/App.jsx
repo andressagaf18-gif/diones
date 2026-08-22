@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
   CalendarCheck, RotateCcw, Megaphone, Scale, Calculator, Wallet,
