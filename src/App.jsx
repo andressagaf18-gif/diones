@@ -238,6 +238,23 @@ const ESTRUTURAS_NEGOCIO = [
   { id: "spe", label: "SPE" },
   { id: "avaliar_holding", label: "Quero avaliar se uma holding faz sentido" },
   { id: "pessoa_fisica", label: "Pessoa Física / Consultoria pessoal" },
+  { id: "reforma_tributaria", label: "Reforma Tributária / IBS e CBS" },
+];
+
+const OBJETIVOS_REFORMA_TRIBUTARIA = [
+  "Entender como IBS e CBS vão funcionar",
+  "Saber se minha carga tributária pode aumentar ou diminuir",
+  "Comparar a tributação atual com a Reforma Tributária",
+  "Entender créditos de IBS/CBS nas compras e despesas",
+  "Revisar preço de venda e margem",
+  "Avaliar impacto nos fornecedores e clientes",
+  "Adequar notas fiscais, ERP e processos fiscais",
+  "Revisar contratos e repasse dos novos tributos",
+  "Entender os impactos para o Simples Nacional",
+  "Avaliar Lucro Presumido x Lucro Real",
+  "Avaliar impactos em holding, imóveis ou locações",
+  "Planejar a empresa para 2027 em diante",
+  "Tenho uma dúvida específica",
 ];
 
 const TIPOS_HOLDING = [
@@ -1380,6 +1397,9 @@ function DiagnosticoPrototipo({
   const [atividadePredominante, setAtividadePredominante] = useState(null);
   const [descricaoNegocio, setDescricaoNegocio] = useState("");
   const [estruturaNegocio, setEstruturaNegocio] = useState("operacional");
+  const [objetivosReforma, setObjetivosReforma] = useState([]);
+  const [duvidaReforma, setDuvidaReforma] = useState("");
+
   const [tiposHolding, setTiposHolding] = useState([]);
   const [objetivosHolding, setObjetivosHolding] = useState([]);
   const [patrimonioHolding, setPatrimonioHolding] = useState("");
@@ -1462,6 +1482,9 @@ function DiagnosticoPrototipo({
   const trilhaSPEAtiva =
     estruturaNegocio === "spe";
 
+  const trilhaReformaAtiva =
+    estruturaNegocio === "reforma_tributaria";
+
   // Regras de CNPJ por estrutura:
   // PF e avaliação de Holding não exigem CNPJ.
   // Holding existente e Grupo exigem CNPJ.
@@ -1518,6 +1541,8 @@ function DiagnosticoPrototipo({
             ? "sua necessidade de estrutura patrimonial"
             : "sua holding e estrutura patrimonial"
         )
+      : trilhaReformaAtiva
+      ? "os impactos da Reforma Tributária no seu negócio"
       : "seu negócio";
 
   const perfilPF = {
@@ -1541,6 +1566,16 @@ function DiagnosticoPrototipo({
     patrimonioAproximado: patrimonioHolding,
     receitasPatrimoniais: receitasHolding,
     situacaoSucessoria: sucessaoHolding,
+  };
+
+  const perfilReformaTributaria = {
+    ativo: trilhaReformaAtiva,
+    objetivos: objetivosReforma,
+    duvidaEspecifica: duvidaReforma.trim(),
+    interessePrincipal:
+      objetivosReforma[0] || "",
+    exigeAnaliseConsultiva:
+      trilhaReformaAtiva,
   };
 
   const perfilGrupo = {
@@ -2419,6 +2454,7 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
+        reformaTributaria: perfilReformaTributaria,
       },
     };
 
@@ -2592,12 +2628,14 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
+        reformaTributaria: perfilReformaTributaria,
         grupo: perfilGrupo,
         spe: perfilSPE,
       },
 
       holding: perfilHolding,
       pessoaFisica: perfilPF,
+      reformaTributaria: perfilReformaTributaria,
       grupo: perfilGrupo,
       spe: perfilSPE,
 
@@ -3256,12 +3294,14 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
+        reformaTributaria: perfilReformaTributaria,
         grupo: perfilGrupo,
         spe: perfilSPE,
       },
 
       holding: perfilHolding,
       pessoaFisica: perfilPF,
+      reformaTributaria: perfilReformaTributaria,
       grupo: perfilGrupo,
       spe: perfilSPE,
 
@@ -4165,6 +4205,7 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
+        reformaTributaria: perfilReformaTributaria,
         grupo: perfilGrupo,
         spe: perfilSPE,
         doresSelecionadas,
@@ -5582,6 +5623,11 @@ function DiagnosticoPrototipo({
                           setDor90Dias("");
                           setImpactosDor([]);
 
+                          if (item.id !== "reforma_tributaria") {
+                            setObjetivosReforma([]);
+                            setDuvidaReforma("");
+                          }
+
                           if (
                             ![
                               "holding",
@@ -5645,6 +5691,156 @@ function DiagnosticoPrototipo({
                     );
                   })}
                 </div>
+
+                {trilhaReformaAtiva && (
+                  <div
+                    style={{
+                      background: "#FFF7F3",
+                      border: `1px solid ${CORAL}`,
+                      borderRadius: 12,
+                      padding: 14,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                        marginBottom: 5,
+                      }}
+                    >
+                      <AlertTriangle
+                        size={16}
+                        color={CORAL}
+                      />
+
+                      <strong
+                        style={{
+                          fontSize: 13,
+                          color: NAVY,
+                        }}
+                      >
+                        Diagnóstico da Reforma Tributária
+                      </strong>
+                    </div>
+
+                    <p
+                      style={{
+                        fontSize: 10.7,
+                        color: MUTED,
+                        margin: "0 0 13px",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Selecione os temas que deseja entender. O diagnóstico usará
+                      CNPJ, atividade, regime, faturamento e respostas da operação
+                      para direcionar uma análise preliminar de IBS, CBS, créditos,
+                      precificação e adequações necessárias.
+                    </p>
+
+                    <label style={labelStyle}>
+                      O que você quer avaliar sobre a Reforma Tributária?
+                    </label>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 7,
+                        marginBottom: 14,
+                      }}
+                    >
+                      {OBJETIVOS_REFORMA_TRIBUTARIA.map(
+                        (objetivo) => {
+                          const selecionado =
+                            objetivosReforma.includes(
+                              objetivo
+                            );
+
+                          return (
+                            <button
+                              key={objetivo}
+                              type="button"
+                              onClick={() =>
+                                setObjetivosReforma(
+                                  (atuais) =>
+                                    atuais.includes(
+                                      objetivo
+                                    )
+                                      ? atuais.filter(
+                                          (item) =>
+                                            item !==
+                                            objetivo
+                                        )
+                                      : [
+                                          ...atuais,
+                                          objetivo,
+                                        ]
+                                )
+                              }
+                              style={{
+                                ...chipStyle(
+                                  selecionado
+                                ),
+                                width: "100%",
+                                minHeight: 48,
+                                textAlign: "left",
+                              }}
+                            >
+                              {objetivo}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+
+                    {objetivosReforma.includes(
+                      "Tenho uma dúvida específica"
+                    ) && (
+                      <>
+                        <label style={labelStyle}>
+                          Conte sua dúvida sobre a Reforma Tributária
+                        </label>
+
+                        <textarea
+                          value={duvidaReforma}
+                          onChange={(e) =>
+                            setDuvidaReforma(
+                              e.target.value
+                            )
+                          }
+                          placeholder="Ex.: Minha empresa presta serviços no Lucro Presumido. Quero entender se a carga pode aumentar, como ficam os créditos e se precisarei rever meus preços."
+                          rows={4}
+                          style={{
+                            ...inputStyle,
+                            resize: "vertical",
+                            fontFamily: BODY_FONT,
+                            marginBottom: 10,
+                          }}
+                        />
+                      </>
+                    )}
+
+                    <div
+                      style={{
+                        background: WHITE,
+                        borderRadius: 9,
+                        padding: 10,
+                        fontSize: 10.2,
+                        color: MUTED,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      <strong style={{ color: NAVY }}>
+                        Importante:
+                      </strong>{" "}
+                      o resultado será uma análise preliminar. Carga efetiva,
+                      aproveitamento de créditos, enquadramentos específicos e
+                      decisão de regime exigem validação dos dados reais da operação.
+                    </div>
+                  </div>
+                )}
 
                 {trilhaGrupoAtiva && (
                   <div style={{ background: "#F7F8FB", border: "1px solid #E3E7EF", borderRadius: 12, padding: 14, marginBottom: 14 }}>
@@ -6117,6 +6313,19 @@ function DiagnosticoPrototipo({
                         !finalidadeSPE.trim()
                       )
                     )
+ ||
+                    (
+                      trilhaReformaAtiva &&
+                      (
+                        objetivosReforma.length === 0 ||
+                        (
+                          objetivosReforma.includes(
+                            "Tenho uma dúvida específica"
+                          ) &&
+                          duvidaReforma.trim().length < 10
+                        )
+                      )
+                    )
                   }
                   onClick={() => {
                     if (trilhaPFAtiva || avaliarHoldingAtiva) {
@@ -6155,6 +6364,8 @@ function DiagnosticoPrototipo({
                     ? "CNPJs do grupo empresarial"
                     : estruturaNegocio === "spe"
                     ? "CNPJ da SPE"
+                    : estruturaNegocio === "reforma_tributaria"
+                    ? "CNPJ para análise da Reforma Tributária"
                     : "CNPJ da empresa"}
                 </p>
 
@@ -6170,6 +6381,8 @@ function DiagnosticoPrototipo({
                     ? "Informe o CNPJ da holding existente. Os dados cadastrais serão cruzados com patrimônio, participações, receitas, governança e sucessão."
                     : estruturaNegocio === "grupo"
                     ? `Adicione a empresa-base e, se necessário, outras empresas do grupo. Você pode adicionar até ${MAX_EMPRESAS} CNPJs.`
+                    : estruturaNegocio === "reforma_tributaria"
+                    ? "Informe o CNPJ da empresa. Vamos usar atividade econômica, regime, faturamento e perfil da operação para direcionar a análise de IBS, CBS, créditos, preços e adequações."
                     : "Adicione o CNPJ que será a base do diagnóstico."}
                 </p>
 
