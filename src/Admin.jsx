@@ -1,3 +1,10 @@
+Biblioteca
+/
+Sistema Finder
+/
+Admin_CORRIGIDO_LEADS_TELA_BRANCA.jsx
+
+
 import {
   useEffect,
   useMemo,
@@ -2993,6 +3000,11 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [selecoesResponsavel, setSelecoesResponsavel] = useState({});
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
+
+  const [
+    arquivamentoLeads,
+    setArquivamentoLeads,
+  ] = useState("ATIVOS");
 
   const [
     leadsSelecionados,
