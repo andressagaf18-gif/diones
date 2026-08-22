@@ -927,6 +927,50 @@ const DORES_EVENTO = [
   "Outro",
 ];
 
+const DORES_REFORMA = [
+  "Não sei quanto a Reforma pode alterar minha carga tributária",
+  "Não sei quais compras e despesas poderão gerar créditos",
+  "Tenho receio de perder margem com a nova tributação",
+  "Ainda não revisei preços e contratos",
+  "Meu ERP / sistema fiscal ainda não está preparado",
+  "Não sei como meus clientes serão impactados",
+  "Não sei como meus fornecedores afetarão meus créditos",
+  "Tenho dúvidas sobre Simples Nacional",
+  "Quero comparar Lucro Presumido x Lucro Real",
+  "Tenho operações com benefícios ou tratamentos específicos",
+  "Tenho operações interestaduais, importação ou exportação",
+  "Preciso de um plano de adequação para 2027 em diante",
+  "Outro",
+];
+
+const IMPACTOS_REFORMA = [
+  "Aumento de carga tributária",
+  "Redução de margem",
+  "Necessidade de reajustar preços",
+  "Perda de competitividade",
+  "Créditos tributários não aproveitados",
+  "Risco de erro em nota fiscal",
+  "Risco contratual",
+  "Impacto no fluxo de caixa",
+  "Impacto nos clientes",
+  "Impacto nos fornecedores",
+  "Necessidade de trocar ou ajustar sistema",
+  "Incerteza para decisões de investimento",
+];
+
+const AREAS_REFORMA = [
+  { id: "reforma_carga", label: "Carga tributária e cenários", Icon: Percent },
+  { id: "reforma_creditos", label: "Créditos de IBS/CBS", Icon: Calculator },
+  { id: "reforma_precos", label: "Preço, margem e repasse", Icon: TrendingUp },
+  { id: "reforma_clientes", label: "Clientes e modelo B2B/B2C", Icon: Users },
+  { id: "reforma_fornecedores", label: "Fornecedores e cadeia de créditos", Icon: Building2 },
+  { id: "reforma_fiscal", label: "Notas fiscais e parametrização", Icon: ClipboardList },
+  { id: "reforma_sistemas", label: "ERP / tecnologia", Icon: Cpu },
+  { id: "reforma_contratos", label: "Contratos e cláusulas tributárias", Icon: Scale },
+  { id: "reforma_regime", label: "Regime tributário e planejamento", Icon: Target },
+  { id: "reforma_transicao", label: "Cronograma de adequação", Icon: Clock3 },
+];
+
 const DORES_HOLDING = [
   "Patrimônio desorganizado entre pessoa física e jurídica",
   "Sucessão familiar ainda não planejada",
@@ -1399,6 +1443,16 @@ function DiagnosticoPrototipo({
   const [estruturaNegocio, setEstruturaNegocio] = useState("operacional");
   const [objetivosReforma, setObjetivosReforma] = useState([]);
   const [duvidaReforma, setDuvidaReforma] = useState("");
+  const [perfilClientesReforma, setPerfilClientesReforma] = useState("");
+  const [comprasCreditoReforma, setComprasCreditoReforma] = useState("");
+  const [folhaReforma, setFolhaReforma] = useState("");
+  const [repassePrecoReforma, setRepassePrecoReforma] = useState("");
+  const [erpReforma, setErpReforma] = useState("");
+  const [contratosReforma, setContratosReforma] = useState("");
+  const [beneficiosReforma, setBeneficiosReforma] = useState("");
+  const [operacoesReforma, setOperacoesReforma] = useState([]);
+  const [preparacaoReforma, setPreparacaoReforma] = useState("");
+
 
   const [tiposHolding, setTiposHolding] = useState([]);
   const [objetivosHolding, setObjetivosHolding] = useState([]);
@@ -1508,6 +1562,8 @@ function DiagnosticoPrototipo({
       ? AREAS_GRUPO
       : trilhaSPEAtiva
       ? AREAS_SPE
+      : trilhaReformaAtiva
+      ? AREAS_REFORMA
       : AREAS;
 
   const doresDisponiveis =
@@ -1519,6 +1575,8 @@ function DiagnosticoPrototipo({
       ? DORES_GRUPO
       : trilhaSPEAtiva
       ? DORES_SPE
+      : trilhaReformaAtiva
+      ? DORES_REFORMA
       : DORES_EVENTO;
 
   const impactosDisponiveis =
@@ -1530,6 +1588,8 @@ function DiagnosticoPrototipo({
       ? IMPACTOS_GRUPO
       : trilhaSPEAtiva
       ? IMPACTOS_SPE
+      : trilhaReformaAtiva
+      ? IMPACTOS_REFORMA
       : IMPACTOS_DOR;
 
   const tituloContextoDiagnostico =
@@ -1574,6 +1634,24 @@ function DiagnosticoPrototipo({
     duvidaEspecifica: duvidaReforma.trim(),
     interessePrincipal:
       objetivosReforma[0] || "",
+    perfilClientes:
+      perfilClientesReforma,
+    potencialCreditoCompras:
+      comprasCreditoReforma,
+    pesoFolha:
+      folhaReforma,
+    capacidadeRepassePreco:
+      repassePrecoReforma,
+    preparacaoERP:
+      erpReforma,
+    revisaoContratos:
+      contratosReforma,
+    beneficiosTratamentos:
+      beneficiosReforma,
+    operacoesEspeciais:
+      operacoesReforma,
+    nivelPreparacao:
+      preparacaoReforma,
     exigeAnaliseConsultiva:
       trilhaReformaAtiva,
   };
@@ -2529,7 +2607,15 @@ function DiagnosticoPrototipo({
     let cancelado = false;
     const labels = gruposSelecionados.map((g) => g.label);
     const msgs =
-      trilhaPFAtiva
+      trilhaReformaAtiva
+        ? [
+            `Temas: ${objetivosReforma.slice(0, 3).join(", ") || "Reforma Tributária"}`,
+            `Cruzando regime ${regime || "-"} com atividade e faturamento`,
+            "Analisando cadeia de créditos, clientes e fornecedores",
+            "Verificando preço, margem, contratos e preparação do ERP",
+            "Classificando necessidade de simulação e próximos passos",
+          ]
+        : trilhaPFAtiva
         ? [
             `Objetivos: ${
               objetivosPF
@@ -2567,6 +2653,8 @@ function DiagnosticoPrototipo({
       segmento:
         trilhaPFAtiva
           ? "Pessoa Física / Consultoria Financeira"
+          : trilhaReformaAtiva
+          ? "Reforma Tributária / IBS e CBS"
           : segmentoPredominante,
 
       categoria:
@@ -2584,11 +2672,18 @@ function DiagnosticoPrototipo({
                 .join(" + ") ||
               "Pessoa Física"
             )
+          : trilhaReformaAtiva
+          ? (
+              objetivosReforma.join(" + ") ||
+              "Reforma Tributária"
+            )
           : categoriaPrincipal,
 
       codigoQuestionario:
         trilhaPFAtiva
           ? "PF_CONSULTORIA"
+          : trilhaReformaAtiva
+          ? "REFORMA_TRIBUTARIA_CONSULTIVA"
           : codigoQuestionario,
       cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
       cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
@@ -3251,6 +3346,8 @@ function DiagnosticoPrototipo({
           ? "Holding / Estrutura Patrimonial"
           : trilhaPFAtiva
           ? "Pessoa Física / Consultoria Financeira"
+          : trilhaReformaAtiva
+          ? "Reforma Tributária / IBS e CBS"
           : segmentoPredominante,
 
       categoriaAtual:
@@ -3282,6 +3379,11 @@ function DiagnosticoPrototipo({
                 .join(" + ") ||
               "Pessoa Física"
             )
+          : trilhaReformaAtiva
+          ? (
+              objetivosReforma.join(" + ") ||
+              "Reforma Tributária"
+            )
           : categoriaPrincipal,
       cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
       cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
@@ -3305,7 +3407,25 @@ function DiagnosticoPrototipo({
       grupo: perfilGrupo,
       spe: perfilSPE,
 
-      instrucoesEspeciais: trilhaHoldingAtiva
+      instrucoesEspeciais: trilhaReformaAtiva
+        ? [
+            "Tratar este fluxo como triagem consultiva especializada em Reforma Tributária, IBS e CBS.",
+            "Não responder apenas de forma genérica. Relacionar as perguntas à atividade, CNAE, regime tributário, faturamento, perfil B2B/B2C e estrutura de custos.",
+            "Investigar impacto econômico e operacional, não apenas alíquota nominal.",
+            "Separar carga bruta, créditos potenciais, efeito líquido, margem, precificação e fluxo de caixa.",
+            "Investigar quais compras, insumos, serviços e despesas podem compor a cadeia de créditos, sem presumir direito a crédito sem validação.",
+            "Considerar o peso da folha, especialmente quando a operação depende fortemente de mão de obra e possui poucos custos creditáveis.",
+            "Avaliar se o cliente vende para outras empresas ou consumidor final, pois capacidade de crédito e repasse podem alterar o impacto comercial.",
+            "Perguntar sobre contratos, política de preços, repasse tributário, fornecedores e capacidade de renegociação.",
+            "Avaliar preparação do ERP, emissão fiscal, cadastros de produtos/serviços e parametrizações necessárias.",
+            "Se houver benefício fiscal, regime especial, operação interestadual, importação, exportação, marketplace, imóveis ou grupo empresarial, aprofundar o tratamento específico.",
+            "Se o usuário indicar Simples Nacional, investigar impacto comercial dos créditos na cadeia e não afirmar automaticamente que haverá aumento ou redução de carga.",
+            "Se o usuário indicar Lucro Presumido ou Lucro Real, comparar cenários apenas como estimativa preliminar e sinalizar necessidade de simulação com dados reais.",
+            "Classificar ao final se o caso é: dúvida informativa, adequação operacional, simulação tributária, revisão de preços/margem, revisão contratual ou planejamento tributário completo.",
+            "Identificar claramente quais dados ainda faltam para uma simulação confiável.",
+            "Nunca apresentar falsa precisão. Quando não houver dados suficientes, usar faixas, cenários e ressalvas.",
+          ]
+        : trilhaHoldingAtiva
         ? [
             "Tratar a holding como estrutura especializada, e não como simples empresa de serviços.",
             "Investigar patrimônio, imóveis, participações societárias, receitas patrimoniais, governança, sucessão e tributação.",
@@ -5626,6 +5746,15 @@ function DiagnosticoPrototipo({
                           if (item.id !== "reforma_tributaria") {
                             setObjetivosReforma([]);
                             setDuvidaReforma("");
+                            setPerfilClientesReforma("");
+                            setComprasCreditoReforma("");
+                            setFolhaReforma("");
+                            setRepassePrecoReforma("");
+                            setErpReforma("");
+                            setContratosReforma("");
+                            setBeneficiosReforma("");
+                            setOperacoesReforma([]);
+                            setPreparacaoReforma("");
                           }
 
                           if (
@@ -6845,9 +6974,516 @@ function DiagnosticoPrototipo({
                 />
 
                 <div style={{ flex: 1, minHeight: 4 }} />
-                <PrimaryButton disabled={!faturamento || !colaboradores || !regime} onClick={() => setStep("dor")}>
+                <PrimaryButton
+                  disabled={!faturamento || !colaboradores || !regime}
+                  onClick={() =>
+                    setStep(
+                      trilhaReformaAtiva
+                        ? "reforma_detalhes"
+                        : "dor"
+                    )
+                  }
+                >
                   Continuar <ArrowRight size={16} />
                 </PrimaryButton>
+              </div>
+            )}
+
+            {step === "reforma_detalhes" && trilhaReformaAtiva && (
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 15,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      color: CORAL,
+                      fontSize: 9.5,
+                      fontWeight: 900,
+                      letterSpacing: 0.8,
+                      marginBottom: 5,
+                    }}
+                  >
+                    REFORMA TRIBUTÁRIA · TRIAGEM CONSULTIVA
+                  </div>
+
+                  <p
+                    style={{
+                      fontFamily: DISPLAY_FONT,
+                      fontSize: 22,
+                      fontWeight: 700,
+                      color: NAVY,
+                      margin: "0 0 5px",
+                    }}
+                  >
+                    Como a sua operação funciona hoje?
+                  </p>
+
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: MUTED,
+                      lineHeight: 1.5,
+                      margin: 0,
+                    }}
+                  >
+                    Essas respostas ajudam a separar uma dúvida genérica de um caso que
+                    realmente exige simulação, revisão de preços, créditos, contratos ou sistema.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    background: "#F7F8FB",
+                    borderRadius: 12,
+                    padding: 13,
+                  }}
+                >
+                  <strong
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      marginBottom: 7,
+                    }}
+                  >
+                    Temas selecionados
+                  </strong>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 6,
+                    }}
+                  >
+                    {objetivosReforma.map(
+                      (item) => (
+                        <span
+                          key={item}
+                          style={{
+                            background: "#FFF3EF",
+                            color: "#993C1D",
+                            borderRadius: 999,
+                            padding: "5px 8px",
+                            fontSize: 9.5,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {item}
+                        </span>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Quem são seus principais clientes?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["B2B", "Outras empresas (B2B)"],
+                      ["B2C", "Consumidor final (B2C)"],
+                      ["MISTO", "Empresas e consumidor final"],
+                      ["GOVERNO", "Governo / setor público"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setPerfilClientesReforma(
+                            id
+                          )
+                        }
+                        style={chipStyle(
+                          perfilClientesReforma ===
+                            id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Quanto das suas compras e despesas pode estar ligado à operação?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["BAIXO", "Baixo — poucos insumos/despesas"],
+                      ["MEDIO", "Médio — compras relevantes"],
+                      ["ALTO", "Alto — insumos/custos relevantes"],
+                      ["NAO_SEI", "Não sei avaliar"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setComprasCreditoReforma(
+                            id
+                          )
+                        }
+                        style={chipStyle(
+                          comprasCreditoReforma ===
+                            id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Qual o peso da folha de pagamento na sua operação?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["BAIXO", "Baixo"],
+                      ["MEDIO", "Médio"],
+                      ["ALTO", "Alto"],
+                      ["NAO_SEI", "Não sei"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setFolhaReforma(
+                            id
+                          )
+                        }
+                        style={chipStyle(
+                          folhaReforma === id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Sua empresa consegue repassar aumento de custo tributário para o preço?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["SIM", "Sim, com relativa facilidade"],
+                      ["PARCIAL", "Só parcialmente"],
+                      ["NAO", "Não, o mercado limita o preço"],
+                      ["NAO_SEI", "Não sei"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setRepassePrecoReforma(
+                            id
+                          )
+                        }
+                        style={chipStyle(
+                          repassePrecoReforma ===
+                            id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Como está seu ERP / sistema fiscal para IBS e CBS?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["PRONTO", "Já está parametrizado / em testes"],
+                      ["ANDAMENTO", "Fornecedor está ajustando"],
+                      ["NAO_INICIADO", "Ainda não começamos"],
+                      ["NAO_SEI", "Não sei"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setErpReforma(id)
+                        }
+                        style={chipStyle(
+                          erpReforma === id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Os contratos e políticas comerciais já foram revisados para a transição tributária?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["SIM", "Sim"],
+                      ["PARCIAL", "Parcialmente"],
+                      ["NAO", "Ainda não"],
+                      ["NAO_APLICA", "Não se aplica / não sei"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setContratosReforma(
+                            id
+                          )
+                        }
+                        style={chipStyle(
+                          contratosReforma ===
+                            id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    A empresa possui benefício fiscal, regime especial ou tratamento diferenciado relevante?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["SIM", "Sim"],
+                      ["NAO", "Não"],
+                      ["NAO_SEI", "Não sei"],
+                      ["ANALISAR", "Preciso analisar"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setBeneficiosReforma(
+                            id
+                          )
+                        }
+                        style={chipStyle(
+                          beneficiosReforma ===
+                            id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Sua empresa possui alguma destas operações?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      "Venda interestadual",
+                      "Prestação em vários municípios/estados",
+                      "Importação",
+                      "Exportação",
+                      "Marketplace / plataforma",
+                      "Locação / imóveis",
+                      "Operações entre empresas do grupo",
+                      "Nenhuma das anteriores",
+                    ].map((item) => {
+                      const ativo =
+                        operacoesReforma.includes(
+                          item
+                        );
+
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() =>
+                            setOperacoesReforma(
+                              (atuais) =>
+                                ativo
+                                  ? atuais.filter(
+                                      (x) =>
+                                        x !== item
+                                    )
+                                  : [
+                                      ...atuais,
+                                      item,
+                                    ]
+                            )
+                          }
+                          style={chipStyle(ativo)}
+                        >
+                          {item}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Em qual estágio de preparação sua empresa está?
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["NAO_INICIOU", "Ainda não iniciamos"],
+                      ["ENTENDENDO", "Estamos entendendo os impactos"],
+                      ["MAPEANDO", "Já estamos mapeando operações e sistemas"],
+                      ["SIMULANDO", "Já fazemos simulações e plano de ação"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          setPreparacaoReforma(
+                            id
+                          )
+                        }
+                        style={chipStyle(
+                          preparacaoReforma ===
+                            id
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#EEF3FF",
+                    borderLeft: "4px solid #31589C",
+                    borderRadius: 10,
+                    padding: 11,
+                    fontSize: 10.5,
+                    lineHeight: 1.5,
+                    color: NAVY,
+                  }}
+                >
+                  <strong>Por que perguntamos isso?</strong>{" "}
+                  Empresas com perfil B2B, grande volume de insumos, folha elevada,
+                  baixa capacidade de repasse, benefícios fiscais ou operações
+                  especiais podem ter impactos muito diferentes. O objetivo é
+                  identificar onde uma simulação individualizada realmente faz sentido.
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginTop: "auto",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStep("porte")
+                    }
+                    style={{
+                      ...chipStyle(false),
+                      flex: 1,
+                    }}
+                  >
+                    Voltar
+                  </button>
+
+                  <PrimaryButton
+                    disabled={
+                      !perfilClientesReforma ||
+                      !comprasCreditoReforma ||
+                      !folhaReforma ||
+                      !repassePrecoReforma ||
+                      !erpReforma ||
+                      !contratosReforma ||
+                      !beneficiosReforma ||
+                      !preparacaoReforma
+                    }
+                    onClick={() =>
+                      setStep("dor")
+                    }
+                    style={{ flex: 1 }}
+                  >
+                    Continuar
+                    <ArrowRight size={16} />
+                  </PrimaryButton>
+                </div>
               </div>
             )}
 
@@ -6859,6 +7495,8 @@ function DiagnosticoPrototipo({
                       ? "Vamos entender os pontos críticos da holding"
                       : trilhaPFAtiva
                       ? "Vamos entender sua vida financeira"
+                      : trilhaReformaAtiva
+                      ? "Onde a Reforma Tributária pode exigir uma decisão"
                       : "Vamos entender sua principal dor"}
                   </p>
                   <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5, margin: 0 }}>
@@ -6866,6 +7504,8 @@ function DiagnosticoPrototipo({
                       ? "Essas respostas serão cruzadas com patrimônio, finalidade da holding, CNAEs, sucessão e estrutura societária para gerar perguntas específicas."
                       : trilhaPFAtiva
                       ? "As respostas serão cruzadas com os objetivos escolhidos para que o diagnóstico e os próximos passos sejam personalizados."
+                      : trilhaReformaAtiva
+                      ? "Agora vamos transformar sua dúvida em pontos concretos de análise: carga, créditos, preço, sistema, contratos, fornecedores e clientes."
                       : "Essas respostas serão cruzadas com o CNAE e com o checklist para tornar o relatório mais específico."}
                   </p>
                 </div>
@@ -6876,6 +7516,8 @@ function DiagnosticoPrototipo({
                       ? "Quais situações mais preocupam na holding ou no patrimônio hoje?"
                       : trilhaPFAtiva
                       ? "Quais situações mais incomodam sua vida financeira hoje?"
+                      : trilhaReformaAtiva
+                      ? "Quais riscos ou dúvidas mais preocupam você na Reforma Tributária?"
                       : "Quais problemas mais incomodam sua empresa hoje?"}
                   </p>
 
@@ -6923,6 +7565,8 @@ function DiagnosticoPrototipo({
                       ? "Qual decisão ou problema patrimonial você gostaria de resolver primeiro?"
                       : trilhaPFAtiva
                       ? "Qual objetivo financeiro você gostaria de priorizar agora?"
+                      : trilhaReformaAtiva
+                      ? "Qual decisão sobre a Reforma Tributária você precisa tomar primeiro?"
                       : "Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?"}
                   </label>
 
@@ -6934,6 +7578,8 @@ function DiagnosticoPrototipo({
                         ? "Ex.: definir se vale a pena integralizar os imóveis; organizar sucessão; revisar tributação dos aluguéis; estruturar regras entre os herdeiros..."
                         : trilhaPFAtiva
                         ? "Ex.: organizar meu orçamento; quitar dívidas; formar reserva; começar a investir; planejar aposentadoria..."
+                        : trilhaReformaAtiva
+                        ? "Ex.: saber se preciso reajustar preços; estimar a carga; mapear créditos; preparar o ERP; rever contratos antes de 2027..."
                         : "Ex.: aumentar vendas; descobrir por que o caixa não sobra; reduzir retrabalho..."
                     }
                     rows={3}
@@ -6957,6 +7603,8 @@ function DiagnosticoPrototipo({
                       ? "Como esse problema está afetando sua vida financeira?"
                       : trilhaHoldingAtiva
                       ? "Qual impacto essa situação está causando no patrimônio ou na estrutura?"
+                      : trilhaReformaAtiva
+                      ? "Qual impacto você teme ou já identificou com a Reforma Tributária?"
                       : "Qual impacto esse problema está causando?"}
                   </p>
 
@@ -7001,6 +7649,8 @@ function DiagnosticoPrototipo({
                       ? "Quais frentes do grupo empresarial merecem mais atenção?"
                       : trilhaSPEAtiva
                       ? "Quais frentes da SPE merecem mais atenção?"
+                      : trilhaReformaAtiva
+                      ? "Quais frentes da Reforma devem ser aprofundadas?"
                       : "Quais áreas merecem mais atenção?"}
                   </p>
 
