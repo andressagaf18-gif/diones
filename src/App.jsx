@@ -6,6 +6,8 @@ import {
   AlertTriangle, Percent, Cpu, Flame, X, Plus, User,
 } from "lucide-react";
 
+import Admin from "./Admin";
+
 const NAVY = "#17233D";
 const ICE = "#E9EDF5";
 const CORAL = "#FF6B4A";
@@ -1358,27 +1360,9 @@ function PrimaryButton({ children, onClick, disabled, style }) {
   );
 }
 
-function DiagnosticoPrototipo() {
-  const SENHA_ACESSO_APP = "181022";
-  const [acessoLiberado, setAcessoLiberado] = useState(() => {
-    try { return sessionStorage.getItem("finder_app_acesso") === "liberado"; }
-    catch { return false; }
-  });
-  const [senhaAcesso, setSenhaAcesso] = useState("");
-  const [erroSenhaAcesso, setErroSenhaAcesso] = useState("");
-
-  function validarAcessoApp(event) {
-    event?.preventDefault?.();
-    if (senhaAcesso === SENHA_ACESSO_APP) {
-      try { sessionStorage.setItem("finder_app_acesso", "liberado"); } catch {}
-      setAcessoLiberado(true);
-      setErroSenhaAcesso("");
-      setSenhaAcesso("");
-      return;
-    }
-    setErroSenhaAcesso("Senha incorreta. Tente novamente.");
-  }
-
+function DiagnosticoPrototipo({
+  contextoEvento = null,
+}) {
   const [step, setStep] = useState("intro");
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("");
@@ -1820,16 +1804,19 @@ function DiagnosticoPrototipo() {
         );
 
         const origem =
+          contextoEvento?.origem ||
           params.get("origem") ||
           params.get("utm_source") ||
           "direto";
 
         const campanha =
+          contextoEvento?.campanha ||
           params.get("campanha") ||
           params.get("utm_campaign") ||
           "";
 
         const promoter =
+          contextoEvento?.responsavel ||
           params.get("promoter") ||
           "";
 
@@ -4082,6 +4069,28 @@ function DiagnosticoPrototipo() {
         leadId,
         sessionId:
           sessionIdLead,
+
+        eventoId:
+          contextoEvento?.id ||
+          contextoEvento?.eventoId ||
+          "",
+
+        eventoNome:
+          contextoEvento?.nome ||
+          contextoEvento?.eventoNome ||
+          "",
+
+        origem:
+          contextoEvento?.origem ||
+          "",
+
+        campanha:
+          contextoEvento?.campanha ||
+          "",
+
+        responsavelOrigem:
+          contextoEvento?.responsavel ||
+          "",
       },
 
       responsavel: {
@@ -5322,26 +5331,6 @@ function DiagnosticoPrototipo() {
     }
   }
 
-
-  if (!acessoLiberado) {
-    return (
-      <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, boxSizing:"border-box", fontFamily:BODY_FONT }}>
-        <form onSubmit={validarAcessoApp} style={{ width:"100%", maxWidth:390, background:WHITE, borderRadius:18, padding:28, boxShadow:"0 24px 70px rgba(0,0,0,.28)" }}>
-          <div style={{ fontSize:11, fontWeight:900, letterSpacing:1.2, color:CORAL, marginBottom:7 }}>FINDER OF SOLUTIONS</div>
-          <h1 style={{ margin:"0 0 7px", color:NAVY, fontSize:26, lineHeight:1.1, fontFamily:DISPLAY_FONT }}>Acesso ao diagnóstico</h1>
-          <p style={{ margin:"0 0 20px", color:MUTED, fontSize:13, lineHeight:1.55 }}>Digite a senha para acessar o aplicativo.</p>
-          <label htmlFor="senha-acesso-app" style={{ display:"block", color:NAVY, fontSize:11, fontWeight:800, marginBottom:6 }}>SENHA</label>
-          <input id="senha-acesso-app" type="password" inputMode="numeric" autoFocus value={senhaAcesso}
-            onChange={(event)=>{ setSenhaAcesso(event.target.value); setErroSenhaAcesso(""); }}
-            placeholder="Digite a senha"
-            style={{ width:"100%", boxSizing:"border-box", border:erroSenhaAcesso ? "1px solid #D92D20" : "1px solid #D0D5DD", borderRadius:10, padding:"12px 13px", fontSize:15, outline:"none", marginBottom:erroSenhaAcesso ? 7 : 14 }}
-          />
-          {erroSenhaAcesso && <div style={{ color:"#D92D20", fontSize:11.5, marginBottom:12 }}>{erroSenhaAcesso}</div>}
-          <button type="submit" style={{ width:"100%", border:0, borderRadius:10, padding:"12px 14px", background:CORAL, color:WHITE, fontSize:13, fontWeight:900, cursor:"pointer" }}>Entrar</button>
-        </form>
-      </div>
-    );
-  }
 
   return (
     <div style={{ background: "#EEF0F5", minHeight: 760, display: "flex", justifyContent: "center", padding: "32px 16px", fontFamily: BODY_FONT }}>
@@ -7726,60 +7715,1059 @@ function miniChipStyle(active) {
 
 
 // =========================================================
-// LOGIN DO APP
+// TELA INICIAL — DIAGNÓSTICO OU SISTEMA
 // =========================================================
-export default function AppComAcesso() {
-  const [token, setToken] = useState(() => sessionStorage.getItem("finder_app_token") || "");
-  const [usuario, setUsuario] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem("finder_app_user") || "{}"); } catch { return {}; }
-  });
-  const [login, setLogin] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
 
-  async function entrar() {
-    if (!login.trim() || !senha) { setErro("Digite seu login e senha."); return; }
-    setCarregando(true); setErro("");
-    try {
-      const r = await fetch("/api/acessos?action=login", {
-        method:"POST", headers:{"content-type":"application/json"},
-        body:JSON.stringify({login:login.trim(), senha, tipo:"APP"})
-      });
-      const d = await r.json().catch(()=>null);
-      if (!r.ok || !d?.sucesso || !d?.token) throw new Error(d?.error || "Login ou senha inválidos.");
-      sessionStorage.setItem("finder_app_token", d.token);
-      sessionStorage.setItem("finder_app_user", JSON.stringify(d.usuario || {}));
-      setUsuario(d.usuario || {}); setToken(d.token);
-    } catch(e) { setErro(e?.message || "Não foi possível entrar no App."); }
-    finally { setCarregando(false); }
-  }
+function TelaInicialFinder({
+  onResponderDiagnostico,
+  onEntrarSistema,
+}) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        boxSizing: "border-box",
+        fontFamily: BODY_FONT,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          background: WHITE,
+          borderRadius: 24,
+          padding: 30,
+          boxShadow:
+            "0 28px 80px rgba(0,0,0,.28)",
+        }}
+      >
+        <img
+          src="/finder-logo.png"
+          alt="Finder of Solutions"
+          style={{
+            width: 190,
+            maxWidth: "65%",
+            objectFit: "contain",
+            marginBottom: 22,
+          }}
+        />
+
+        <div
+          style={{
+            color: CORAL,
+            fontSize: 10.5,
+            fontWeight: 900,
+            letterSpacing: 1,
+            marginBottom: 6,
+          }}
+        >
+          FINDER OF SOLUTIONS
+        </div>
+
+        <h1
+          style={{
+            margin: "0 0 7px",
+            color: NAVY,
+            fontSize: 30,
+            lineHeight: 1.1,
+            fontFamily: DISPLAY_FONT,
+          }}
+        >
+          Como deseja continuar?
+        </h1>
+
+        <p
+          style={{
+            margin: "0 0 24px",
+            color: MUTED,
+            fontSize: 13,
+            lineHeight: 1.55,
+          }}
+        >
+          Responda o diagnóstico empresarial ou acesse o sistema interno da Finder.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(260px,1fr))",
+            gap: 14,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onResponderDiagnostico}
+            style={{
+              border: `2px solid ${CORAL}`,
+              background: "#FFF7F3",
+              borderRadius: 18,
+              padding: 22,
+              textAlign: "left",
+              cursor: "pointer",
+              minHeight: 170,
+              fontFamily: BODY_FONT,
+            }}
+          >
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                background: CORAL,
+                color: WHITE,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: 19,
+                marginBottom: 16,
+              }}
+            >
+              1
+            </div>
+
+            <strong
+              style={{
+                display: "block",
+                color: NAVY,
+                fontSize: 19,
+                marginBottom: 7,
+              }}
+            >
+              Responder diagnóstico
+            </strong>
+
+            <span
+              style={{
+                display: "block",
+                color: MUTED,
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              Acesse o diagnóstico empresarial usando o código do evento ou da campanha.
+            </span>
+
+            <div
+              style={{
+                color: CORAL,
+                fontSize: 11,
+                fontWeight: 900,
+                marginTop: 16,
+              }}
+            >
+              COMEÇAR →
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={onEntrarSistema}
+            style={{
+              border: "2px solid #D8DEEA",
+              background: WHITE,
+              borderRadius: 18,
+              padding: 22,
+              textAlign: "left",
+              cursor: "pointer",
+              minHeight: 170,
+              fontFamily: BODY_FONT,
+            }}
+          >
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                background: NAVY,
+                color: WHITE,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: 19,
+                marginBottom: 16,
+              }}
+            >
+              2
+            </div>
+
+            <strong
+              style={{
+                display: "block",
+                color: NAVY,
+                fontSize: 19,
+                marginBottom: 7,
+              }}
+            >
+              Entrar no sistema
+            </strong>
+
+            <span
+              style={{
+                display: "block",
+                color: MUTED,
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              Acesso restrito à equipe Finder, consultores, gestores e administradores.
+            </span>
+
+            <div
+              style={{
+                color: NAVY,
+                fontSize: 11,
+                fontWeight: 900,
+                marginTop: 16,
+              }}
+            >
+              ACESSAR →
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AcessoEvento({
+  onVoltar,
+  onLiberado,
+}) {
+  const origemUrl =
+    useMemo(() => {
+      try {
+        const params =
+          new URLSearchParams(
+            window.location.search
+          );
+
+        return String(
+          params.get("origem") ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+      } catch {
+        return "";
+      }
+    }, []);
+
+  const [origem, setOrigem] =
+    useState(
+      origemUrl
+    );
+
+  const [codigo, setCodigo] =
+    useState("");
+
+  const [evento, setEvento] =
+    useState(null);
+
+  const [erro, setErro] =
+    useState("");
+
+  const [carregandoEvento, setCarregandoEvento] =
+    useState(
+      Boolean(origemUrl)
+    );
+
+  const [validando, setValidando] =
+    useState(false);
 
   useEffect(() => {
-    if (!token) return;
-    const handler = (ev) => {
-      const el = ev.target?.closest?.("button,a,[role='button']");
-      if (!el) return;
-      const descricao = String(el.innerText || el.getAttribute("aria-label") || "").trim().slice(0,160);
-      if (!descricao) return;
-      fetch("/api/acessos?action=auditar", {method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({acao:"CLICK",modulo:"APP",recurso:"interface",descricao})}).catch(()=>null);
-    };
-    document.addEventListener("click", handler, true);
-    return () => document.removeEventListener("click", handler, true);
-  }, [token]);
+    if (!origemUrl) {
+      return;
+    }
 
-  if (!token) {
-    return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#F3F5F8",padding:20,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
-      <div style={{width:"100%",maxWidth:420,background:"white",borderRadius:20,padding:30,boxShadow:"0 24px 60px rgba(23,35,61,.14)"}}>
-        <img src="/finder-logo.png" alt="Finder of Solutions" style={{width:180,maxWidth:"70%",objectFit:"contain",marginBottom:22}}/>
-        <h1 style={{margin:"0 0 7px",color:"#17233D",fontSize:28}}>Acesso ao Diagnóstico</h1>
-        <p style={{margin:"0 0 22px",fontSize:13,color:"#5B667A"}}>Entre com o usuário criado pelo administrador.</p>
-        <input value={login} onChange={e=>{setLogin(e.target.value);setErro("")}} placeholder="Login ou e-mail" autoComplete="username" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
-        <input type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErro("")}} onKeyDown={e=>e.key==="Enter"&&entrar()} placeholder="Senha" autoComplete="current-password" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
-        {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,fontSize:12,marginBottom:10}}>{erro}</div>}
-        <button onClick={entrar} disabled={carregando} style={{width:"100%",border:0,borderRadius:10,padding:"12px 14px",background:"#17233D",color:"white",fontWeight:700,cursor:"pointer"}}>{carregando?"Validando...":"Entrar"}</button>
-      </div>
-    </div>;
+    let ativo = true;
+
+    async function identificar() {
+      setCarregandoEvento(true);
+      setErro("");
+
+      try {
+        const resposta =
+          await fetch(
+            `/api/acessos?action=evento-publico&origem=${encodeURIComponent(
+              origemUrl
+            )}`
+          );
+
+        const data =
+          await resposta
+            .json()
+            .catch(() => null);
+
+        if (
+          !resposta.ok ||
+          !data?.sucesso
+        ) {
+          throw new Error(
+            data?.error ||
+            "Não foi possível identificar este evento."
+          );
+        }
+
+        if (ativo) {
+          setEvento(
+            data.evento ||
+            null
+          );
+        }
+      } catch (error) {
+        if (ativo) {
+          setErro(
+            error?.message ||
+            "Não foi possível identificar este evento."
+          );
+        }
+      } finally {
+        if (ativo) {
+          setCarregandoEvento(false);
+        }
+      }
+    }
+
+    identificar();
+
+    return () => {
+      ativo = false;
+    };
+  }, [origemUrl]);
+
+  async function validar() {
+    const origemFinal =
+      String(
+        origem ||
+        evento?.origem ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (!origemFinal) {
+      setErro(
+        "Informe a origem do evento."
+      );
+      return;
+    }
+
+    if (!codigo.trim()) {
+      setErro(
+        "Digite o código de acesso do evento."
+      );
+      return;
+    }
+
+    setValidando(true);
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/acessos?action=validar-evento",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                origem:
+                  origemFinal,
+                codigo:
+                  codigo.trim(),
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso ||
+        !data?.evento
+      ) {
+        throw new Error(
+          data?.error ||
+          "Código de acesso inválido."
+        );
+      }
+
+      try {
+        sessionStorage.setItem(
+          "finder_evento_contexto",
+          JSON.stringify(
+            data.evento
+          )
+        );
+
+        sessionStorage.setItem(
+          "finder_evento_token",
+          data.tokenEvento ||
+          ""
+        );
+      } catch {}
+
+      onLiberado(
+        data.evento
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Não foi possível validar o evento."
+      );
+    } finally {
+      setValidando(false);
+    }
   }
-  return <DiagnosticoPrototipo usuarioAcesso={usuario} tokenAcesso={token} />;
+
+  const input = {
+    width: "100%",
+    boxSizing: "border-box",
+    border: "1px solid #D8DEEA",
+    borderRadius: 10,
+    padding: "12px 13px",
+    fontFamily: BODY_FONT,
+    fontSize: 14,
+    color: NAVY,
+    marginBottom: 12,
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        boxSizing: "border-box",
+        fontFamily: BODY_FONT,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: WHITE,
+          borderRadius: 20,
+          padding: 30,
+          boxShadow:
+            "0 24px 70px rgba(0,0,0,.28)",
+        }}
+      >
+        <img
+          src="/finder-logo.png"
+          alt="Finder of Solutions"
+          style={{
+            width: 175,
+            maxWidth: "70%",
+            objectFit: "contain",
+            marginBottom: 20,
+          }}
+        />
+
+        <div
+          style={{
+            color: CORAL,
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: 1,
+            marginBottom: 6,
+          }}
+        >
+          RESPONDER DIAGNÓSTICO
+        </div>
+
+        <h1
+          style={{
+            margin: "0 0 7px",
+            color: NAVY,
+            fontSize: 26,
+            lineHeight: 1.1,
+            fontFamily: DISPLAY_FONT,
+          }}
+        >
+          {evento?.nome ||
+            "Acesso ao evento"}
+        </h1>
+
+        <p
+          style={{
+            margin: "0 0 20px",
+            color: MUTED,
+            fontSize: 12.5,
+            lineHeight: 1.55,
+          }}
+        >
+          {evento?.campanha
+            ? evento.campanha
+            : origemUrl
+            ? "Digite o código disponibilizado pela equipe do evento."
+            : "Informe a origem e o código disponibilizados pela equipe Finder."}
+        </p>
+
+        {carregandoEvento && (
+          <div
+            style={{
+              background: "#EEF3FF",
+              color: "#31589C",
+              borderRadius: 9,
+              padding: 10,
+              fontSize: 11,
+              marginBottom: 12,
+            }}
+          >
+            Identificando evento...
+          </div>
+        )}
+
+        {!origemUrl && (
+          <>
+            <label
+              style={{
+                display: "block",
+                color: NAVY,
+                fontSize: 10.5,
+                fontWeight: 800,
+                marginBottom: 6,
+              }}
+            >
+              ORIGEM DO EVENTO
+            </label>
+
+            <input
+              value={origem}
+              onChange={(e) => {
+                setOrigem(
+                  e.target.value
+                    .trim()
+                    .toLowerCase()
+                );
+                setErro("");
+              }}
+              placeholder="Ex.: xbusiness"
+              autoCapitalize="none"
+              style={input}
+            />
+          </>
+        )}
+
+        {origemUrl && (
+          <div
+            style={{
+              background: "#F7F8FB",
+              borderRadius: 9,
+              padding: 10,
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 8.5,
+                color: MUTED,
+                fontWeight: 900,
+              }}
+            >
+              ORIGEM
+            </div>
+
+            <div
+              style={{
+                marginTop: 3,
+                color: NAVY,
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              {evento?.origem ||
+                origemUrl}
+            </div>
+          </div>
+        )}
+
+        <label
+          style={{
+            display: "block",
+            color: NAVY,
+            fontSize: 10.5,
+            fontWeight: 800,
+            marginBottom: 6,
+          }}
+        >
+          CÓDIGO DE ACESSO
+        </label>
+
+        <input
+          type="password"
+          value={codigo}
+          onChange={(e) => {
+            setCodigo(
+              e.target.value
+            );
+            setErro("");
+          }}
+          onKeyDown={(e) =>
+            e.key === "Enter" &&
+            validar()
+          }
+          placeholder="Digite o código"
+          autoFocus={!carregandoEvento}
+          style={input}
+        />
+
+        {erro && (
+          <div
+            style={{
+              background: "#FAECE7",
+              color: "#993C1D",
+              borderRadius: 9,
+              padding: 10,
+              fontSize: 11.5,
+              marginBottom: 12,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={validar}
+          disabled={
+            validando ||
+            carregandoEvento
+          }
+          style={{
+            width: "100%",
+            border: 0,
+            borderRadius: 10,
+            padding: "12px 14px",
+            background:
+              validando ||
+              carregandoEvento
+                ? "#D8DEEA"
+                : CORAL,
+            color: WHITE,
+            fontSize: 13,
+            fontWeight: 900,
+            cursor:
+              validando ||
+              carregandoEvento
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          {validando
+            ? "Validando..."
+            : "Iniciar diagnóstico"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onVoltar}
+          style={{
+            width: "100%",
+            marginTop: 10,
+            border: 0,
+            background: "transparent",
+            color: MUTED,
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          ← Voltar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LoginSistema({
+  onVoltar,
+  onLogin,
+}) {
+  const [login, setLogin] =
+    useState("");
+
+  const [senha, setSenha] =
+    useState("");
+
+  const [erro, setErro] =
+    useState("");
+
+  const [carregando, setCarregando] =
+    useState(false);
+
+  async function entrar() {
+    if (
+      !login.trim() ||
+      !senha
+    ) {
+      setErro(
+        "Digite seu login e senha."
+      );
+      return;
+    }
+
+    setCarregando(true);
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/acessos?action=login",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                login:
+                  login.trim(),
+                senha,
+                tipo:
+                  "SISTEMA",
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso ||
+        !data?.token
+      ) {
+        throw new Error(
+          data?.error ||
+          "Login ou senha inválidos."
+        );
+      }
+
+      sessionStorage.setItem(
+        "finder_admin_token",
+        data.token
+      );
+
+      sessionStorage.setItem(
+        "finder_admin_user",
+        JSON.stringify(
+          data.usuario ||
+          {}
+        )
+      );
+
+      onLogin(
+        data.usuario ||
+        {}
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Não foi possível entrar no sistema."
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  const input = {
+    width: "100%",
+    boxSizing: "border-box",
+    border: "1px solid #D8DEEA",
+    borderRadius: 10,
+    padding: "12px 13px",
+    fontFamily: BODY_FONT,
+    fontSize: 14,
+    color: NAVY,
+    marginBottom: 12,
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: BG,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        fontFamily: BODY_FONT,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: WHITE,
+          borderRadius: 20,
+          padding: 30,
+          boxShadow:
+            "0 24px 60px rgba(23,35,61,.14)",
+        }}
+      >
+        <img
+          src="/finder-logo.png"
+          alt="Finder of Solutions"
+          style={{
+            width: 180,
+            maxWidth: "70%",
+            objectFit: "contain",
+            marginBottom: 22,
+          }}
+        />
+
+        <h1
+          style={{
+            margin: "0 0 7px",
+            color: NAVY,
+            fontSize: 28,
+            fontFamily: DISPLAY_FONT,
+          }}
+        >
+          Entrar no sistema
+        </h1>
+
+        <p
+          style={{
+            margin: "0 0 22px",
+            fontSize: 13,
+            color: MUTED,
+          }}
+        >
+          Acesso individual conforme as permissões definidas pelo administrador.
+        </p>
+
+        <input
+          value={login}
+          onChange={(e) => {
+            setLogin(
+              e.target.value
+            );
+            setErro("");
+          }}
+          placeholder="Login ou e-mail"
+          autoComplete="username"
+          style={input}
+        />
+
+        <input
+          type="password"
+          value={senha}
+          onChange={(e) => {
+            setSenha(
+              e.target.value
+            );
+            setErro("");
+          }}
+          onKeyDown={(e) =>
+            e.key === "Enter" &&
+            entrar()
+          }
+          placeholder="Senha"
+          autoComplete="current-password"
+          style={input}
+        />
+
+        {erro && (
+          <div
+            style={{
+              background: "#FAECE7",
+              color: "#993C1D",
+              padding: 10,
+              borderRadius: 9,
+              fontSize: 12,
+              marginBottom: 10,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={entrar}
+          disabled={carregando}
+          style={{
+            width: "100%",
+            border: 0,
+            borderRadius: 10,
+            padding: "12px 14px",
+            background: NAVY,
+            color: WHITE,
+            fontWeight: 800,
+            cursor:
+              carregando
+                ? "not-allowed"
+                : "pointer",
+            opacity:
+              carregando
+                ? 0.6
+                : 1,
+          }}
+        >
+          {carregando
+            ? "Validando..."
+            : "Entrar"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onVoltar}
+          style={{
+            width: "100%",
+            marginTop: 10,
+            border: 0,
+            background: "transparent",
+            color: MUTED,
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          ← Voltar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [modo, setModo] =
+    useState(() => {
+      try {
+        const temAdmin =
+          Boolean(
+            sessionStorage.getItem(
+              "finder_admin_token"
+            )
+          );
+
+        if (temAdmin) {
+          return "sistema";
+        }
+
+        const contexto =
+          JSON.parse(
+            sessionStorage.getItem(
+              "finder_evento_contexto"
+            ) ||
+            "null"
+          );
+
+        if (contexto?.origem) {
+          return "diagnostico";
+        }
+
+        return "inicio";
+      } catch {
+        return "inicio";
+      }
+    });
+
+  const [
+    contextoEvento,
+    setContextoEvento,
+  ] = useState(() => {
+    try {
+      return JSON.parse(
+        sessionStorage.getItem(
+          "finder_evento_contexto"
+        ) ||
+        "null"
+      );
+    } catch {
+      return null;
+    }
+  });
+
+  if (
+    modo === "sistema"
+  ) {
+    return <Admin />;
+  }
+
+  if (
+    modo === "diagnostico" &&
+    contextoEvento
+  ) {
+    return (
+      <DiagnosticoPrototipo
+        contextoEvento={
+          contextoEvento
+        }
+      />
+    );
+  }
+
+  if (
+    modo === "evento"
+  ) {
+    return (
+      <AcessoEvento
+        onVoltar={() =>
+          setModo("inicio")
+        }
+        onLiberado={(
+          evento
+        ) => {
+          setContextoEvento(
+            evento
+          );
+          setModo(
+            "diagnostico"
+          );
+        }}
+      />
+    );
+  }
+
+  if (
+    modo === "login-sistema"
+  ) {
+    return (
+      <LoginSistema
+        onVoltar={() =>
+          setModo("inicio")
+        }
+        onLogin={() =>
+          setModo("sistema")
+        }
+      />
+    );
+  }
+
+  return (
+    <TelaInicialFinder
+      onResponderDiagnostico={() =>
+        setModo("evento")
+      }
+      onEntrarSistema={() =>
+        setModo(
+          "login-sistema"
+        )
+      }
+    />
+  );
 }
