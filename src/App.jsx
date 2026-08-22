@@ -3,7 +3,7 @@ import {
   QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
   CalendarCheck, RotateCcw, Megaphone, Scale, Calculator, Wallet,
   ClipboardList, Target, Settings2, Building2, Sparkles, Users, TrendingUp,
-  AlertTriangle, Percent, Cpu, Flame, X, Plus, User,
+  AlertTriangle, Percent, Cpu, Flame, X, Plus, User, Clock3,
 } from "lucide-react";
 
 import Admin from "./Admin";
