@@ -13,6 +13,7 @@ const ICE = "#E9EDF5";
 const CORAL = "#FF6B4A";
 const MUTED = "#5B667A";
 const WHITE = "#FFFFFF";
+const BG = "#F3F5F8";
 const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const MAX_DORES = 3;
