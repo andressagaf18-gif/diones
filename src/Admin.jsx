@@ -1,10 +1,3 @@
-Biblioteca
-/
-Sistema Finder
-/
-Admin_CORRIGIDO_LEADS_TELA_BRANCA.jsx
-
-
 import {
   useEffect,
   useMemo,
