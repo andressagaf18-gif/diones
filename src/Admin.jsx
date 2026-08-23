@@ -15211,39 +15211,30 @@ function UsuariosAcessos({ token }) {
 // =========================================================
 
 function EventosOrigens({ token }) {
-  const [eventos, setEventos] =
-    useState([]);
+  const [eventos, setEventos] = useState([]);
+  const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [filtro, setFiltro] = useState("");
 
-  const [erro, setErro] =
-    useState("");
-
-  const [sucesso, setSucesso] =
-    useState("");
-
-  const [salvando, setSalvando] =
-    useState(false);
-
-  const [editando, setEditando] =
-    useState(null);
-
-  const formVazio = {
+  const vazio = {
     nome: "",
     origem: "",
-    codigo: "",
+    tipoOrigem: "EVENTO",
     campanha: "",
     responsavel: "",
-    descricao: "",
+    localEvento: "",
     dataInicio: "",
     dataFim: "",
+    metaLeads: "",
+    descricao: "",
     ativo: true,
   };
 
-  const [form, setForm] =
-    useState({
-      ...formVazio,
-    });
+  const [form, setForm] = useState({ ...vazio });
 
-  const inputEvento = {
+  const input = {
     width: "100%",
     boxSizing: "border-box",
     border: "1px solid #D8DEEA",
@@ -15252,86 +15243,55 @@ function EventosOrigens({ token }) {
     fontSize: 12,
     color: NAVY,
     background: WHITE,
-    fontFamily: BODY_FONT,
   };
 
-  function gerarOrigem(valor = "") {
+  const label = {
+    display: "block",
+    fontSize: 10,
+    fontWeight: 800,
+    marginBottom: 5,
+  };
+
+  function slug(valor = "") {
     return String(valor || "")
       .normalize("NFD")
-      .replace(
-        /[\u0300-\u036f]/g,
-        ""
-      )
+      .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
       .trim()
-      .replace(
-        /[^a-z0-9]+/g,
-        "-"
-      )
-      .replace(
-        /^-+|-+$/g,
-        ""
-      )
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
       .slice(0, 80);
   }
 
-  function linkEvento(origem) {
-    if (!origem) {
-      return "";
-    }
-
-    const base =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : "";
-
-    return `${base}/?origem=${encodeURIComponent(
-      origem
-    )}`;
+  function link(origem) {
+    if (!origem) return "";
+    return `${window.location.origin}/?origem=${encodeURIComponent(origem)}`;
   }
 
   async function carregar() {
     setErro("");
 
     try {
-      const resposta =
-        await fetch(
-          "/api/acessos?action=eventos",
-          {
-            headers: {
-              Authorization:
-                `Bearer ${token}`,
-            },
-          }
-        );
+      const r = await fetch(
+        "/api/acessos?action=eventos",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
+      const d = await r.json().catch(() => null);
 
-      if (
-        !resposta.ok ||
-        !data?.sucesso
-      ) {
+      if (!r.ok || !d?.sucesso) {
         throw new Error(
-          data?.error ||
-          "Não foi possível carregar os eventos."
+          d?.error || "Erro ao carregar origens."
         );
       }
 
-      setEventos(
-        Array.isArray(
-          data.eventos
-        )
-          ? data.eventos
-          : []
-      );
-    } catch (error) {
-      setErro(
-        error?.message ||
-        "Erro ao carregar eventos."
-      );
+      setEventos(Array.isArray(d.eventos) ? d.eventos : []);
+    } catch (e) {
+      setErro(e?.message || "Erro ao carregar origens.");
     }
   }
 
@@ -15339,142 +15299,51 @@ function EventosOrigens({ token }) {
     carregar();
   }, []);
 
-  function limparFormulario({
-    manterMensagem = false,
-  } = {}) {
+  function novo() {
     setEditando(null);
-
-    setForm({
-      ...formVazio,
-    });
-
+    setForm({ ...vazio });
     setErro("");
-
-    if (!manterMensagem) {
-      setSucesso("");
-    }
   }
 
-  function editarEvento(evento) {
-    setEditando(evento);
+  function editar(e) {
+    setEditando(e);
 
     setForm({
-      nome:
-        evento?.nome ||
-        "",
-
-      origem:
-        evento?.origem ||
-        "",
-
-      codigo: "",
-
-      campanha:
-        evento?.campanha ||
-        "",
-
-      responsavel:
-        evento?.responsavel ||
-        "",
-
-      descricao:
-        evento?.descricao ||
-        "",
-
-      dataInicio:
-        evento?.dataInicio
-          ? String(
-              evento.dataInicio
-            ).slice(0, 10)
-          : "",
-
-      dataFim:
-        evento?.dataFim
-          ? String(
-              evento.dataFim
-            ).slice(0, 10)
-          : "",
-
-      ativo:
-        evento?.ativo !==
-        false,
+      nome: e?.nome || "",
+      origem: e?.origem || "",
+      tipoOrigem: e?.tipoOrigem || "EVENTO",
+      campanha: e?.campanha || "",
+      responsavel: e?.responsavel || "",
+      localEvento: e?.localEvento || "",
+      dataInicio: e?.dataInicio
+        ? String(e.dataInicio).slice(0, 10)
+        : "",
+      dataFim: e?.dataFim
+        ? String(e.dataFim).slice(0, 10)
+        : "",
+      metaLeads: e?.metaLeads || "",
+      descricao: e?.descricao || "",
+      ativo: e?.ativo !== false,
     });
 
-    setErro("");
-
-    setSucesso(
-      "Modo de edição ativado. Deixe o código vazio para manter o atual."
-    );
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function salvar() {
-    const nome =
-      String(
-        form.nome ||
-        ""
-      ).trim();
+    const nome = String(form.nome || "").trim();
+    const origem = slug(form.origem || nome);
 
-    const origem =
-      gerarOrigem(
-        form.origem ||
-        nome
-      );
-
-    const codigo =
-      String(
-        form.codigo ||
-        ""
-      ).trim();
-
-    if (!nome) {
-      setErro(
-        "Informe o nome do evento."
-      );
-      return;
-    }
-
-    if (!origem) {
-      setErro(
-        "Informe a origem do evento."
-      );
-      return;
-    }
-
-    if (
-      !editando &&
-      codigo.length < 4
-    ) {
-      setErro(
-        "Informe um código de acesso com pelo menos 4 caracteres."
-      );
-      return;
-    }
-
-    if (
-      editando &&
-      codigo &&
-      codigo.length < 4
-    ) {
-      setErro(
-        "O novo código deve ter pelo menos 4 caracteres."
-      );
+    if (!nome || !origem) {
+      setErro("Informe o nome e a origem.");
       return;
     }
 
     if (
       form.dataInicio &&
       form.dataFim &&
-      form.dataInicio >
-        form.dataFim
+      form.dataInicio > form.dataFim
     ) {
-      setErro(
-        "A data inicial não pode ser posterior à data final."
-      );
+      setErro("A data inicial não pode ser posterior à data final.");
       return;
     }
 
@@ -15483,272 +15352,171 @@ function EventosOrigens({ token }) {
     setSucesso("");
 
     try {
-      const action =
-        editando
-          ? "alterar-evento"
-          : "criar-evento";
+      const action = editando
+        ? "alterar-evento"
+        : "criar-evento";
 
       const payload = {
         nome,
         origem,
-
-        campanha:
-          String(
-            form.campanha ||
-            ""
-          ).trim(),
-
-        responsavel:
-          String(
-            form.responsavel ||
-            ""
-          ).trim(),
-
-        descricao:
-          String(
-            form.descricao ||
-            ""
-          ).trim(),
-
-        dataInicio:
-          form.dataInicio ||
-          null,
-
-        dataFim:
-          form.dataFim ||
-          null,
-
-        ativo:
-          Boolean(
-            form.ativo
-          ),
+        tipoOrigem: form.tipoOrigem,
+        campanha: String(form.campanha || "").trim(),
+        responsavel: String(form.responsavel || "").trim(),
+        localEvento: String(form.localEvento || "").trim(),
+        dataInicio: form.dataInicio || null,
+        dataFim: form.dataFim || null,
+        metaLeads: Number(form.metaLeads || 0),
+        descricao: String(form.descricao || "").trim(),
+        ativo: Boolean(form.ativo),
       };
 
-      if (editando?.id) {
-        payload.id =
-          editando.id;
+      if (editando?.id) payload.id = editando.id;
+
+      const r = await fetch(
+        `/api/acessos?action=${action}`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const d = await r.json().catch(() => null);
+
+      if (!r.ok || !d?.sucesso) {
+        throw new Error(d?.error || "Erro ao salvar origem.");
       }
 
-      if (codigo) {
-        payload.codigo =
-          codigo;
-      }
+      const eraEdicao = Boolean(editando);
 
-      const resposta =
-        await fetch(
-          `/api/acessos?action=${action}`,
-          {
-            method: "POST",
-
-            headers: {
-              "content-type":
-                "application/json",
-
-              Authorization:
-                `Bearer ${token}`,
-            },
-
-            body:
-              JSON.stringify(
-                payload
-              ),
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso
-      ) {
-        throw new Error(
-          data?.error ||
-          "Não foi possível salvar o evento."
-        );
-      }
-
-      const estavaEditando =
-        Boolean(editando);
-
-      limparFormulario({
-        manterMensagem:
-          true,
-      });
-
+      setEditando(null);
+      setForm({ ...vazio });
       setSucesso(
-        estavaEditando
-          ? "Evento/origem atualizado com sucesso."
-          : "Evento/origem criado com sucesso."
+        eraEdicao
+          ? "Origem atualizada."
+          : "Origem criada."
       );
 
       await carregar();
-    } catch (error) {
-      setErro(
-        error?.message ||
-        "Erro ao salvar evento."
-      );
+    } catch (e) {
+      setErro(e?.message || "Erro ao salvar origem.");
     } finally {
       setSalvando(false);
     }
   }
 
-  async function alternarEvento(evento) {
+  async function alternar(e) {
     setErro("");
-    setSucesso("");
 
     try {
-      const resposta =
-        await fetch(
-          "/api/acessos?action=alterar-evento",
-          {
-            method: "POST",
+      const r = await fetch(
+        "/api/acessos?action=alterar-evento",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: e.id,
+            ativo: !e.ativo,
+          }),
+        }
+      );
 
-            headers: {
-              "content-type":
-                "application/json",
+      const d = await r.json().catch(() => null);
 
-              Authorization:
-                `Bearer ${token}`,
-            },
-
-            body:
-              JSON.stringify({
-                id:
-                  evento.id,
-
-                ativo:
-                  !evento.ativo,
-              }),
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso
-      ) {
-        throw new Error(
-          data?.error ||
-          "Não foi possível alterar o evento."
-        );
+      if (!r.ok || !d?.sucesso) {
+        throw new Error(d?.error || "Erro ao alterar origem.");
       }
 
-      setSucesso(
-        evento.ativo
-          ? "Evento/origem desativado."
-          : "Evento/origem ativado."
-      );
-
       await carregar();
-    } catch (error) {
-      setErro(
-        error?.message ||
-        "Erro ao alterar evento."
-      );
+    } catch (err) {
+      setErro(err?.message || "Erro ao alterar origem.");
     }
   }
 
-  async function copiarLink(evento) {
-    const link =
-      linkEvento(
-        evento?.origem
-      );
-
-    if (!link) {
-      return;
-    }
+  async function copiar(e) {
+    const url = link(e.origem);
 
     try {
-      await navigator
-        .clipboard
-        .writeText(link);
-
-      setSucesso(
-        "Link do evento copiado."
-      );
+      await navigator.clipboard.writeText(url);
+      setSucesso("Link copiado.");
     } catch {
-      window.prompt(
-        "Copie o link do evento:",
-        link
-      );
+      window.prompt("Copie o link:", url);
     }
   }
+
+  const lista = eventos.filter((e) => {
+    if (!filtro) return true;
+
+    return JSON.stringify(e)
+      .toLowerCase()
+      .includes(filtro.toLowerCase());
+  });
+
+  const ativos = eventos.filter((e) => e.ativo).length;
+  const meta = eventos.reduce(
+    (soma, e) => soma + Number(e.metaLeads || 0),
+    0
+  );
 
   return (
     <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit,minmax(180px,1fr))",
+          gap: 10,
+          marginBottom: 14,
+        }}
+      >
+        <Card>
+          <div style={{ fontSize: 9, color: MUTED, fontWeight: 900 }}>
+            ORIGENS CADASTRADAS
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, marginTop: 5 }}>
+            {eventos.length}
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ fontSize: 9, color: MUTED, fontWeight: 900 }}>
+            ATIVAS
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, marginTop: 5 }}>
+            {ativos}
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ fontSize: 9, color: MUTED, fontWeight: 900 }}>
+            META TOTAL DE LEADS
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, marginTop: 5 }}>
+            {meta}
+          </div>
+        </Card>
+      </div>
+
       <Card
         style={{
           marginBottom: 16,
-
-          border:
-            editando
-              ? `2px solid ${CORAL}`
-              : "1px solid #E3E7EF",
+          border: editando
+            ? `2px solid ${CORAL}`
+            : "1px solid #E3E7EF",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent:
-              "space-between",
-            alignItems:
-              "flex-start",
-            gap: 12,
-            flexWrap:
-              "wrap",
-            marginBottom: 14,
-          }}
-        >
-          <div>
-            <h2
-              style={{
-                ...tituloSecao,
-                margin: "0 0 4px",
-              }}
-            >
-              {editando
-                ? "Editar evento / origem"
-                : "Criar evento / origem"}
-            </h2>
+        <h2 style={{ ...tituloSecao, margin: "0 0 4px" }}>
+          {editando ? "Editar origem" : "Cadastrar origem"}
+        </h2>
 
-            <div
-              style={{
-                color: MUTED,
-                fontSize: 11,
-                lineHeight: 1.5,
-              }}
-            >
-              Crie um código de entrada para cada evento e identifique automaticamente de onde veio cada diagnóstico.
-            </div>
-          </div>
-
-          {editando && (
-            <span
-              style={{
-                background:
-                  "#FFF3EF",
-                color:
-                  "#993C1D",
-                borderRadius:
-                  999,
-                padding:
-                  "5px 9px",
-                fontSize:
-                  9,
-                fontWeight:
-                  900,
-              }}
-            >
-              EDITANDO
-            </span>
-          )}
+        <div style={{ color: MUTED, fontSize: 11, marginBottom: 14 }}>
+          Cadastre eventos, campanhas, parceiros e canais para identificar a origem de cada diagnóstico.
         </div>
 
         <div
@@ -15760,313 +15528,169 @@ function EventosOrigens({ token }) {
           }}
         >
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              NOME DO EVENTO
-            </label>
-
+            <label style={label}>NOME</label>
             <input
               value={form.nome}
-              onChange={(e) => {
-                const nomeNovo =
-                  e.target.value;
+              onChange={(ev) => {
+                const nome = ev.target.value;
 
-                setForm(
-                  (atual) => ({
-                    ...atual,
-
-                    nome:
-                      nomeNovo,
-
-                    origem:
-                      editando ||
-                      atual.origem
-                        ? atual.origem
-                        : gerarOrigem(
-                            nomeNovo
-                          ),
-                  })
-                );
+                setForm((atual) => ({
+                  ...atual,
+                  nome,
+                  origem:
+                    editando || atual.origem
+                      ? atual.origem
+                      : slug(nome),
+                }));
               }}
-              placeholder="Ex.: XBusiness 2026"
-              style={inputEvento}
+              placeholder="Ex.: Feira XBusiness 2026"
+              style={input}
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              ORIGEM
-            </label>
-
+            <label style={label}>ORIGEM</label>
             <input
               value={form.origem}
-              onChange={(e) =>
+              onChange={(ev) =>
                 setForm({
                   ...form,
-
-                  origem:
-                    gerarOrigem(
-                      e.target.value
-                    ),
+                  origem: slug(ev.target.value),
                 })
               }
               placeholder="xbusiness"
-              style={inputEvento}
+              style={input}
             />
-
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 9,
-                color: MUTED,
-              }}
-            >
-              URL: ?origem={
-                gerarOrigem(
-                  form.origem
-                ) || "evento"
-              }
-            </div>
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              {editando
-                ? "NOVO CÓDIGO DE ACESSO"
-                : "CÓDIGO DE ACESSO"}
-            </label>
-
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={form.codigo}
-              onChange={(e) =>
+            <label style={label}>TIPO</label>
+            <select
+              value={form.tipoOrigem}
+              onChange={(ev) =>
                 setForm({
                   ...form,
-                  codigo:
-                    e.target.value,
+                  tipoOrigem: ev.target.value,
                 })
               }
-              placeholder={
-                editando
-                  ? "Vazio = manter código atual"
-                  : "Ex.: XB2026"
-              }
-              style={inputEvento}
-            />
+              style={input}
+            >
+              <option value="EVENTO">Evento</option>
+              <option value="FEIRA">Feira</option>
+              <option value="CAMPANHA">Campanha</option>
+              <option value="PARCEIRO">Parceiro / indicação</option>
+              <option value="INSTAGRAM">Instagram</option>
+              <option value="WHATSAPP">WhatsApp</option>
+              <option value="SITE">Site</option>
+              <option value="OUTRO">Outro</option>
+            </select>
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              CAMPANHA
-            </label>
-
+            <label style={label}>CAMPANHA</label>
             <input
-              value={
-                form.campanha
-              }
-              onChange={(e) =>
+              value={form.campanha}
+              onChange={(ev) =>
                 setForm({
                   ...form,
-
-                  campanha:
-                    e.target.value,
+                  campanha: ev.target.value,
                 })
               }
-              placeholder="Ex.: XBusiness Curitiba"
-              style={inputEvento}
+              placeholder="Ex.: Diagnóstico Reforma Tributária"
+              style={input}
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              RESPONSÁVEL / PROMOTER
-            </label>
-
+            <label style={label}>RESPONSÁVEL / PROMOTER</label>
             <input
-              value={
-                form.responsavel
-              }
-              onChange={(e) =>
+              value={form.responsavel}
+              onChange={(ev) =>
                 setForm({
                   ...form,
-
-                  responsavel:
-                    e.target.value,
+                  responsavel: ev.target.value,
                 })
               }
-              placeholder="Opcional"
-              style={inputEvento}
+              placeholder="Ex.: Promoter 1"
+              style={input}
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              DATA INICIAL
-            </label>
+            <label style={label}>LOCAL</label>
+            <input
+              value={form.localEvento}
+              onChange={(ev) =>
+                setForm({
+                  ...form,
+                  localEvento: ev.target.value,
+                })
+              }
+              placeholder="Ex.: Curitiba / Expo Unimed"
+              style={input}
+            />
+          </div>
 
+          <div>
+            <label style={label}>DATA INICIAL</label>
             <input
               type="date"
-              value={
-                form.dataInicio
-              }
-              onChange={(e) =>
+              value={form.dataInicio}
+              onChange={(ev) =>
                 setForm({
                   ...form,
-
-                  dataInicio:
-                    e.target.value,
+                  dataInicio: ev.target.value,
                 })
               }
-              style={inputEvento}
+              style={input}
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              DATA FINAL
-            </label>
-
+            <label style={label}>DATA FINAL</label>
             <input
               type="date"
-              value={
-                form.dataFim
-              }
-              onChange={(e) =>
+              value={form.dataFim}
+              onChange={(ev) =>
                 setForm({
                   ...form,
-
-                  dataFim:
-                    e.target.value,
+                  dataFim: ev.target.value,
                 })
               }
-              style={inputEvento}
+              style={input}
             />
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems:
-                  "center",
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: "pointer",
-                padding: "10px 0",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={
-                  Boolean(
-                    form.ativo
-                  )
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-
-                    ativo:
-                      e.target
-                        .checked,
-                  })
-                }
-              />
-
-              Evento ativo
-            </label>
+          <div>
+            <label style={label}>META DE LEADS</label>
+            <input
+              type="number"
+              min="0"
+              value={form.metaLeads}
+              onChange={(ev) =>
+                setForm({
+                  ...form,
+                  metaLeads: ev.target.value,
+                })
+              }
+              placeholder="Ex.: 100"
+              style={input}
+            />
           </div>
 
-          <div
-            style={{
-              gridColumn: "1/-1",
-            }}
-          >
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 800,
-                marginBottom: 5,
-              }}
-            >
-              DESCRIÇÃO / OBSERVAÇÃO
-            </label>
-
+          <div style={{ gridColumn: "1/-1" }}>
+            <label style={label}>OBSERVAÇÃO INTERNA</label>
             <textarea
               rows={3}
-              value={
-                form.descricao
-              }
-              onChange={(e) =>
+              value={form.descricao}
+              onChange={(ev) =>
                 setForm({
                   ...form,
-
-                  descricao:
-                    e.target.value,
+                  descricao: ev.target.value,
                 })
               }
-              placeholder="Informações internas sobre o evento, local, equipe ou estratégia."
-              style={{
-                ...inputEvento,
-                resize:
-                  "vertical",
-              }}
+              placeholder="Objetivo, público esperado, equipe ou estratégia..."
+              style={{ ...input, resize: "vertical" }}
             />
           </div>
         </div>
@@ -16075,35 +15699,16 @@ function EventosOrigens({ token }) {
           <div
             style={{
               marginTop: 12,
-              background:
-                "#F7F8FB",
+              background: "#F7F8FB",
               borderRadius: 10,
               padding: 11,
             }}
           >
-            <div
-              style={{
-                fontSize: 9,
-                color: MUTED,
-                fontWeight: 900,
-                marginBottom: 4,
-              }}
-            >
-              LINK DO EVENTO
+            <div style={{ fontSize: 9, color: MUTED, fontWeight: 900 }}>
+              LINK
             </div>
-
-            <div
-              style={{
-                fontSize: 11,
-                wordBreak:
-                  "break-all",
-              }}
-            >
-              {linkEvento(
-                gerarOrigem(
-                  form.origem
-                )
-              )}
+            <div style={{ fontSize: 11, marginTop: 4, wordBreak: "break-all" }}>
+              {link(slug(form.origem))}
             </div>
           </div>
         )}
@@ -16112,10 +15717,8 @@ function EventosOrigens({ token }) {
           <div
             style={{
               marginTop: 12,
-              background:
-                "#FAECE7",
-              color:
-                "#993C1D",
+              background: "#FAECE7",
+              color: "#993C1D",
               padding: 10,
               borderRadius: 9,
               fontSize: 11,
@@ -16129,10 +15732,8 @@ function EventosOrigens({ token }) {
           <div
             style={{
               marginTop: 12,
-              background:
-                "#E1F5EE",
-              color:
-                "#0F6E56",
+              background: "#E1F5EE",
+              color: "#0F6E56",
               padding: 10,
               borderRadius: 9,
               fontSize: 11,
@@ -16142,455 +15743,100 @@ function EventosOrigens({ token }) {
           </div>
         )}
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            marginTop: 14,
-          }}
-        >
-          <Botao
-            onClick={salvar}
-            disabled={
-              salvando
-            }
-          >
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+          <Botao onClick={salvar} disabled={salvando}>
             <Save size={14} />
-
             {salvando
               ? "Salvando..."
               : editando
               ? "Salvar alterações"
-              : "Criar evento"}
+              : "Cadastrar origem"}
           </Botao>
 
           {editando && (
-            <Botao
-              secundario
-              onClick={() =>
-                limparFormulario()
-              }
-              disabled={
-                salvando
-              }
-            >
+            <Botao secundario onClick={novo}>
               <X size={14} />
               Cancelar
             </Botao>
           )}
-
-          <Botao
-            secundario
-            onClick={carregar}
-          >
-            <RefreshCcw
-              size={14}
-            />
-            Atualizar
-          </Botao>
         </div>
       </Card>
 
-      <div
+      <input
+        value={filtro}
+        onChange={(ev) => setFiltro(ev.target.value)}
+        placeholder="Pesquisar origem, campanha, responsável ou local..."
         style={{
-          display: "flex",
-          justifyContent:
-            "space-between",
-          alignItems:
-            "center",
-          gap: 10,
-          flexWrap:
-            "wrap",
+          width: "100%",
+          boxSizing: "border-box",
+          border: "1px solid #D8DEEA",
+          borderRadius: 9,
+          padding: "10px 12px",
           marginBottom: 10,
         }}
+      />
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit,minmax(300px,1fr))",
+          gap: 10,
+        }}
       >
-        <div>
-          <h2
-            style={{
-              margin: 0,
-              fontFamily:
-                DISPLAY_FONT,
-              fontSize: 20,
-            }}
-          >
-            Eventos cadastrados
-          </h2>
+        {lista.map((e) => (
+          <Card key={e.id} style={{ borderTop: `4px solid ${e.ativo ? CORAL : "#AAB1BF"}` }}>
+            <strong>{e.nome}</strong>
 
-          <div
-            style={{
-              color: MUTED,
-              fontSize: 10.5,
-              marginTop: 3,
-            }}
-          >
-            Cada origem poderá ser usada para filtrar leads e diagnósticos.
-          </div>
-        </div>
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
+              {e.tipoOrigem || "EVENTO"} · origem={e.origem}
+            </div>
 
-        <span
-          style={{
-            background:
-              "#EEF0F5",
-            color: NAVY,
-            borderRadius: 999,
-            padding:
-              "5px 9px",
-            fontSize: 10,
-            fontWeight: 900,
-          }}
-        >
-          {eventos.length} cadastrado(s)
-        </span>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 6,
+                marginTop: 10,
+                fontSize: 10,
+              }}
+            >
+              <div>Campanha: {e.campanha || "-"}</div>
+              <div>Responsável: {e.responsavel || "-"}</div>
+              <div>Local: {e.localEvento || "-"}</div>
+              <div>Meta: {e.metaLeads || 0} leads</div>
+            </div>
+
+            <div
+              style={{
+                background: "#EEF3FF",
+                borderRadius: 8,
+                padding: 8,
+                marginTop: 10,
+                fontSize: 9.5,
+                wordBreak: "break-all",
+              }}
+            >
+              {link(e.origem)}
+            </div>
+
+            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+              <Botao secundario onClick={() => copiar(e)}>
+                Copiar link
+              </Botao>
+
+              <Botao secundario onClick={() => editar(e)}>
+                <Pencil size={13} />
+                Editar
+              </Botao>
+
+              <Botao secundario onClick={() => alternar(e)}>
+                {e.ativo ? "Desativar" : "Ativar"}
+              </Botao>
+            </div>
+          </Card>
+        ))}
       </div>
-
-      {!eventos.length ? (
-        <Card>
-          Nenhum evento ou origem cadastrado.
-        </Card>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit,minmax(290px,1fr))",
-            gap: 10,
-          }}
-        >
-          {eventos.map(
-            (evento) => {
-              const link =
-                linkEvento(
-                  evento.origem
-                );
-
-              return (
-                <Card
-                  key={
-                    evento.id
-                  }
-                  style={{
-                    borderTop:
-                      `4px solid ${
-                        evento.ativo
-                          ? CORAL
-                          : "#AAB1BF"
-                      }`,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent:
-                        "space-between",
-                      alignItems:
-                        "flex-start",
-                      gap: 10,
-                    }}
-                  >
-                    <div>
-                      <strong
-                        style={{
-                          fontSize: 14,
-                        }}
-                      >
-                        {evento.nome}
-                      </strong>
-
-                      <div
-                        style={{
-                          color: MUTED,
-                          fontSize: 10,
-                          marginTop: 3,
-                        }}
-                      >
-                        origem={
-                          evento.origem
-                        }
-                      </div>
-                    </div>
-
-                    <span
-                      style={{
-                        background:
-                          evento.ativo
-                            ? "#E1F5EE"
-                            : "#FCEBEB",
-                        color:
-                          evento.ativo
-                            ? "#0F6E56"
-                            : "#791F1F",
-                        borderRadius: 999,
-                        padding:
-                          "4px 8px",
-                        fontSize: 9,
-                        fontWeight: 900,
-                      }}
-                    >
-                      {evento.ativo
-                        ? "ATIVO"
-                        : "INATIVO"}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "1fr 1fr",
-                      gap: 7,
-                      marginTop: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        background:
-                          "#F7F8FB",
-                        borderRadius: 8,
-                        padding: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 8.5,
-                          color: MUTED,
-                          fontWeight: 900,
-                        }}
-                      >
-                        CAMPANHA
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 10,
-                          marginTop: 2,
-                        }}
-                      >
-                        {evento.campanha ||
-                          "-"}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        background:
-                          "#F7F8FB",
-                        borderRadius: 8,
-                        padding: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 8.5,
-                          color: MUTED,
-                          fontWeight: 900,
-                        }}
-                      >
-                        RESPONSÁVEL
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 10,
-                          marginTop: 2,
-                        }}
-                      >
-                        {evento.responsavel ||
-                          "-"}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        background:
-                          "#F7F8FB",
-                        borderRadius: 8,
-                        padding: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 8.5,
-                          color: MUTED,
-                          fontWeight: 900,
-                        }}
-                      >
-                        INÍCIO
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 10,
-                          marginTop: 2,
-                        }}
-                      >
-                        {evento.dataInicio
-                          ? new Date(
-                              evento.dataInicio
-                            ).toLocaleDateString(
-                              "pt-BR"
-                            )
-                          : "-"}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        background:
-                          "#F7F8FB",
-                        borderRadius: 8,
-                        padding: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 8.5,
-                          color: MUTED,
-                          fontWeight: 900,
-                        }}
-                      >
-                        FIM
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 10,
-                          marginTop: 2,
-                        }}
-                      >
-                        {evento.dataFim
-                          ? new Date(
-                              evento.dataFim
-                            ).toLocaleDateString(
-                              "pt-BR"
-                            )
-                          : "-"}
-                      </div>
-                    </div>
-                  </div>
-
-                  {evento.descricao && (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        fontSize: 10.5,
-                        lineHeight: 1.5,
-                        color: MUTED,
-                      }}
-                    >
-                      {evento.descricao}
-                    </div>
-                  )}
-
-                  <div
-                    style={{
-                      marginTop: 10,
-                      background:
-                        "#EEF3FF",
-                      borderRadius: 8,
-                      padding: 8,
-                      fontSize: 9.5,
-                      wordBreak:
-                        "break-all",
-                      color:
-                        "#31589C",
-                    }}
-                  >
-                    {link}
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(3,1fr)",
-                      gap: 6,
-                      marginTop: 10,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        copiarLink(
-                          evento
-                        )
-                      }
-                      style={{
-                        border:
-                          "1px solid #D8DEEA",
-                        background: WHITE,
-                        color: NAVY,
-                        borderRadius: 8,
-                        padding:
-                          "7px 8px",
-                        fontSize: 9.5,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Copiar link
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editarEvento(
-                          evento
-                        )
-                      }
-                      style={{
-                        border:
-                          "1px solid #D8DEEA",
-                        background: WHITE,
-                        color: NAVY,
-                        borderRadius: 8,
-                        padding:
-                          "7px 8px",
-                        fontSize: 9.5,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Editar
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        alternarEvento(
-                          evento
-                        )
-                      }
-                      style={{
-                        border:
-                          "1px solid #D8DEEA",
-                        background:
-                          evento.ativo
-                            ? "#FFF7F7"
-                            : "#E1F5EE",
-                        color:
-                          evento.ativo
-                            ? "#A12B2B"
-                            : "#0F6E56",
-                        borderRadius: 8,
-                        padding:
-                          "7px 8px",
-                        fontSize: 9.5,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {evento.ativo
-                        ? "Desativar"
-                        : "Ativar"}
-                    </button>
-                  </div>
-                </Card>
-              );
-            }
-          )}
-        </div>
-      )}
     </div>
   );
 }
