@@ -16968,6 +16968,1990 @@ function AuditoriaSistema({ token }) {
 }
 
 // =========================================================
+// CLIENTE 360º
+// =========================================================
+
+function Cliente360({
+  token,
+  onAbrirDiagnostico,
+  onAbrirAtendimento,
+}) {
+  const [
+    clientes,
+    setClientes,
+  ] = useState([]);
+
+  const [
+    clienteAberto,
+    setClienteAberto,
+  ] = useState(null);
+
+  const [
+    busca,
+    setBusca,
+  ] = useState("");
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(false);
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  const [
+    abaCliente,
+    setAbaCliente,
+  ] = useState("visao");
+
+  const [
+    novoContato,
+    setNovoContato,
+  ] = useState({
+    nome: "",
+    cargo: "",
+    email: "",
+    telefone: "",
+    principal: false,
+  });
+
+  const [
+    salvandoContato,
+    setSalvandoContato,
+  ] = useState(false);
+
+  function moeda(
+    valor
+  ) {
+    return Number(
+      valor ||
+      0
+    ).toLocaleString(
+      "pt-BR",
+      {
+        style:
+          "currency",
+        currency:
+          "BRL",
+      }
+    );
+  }
+
+  function dataHora(
+    valor
+  ) {
+    if (!valor) {
+      return "-";
+    }
+
+    try {
+      return new Date(
+        valor
+      ).toLocaleString(
+        "pt-BR",
+        {
+          dateStyle:
+            "short",
+          timeStyle:
+            "short",
+        }
+      );
+    } catch {
+      return String(
+        valor
+      );
+    }
+  }
+
+  function badge(
+    texto,
+    bg =
+      "#EEF3FF",
+    cor =
+      "#31589C"
+  ) {
+    return (
+      <span
+        style={{
+          background: bg,
+          color: cor,
+          borderRadius: 999,
+          padding:
+            "5px 8px",
+          fontSize: 9,
+          fontWeight: 900,
+        }}
+      >
+        {texto ||
+          "-"}
+      </span>
+    );
+  }
+
+  async function carregarClientes() {
+    setCarregando(
+      true
+    );
+
+    setErro("");
+
+    try {
+      const params =
+        new URLSearchParams({
+          action:
+            "listar-clientes",
+
+          limite:
+            "300",
+        });
+
+      if (
+        busca.trim()
+      ) {
+        params.set(
+          "busca",
+          busca.trim()
+        );
+      }
+
+      const resposta =
+        await fetch(
+          `/api/crm?${params.toString()}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar os clientes."
+        );
+      }
+
+      setClientes(
+        Array.isArray(
+          data.clientes
+        )
+          ? data.clientes
+          : []
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar clientes."
+      );
+    } finally {
+      setCarregando(
+        false
+      );
+    }
+  }
+
+  async function abrirCliente(
+    cliente
+  ) {
+    setCarregando(
+      true
+    );
+
+    setErro("");
+
+    setAbaCliente(
+      "visao"
+    );
+
+    try {
+      const resposta =
+        await fetch(
+          `/api/crm?action=ver-cliente&clienteId=${encodeURIComponent(
+            cliente.id
+          )}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível abrir o Cliente 360."
+        );
+      }
+
+      setClienteAberto(
+        data
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao abrir cliente."
+      );
+    } finally {
+      setCarregando(
+        false
+      );
+    }
+  }
+
+  useEffect(
+    () => {
+      carregarClientes();
+    },
+    []
+  );
+
+  async function sincronizar() {
+    setCarregando(
+      true
+    );
+
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=sincronizar-clientes",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível sincronizar os clientes."
+        );
+      }
+
+      await carregarClientes();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao sincronizar clientes."
+      );
+    } finally {
+      setCarregando(
+        false
+      );
+    }
+  }
+
+  async function salvarContato() {
+    if (
+      !clienteAberto
+        ?.cliente
+        ?.id
+    ) {
+      return;
+    }
+
+    if (
+      !novoContato
+        .nome
+        .trim()
+    ) {
+      setErro(
+        "Informe o nome do contato."
+      );
+
+      return;
+    }
+
+    setSalvandoContato(
+      true
+    );
+
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=salvar-contato",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify({
+                clienteId:
+                  clienteAberto
+                    .cliente
+                    .id,
+
+                ...novoContato,
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível salvar o contato."
+        );
+      }
+
+      setNovoContato({
+        nome: "",
+        cargo: "",
+        email: "",
+        telefone: "",
+        principal: false,
+      });
+
+      await abrirCliente(
+        clienteAberto
+          .cliente
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao salvar contato."
+      );
+    } finally {
+      setSalvandoContato(
+        false
+      );
+    }
+  }
+
+  if (
+    clienteAberto
+  ) {
+    const c =
+      clienteAberto
+        .cliente ||
+      {};
+
+    const r =
+      clienteAberto
+        .resumo ||
+      {};
+
+    const i =
+      clienteAberto
+        .inteligencia ||
+      {};
+
+    const tabs = [
+      [
+        "visao",
+        "Visão geral",
+      ],
+      [
+        "diagnosticos",
+        `Diagnósticos (${clienteAberto.diagnosticos?.length || 0})`,
+      ],
+      [
+        "atendimentos",
+        `Atendimentos (${clienteAberto.atendimentos?.length || 0})`,
+      ],
+      [
+        "documentos",
+        `Documentos (${clienteAberto.documentos?.length || 0})`,
+      ],
+      [
+        "contatos",
+        `Contatos (${clienteAberto.contatos?.length || 0})`,
+      ],
+      [
+        "propostas",
+        `Propostas (${clienteAberto.propostas?.length || 0})`,
+      ],
+      [
+        "historico",
+        "Histórico",
+      ],
+    ];
+
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() =>
+            setClienteAberto(
+              null
+            )
+          }
+          style={{
+            border: 0,
+            background:
+              "transparent",
+            color: CORAL,
+            fontWeight: 900,
+            cursor: "pointer",
+            marginBottom: 12,
+          }}
+        >
+          ← Voltar para clientes
+        </button>
+
+        <Card
+          style={{
+            marginBottom: 12,
+            borderTop:
+              `5px solid ${CORAL}`,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent:
+                "space-between",
+              alignItems:
+                "flex-start",
+              gap: 14,
+              flexWrap:
+                "wrap",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  color: CORAL,
+                  fontSize: 9,
+                  fontWeight: 900,
+                  letterSpacing: 1,
+                  marginBottom: 4,
+                }}
+              >
+                CLIENTE 360º
+              </div>
+
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 23,
+                  fontFamily:
+                    DISPLAY_FONT,
+                }}
+              >
+                {c.razaoSocial ||
+                  "Cliente"}
+              </h2>
+
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 10.5,
+                  marginTop: 5,
+                }}
+              >
+                {formatarCnpj(
+                  c.cnpj
+                )}{" "}
+                ·{" "}
+                {c.regimeTributario ||
+                  "Regime não informado"}{" "}
+                ·{" "}
+                {c.segmento ||
+                  "Segmento não informado"}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
+                  marginTop: 9,
+                }}
+              >
+                {badge(
+                  `Origem: ${
+                    c.origemUltima ||
+                    "direto"
+                  }`
+                )}
+
+                {badge(
+                  `Score ${c.scoreAtual || 0}`,
+                  "#F7F8FB",
+                  NAVY
+                )}
+
+                {badge(
+                  `Prioridade ${
+                    c.prioridadeAtual ||
+                    "-"
+                  }`,
+                  c.prioridadeAtual ===
+                    "A"
+                    ? "#FCEBEB"
+                    : "#FFF3CD",
+                  c.prioridadeAtual ===
+                    "A"
+                    ? "#A12B2B"
+                    : "#854F0B"
+                )}
+
+                {badge(
+                  c.temperaturaAtual ||
+                    "Sem temperatura",
+                  "#FFF3EF",
+                  "#993C1D"
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                minWidth: 230,
+                background:
+                  "#F7F8FB",
+                borderRadius: 11,
+                padding: 11,
+                fontSize: 10,
+                lineHeight: 1.55,
+              }}
+            >
+              <strong>
+                Contato principal
+              </strong>
+              <br />
+              {c.contatoPrincipal?.nome ||
+                "-"}
+              <br />
+              {c.contatoPrincipal?.email ||
+                "-"}
+              <br />
+              {c.contatoPrincipal?.telefone ||
+                "-"}
+            </div>
+          </div>
+        </Card>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(155px,1fr))",
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          {[
+            [
+              "DIAGNÓSTICOS",
+              r.totalDiagnosticos ||
+                0,
+            ],
+            [
+              "ATENDIMENTOS ABERTOS",
+              r.atendimentosAbertos ||
+                0,
+            ],
+            [
+              "DOCUMENTOS",
+              r.totalDocumentos ||
+                0,
+            ],
+            [
+              "ANÁLISES IA",
+              r.totalAnalises ||
+                0,
+            ],
+            [
+              "PROPOSTAS ABERTAS",
+              r.propostasAbertas ||
+                0,
+            ],
+            [
+              "RECEITA GANHA",
+              moeda(
+                r.receitaGanha
+              ),
+            ],
+          ].map(
+            (
+              [
+                titulo,
+                valor,
+              ]
+            ) => (
+              <Card
+                key={titulo}
+              >
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 8.5,
+                    fontWeight: 900,
+                  }}
+                >
+                  {titulo}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 900,
+                    marginTop: 5,
+                  }}
+                >
+                  {valor}
+                </div>
+              </Card>
+            )
+          )}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            marginBottom: 12,
+          }}
+        >
+          {tabs.map(
+            (
+              [
+                id,
+                label,
+              ]
+            ) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() =>
+                  setAbaCliente(
+                    id
+                  )
+                }
+                style={{
+                  border:
+                    abaCliente === id
+                      ? `1px solid ${CORAL}`
+                      : "1px solid #D8DEEA",
+
+                  background:
+                    abaCliente === id
+                      ? "#FFF3EF"
+                      : WHITE,
+
+                  color:
+                    abaCliente === id
+                      ? "#993C1D"
+                      : NAVY,
+
+                  borderRadius: 999,
+                  padding:
+                    "7px 10px",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            )
+          )}
+        </div>
+
+        {abaCliente ===
+          "visao" && (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(320px,1fr))",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Card>
+                <strong>
+                  Visão executiva
+                </strong>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "1fr 1fr",
+                    gap: 7,
+                    marginTop: 10,
+                    fontSize: 10,
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Estrutura
+                    </span>
+                    <br />
+                    <strong>
+                      {c.estruturaNegocio ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Faturamento
+                    </span>
+                    <br />
+                    <strong>
+                      {c.faturamentoFaixa ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Colaboradores
+                    </span>
+                    <br />
+                    <strong>
+                      {c.colaboradoresFaixa ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Responsável Finder
+                    </span>
+                    <br />
+                    <strong>
+                      {c.responsavelFinder ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      1ª origem
+                    </span>
+                    <br />
+                    <strong>
+                      {c.origemPrimeira ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Última origem
+                    </span>
+                    <br />
+                    <strong>
+                      {c.origemUltima ||
+                        "-"}
+                    </strong>
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <strong>
+                  Próximo movimento
+                </strong>
+
+                <div
+                  style={{
+                    marginTop: 10,
+                    fontSize: 10.5,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Status comercial
+                    </span>
+                    <br />
+                    <strong>
+                      {r.ultimoStatusComercial ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Intenção
+                    </span>
+                    <br />
+                    <strong>
+                      {r.ultimaIntencao ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Próxima ação
+                    </span>
+                    <br />
+                    <strong>
+                      {r.ultimaProximaAcao ||
+                        "-"}
+                    </strong>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {i.ultimaAnalise ? (
+              <Card
+                style={{
+                  marginBottom: 10,
+                  border:
+                    "2px solid #17233D",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent:
+                      "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <strong>
+                    IA — leitura consolidada mais recente
+                  </strong>
+
+                  {badge(
+                    `Confiança ${
+                      i.ultimaAnalise.confianca ||
+                      "MÉDIA"
+                    }`
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 9,
+                    fontSize: 10.5,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {i.ultimaAnalise.resumo}
+                </div>
+              </Card>
+            ) : (
+              <Card
+                style={{
+                  marginBottom: 10,
+                }}
+              >
+                <strong>
+                  IA — leitura consolidada
+                </strong>
+
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 10,
+                    marginTop: 6,
+                  }}
+                >
+                  Ainda não existe análise documental para este cliente.
+                </div>
+              </Card>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(300px,1fr))",
+                gap: 10,
+              }}
+            >
+              <Card>
+                <strong
+                  style={{
+                    color:
+                      "#A12B2B",
+                  }}
+                >
+                  Riscos identificados
+                </strong>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 5,
+                    marginTop: 8,
+                  }}
+                >
+                  {(i.riscosConsolidados ||
+                    [])
+                    .slice(
+                      0,
+                      8
+                    )
+                    .map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <div
+                          key={index}
+                          style={{
+                            background:
+                              "#FFF7F7",
+                            borderRadius: 8,
+                            padding: 8,
+                            fontSize: 10,
+                          }}
+                        >
+                          {item}
+                        </div>
+                      )
+                    )}
+
+                  {!i.riscosConsolidados?.length && (
+                    <div
+                      style={{
+                        color: MUTED,
+                        fontSize: 10,
+                      }}
+                    >
+                      Nenhum risco consolidado disponível.
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              <Card>
+                <strong
+                  style={{
+                    color:
+                      "#0F6E56",
+                  }}
+                >
+                  Oportunidades consultivas
+                </strong>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 5,
+                    marginTop: 8,
+                  }}
+                >
+                  {(i.oportunidadesConsolidadas ||
+                    [])
+                    .slice(
+                      0,
+                      8
+                    )
+                    .map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <div
+                          key={index}
+                          style={{
+                            background:
+                              "#E1F5EE",
+                            borderRadius: 8,
+                            padding: 8,
+                            fontSize: 10,
+                          }}
+                        >
+                          {item}
+                        </div>
+                      )
+                    )}
+
+                  {!i.oportunidadesConsolidadas?.length && (
+                    <div
+                      style={{
+                        color: MUTED,
+                        fontSize: 10,
+                      }}
+                    >
+                      Nenhuma oportunidade consolidada disponível.
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
+          </>
+        )}
+
+        {abaCliente ===
+          "diagnosticos" && (
+          <Card>
+            <strong>
+              Diagnósticos
+            </strong>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 7,
+                marginTop: 10,
+              }}
+            >
+              {(clienteAberto.diagnosticos ||
+                []).map(
+                (d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() =>
+                      onAbrirDiagnostico?.(
+                        d.id
+                      )
+                    }
+                    style={{
+                      border:
+                        "1px solid #E3E7EF",
+                      background:
+                        "#FAFBFD",
+                      borderRadius: 9,
+                      padding: 10,
+                      textAlign:
+                        "left",
+                      cursor:
+                        "pointer",
+                    }}
+                  >
+                    <strong>
+                      {dataHora(
+                        d.criadoEm
+                      )}
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize: 9.5,
+                        color: MUTED,
+                        marginTop: 4,
+                      }}
+                    >
+                      Score: {d.score ?? "-"} · {d.nivel || "Sem classificação"}
+                    </div>
+                  </button>
+                )
+              )}
+
+              {!clienteAberto.diagnosticos?.length && (
+                <div
+                  style={{
+                    color: MUTED,
+                  }}
+                >
+                  Nenhum diagnóstico encontrado.
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {abaCliente ===
+          "atendimentos" && (
+          <Card>
+            <strong>
+              Atendimentos
+            </strong>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(260px,1fr))",
+                gap: 8,
+                marginTop: 10,
+              }}
+            >
+              {(clienteAberto.atendimentos ||
+                []).map(
+                (a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() =>
+                      onAbrirAtendimento?.(
+                        a.id
+                      )
+                    }
+                    style={{
+                      border:
+                        "1px solid #E3E7EF",
+                      background:
+                        "#FAFBFD",
+                      borderRadius: 10,
+                      padding: 10,
+                      textAlign:
+                        "left",
+                      cursor:
+                        "pointer",
+                    }}
+                  >
+                    <strong>
+                      {a.area ||
+                        "Atendimento"}
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize: 9.5,
+                        color: MUTED,
+                        marginTop: 5,
+                      }}
+                    >
+                      {a.statusAtendimento || "-"} · {a.responsavelNome || "Sem responsável"}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 9.5,
+                        marginTop: 6,
+                      }}
+                    >
+                      Próxima ação: {a.proximaAcao || "-"}
+                    </div>
+                  </button>
+                )
+              )}
+            </div>
+          </Card>
+        )}
+
+        {abaCliente ===
+          "documentos" && (
+          <Card>
+            <strong>
+              Banco documental
+            </strong>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 7,
+                marginTop: 10,
+              }}
+            >
+              {(clienteAberto.documentos ||
+                []).map(
+                (d) => (
+                  <div
+                    key={d.id}
+                    style={{
+                      border:
+                        "1px solid #E3E7EF",
+                      borderRadius: 9,
+                      padding: 9,
+                    }}
+                  >
+                    <strong
+                      style={{
+                        fontSize: 10.5,
+                      }}
+                    >
+                      {d.nomeArquivo}
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: MUTED,
+                        marginTop: 4,
+                      }}
+                    >
+                      {d.tipoDocumento} · {d.statusAnalise} · {d.anexadoPor || "-"}
+                    </div>
+                  </div>
+                )
+              )}
+
+              {!clienteAberto.documentos?.length && (
+                <div
+                  style={{
+                    color: MUTED,
+                  }}
+                >
+                  Nenhum documento vinculado.
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {abaCliente ===
+          "contatos" && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "minmax(280px,.8fr) minmax(320px,1.2fr)",
+              gap: 10,
+            }}
+          >
+            <Card>
+              <strong>
+                Novo contato
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  marginTop: 10,
+                }}
+              >
+                {[
+                  [
+                    "nome",
+                    "Nome",
+                  ],
+                  [
+                    "cargo",
+                    "Cargo / função",
+                  ],
+                  [
+                    "email",
+                    "E-mail",
+                  ],
+                  [
+                    "telefone",
+                    "Telefone",
+                  ],
+                ].map(
+                  (
+                    [
+                      campo,
+                      placeholder,
+                    ]
+                  ) => (
+                    <input
+                      key={campo}
+                      value={
+                        novoContato[
+                          campo
+                        ]
+                      }
+                      onChange={
+                        (e) =>
+                          setNovoContato(
+                            (
+                              atual
+                            ) => ({
+                              ...atual,
+                              [campo]:
+                                e
+                                  .target
+                                  .value,
+                            })
+                          )
+                      }
+                      placeholder={placeholder}
+                      style={{
+                        border:
+                          "1px solid #D8DEEA",
+                        borderRadius: 8,
+                        padding: 9,
+                        fontSize: 10,
+                      }}
+                    />
+                  )
+                )}
+
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 7,
+                    alignItems:
+                      "center",
+                    fontSize: 10,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={
+                      novoContato.principal
+                    }
+                    onChange={
+                      (e) =>
+                        setNovoContato(
+                          (
+                            atual
+                          ) => ({
+                            ...atual,
+                            principal:
+                              e
+                                .target
+                                .checked,
+                          })
+                        )
+                    }
+                  />
+
+                  Contato principal
+                </label>
+
+                <Botao
+                  onClick={
+                    salvarContato
+                  }
+                  disabled={
+                    salvandoContato
+                  }
+                >
+                  <Save
+                    size={13}
+                  />
+
+                  {salvandoContato
+                    ? "Salvando..."
+                    : "Salvar contato"}
+                </Botao>
+              </div>
+            </Card>
+
+            <Card>
+              <strong>
+                Contatos cadastrados
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  marginTop: 10,
+                }}
+              >
+                {(clienteAberto.contatos ||
+                  []).map(
+                    (contato) => (
+                      <div
+                        key={
+                          contato.id
+                        }
+                        style={{
+                          border:
+                            "1px solid #E3E7EF",
+                          borderRadius: 9,
+                          padding: 9,
+                        }}
+                      >
+                        <strong>
+                          {contato.nome}
+                        </strong>
+
+                        {contato.principal &&
+                          " · Principal"}
+
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 9,
+                            marginTop: 4,
+                          }}
+                        >
+                          {contato.cargo || "-"} · {contato.email || "-"} · {contato.telefone || "-"}
+                        </div>
+                      </div>
+                    )
+                  )}
+
+                {!clienteAberto.contatos?.length && (
+                  <div
+                    style={{
+                      color: MUTED,
+                    }}
+                  >
+                    Nenhum contato adicional cadastrado.
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {abaCliente ===
+          "propostas" && (
+          <Card>
+            <strong>
+              Propostas
+            </strong>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 7,
+                marginTop: 10,
+              }}
+            >
+              {(clienteAberto.propostas ||
+                []).map(
+                (p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      border:
+                        "1px solid #E3E7EF",
+                      borderRadius: 9,
+                      padding: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <strong>
+                        {p.servico ||
+                          "Proposta"}
+                      </strong>
+
+                      {badge(
+                        p.status ||
+                          "-"
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 9.5,
+                        color: MUTED,
+                        marginTop: 5,
+                      }}
+                    >
+                      Total: {moeda(p.valorTotal)} · Mensalidade: {moeda(p.mensalidade)} · Implantação: {moeda(p.taxaImplantacao)}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </Card>
+        )}
+
+        {abaCliente ===
+          "historico" && (
+          <Card>
+            <strong>
+              Timeline do cliente
+            </strong>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 8,
+                marginTop: 10,
+              }}
+            >
+              {(clienteAberto.historico ||
+                []).map(
+                (h) => (
+                  <div
+                    key={h.id}
+                    style={{
+                      borderLeft:
+                        `3px solid ${CORAL}`,
+                      paddingLeft: 10,
+                      paddingBottom: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: MUTED,
+                      }}
+                    >
+                      {dataHora(
+                        h.criadoEm
+                      )}{" "}
+                      ·{" "}
+                      {h.tipoAcionamento ||
+                        h.tipoEvento ||
+                        "Registro"}
+                    </div>
+
+                    <strong
+                      style={{
+                        display:
+                          "block",
+                        fontSize: 10.5,
+                        marginTop: 3,
+                      }}
+                    >
+                      {h.resultado ||
+                        "Atividade"}
+                    </strong>
+
+                    {h.descricao && (
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          marginTop: 3,
+                        }}
+                      >
+                        {h.descricao}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        fontSize: 8.5,
+                        color: MUTED,
+                        marginTop: 3,
+                      }}
+                    >
+                      {h.responsavelNome ||
+                        ""}
+                    </div>
+                  </div>
+                )
+              )}
+
+              {!clienteAberto.historico?.length && (
+                <div
+                  style={{
+                    color: MUTED,
+                  }}
+                >
+                  Nenhum histórico encontrado.
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {erro && (
+          <div
+            style={{
+              marginTop: 10,
+              background:
+                "#FAECE7",
+              color:
+                "#993C1D",
+              borderRadius: 9,
+              padding: 10,
+              fontSize: 10,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent:
+            "space-between",
+          alignItems:
+            "center",
+          gap: 10,
+          flexWrap:
+            "wrap",
+          marginBottom: 12,
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily:
+                DISPLAY_FONT,
+              fontSize: 21,
+            }}
+          >
+            Clientes 360º
+          </h2>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10.5,
+              marginTop: 3,
+            }}
+          >
+            Uma empresa, um histórico: diagnósticos, atendimentos, documentos, IA e propostas.
+          </div>
+        </div>
+
+        <Botao
+          secundario
+          onClick={
+            sincronizar
+          }
+          disabled={
+            carregando
+          }
+        >
+          <RefreshCcw
+            size={14}
+          />
+          Sincronizar CNPJs
+        </Botao>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginBottom: 12,
+        }}
+      >
+        <input
+          value={busca}
+          onChange={
+            (e) =>
+              setBusca(
+                e.target.value
+              )
+          }
+          onKeyDown={
+            (e) => {
+              if (
+                e.key ===
+                "Enter"
+              ) {
+                carregarClientes();
+              }
+            }
+          }
+          placeholder="Buscar por empresa, CNPJ, contato ou origem..."
+          style={{
+            flex: 1,
+            border:
+              "1px solid #D8DEEA",
+            borderRadius: 9,
+            padding:
+              "10px 12px",
+          }}
+        />
+
+        <Botao
+          onClick={
+            carregarClientes
+          }
+          disabled={
+            carregando
+          }
+        >
+          <Search size={14} />
+          Buscar
+        </Botao>
+      </div>
+
+      {erro && (
+        <div
+          style={{
+            background:
+              "#FAECE7",
+            color:
+              "#993C1D",
+            borderRadius: 9,
+            padding: 10,
+            fontSize: 10,
+            marginBottom: 10,
+          }}
+        >
+          {erro}
+        </div>
+      )}
+
+      {carregando && (
+        <Card>
+          Carregando clientes...
+        </Card>
+      )}
+
+      {!carregando && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(310px,1fr))",
+            gap: 10,
+          }}
+        >
+          {clientes.map(
+            (c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() =>
+                  abrirCliente(
+                    c
+                  )
+                }
+                style={{
+                  border:
+                    "1px solid #E3E7EF",
+                  borderTop:
+                    `4px solid ${
+                      c.prioridadeAtual ===
+                      "A"
+                        ? "#A12B2B"
+                        : c.prioridadeAtual ===
+                          "B"
+                        ? CORAL
+                        : "#D8DEEA"
+                    }`,
+                  background:
+                    WHITE,
+                  borderRadius: 14,
+                  padding: 14,
+                  textAlign:
+                    "left",
+                  cursor:
+                    "pointer",
+                  boxShadow:
+                    "0 5px 15px rgba(23,35,61,.04)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent:
+                      "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <strong
+                      style={{
+                        fontSize: 13.5,
+                        color: NAVY,
+                      }}
+                    >
+                      {c.razaoSocial ||
+                        "Empresa"}
+                    </strong>
+
+                    <div
+                      style={{
+                        color: MUTED,
+                        fontSize: 9.5,
+                        marginTop: 4,
+                      }}
+                    >
+                      {formatarCnpj(
+                        c.cnpj
+                      )}
+                    </div>
+                  </div>
+
+                  {badge(
+                    `Score ${c.scoreAtual || 0}`,
+                    "#F7F8FB",
+                    NAVY
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "1fr 1fr",
+                    gap: 6,
+                    marginTop: 12,
+                    fontSize: 9.5,
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Origem
+                    </span>
+                    <br />
+                    <strong>
+                      {c.origemUltima ||
+                        "direto"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Prioridade
+                    </span>
+                    <br />
+                    <strong>
+                      {c.prioridadeAtual ||
+                        "-"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Diagnósticos/leads
+                    </span>
+                    <br />
+                    <strong>
+                      {c.totalLeads ||
+                        0}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        color: MUTED,
+                      }}
+                    >
+                      Atendimentos
+                    </span>
+                    <br />
+                    <strong>
+                      {c.totalAtendimentos ||
+                        0}
+                    </strong>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 11,
+                    paddingTop: 9,
+                    borderTop:
+                      "1px solid #EEF0F5",
+                    fontSize: 9.5,
+                  }}
+                >
+                  {c.contatoNome ||
+                    "Contato não informado"}{" "}
+                  ·{" "}
+                  {c.contatoTelefone ||
+                    c.contatoEmail ||
+                    "-"}
+                </div>
+              </button>
+            )
+          )}
+
+          {!clientes.length && (
+            <Card>
+              Nenhum cliente encontrado. Use “Sincronizar CNPJs” para criar a base inicial a partir dos leads existentes.
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
 // COMPONENTE PRINCIPAL
 // =========================================================
 
@@ -17087,6 +19071,16 @@ export default function Admin() {
             size={14}
           />
           Dashboard
+        </Botao>
+
+        <Botao
+          secundario={aba !== "clientes"}
+          onClick={() =>
+            setAba("clientes")
+          }
+        >
+          <Building2 size={14} />
+          Clientes 360º
         </Botao>
 
         <Botao
@@ -17316,6 +19310,47 @@ export default function Admin() {
             abrirAtendimentoDashboard
           }
         />
+      </div>
+    );
+  }
+
+  if (
+    aba ===
+    "clientes"
+  ) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: BG,
+          fontFamily: BODY_FONT,
+          color: NAVY,
+        }}
+      >
+        <Cabecalho
+          titulo="Clientes 360º"
+          subtitulo="Visão consolidada da empresa, diagnóstico, atendimento, documentos, IA e oportunidades"
+        />
+
+        <BarraAbas />
+
+        <main
+          style={{
+            maxWidth: 1320,
+            margin: "0 auto",
+            padding: "26px 22px 50px",
+          }}
+        >
+          <Cliente360
+            token={token}
+            onAbrirDiagnostico={
+              setDiagnosticoId
+            }
+            onAbrirAtendimento={
+              abrirAtendimentoDashboard
+            }
+          />
+        </main>
       </div>
     );
   }
