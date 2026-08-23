@@ -17022,6 +17022,43 @@ function Cliente360({
     setSalvandoContato,
   ] = useState(false);
 
+  const [
+    novaTarefa,
+    setNovaTarefa,
+  ] = useState({
+    titulo: "",
+    descricao: "",
+    area: "",
+    prioridade: "MEDIA",
+    status: "PENDENTE",
+    responsavelNome: "",
+    prazo: "",
+  });
+
+  const [
+    novaPendencia,
+    setNovaPendencia,
+  ] = useState({
+    tipo: "INFORMACAO",
+    titulo: "",
+    descricao: "",
+    status: "SOLICITADO",
+    criticidade: "MEDIA",
+    documentoTipo: "",
+    responsavelNome: "",
+    prazo: "",
+  });
+
+  const [
+    salvandoTarefa,
+    setSalvandoTarefa,
+  ] = useState(false);
+
+  const [
+    salvandoPendencia,
+    setSalvandoPendencia,
+  ] = useState(false);
+
   function moeda(
     valor
   ) {
@@ -17374,6 +17411,203 @@ function Cliente360({
     }
   }
 
+  async function salvarTarefa(
+    dados =
+      novaTarefa
+  ) {
+    if (
+      !clienteAberto
+        ?.cliente
+        ?.id
+    ) {
+      return;
+    }
+
+    if (
+      !String(
+        dados.titulo ||
+        ""
+      ).trim()
+    ) {
+      setErro(
+        "Informe o título da tarefa."
+      );
+      return;
+    }
+
+    setSalvandoTarefa(
+      true
+    );
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=salvar-tarefa",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+            },
+            body:
+              JSON.stringify({
+                clienteId:
+                  clienteAberto
+                    .cliente
+                    .id,
+                ...dados,
+                prazo:
+                  dados.prazo ||
+                  null,
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível salvar a tarefa."
+        );
+      }
+
+      setNovaTarefa({
+        titulo: "",
+        descricao: "",
+        area: "",
+        prioridade: "MEDIA",
+        status: "PENDENTE",
+        responsavelNome: "",
+        prazo: "",
+      });
+
+      await abrirCliente(
+        clienteAberto
+          .cliente
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao salvar tarefa."
+      );
+    } finally {
+      setSalvandoTarefa(
+        false
+      );
+    }
+  }
+
+  async function salvarPendencia(
+    dados =
+      novaPendencia
+  ) {
+    if (
+      !clienteAberto
+        ?.cliente
+        ?.id
+    ) {
+      return;
+    }
+
+    if (
+      !String(
+        dados.titulo ||
+        ""
+      ).trim()
+    ) {
+      setErro(
+        "Informe o título da pendência."
+      );
+      return;
+    }
+
+    setSalvandoPendencia(
+      true
+    );
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=salvar-pendencia",
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+            },
+            body:
+              JSON.stringify({
+                clienteId:
+                  clienteAberto
+                    .cliente
+                    .id,
+                ...dados,
+                prazo:
+                  dados.prazo ||
+                  null,
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível salvar a pendência."
+        );
+      }
+
+      setNovaPendencia({
+        tipo: "INFORMACAO",
+        titulo: "",
+        descricao: "",
+        status: "SOLICITADO",
+        criticidade: "MEDIA",
+        documentoTipo: "",
+        responsavelNome: "",
+        prazo: "",
+      });
+
+      await abrirCliente(
+        clienteAberto
+          .cliente
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao salvar pendência."
+      );
+    } finally {
+      setSalvandoPendencia(
+        false
+      );
+    }
+  }
+
   if (
     clienteAberto
   ) {
@@ -17412,6 +17646,14 @@ function Cliente360({
       [
         "contatos",
         `Contatos (${clienteAberto.contatos?.length || 0})`,
+      ],
+      [
+        "pendencias",
+        `Pendências (${clienteAberto.pendencias?.length || 0})`,
+      ],
+      [
+        "tarefas",
+        `Tarefas (${clienteAberto.tarefas?.length || 0})`,
       ],
       [
         "propostas",
@@ -17607,6 +17849,16 @@ function Cliente360({
             [
               "ANÁLISES IA",
               r.totalAnalises ||
+                0,
+            ],
+            [
+              "PENDÊNCIAS",
+              r.pendenciasAbertas ||
+                0,
+            ],
+            [
+              "TAREFAS",
+              r.tarefasPendentes ||
                 0,
             ],
             [
@@ -18469,6 +18721,663 @@ function Cliente360({
         )}
 
         {abaCliente ===
+          "pendencias" && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "minmax(300px,.9fr) minmax(360px,1.4fr)",
+              gap: 10,
+            }}
+          >
+            <Card>
+              <strong>
+                Nova pendência
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  marginTop: 10,
+                }}
+              >
+                <select
+                  value={novaPendencia.tipo}
+                  onChange={(e) =>
+                    setNovaPendencia(
+                      (a) => ({
+                        ...a,
+                        tipo:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                  }}
+                >
+                  <option value="INFORMACAO">Informação</option>
+                  <option value="DOCUMENTO">Documento</option>
+                  <option value="VALIDACAO">Validação</option>
+                  <option value="RETORNO_CLIENTE">Retorno do cliente</option>
+                  <option value="INTERNA">Interna</option>
+                </select>
+
+                <input
+                  value={novaPendencia.titulo}
+                  onChange={(e) =>
+                    setNovaPendencia(
+                      (a) => ({
+                        ...a,
+                        titulo:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Ex.: Solicitar DRE de janeiro a julho"
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                  }}
+                />
+
+                <textarea
+                  rows={3}
+                  value={novaPendencia.descricao}
+                  onChange={(e) =>
+                    setNovaPendencia(
+                      (a) => ({
+                        ...a,
+                        descricao:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Detalhes da pendência..."
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                    resize: "vertical",
+                  }}
+                />
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "1fr 1fr",
+                    gap: 7,
+                  }}
+                >
+                  <select
+                    value={novaPendencia.criticidade}
+                    onChange={(e) =>
+                      setNovaPendencia(
+                        (a) => ({
+                          ...a,
+                          criticidade:
+                            e.target.value,
+                        })
+                      )
+                    }
+                    style={{
+                      border:
+                        "1px solid #D8DEEA",
+                      borderRadius: 8,
+                      padding: 9,
+                      fontSize: 10,
+                    }}
+                  >
+                    <option value="BAIXA">Baixa</option>
+                    <option value="MEDIA">Média</option>
+                    <option value="ALTA">Alta</option>
+                    <option value="CRITICA">Crítica</option>
+                  </select>
+
+                  <input
+                    type="date"
+                    value={novaPendencia.prazo}
+                    onChange={(e) =>
+                      setNovaPendencia(
+                        (a) => ({
+                          ...a,
+                          prazo:
+                            e.target.value,
+                        })
+                      )
+                    }
+                    style={{
+                      border:
+                        "1px solid #D8DEEA",
+                      borderRadius: 8,
+                      padding: 9,
+                      fontSize: 10,
+                    }}
+                  />
+                </div>
+
+                <input
+                  value={novaPendencia.responsavelNome}
+                  onChange={(e) =>
+                    setNovaPendencia(
+                      (a) => ({
+                        ...a,
+                        responsavelNome:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Responsável"
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                  }}
+                />
+
+                {novaPendencia.tipo ===
+                  "DOCUMENTO" && (
+                  <input
+                    value={novaPendencia.documentoTipo}
+                    onChange={(e) =>
+                      setNovaPendencia(
+                        (a) => ({
+                          ...a,
+                          documentoTipo:
+                            e.target.value,
+                        })
+                      )
+                    }
+                    placeholder="Tipo do documento: DRE, balancete..."
+                    style={{
+                      border:
+                        "1px solid #D8DEEA",
+                      borderRadius: 8,
+                      padding: 9,
+                      fontSize: 10,
+                    }}
+                  />
+                )}
+
+                <Botao
+                  onClick={() =>
+                    salvarPendencia()
+                  }
+                  disabled={
+                    salvandoPendencia
+                  }
+                >
+                  <Plus size={13} />
+                  {salvandoPendencia
+                    ? "Salvando..."
+                    : "Criar pendência"}
+                </Botao>
+              </div>
+            </Card>
+
+            <Card>
+              <strong>
+                Pendências do cliente
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  marginTop: 10,
+                }}
+              >
+                {(clienteAberto.pendencias ||
+                  []).map(
+                  (p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        border:
+                          "1px solid #E3E7EF",
+                        borderLeft:
+                          `4px solid ${
+                            p.criticidade ===
+                            "CRITICA"
+                              ? "#A12B2B"
+                              : p.criticidade ===
+                                "ALTA"
+                              ? CORAL
+                              : "#D8DEEA"
+                          }`,
+                        borderRadius: 9,
+                        padding: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent:
+                            "space-between",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <strong>
+                          {p.titulo}
+                        </strong>
+
+                        {badge(
+                          p.status ||
+                            "-"
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: MUTED,
+                          marginTop: 4,
+                        }}
+                      >
+                        {p.tipo} · {p.criticidade} · prazo {p.prazo ? dataHora(p.prazo) : "-"}
+                      </div>
+
+                      {p.descricao && (
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            marginTop: 6,
+                          }}
+                        >
+                          {p.descricao}
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "wrap",
+                          marginTop: 8,
+                        }}
+                      >
+                        {[
+                          "RECEBIDO",
+                          "INCOMPLETO",
+                          "VALIDADO",
+                        ].map(
+                          (status) => (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() =>
+                                salvarPendencia({
+                                  ...p,
+                                  pendenciaId:
+                                    p.id,
+                                  status,
+                                  prazo:
+                                    p.prazo
+                                      ? String(p.prazo).slice(0, 10)
+                                      : "",
+                                })
+                              }
+                              style={{
+                                border:
+                                  "1px solid #D8DEEA",
+                                background:
+                                  WHITE,
+                                borderRadius: 7,
+                                padding:
+                                  "5px 7px",
+                                fontSize: 8.5,
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {status}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {!clienteAberto.pendencias?.length && (
+                  <div style={{ color: MUTED, fontSize: 10 }}>
+                    Nenhuma pendência cadastrada.
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {abaCliente ===
+          "tarefas" && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "minmax(300px,.9fr) minmax(360px,1.4fr)",
+              gap: 10,
+            }}
+          >
+            <Card>
+              <strong>
+                Nova tarefa
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  marginTop: 10,
+                }}
+              >
+                <input
+                  value={novaTarefa.titulo}
+                  onChange={(e) =>
+                    setNovaTarefa(
+                      (a) => ({
+                        ...a,
+                        titulo:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Ex.: Revisar DRE e preparar reunião"
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                  }}
+                />
+
+                <textarea
+                  rows={3}
+                  value={novaTarefa.descricao}
+                  onChange={(e) =>
+                    setNovaTarefa(
+                      (a) => ({
+                        ...a,
+                        descricao:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Detalhes da tarefa..."
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                    resize: "vertical",
+                  }}
+                />
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "1fr 1fr",
+                    gap: 7,
+                  }}
+                >
+                  <select
+                    value={novaTarefa.prioridade}
+                    onChange={(e) =>
+                      setNovaTarefa(
+                        (a) => ({
+                          ...a,
+                          prioridade:
+                            e.target.value,
+                        })
+                      )
+                    }
+                    style={{
+                      border:
+                        "1px solid #D8DEEA",
+                      borderRadius: 8,
+                      padding: 9,
+                      fontSize: 10,
+                    }}
+                  >
+                    <option value="BAIXA">Baixa</option>
+                    <option value="MEDIA">Média</option>
+                    <option value="ALTA">Alta</option>
+                    <option value="URGENTE">Urgente</option>
+                  </select>
+
+                  <input
+                    type="date"
+                    value={novaTarefa.prazo}
+                    onChange={(e) =>
+                      setNovaTarefa(
+                        (a) => ({
+                          ...a,
+                          prazo:
+                            e.target.value,
+                        })
+                      )
+                    }
+                    style={{
+                      border:
+                        "1px solid #D8DEEA",
+                      borderRadius: 8,
+                      padding: 9,
+                      fontSize: 10,
+                    }}
+                  />
+                </div>
+
+                <input
+                  value={novaTarefa.area}
+                  onChange={(e) =>
+                    setNovaTarefa(
+                      (a) => ({
+                        ...a,
+                        area:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Área: Fiscal, Financeiro..."
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                  }}
+                />
+
+                <input
+                  value={novaTarefa.responsavelNome}
+                  onChange={(e) =>
+                    setNovaTarefa(
+                      (a) => ({
+                        ...a,
+                        responsavelNome:
+                          e.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Responsável"
+                  style={{
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 8,
+                    padding: 9,
+                    fontSize: 10,
+                  }}
+                />
+
+                <Botao
+                  onClick={() =>
+                    salvarTarefa()
+                  }
+                  disabled={
+                    salvandoTarefa
+                  }
+                >
+                  <Plus size={13} />
+                  {salvandoTarefa
+                    ? "Salvando..."
+                    : "Criar tarefa"}
+                </Botao>
+              </div>
+            </Card>
+
+            <Card>
+              <strong>
+                Tarefas do cliente
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  marginTop: 10,
+                }}
+              >
+                {(clienteAberto.tarefas ||
+                  []).map(
+                  (t) => (
+                    <div
+                      key={t.id}
+                      style={{
+                        border:
+                          "1px solid #E3E7EF",
+                        borderLeft:
+                          `4px solid ${
+                            t.prioridade ===
+                            "URGENTE"
+                              ? "#A12B2B"
+                              : t.prioridade ===
+                                "ALTA"
+                              ? CORAL
+                              : "#D8DEEA"
+                          }`,
+                        borderRadius: 9,
+                        padding: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent:
+                            "space-between",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <strong>
+                          {t.titulo}
+                        </strong>
+
+                        {badge(
+                          t.status ||
+                            "-"
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          color: MUTED,
+                          fontSize: 9,
+                          marginTop: 4,
+                        }}
+                      >
+                        {t.area || "Sem área"} · {t.prioridade} · prazo {t.prazo ? dataHora(t.prazo) : "-"} · {t.responsavelNome || "Sem responsável"}
+                      </div>
+
+                      {t.descricao && (
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            marginTop: 6,
+                          }}
+                        >
+                          {t.descricao}
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "wrap",
+                          marginTop: 8,
+                        }}
+                      >
+                        {[
+                          "EM_ANDAMENTO",
+                          "AGUARDANDO",
+                          "CONCLUIDA",
+                        ].map(
+                          (status) => (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() =>
+                                salvarTarefa({
+                                  ...t,
+                                  tarefaId:
+                                    t.id,
+                                  status,
+                                  prazo:
+                                    t.prazo
+                                      ? String(t.prazo).slice(0, 10)
+                                      : "",
+                                })
+                              }
+                              style={{
+                                border:
+                                  "1px solid #D8DEEA",
+                                background:
+                                  WHITE,
+                                borderRadius: 7,
+                                padding:
+                                  "5px 7px",
+                                fontSize: 8.5,
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {status}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {!clienteAberto.tarefas?.length && (
+                  <div style={{ color: MUTED, fontSize: 10 }}>
+                    Nenhuma tarefa cadastrada.
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {abaCliente ===
           "propostas" && (
           <Card>
             <strong>
@@ -18543,7 +19452,8 @@ function Cliente360({
                 marginTop: 10,
               }}
             >
-              {(clienteAberto.historico ||
+              {(clienteAberto.timeline ||
+                clienteAberto.historico ||
                 []).map(
                 (h) => (
                   <div
@@ -18562,11 +19472,14 @@ function Cliente360({
                       }}
                     >
                       {dataHora(
+                        h.data ||
                         h.criadoEm
                       )}{" "}
                       ·{" "}
-                      {h.tipoAcionamento ||
+                      {h.categoria ||
+                        h.tipoAcionamento ||
                         h.tipoEvento ||
+                        h.tipo ||
                         "Registro"}
                     </div>
 
@@ -18578,11 +19491,12 @@ function Cliente360({
                         marginTop: 3,
                       }}
                     >
-                      {h.resultado ||
+                      {h.titulo ||
+                        h.resultado ||
                         "Atividade"}
                     </strong>
 
-                    {h.descricao && (
+                    {(h.descricao) && (
                       <div
                         style={{
                           fontSize: 9.5,
@@ -18600,7 +19514,8 @@ function Cliente360({
                         marginTop: 3,
                       }}
                     >
-                      {h.responsavelNome ||
+                      {h.responsavel ||
+                        h.responsavelNome ||
                         ""}
                     </div>
                   </div>
