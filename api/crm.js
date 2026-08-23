@@ -5934,6 +5934,8 @@ export default async function handler(req, res) {
       case "listar-clientes":
       case "ver-cliente":
       case "salvar-contato":
+      case "salvar-tarefa":
+      case "salvar-pendencia":
         return cliente360Handler(
           req,
           res
