@@ -1681,6 +1681,11 @@ async function listarLeads(req, res) {
       10
     ).toUpperCase();
 
+  const estruturaNegocio =
+    texto(
+      req.query?.estruturaNegocio,
+      80
+    ).toLowerCase();
 
   const arquivamento =
     texto(
@@ -1795,6 +1800,17 @@ async function listarLeads(req, res) {
           ${prioridadeComercial} = ''
           OR prioridade_comercial =
             ${prioridadeComercial}
+        )
+
+        AND (
+          ${estruturaNegocio} = ''
+          OR LOWER(
+            COALESCE(
+              estrutura_negocio,
+              'operacional'
+            )
+          ) =
+            ${estruturaNegocio}
         )
 
         AND (
