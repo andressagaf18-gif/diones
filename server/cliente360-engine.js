@@ -131,6 +131,75 @@ async function prepararSchema() {
       principal DESC
     )
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS
+      crm_cliente_tarefas (
+        id TEXT PRIMARY KEY,
+        cliente_id TEXT NOT NULL,
+        lead_id TEXT NOT NULL DEFAULT '',
+        atendimento_id TEXT NOT NULL DEFAULT '',
+        titulo TEXT NOT NULL,
+        descricao TEXT NOT NULL DEFAULT '',
+        area TEXT NOT NULL DEFAULT '',
+        prioridade TEXT NOT NULL DEFAULT 'MEDIA',
+        status TEXT NOT NULL DEFAULT 'PENDENTE',
+        responsavel_id TEXT NOT NULL DEFAULT '',
+        responsavel_nome TEXT NOT NULL DEFAULT '',
+        prazo TIMESTAMPTZ,
+        origem_tarefa TEXT NOT NULL DEFAULT 'MANUAL',
+        concluido_em TIMESTAMPTZ,
+        criado_por_id TEXT NOT NULL DEFAULT '',
+        criado_por_nome TEXT NOT NULL DEFAULT '',
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS
+      idx_crm_cliente_tarefas_cliente
+    ON crm_cliente_tarefas (
+      cliente_id,
+      status,
+      prazo
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS
+      crm_cliente_pendencias (
+        id TEXT PRIMARY KEY,
+        cliente_id TEXT NOT NULL,
+        lead_id TEXT NOT NULL DEFAULT '',
+        atendimento_id TEXT NOT NULL DEFAULT '',
+        tipo TEXT NOT NULL DEFAULT 'INFORMACAO',
+        titulo TEXT NOT NULL,
+        descricao TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'SOLICITADO',
+        responsavel_id TEXT NOT NULL DEFAULT '',
+        responsavel_nome TEXT NOT NULL DEFAULT '',
+        prazo TIMESTAMPTZ,
+        criticidade TEXT NOT NULL DEFAULT 'MEDIA',
+        documento_tipo TEXT NOT NULL DEFAULT '',
+        origem_pendencia TEXT NOT NULL DEFAULT 'MANUAL',
+        resolvido_em TIMESTAMPTZ,
+        criado_por_id TEXT NOT NULL DEFAULT '',
+        criado_por_nome TEXT NOT NULL DEFAULT '',
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS
+      idx_crm_cliente_pendencias_cliente
+    ON crm_cliente_pendencias (
+      cliente_id,
+      status,
+      prazo
+    )
+  `;
 }
 
 async function garantirSchema() {
@@ -1104,6 +1173,79 @@ async function verCliente(
       []
     );
 
+  const tarefas =
+    await consultaSegura(
+      () =>
+        sql`
+          SELECT *
+          FROM
+            crm_cliente_tarefas
+
+          WHERE
+            cliente_id =
+              ${cliente.id}
+
+          ORDER BY
+            CASE
+              WHEN status =
+                'CONCLUIDA'
+                THEN 4
+              WHEN status =
+                'CANCELADA'
+                THEN 5
+              WHEN prazo IS NOT NULL
+                AND prazo < NOW()
+                THEN 1
+              WHEN prioridade =
+                'URGENTE'
+                THEN 2
+              WHEN prioridade =
+                'ALTA'
+                THEN 3
+              ELSE 4
+            END,
+            prazo ASC NULLS LAST,
+            criado_em DESC
+        `,
+      []
+    );
+
+  const pendencias =
+    await consultaSegura(
+      () =>
+        sql`
+          SELECT *
+          FROM
+            crm_cliente_pendencias
+
+          WHERE
+            cliente_id =
+              ${cliente.id}
+
+          ORDER BY
+            CASE
+              WHEN status IN (
+                'VALIDADO',
+                'CANCELADO'
+              )
+                THEN 4
+              WHEN prazo IS NOT NULL
+                AND prazo < NOW()
+                THEN 1
+              WHEN criticidade =
+                'CRITICA'
+                THEN 2
+              WHEN criticidade =
+                'ALTA'
+                THEN 3
+              ELSE 4
+            END,
+            prazo ASC NULLS LAST,
+            criado_em DESC
+        `,
+      []
+    );
+
   const leadsAtivos =
     (leads || [])
       .filter(
@@ -1290,6 +1432,36 @@ async function verCliente(
 
         propostasAbertas:
           propostasAbertas.length,
+
+        tarefasPendentes:
+          (tarefas || [])
+            .filter(
+              (t) =>
+                ![
+                  "CONCLUIDA",
+                  "CANCELADA",
+                ].includes(
+                  String(
+                    t.status ||
+                    ""
+                  )
+                )
+            ).length,
+
+        pendenciasAbertas:
+          (pendencias || [])
+            .filter(
+              (p) =>
+                ![
+                  "VALIDADO",
+                  "CANCELADO",
+                ].includes(
+                  String(
+                    p.status ||
+                    ""
+                  )
+                )
+            ).length,
 
         receitaGanha,
 
@@ -1611,6 +1783,253 @@ async function verCliente(
             })
           ),
 
+      tarefas:
+        (tarefas || [])
+          .map(
+            (t) => ({
+              id:
+                t.id,
+              titulo:
+                t.titulo,
+              descricao:
+                t.descricao,
+              area:
+                t.area,
+              prioridade:
+                t.prioridade,
+              status:
+                t.status,
+              responsavelId:
+                t.responsavel_id,
+              responsavelNome:
+                t.responsavel_nome,
+              prazo:
+                t.prazo,
+              origemTarefa:
+                t.origem_tarefa,
+              criadoEm:
+                t.criado_em,
+              atualizadoEm:
+                t.atualizado_em,
+            })
+          ),
+
+      pendencias:
+        (pendencias || [])
+          .map(
+            (p) => ({
+              id:
+                p.id,
+              tipo:
+                p.tipo,
+              titulo:
+                p.titulo,
+              descricao:
+                p.descricao,
+              status:
+                p.status,
+              criticidade:
+                p.criticidade,
+              documentoTipo:
+                p.documento_tipo,
+              responsavelId:
+                p.responsavel_id,
+              responsavelNome:
+                p.responsavel_nome,
+              prazo:
+                p.prazo,
+              origemPendencia:
+                p.origem_pendencia,
+              criadoEm:
+                p.criado_em,
+              atualizadoEm:
+                p.atualizado_em,
+            })
+          ),
+
+      timeline:
+        [
+          ...(historico || [])
+            .map(
+              (h) => ({
+                id:
+                  `hist_${h.id}`,
+                tipo:
+                  "HISTORICO",
+                categoria:
+                  h.tipo_acionamento ||
+                  h.tipo_evento ||
+                  "ATIVIDADE",
+                titulo:
+                  h.resultado ||
+                  "Atividade",
+                descricao:
+                  h.descricao ||
+                  "",
+                responsavel:
+                  h.responsavel_nome ||
+                  "",
+                data:
+                  h.criado_em,
+              })
+            ),
+
+          ...(documentos || [])
+            .map(
+              (d) => ({
+                id:
+                  `doc_${d.id}`,
+                tipo:
+                  "DOCUMENTO",
+                categoria:
+                  d.tipo_documento ||
+                  "DOCUMENTO",
+                titulo:
+                  `Documento: ${d.nome_arquivo}`,
+                descricao:
+                  `Status: ${d.status_analise || "-"}`,
+                responsavel:
+                  d.anexado_por_nome ||
+                  "",
+                data:
+                  d.criado_em,
+              })
+            ),
+
+          ...(analises || [])
+            .map(
+              (a) => ({
+                id:
+                  `ia_${a.id}`,
+                tipo:
+                  "ANALISE_IA",
+                categoria:
+                  "IA",
+                titulo:
+                  `Análise documental (${a.confianca || "MÉDIA"})`,
+                descricao:
+                  a.resumo ||
+                  "",
+                responsavel:
+                  "",
+                data:
+                  a.criado_em,
+              })
+            ),
+
+          ...(propostas || [])
+            .map(
+              (p) => ({
+                id:
+                  `prop_${p.id}`,
+                tipo:
+                  "PROPOSTA",
+                categoria:
+                  p.status ||
+                  "PROPOSTA",
+                titulo:
+                  p.servico ||
+                  "Proposta comercial",
+                descricao:
+                  `Valor: ${numero(
+                    p.valor_total,
+                    0
+                  )}`,
+                responsavel:
+                  "",
+                data:
+                  p.criado_em,
+              })
+            ),
+
+          ...(tarefas || [])
+            .map(
+              (t) => ({
+                id:
+                  `task_${t.id}`,
+                tipo:
+                  "TAREFA",
+                categoria:
+                  t.status ||
+                  "TAREFA",
+                titulo:
+                  t.titulo,
+                descricao:
+                  t.descricao ||
+                  "",
+                responsavel:
+                  t.responsavel_nome ||
+                  "",
+                data:
+                  t.criado_em,
+              })
+            ),
+
+          ...(pendencias || [])
+            .map(
+              (p) => ({
+                id:
+                  `pend_${p.id}`,
+                tipo:
+                  "PENDENCIA",
+                categoria:
+                  p.status ||
+                  "PENDENCIA",
+                titulo:
+                  p.titulo,
+                descricao:
+                  p.descricao ||
+                  "",
+                responsavel:
+                  p.responsavel_nome ||
+                  "",
+                data:
+                  p.criado_em,
+              })
+            ),
+
+          ...(leads || [])
+            .map(
+              (l) => ({
+                id:
+                  `lead_${l.id}`,
+                tipo:
+                  "LEAD",
+                categoria:
+                  l.status_comercial ||
+                  "LEAD",
+                titulo:
+                  "Lead / diagnóstico iniciado",
+                descricao:
+                  l.intencao ||
+                  l.origem ||
+                  "",
+                responsavel:
+                  l.responsavel_finder ||
+                  "",
+                data:
+                  l.created_at,
+              })
+            ),
+        ]
+          .filter(
+            (item) =>
+              item.data
+          )
+          .sort(
+            (a, b) =>
+              new Date(
+                b.data
+              ).getTime() -
+              new Date(
+                a.data
+              ).getTime()
+          )
+          .slice(
+            0,
+            300
+          ),
+
       historico:
         (historico || [])
           .map(
@@ -1824,6 +2243,547 @@ async function salvarContato(
     });
 }
 
+
+// =========================================================
+// TAREFAS
+// =========================================================
+
+async function salvarTarefa(
+  req,
+  res
+) {
+  const u =
+    usuarioAutenticado(req);
+
+  if (!u) {
+    return res
+      .status(401)
+      .json({
+        sucesso: false,
+        error:
+          "Não autorizado.",
+      });
+  }
+
+  const body =
+    req.body || {};
+
+  const clienteId =
+    texto(
+      body.clienteId,
+      160
+    );
+
+  const tarefaId =
+    texto(
+      body.tarefaId,
+      160
+    );
+
+  const titulo =
+    texto(
+      body.titulo,
+      240
+    );
+
+  const descricao =
+    texto(
+      body.descricao,
+      3000
+    );
+
+  const area =
+    texto(
+      body.area,
+      120
+    );
+
+  const prioridade =
+    texto(
+      body.prioridade ||
+      "MEDIA",
+      30
+    ).toUpperCase();
+
+  const status =
+    texto(
+      body.status ||
+      "PENDENTE",
+      40
+    ).toUpperCase();
+
+  const responsavelId =
+    texto(
+      body.responsavelId,
+      160
+    );
+
+  const responsavelNome =
+    texto(
+      body.responsavelNome,
+      180
+    );
+
+  const prazo =
+    body.prazo ||
+    null;
+
+  const leadId =
+    texto(
+      body.leadId,
+      160
+    );
+
+  const atendimentoId =
+    texto(
+      body.atendimentoId,
+      160
+    );
+
+  const origemTarefa =
+    texto(
+      body.origemTarefa ||
+      "MANUAL",
+      80
+    ).toUpperCase();
+
+  if (
+    !clienteId ||
+    !titulo
+  ) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "clienteId e título são obrigatórios.",
+      });
+  }
+
+  const permitidoPrioridade =
+    [
+      "BAIXA",
+      "MEDIA",
+      "ALTA",
+      "URGENTE",
+    ].includes(
+      prioridade
+    )
+      ? prioridade
+      : "MEDIA";
+
+  const permitidoStatus =
+    [
+      "PENDENTE",
+      "EM_ANDAMENTO",
+      "AGUARDANDO",
+      "CONCLUIDA",
+      "CANCELADA",
+    ].includes(
+      status
+    )
+      ? status
+      : "PENDENTE";
+
+  if (tarefaId) {
+    await sql`
+      UPDATE
+        crm_cliente_tarefas
+      SET
+        titulo =
+          ${titulo},
+        descricao =
+          ${descricao},
+        area =
+          ${area},
+        prioridade =
+          ${permitidoPrioridade},
+        status =
+          ${permitidoStatus},
+        responsavel_id =
+          ${responsavelId},
+        responsavel_nome =
+          ${responsavelNome},
+        prazo =
+          ${prazo},
+        lead_id =
+          ${leadId},
+        atendimento_id =
+          ${atendimentoId},
+        origem_tarefa =
+          ${origemTarefa},
+        concluido_em =
+          CASE
+            WHEN
+              ${permitidoStatus} =
+              'CONCLUIDA'
+              THEN COALESCE(
+                concluido_em,
+                NOW()
+              )
+            ELSE NULL
+          END,
+        atualizado_em =
+          NOW()
+      WHERE
+        id =
+          ${tarefaId}
+        AND cliente_id =
+          ${clienteId}
+    `;
+
+    return res
+      .status(200)
+      .json({
+        sucesso: true,
+        id:
+          tarefaId,
+      });
+  }
+
+  const id =
+    gerarId(
+      "task"
+    );
+
+  await sql`
+    INSERT INTO
+      crm_cliente_tarefas (
+        id,
+        cliente_id,
+        lead_id,
+        atendimento_id,
+        titulo,
+        descricao,
+        area,
+        prioridade,
+        status,
+        responsavel_id,
+        responsavel_nome,
+        prazo,
+        origem_tarefa,
+        criado_por_id,
+        criado_por_nome
+      )
+    VALUES (
+      ${id},
+      ${clienteId},
+      ${leadId},
+      ${atendimentoId},
+      ${titulo},
+      ${descricao},
+      ${area},
+      ${permitidoPrioridade},
+      ${permitidoStatus},
+      ${responsavelId},
+      ${responsavelNome},
+      ${prazo},
+      ${origemTarefa},
+      ${texto(
+        u?.sub,
+        160
+      )},
+      ${texto(
+        u?.nome ||
+        u?.login ||
+        "Usuário",
+        180
+      )}
+    )
+  `;
+
+  return res
+    .status(200)
+    .json({
+      sucesso: true,
+      id,
+    });
+}
+
+// =========================================================
+// PENDÊNCIAS
+// =========================================================
+
+async function salvarPendencia(
+  req,
+  res
+) {
+  const u =
+    usuarioAutenticado(req);
+
+  if (!u) {
+    return res
+      .status(401)
+      .json({
+        sucesso: false,
+        error:
+          "Não autorizado.",
+      });
+  }
+
+  const body =
+    req.body || {};
+
+  const clienteId =
+    texto(
+      body.clienteId,
+      160
+    );
+
+  const pendenciaId =
+    texto(
+      body.pendenciaId,
+      160
+    );
+
+  const tipo =
+    texto(
+      body.tipo ||
+      "INFORMACAO",
+      50
+    ).toUpperCase();
+
+  const titulo =
+    texto(
+      body.titulo,
+      240
+    );
+
+  const descricao =
+    texto(
+      body.descricao,
+      3000
+    );
+
+  const status =
+    texto(
+      body.status ||
+      "SOLICITADO",
+      40
+    ).toUpperCase();
+
+  const criticidade =
+    texto(
+      body.criticidade ||
+      "MEDIA",
+      30
+    ).toUpperCase();
+
+  const documentoTipo =
+    texto(
+      body.documentoTipo,
+      100
+    ).toUpperCase();
+
+  const responsavelId =
+    texto(
+      body.responsavelId,
+      160
+    );
+
+  const responsavelNome =
+    texto(
+      body.responsavelNome,
+      180
+    );
+
+  const prazo =
+    body.prazo ||
+    null;
+
+  const leadId =
+    texto(
+      body.leadId,
+      160
+    );
+
+  const atendimentoId =
+    texto(
+      body.atendimentoId,
+      160
+    );
+
+  const origemPendencia =
+    texto(
+      body.origemPendencia ||
+      "MANUAL",
+      80
+    ).toUpperCase();
+
+  if (
+    !clienteId ||
+    !titulo
+  ) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "clienteId e título são obrigatórios.",
+      });
+  }
+
+  const tipoFinal =
+    [
+      "DOCUMENTO",
+      "INFORMACAO",
+      "VALIDACAO",
+      "RETORNO_CLIENTE",
+      "INTERNA",
+    ].includes(
+      tipo
+    )
+      ? tipo
+      : "INFORMACAO";
+
+  const statusFinal =
+    [
+      "SOLICITADO",
+      "RECEBIDO",
+      "INCOMPLETO",
+      "VENCIDO",
+      "VALIDADO",
+      "CANCELADO",
+    ].includes(
+      status
+    )
+      ? status
+      : "SOLICITADO";
+
+  const criticidadeFinal =
+    [
+      "BAIXA",
+      "MEDIA",
+      "ALTA",
+      "CRITICA",
+    ].includes(
+      criticidade
+    )
+      ? criticidade
+      : "MEDIA";
+
+  if (pendenciaId) {
+    await sql`
+      UPDATE
+        crm_cliente_pendencias
+      SET
+        tipo =
+          ${tipoFinal},
+        titulo =
+          ${titulo},
+        descricao =
+          ${descricao},
+        status =
+          ${statusFinal},
+        criticidade =
+          ${criticidadeFinal},
+        documento_tipo =
+          ${documentoTipo},
+        responsavel_id =
+          ${responsavelId},
+        responsavel_nome =
+          ${responsavelNome},
+        prazo =
+          ${prazo},
+        lead_id =
+          ${leadId},
+        atendimento_id =
+          ${atendimentoId},
+        origem_pendencia =
+          ${origemPendencia},
+        resolvido_em =
+          CASE
+            WHEN
+              ${statusFinal}
+              IN (
+                'VALIDADO',
+                'CANCELADO'
+              )
+              THEN COALESCE(
+                resolvido_em,
+                NOW()
+              )
+            ELSE NULL
+          END,
+        atualizado_em =
+          NOW()
+      WHERE
+        id =
+          ${pendenciaId}
+        AND cliente_id =
+          ${clienteId}
+    `;
+
+    return res
+      .status(200)
+      .json({
+        sucesso: true,
+        id:
+          pendenciaId,
+      });
+  }
+
+  const id =
+    gerarId(
+      "pend"
+    );
+
+  await sql`
+    INSERT INTO
+      crm_cliente_pendencias (
+        id,
+        cliente_id,
+        lead_id,
+        atendimento_id,
+        tipo,
+        titulo,
+        descricao,
+        status,
+        responsavel_id,
+        responsavel_nome,
+        prazo,
+        criticidade,
+        documento_tipo,
+        origem_pendencia,
+        criado_por_id,
+        criado_por_nome
+      )
+    VALUES (
+      ${id},
+      ${clienteId},
+      ${leadId},
+      ${atendimentoId},
+      ${tipoFinal},
+      ${titulo},
+      ${descricao},
+      ${statusFinal},
+      ${responsavelId},
+      ${responsavelNome},
+      ${prazo},
+      ${criticidadeFinal},
+      ${documentoTipo},
+      ${origemPendencia},
+      ${texto(
+        u?.sub,
+        160
+      )},
+      ${texto(
+        u?.nome ||
+        u?.login ||
+        "Usuário",
+        180
+      )}
+    )
+  `;
+
+  return res
+    .status(200)
+    .json({
+      sucesso: true,
+      id,
+    });
+}
+
 // =========================================================
 // HANDLER
 // =========================================================
@@ -1891,6 +2851,18 @@ export default async function cliente360Handler(
 
       case "salvar-contato":
         return salvarContato(
+          req,
+          res
+        );
+
+      case "salvar-tarefa":
+        return salvarTarefa(
+          req,
+          res
+        );
+
+      case "salvar-pendencia":
+        return salvarPendencia(
           req,
           res
         );
