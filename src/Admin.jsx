@@ -127,18 +127,135 @@ function normalizarLista(valor) {
   return Array.isArray(valor) ? valor : [];
 }
 
+const ESTRUTURAS_DIAGNOSTICO = [
+  {
+    id: "operacional",
+    label: "Empresa operacional",
+  },
+  {
+    id: "reforma_tributaria",
+    label: "Reforma Tributária / IBS e CBS",
+  },
+  {
+    id: "holding",
+    label: "Holding",
+  },
+  {
+    id: "avaliar_holding",
+    label: "Avaliação de Holding",
+  },
+  {
+    id: "grupo",
+    label: "Grupo empresarial",
+  },
+  {
+    id: "spe",
+    label: "SPE",
+  },
+  {
+    id: "pessoa_fisica",
+    label: "Pessoa Física",
+  },
+];
+
+function normalizarEstruturaDiagnostico(
+  valor = ""
+) {
+  const bruto =
+    String(valor || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/[\s-]+/g, "_");
+
+  const aliases = {
+    empresa:
+      "operacional",
+    empresa_operacional:
+      "operacional",
+    operacional:
+      "operacional",
+
+    reforma:
+      "reforma_tributaria",
+    reforma_tributaria:
+      "reforma_tributaria",
+    ibs_cbs:
+      "reforma_tributaria",
+    reforma_tributaria_ibs_cbs:
+      "reforma_tributaria",
+
+    holding:
+      "holding",
+
+    avaliar_holding:
+      "avaliar_holding",
+    avaliacao_holding:
+      "avaliar_holding",
+    avaliacao_de_holding:
+      "avaliar_holding",
+
+    grupo:
+      "grupo",
+    grupo_empresarial:
+      "grupo",
+
+    spe:
+      "spe",
+
+    pessoa_fisica:
+      "pessoa_fisica",
+    pf:
+      "pessoa_fisica",
+  };
+
+  return (
+    aliases[bruto] ||
+    bruto ||
+    "operacional"
+  );
+}
+
 function estruturaDiagnostico(item = {}) {
   const direto =
     item.estruturaNegocio ||
     item.estrutura_negocio ||
     item?.perfil?.estruturaNegocio ||
     item?.perfil?.estrutura_negocio ||
+    item?.perfilDiagnostico?.estruturaNegocio ||
+    item?.perfilDiagnostico?.estrutura_negocio ||
     item?.resultado?.estruturaNegocio ||
     item?.resultado?.estrutura_negocio ||
+    item?.resultado?.contextoEstrutura?.estruturaNegocio ||
     "";
 
   if (direto) {
-    return String(direto);
+    return normalizarEstruturaDiagnostico(
+      direto
+    );
+  }
+
+  const contextoTexto =
+    JSON.stringify(
+      item?.perfil ||
+      item?.perfilDiagnostico ||
+      item?.resultado?.contextoEstrutura ||
+      {}
+    ).toLowerCase();
+
+  if (
+    contextoTexto.includes(
+      "reformatributaria"
+    ) ||
+    contextoTexto.includes(
+      "reforma tribut"
+    ) ||
+    contextoTexto.includes(
+      "\"reformatributaria\""
+    )
+  ) {
+    return "reforma_tributaria";
   }
 
   const segmento =
@@ -161,6 +278,13 @@ function estruturaDiagnostico(item = {}) {
       item?.empresa?.cnpj ||
       ""
     ).replace(/\D/g, "");
+
+  if (
+    segmento.includes("reforma tribut") ||
+    razao.includes("reforma tribut")
+  ) {
+    return "reforma_tributaria";
+  }
 
   if (
     segmento.includes("pessoa física") ||
@@ -195,48 +319,73 @@ function estruturaDiagnostico(item = {}) {
     return "spe";
   }
 
-  if (!cnpj && segmento.includes("financeira")) {
+  if (
+    !cnpj &&
+    segmento.includes("financeira")
+  ) {
     return "pessoa_fisica";
   }
 
   return "operacional";
 }
 
-function labelEstruturaDiagnostico(valor) {
-  const mapa = {
-    operacional: "Empresa operacional",
-    holding: "Holding",
-    avaliar_holding: "Avaliação de Holding",
-    grupo: "Grupo empresarial",
-    spe: "SPE",
-    pessoa_fisica: "Pessoa Física",
-  };
+function labelEstruturaDiagnostico(
+  valor
+) {
+  const id =
+    normalizarEstruturaDiagnostico(
+      valor
+    );
 
-  return mapa[valor] || valor || "Empresa operacional";
+  return (
+    ESTRUTURAS_DIAGNOSTICO.find(
+      (item) =>
+        item.id === id
+    )?.label ||
+    valor ||
+    "Empresa operacional"
+  );
 }
 
-function corEstruturaDiagnostico(valor) {
+function corEstruturaDiagnostico(
+  valor
+) {
+  const id =
+    normalizarEstruturaDiagnostico(
+      valor
+    );
+
   const mapa = {
     operacional: {
       bg: "#EEF3FF",
       color: "#31589C",
     },
+
+    reforma_tributaria: {
+      bg: "#FFF0EB",
+      color: "#B54708",
+    },
+
     holding: {
       bg: "#FFF3EF",
       color: "#993C1D",
     },
+
     avaliar_holding: {
       bg: "#FAEEDA",
       color: "#854F0B",
     },
+
     grupo: {
       bg: "#E1F5EE",
       color: "#0F6E56",
     },
+
     spe: {
       bg: "#F3EEFF",
       color: "#6843A3",
     },
+
     pessoa_fisica: {
       bg: "#F1F3F7",
       color: NAVY,
@@ -244,8 +393,40 @@ function corEstruturaDiagnostico(valor) {
   };
 
   return (
-    mapa[valor] ||
+    mapa[id] ||
     mapa.operacional
+  );
+}
+
+function OpcoesEstruturas({
+  resumo = {},
+  incluirTodas = true,
+}) {
+  return (
+    <>
+      {incluirTodas && (
+        <option value="">
+          Todas as estruturas
+        </option>
+      )}
+
+      {ESTRUTURAS_DIAGNOSTICO.map(
+        (estrutura) => (
+          <option
+            key={estrutura.id}
+            value={estrutura.id}
+          >
+            {estrutura.label}
+            {Object.prototype.hasOwnProperty.call(
+              resumo,
+              estrutura.id
+            )
+              ? ` (${resumo[estrutura.id] || 0})`
+              : ""}
+          </option>
+        )
+      )}
+    </>
   );
 }
 
@@ -947,6 +1128,21 @@ function ListaDiagnosticos({
   const [
     busca,
     setBusca,
+  ] = useState("");
+
+  const [
+    filtroEstruturaCliente,
+    setFiltroEstruturaCliente,
+  ] = useState("");
+
+  const [
+    filtroOrigemCliente,
+    setFiltroOrigemCliente,
+  ] = useState("");
+
+  const [
+    filtroPrioridadeCliente,
+    setFiltroPrioridadeCliente,
   ] = useState("");
 
   const [
@@ -2345,33 +2541,9 @@ function ListaDiagnosticos({
                 color: NAVY,
               }}
             >
-              <option value="">
-                Todas as estruturas
-              </option>
-
-              <option value="operacional">
-                Empresa operacional ({estruturasResumo.operacional || 0})
-              </option>
-
-              <option value="holding">
-                Holding ({estruturasResumo.holding || 0})
-              </option>
-
-              <option value="avaliar_holding">
-                Avaliação de Holding ({estruturasResumo.avaliar_holding || 0})
-              </option>
-
-              <option value="grupo">
-                Grupo empresarial ({estruturasResumo.grupo || 0})
-              </option>
-
-              <option value="spe">
-                SPE ({estruturasResumo.spe || 0})
-              </option>
-
-              <option value="pessoa_fisica">
-                Pessoa Física ({estruturasResumo.pessoa_fisica || 0})
-              </option>
+              <OpcoesEstruturas
+                resumo={estruturasResumo}
+              />
             </select>
 
             <Botao
@@ -2988,6 +3160,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [origem, setOrigem] = useState("");
   const [statusDiagnostico, setStatusDiagnostico] = useState("");
   const [prioridadeComercial, setPrioridadeComercial] = useState("");
+  const [estruturaLead, setEstruturaLead] = useState("");
   const [responsaveis, setResponsaveis] = useState([]);
   const [atribuindoLeadId, setAtribuindoLeadId] = useState("");
   const [selecoesResponsavel, setSelecoesResponsavel] = useState({});
@@ -3025,6 +3198,13 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
 
       if (prioridadeComercial) {
         params.set("prioridadeComercial", prioridadeComercial);
+      }
+
+      if (estruturaLead) {
+        params.set(
+          "estruturaNegocio",
+          estruturaLead
+        );
       }
 
       params.set(
@@ -3689,6 +3869,23 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
             <option value="D">Prioridade D</option>
           </select>
 
+          <select
+            value={estruturaLead}
+            onChange={(e) =>
+              setEstruturaLead(
+                e.target.value
+              )
+            }
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <OpcoesEstruturas />
+          </select>
+
           <Botao onClick={carregarLeads}>
             <Search size={14} /> Filtrar
           </Botao>
@@ -3700,6 +3897,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
               setOrigem("");
               setStatusDiagnostico("");
               setPrioridadeComercial("");
+              setEstruturaLead("");
               setTimeout(carregarLeads, 0);
             }}
           >
@@ -7655,30 +7853,8 @@ function AtendimentosDepartamento({
   function rotuloEstruturaAtendimento(
     valor
   ) {
-    const mapa = {
-      operacional:
-        "Empresa operacional",
-      holding:
-        "Holding",
-      grupo:
-        "Grupo empresarial",
-      spe:
-        "SPE",
-      avaliar_holding:
-        "Avaliar Holding",
-      pessoa_fisica:
-        "Pessoa Física",
-    };
-
-    return (
-      mapa[
-        String(
-          valor ||
-          ""
-        ).toLowerCase()
-      ] ||
-      valor ||
-      "-"
+    return labelEstruturaDiagnostico(
+      valor
     );
   }
 
@@ -8663,13 +8839,7 @@ function AtendimentosDepartamento({
               background: WHITE,
             }}
           >
-            <option value="">Todas as estruturas</option>
-            <option value="operacional">Empresa operacional</option>
-            <option value="holding">Holding</option>
-            <option value="grupo">Grupo empresarial</option>
-            <option value="spe">SPE</option>
-            <option value="avaliar_holding">Avaliar Holding</option>
-            <option value="pessoa_fisica">Pessoa Física</option>
+            <OpcoesEstruturas />
           </select>
 
           <Botao
@@ -11247,6 +11417,13 @@ function ResumoEstruturaSelecionada({
     contexto?.spe ||
     {};
 
+  const reformaTributaria =
+    perfil?.reformaTributaria ||
+    perfil?.reforma_tributaria ||
+    contexto?.reformaTributaria ||
+    contexto?.reforma_tributaria ||
+    {};
+
   function Linha({
     titulo,
     valor,
@@ -11336,6 +11513,134 @@ function ResumoEstruturaSelecionada({
           <Linha titulo="INVESTIMENTOS ATUAIS" valor={pessoaFisica.investimentosAtuais} />
           <Linha titulo="APOSENTADORIA" valor={pessoaFisica.aposentadoria} />
           <Linha titulo="DEPENDENTES" valor={pessoaFisica.dependentes} />
+        </div>
+      </Card>
+    );
+  }
+
+  if (
+    estrutura ===
+    "reforma_tributaria"
+  ) {
+    return (
+      <Card
+        style={{
+          marginBottom: 16,
+          borderLeft:
+            `4px solid ${CORAL}`,
+        }}
+      >
+        <h3
+          style={{
+            margin:
+              "0 0 4px",
+          }}
+        >
+          Contexto preenchido — Reforma Tributária / IBS e CBS
+        </h3>
+
+        <p
+          style={{
+            margin:
+              "0 0 12px",
+            color: MUTED,
+            fontSize: 10.5,
+          }}
+        >
+          Perfil operacional utilizado para direcionar a análise de impacto, créditos, preços, contratos e adequação à transição tributária.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(190px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Linha
+            titulo="OBJETIVOS"
+            valor={
+              reformaTributaria.objetivos
+            }
+          />
+
+          <Linha
+            titulo="DÚVIDA ESPECÍFICA"
+            valor={
+              reformaTributaria.duvidaEspecifica
+            }
+          />
+
+          <Linha
+            titulo="INTERESSE PRINCIPAL"
+            valor={
+              reformaTributaria.interessePrincipal
+            }
+          />
+
+          <Linha
+            titulo="PERFIL DE CLIENTES"
+            valor={
+              reformaTributaria.perfilClientes
+            }
+          />
+
+          <Linha
+            titulo="POTENCIAL DE CRÉDITOS NAS COMPRAS"
+            valor={
+              reformaTributaria.potencialCreditoCompras
+            }
+          />
+
+          <Linha
+            titulo="PESO DA FOLHA"
+            valor={
+              reformaTributaria.pesoFolha
+            }
+          />
+
+          <Linha
+            titulo="CAPACIDADE DE REPASSE NO PREÇO"
+            valor={
+              reformaTributaria.capacidadeRepassePreco
+            }
+          />
+
+          <Linha
+            titulo="PREPARAÇÃO DO ERP"
+            valor={
+              reformaTributaria.preparacaoERP
+            }
+          />
+
+          <Linha
+            titulo="REVISÃO DE CONTRATOS"
+            valor={
+              reformaTributaria.revisaoContratos
+            }
+          />
+
+          <Linha
+            titulo="BENEFÍCIOS / TRATAMENTOS"
+            valor={
+              reformaTributaria.beneficiosTratamentos
+            }
+          />
+
+          <Linha
+            titulo="OPERAÇÕES ESPECIAIS"
+            valor={
+              reformaTributaria.operacoesEspeciais
+            }
+          />
+
+          <Linha
+            titulo="NÍVEL DE PREPARAÇÃO"
+            valor={
+              reformaTributaria.nivelPreparacao
+            }
+          />
         </div>
       </Card>
     );
@@ -12245,6 +12550,26 @@ function DetalheDiagnostico({
       };
     }
 
+    if (
+      estrutura ===
+      "reforma_tributaria"
+    ) {
+      return {
+        titulo:
+          "Diagnóstico da Reforma Tributária / IBS e CBS",
+        achados:
+          "Impactos e achados tributários",
+        causas:
+          "Fatores que influenciam o impacto",
+        riscos:
+          "Riscos e pontos de atenção",
+        fortes:
+          "Pontos favoráveis / nível de preparação",
+        recomendacoes:
+          "Ações de adequação recomendadas",
+      };
+    }
+
     return {
       titulo:
         "Diagnóstico por área",
@@ -12605,6 +12930,8 @@ function DetalheDiagnostico({
             >
               {estruturaAtual === "pessoa_fisica"
                 ? "DIAGNÓSTICO FINANCEIRO PESSOAL"
+                : estruturaAtual === "reforma_tributaria"
+                ? "DIAGNÓSTICO DA REFORMA TRIBUTÁRIA / IBS E CBS"
                 : estruturaAtual === "avaliar_holding"
                 ? "AVALIAÇÃO DE VIABILIDADE DE HOLDING"
                 : estruturaAtual === "holding"
@@ -12631,6 +12958,9 @@ function DetalheDiagnostico({
               {estruturaAtual === "pessoa_fisica"
                 ? participante.nome ||
                   "Pessoa Física"
+                : estruturaAtual === "reforma_tributaria"
+                ? empresa.razaoSocial ||
+                  "Análise de Reforma Tributária"
                 : estruturaAtual === "avaliar_holding"
                 ? empresa.razaoSocial ||
                   "Avaliação de Holding"
@@ -12891,6 +13221,9 @@ function DetalheDiagnostico({
               {estruturaAtual ===
               "pessoa_fisica"
                 ? "Contexto pessoal"
+                : estruturaAtual ===
+                    "reforma_tributaria"
+                ? "Contexto da Reforma Tributária"
                 : estruturaAtual ===
                     "holding" ||
                   estruturaAtual ===
@@ -19555,6 +19888,51 @@ function Cliente360({
     );
   }
 
+  const origensClientes =
+    [
+      ...new Set(
+        clientes
+          .map(
+            (cliente) =>
+              cliente.origemUltima
+          )
+          .filter(Boolean)
+      ),
+    ].sort();
+
+  const clientesVisiveis =
+    clientes.filter(
+      (cliente) => {
+        if (
+          filtroEstruturaCliente &&
+          normalizarEstruturaDiagnostico(
+            cliente.estruturaNegocio
+          ) !==
+            filtroEstruturaCliente
+        ) {
+          return false;
+        }
+
+        if (
+          filtroOrigemCliente &&
+          cliente.origemUltima !==
+            filtroOrigemCliente
+        ) {
+          return false;
+        }
+
+        if (
+          filtroPrioridadeCliente &&
+          cliente.prioridadeAtual !==
+            filtroPrioridadeCliente
+        ) {
+          return false;
+        }
+
+        return true;
+      }
+    );
+
   return (
     <div>
       <div
@@ -19658,6 +20036,116 @@ function Cliente360({
         </Botao>
       </div>
 
+
+      <Card
+        style={{
+          marginBottom: 12,
+          padding: 10,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <select
+            value={filtroEstruturaCliente}
+            onChange={(e) =>
+              setFiltroEstruturaCliente(
+                e.target.value
+              )
+            }
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "9px 10px",
+              background: WHITE,
+            }}
+          >
+            <OpcoesEstruturas />
+          </select>
+
+          <select
+            value={filtroOrigemCliente}
+            onChange={(e) =>
+              setFiltroOrigemCliente(
+                e.target.value
+              )
+            }
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "9px 10px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todas as origens
+            </option>
+
+            {origensClientes.map(
+              (origem) => (
+                <option
+                  key={origem}
+                  value={origem}
+                >
+                  {origem}
+                </option>
+              )
+            )}
+          </select>
+
+          <select
+            value={filtroPrioridadeCliente}
+            onChange={(e) =>
+              setFiltroPrioridadeCliente(
+                e.target.value
+              )
+            }
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "9px 10px",
+              background: WHITE,
+            }}
+          >
+            <option value="">
+              Todas as prioridades
+            </option>
+            <option value="A">Prioridade A</option>
+            <option value="B">Prioridade B</option>
+            <option value="C">Prioridade C</option>
+            <option value="D">Prioridade D</option>
+          </select>
+
+          <Botao
+            secundario
+            onClick={() => {
+              setFiltroEstruturaCliente("");
+              setFiltroOrigemCliente("");
+              setFiltroPrioridadeCliente("");
+            }}
+          >
+            <X size={14} />
+            Limpar filtros
+          </Botao>
+
+          <span
+            style={{
+              marginLeft: "auto",
+              color: MUTED,
+              fontSize: 10,
+              fontWeight: 800,
+            }}
+          >
+            {clientesVisiveis.length} de {clientes.length} cliente(s)
+          </span>
+        </div>
+      </Card>
+
       {erro && (
         <div
           style={{
@@ -19690,7 +20178,7 @@ function Cliente360({
             gap: 10,
           }}
         >
-          {clientes.map(
+          {clientesVisiveis.map(
             (c) => (
               <button
                 key={c.id}
@@ -19855,7 +20343,7 @@ function Cliente360({
             )
           )}
 
-          {!clientes.length && (
+          {!clientesVisiveis.length && (
             <Card>
               Nenhum cliente encontrado. Use “Sincronizar CNPJs” para criar a base inicial a partir dos leads existentes.
             </Card>
