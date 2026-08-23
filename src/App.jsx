@@ -8806,9 +8806,20 @@ function AcessoEvento({
   onVoltar,
   onLiberado,
 }) {
+  function normalizarOrigemEvento(valor = "") {
+    return String(valor || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+  }
+
   const origemUrl = useMemo(
     () =>
-      normalizarOrigem(
+      normalizarOrigemEvento(
         new URLSearchParams(window.location.search).get("origem") || ""
       ),
     []
@@ -8817,7 +8828,7 @@ function AcessoEvento({
   const [origemDigitada, setOrigemDigitada] = useState(origemUrl);
   const [erro, setErro] = useState("");
 
-  const origemFinal = normalizarOrigem(origemDigitada || origemUrl);
+  const origemFinal = normalizarOrigemEvento(origemDigitada || origemUrl);
 
   function entrar() {
     setErro("");
@@ -8827,12 +8838,21 @@ function AcessoEvento({
       return;
     }
 
-    onLiberado({
+    const contexto = {
       origem: origemFinal,
       campanha: origemFinal,
       eventoNome: origemFinal,
       responsavel: "",
-    });
+    };
+
+    try {
+      sessionStorage.setItem(
+        "finder_evento_contexto",
+        JSON.stringify(contexto)
+      );
+    } catch {}
+
+    onLiberado(contexto);
   }
 
   return (
