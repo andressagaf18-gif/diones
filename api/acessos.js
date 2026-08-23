@@ -354,6 +354,21 @@ async function schema() {
             criado_em DESC
           )
         `;
+
+        await sql`
+          ALTER TABLE finder_eventos_origens
+          ADD COLUMN IF NOT EXISTS tipo_origem TEXT
+        `;
+
+        await sql`
+          ALTER TABLE finder_eventos_origens
+          ADD COLUMN IF NOT EXISTS local_evento TEXT
+        `;
+
+        await sql`
+          ALTER TABLE finder_eventos_origens
+          ADD COLUMN IF NOT EXISTS meta_leads INTEGER
+        `;
       })();
   }
 
@@ -560,6 +575,17 @@ function eventoPublico(
     descricao:
       row.descricao ||
       "",
+
+    tipoOrigem:
+      row.tipo_origem ||
+      "",
+
+    localEvento:
+      row.local_evento ||
+      "",
+
+    metaLeads:
+      Number(row.meta_leads || 0),
 
     dataInicio:
       row.data_inicio ||
@@ -1467,6 +1493,9 @@ export default async function handler(
             campanha,
             responsavel,
             descricao,
+            tipo_origem,
+            local_evento,
+            meta_leads,
             data_inicio,
             data_fim,
             ativo,
@@ -1512,8 +1541,7 @@ export default async function handler(
       }
 
       const id =
-        crypto
-          .randomUUID();
+        crypto.randomUUID();
 
       const nome =
         txt(
@@ -1527,49 +1555,59 @@ export default async function handler(
           nome
         );
 
-      const codigo =
-        String(
-          req.body?.codigo ||
-          ""
-        ).trim();
-
       const campanha =
         txt(
-          req.body
-            ?.campanha,
+          req.body?.campanha,
           180
         );
 
       const responsavel =
         txt(
-          req.body
-            ?.responsavel,
+          req.body?.responsavel,
           180
         );
 
       const descricao =
         txt(
-          req.body
-            ?.descricao,
+          req.body?.descricao,
           1500
+        );
+
+      const tipoOrigem =
+        txt(
+          req.body?.tipoOrigem ||
+          "EVENTO",
+          80
+        ).toUpperCase();
+
+      const localEvento =
+        txt(
+          req.body?.localEvento,
+          220
+        );
+
+      const metaLeads =
+        Math.max(
+          0,
+          Number(
+            req.body?.metaLeads ||
+            0
+          ) || 0
         );
 
       const dataInicio =
         dataOuNull(
-          req.body
-            ?.dataInicio
+          req.body?.dataInicio
         );
 
       const dataFim =
         dataOuNull(
-          req.body
-            ?.dataFim
+          req.body?.dataFim
         );
 
       if (
         !nome ||
-        !origem ||
-        codigo.length < 4
+        !origem
       ) {
         res
           .status(400)
@@ -1577,7 +1615,7 @@ export default async function handler(
             sucesso:
               false,
             error:
-              "Informe nome, origem e um código de acesso com pelo menos 4 caracteres.",
+              "Informe o nome e a origem.",
           });
 
         return;
@@ -1586,12 +1624,8 @@ export default async function handler(
       if (
         dataInicio &&
         dataFim &&
-        new Date(
-          dataFim
-        ) <
-        new Date(
-          dataInicio
-        )
+        new Date(dataFim) <
+        new Date(dataInicio)
       ) {
         res
           .status(400)
@@ -1605,6 +1639,12 @@ export default async function handler(
         return;
       }
 
+      // Mantém codigo_hash apenas por compatibilidade
+      // com a estrutura antiga do banco. Não é mais
+      // solicitado nem usado no acesso ao diagnóstico.
+      const codigoInterno =
+        crypto.randomUUID();
+
       await sql`
         INSERT INTO
           finder_eventos_origens (
@@ -1615,6 +1655,9 @@ export default async function handler(
             campanha,
             responsavel,
             descricao,
+            tipo_origem,
+            local_evento,
+            meta_leads,
             data_inicio,
             data_fim,
             ativo,
@@ -1625,11 +1668,14 @@ export default async function handler(
           ${nome},
           ${origem},
           ${hashSenha(
-            codigo
+            codigoInterno
           )},
           ${campanha},
           ${responsavel},
           ${descricao},
+          ${tipoOrigem},
+          ${localEvento},
+          ${metaLeads},
           ${dataInicio},
           ${dataFim},
           TRUE,
@@ -1654,6 +1700,10 @@ export default async function handler(
             origem,
             campanha,
             responsavel,
+            descricao,
+            tipoOrigem,
+            localEvento,
+            metaLeads,
             dataInicio,
             dataFim,
             ativo:
@@ -1673,6 +1723,9 @@ export default async function handler(
           campanha,
           responsavel,
           descricao,
+          tipoOrigem,
+          localEvento,
+          metaLeads,
           dataInicio,
           dataFim,
           ativo:
@@ -1716,22 +1769,21 @@ export default async function handler(
           FROM
             finder_eventos_origens
           WHERE
-            id =
-              ${id}
+            id = ${id}
           LIMIT 1
         `;
 
-      const a =
+      const anterior =
         antigos?.[0];
 
-      if (!a) {
+      if (!anterior) {
         res
           .status(404)
           .json({
             sucesso:
               false,
             error:
-              "Evento/origem não encontrado.",
+              "Origem não encontrada.",
           });
 
         return;
@@ -1740,88 +1792,99 @@ export default async function handler(
       const nome =
         txt(
           req.body?.nome ??
-          a.nome,
+          anterior.nome,
           180
         );
 
       const origem =
         slugOrigem(
           req.body?.origem ??
-          a.origem
+          anterior.origem
         );
 
       const campanha =
         txt(
-          req.body
-            ?.campanha ??
-          a.campanha,
+          req.body?.campanha ??
+          anterior.campanha,
           180
         );
 
       const responsavel =
         txt(
-          req.body
-            ?.responsavel ??
-          a.responsavel,
+          req.body?.responsavel ??
+          anterior.responsavel,
           180
         );
 
       const descricao =
         txt(
-          req.body
-            ?.descricao ??
-          a.descricao,
+          req.body?.descricao ??
+          anterior.descricao,
           1500
+        );
+
+      const tipoOrigem =
+        txt(
+          req.body?.tipoOrigem ??
+          anterior.tipo_origem ??
+          "EVENTO",
+          80
+        ).toUpperCase();
+
+      const localEvento =
+        txt(
+          req.body?.localEvento ??
+          anterior.local_evento,
+          220
+        );
+
+      const metaLeads =
+        Math.max(
+          0,
+          Number(
+            req.body?.metaLeads ??
+            anterior.meta_leads ??
+            0
+          ) || 0
         );
 
       const ativo =
         req.body?.ativo ===
         undefined
           ? Boolean(
-              a.ativo
+              anterior.ativo
             )
           : Boolean(
-              req.body
-                .ativo
+              req.body.ativo
             );
 
       const dataInicio =
-        req.body
-          ?.dataInicio ===
+        req.body?.dataInicio ===
         undefined
           ? (
-              a.data_inicio
+              anterior.data_inicio
                 ? new Date(
-                    a.data_inicio
+                    anterior.data_inicio
                   ).toISOString()
                 : null
             )
           : dataOuNull(
-              req.body
-                ?.dataInicio
+              req.body?.dataInicio
             );
 
       const dataFim =
-        req.body
-          ?.dataFim ===
+        req.body?.dataFim ===
         undefined
           ? (
-              a.data_fim
+              anterior.data_fim
                 ? new Date(
-                    a.data_fim
+                    anterior.data_fim
                   ).toISOString()
                 : null
             )
           : dataOuNull(
-              req.body
-                ?.dataFim
+              req.body?.dataFim
             );
-
-      const novoCodigo =
-        String(
-          req.body?.codigo ||
-          ""
-        ).trim();
 
       if (
         !nome ||
@@ -1840,30 +1903,10 @@ export default async function handler(
       }
 
       if (
-        novoCodigo &&
-        novoCodigo.length < 4
-      ) {
-        res
-          .status(400)
-          .json({
-            sucesso:
-              false,
-            error:
-              "O novo código deve ter pelo menos 4 caracteres.",
-          });
-
-        return;
-      }
-
-      if (
         dataInicio &&
         dataFim &&
-        new Date(
-          dataFim
-        ) <
-        new Date(
-          dataInicio
-        )
+        new Date(dataFim) <
+        new Date(dataInicio)
       ) {
         res
           .status(400)
@@ -1877,65 +1920,25 @@ export default async function handler(
         return;
       }
 
-      if (novoCodigo) {
-        await sql`
-          UPDATE
-            finder_eventos_origens
-          SET
-            nome =
-              ${nome},
-            origem =
-              ${origem},
-            codigo_hash =
-              ${hashSenha(
-                novoCodigo
-              )},
-            campanha =
-              ${campanha},
-            responsavel =
-              ${responsavel},
-            descricao =
-              ${descricao},
-            data_inicio =
-              ${dataInicio},
-            data_fim =
-              ${dataFim},
-            ativo =
-              ${ativo},
-            atualizado_em =
-              NOW()
-          WHERE
-            id =
-              ${id}
-        `;
-      } else {
-        await sql`
-          UPDATE
-            finder_eventos_origens
-          SET
-            nome =
-              ${nome},
-            origem =
-              ${origem},
-            campanha =
-              ${campanha},
-            responsavel =
-              ${responsavel},
-            descricao =
-              ${descricao},
-            data_inicio =
-              ${dataInicio},
-            data_fim =
-              ${dataFim},
-            ativo =
-              ${ativo},
-            atualizado_em =
-              NOW()
-          WHERE
-            id =
-              ${id}
-        `;
-      }
+      await sql`
+        UPDATE
+          finder_eventos_origens
+        SET
+          nome = ${nome},
+          origem = ${origem},
+          campanha = ${campanha},
+          responsavel = ${responsavel},
+          descricao = ${descricao},
+          tipo_origem = ${tipoOrigem},
+          local_evento = ${localEvento},
+          meta_leads = ${metaLeads},
+          data_inicio = ${dataInicio},
+          data_fim = ${dataFim},
+          ativo = ${ativo},
+          atualizado_em = NOW()
+        WHERE
+          id = ${id}
+      `;
 
       await auditar(
         req,
@@ -1951,23 +1954,29 @@ export default async function handler(
             id,
           antes: {
             id:
-              a.id,
+              anterior.id,
             nome:
-              a.nome,
+              anterior.nome,
             origem:
-              a.origem,
+              anterior.origem,
             campanha:
-              a.campanha,
+              anterior.campanha,
             responsavel:
-              a.responsavel,
+              anterior.responsavel,
             descricao:
-              a.descricao,
+              anterior.descricao,
+            tipoOrigem:
+              anterior.tipo_origem,
+            localEvento:
+              anterior.local_evento,
+            metaLeads:
+              anterior.meta_leads,
             dataInicio:
-              a.data_inicio,
+              anterior.data_inicio,
             dataFim:
-              a.data_fim,
+              anterior.data_fim,
             ativo:
-              a.ativo,
+              anterior.ativo,
           },
           depois: {
             id,
@@ -1976,13 +1985,12 @@ export default async function handler(
             campanha,
             responsavel,
             descricao,
+            tipoOrigem,
+            localEvento,
+            metaLeads,
             dataInicio,
             dataFim,
             ativo,
-            codigoAlterado:
-              Boolean(
-                novoCodigo
-              ),
           },
         }
       );
@@ -2230,6 +2238,9 @@ export default async function handler(
             campanha,
             responsavel,
             descricao,
+            tipo_origem,
+            local_evento,
+            meta_leads,
             data_inicio,
             data_fim,
             ativo,
