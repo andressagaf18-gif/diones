@@ -5464,6 +5464,1036 @@ function EquipeCapacidade({
 // ATENDIMENTOS POR DEPARTAMENTO
 // =========================================================
 
+
+// =========================================================
+// DOCUMENTOS DO CLIENTE + ANÁLISE PRÉVIA
+// =========================================================
+
+function DocumentosAtendimento({
+  token,
+  atendimento,
+}) {
+  const [
+    documentos,
+    setDocumentos,
+  ] = useState([]);
+
+  const [
+    analises,
+    setAnalises,
+  ] = useState([]);
+
+  const [
+    arquivo,
+    setArquivo,
+  ] = useState(null);
+
+  const [
+    tipoDocumento,
+    setTipoDocumento,
+  ] = useState("OUTRO");
+
+  const [
+    observacoes,
+    setObservacoes,
+  ] = useState("");
+
+  const [
+    carregando,
+    setCarregando,
+  ] = useState(false);
+
+  const [
+    enviando,
+    setEnviando,
+  ] = useState(false);
+
+  const [
+    analisando,
+    setAnalisando,
+  ] = useState(false);
+
+  const [
+    erro,
+    setErro,
+  ] = useState("");
+
+  const [
+    sucesso,
+    setSucesso,
+  ] = useState("");
+
+  const MAX_BYTES =
+    3 * 1024 * 1024;
+
+  function tamanhoArquivo(
+    bytes
+  ) {
+    const n =
+      Number(bytes || 0);
+
+    if (
+      n < 1024
+    ) {
+      return `${n} B`;
+    }
+
+    if (
+      n <
+      1024 * 1024
+    ) {
+      return `${(
+        n / 1024
+      ).toFixed(1)} KB`;
+    }
+
+    return `${(
+      n /
+      (1024 * 1024)
+    ).toFixed(2)} MB`;
+  }
+
+  function arquivoParaBase64(
+    file
+  ) {
+    return new Promise(
+      (
+        resolve,
+        reject
+      ) => {
+        const reader =
+          new FileReader();
+
+        reader.onload =
+          () =>
+            resolve(
+              String(
+                reader.result ||
+                ""
+              )
+            );
+
+        reader.onerror =
+          () =>
+            reject(
+              new Error(
+                "Não foi possível ler o arquivo."
+              )
+            );
+
+        reader.readAsDataURL(
+          file
+        );
+      }
+    );
+  }
+
+  async function carregar() {
+    if (
+      !atendimento?.id
+    ) {
+      return;
+    }
+
+    setCarregando(
+      true
+    );
+
+    setErro("");
+
+    try {
+      const resposta =
+        await fetch(
+          `/api/crm?action=listar-documentos&atendimentoId=${encodeURIComponent(
+            atendimento.id
+          )}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível carregar os documentos."
+        );
+      }
+
+      setDocumentos(
+        Array.isArray(
+          data.documentos
+        )
+          ? data.documentos
+          : []
+      );
+
+      setAnalises(
+        Array.isArray(
+          data.analises
+        )
+          ? data.analises
+          : []
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao carregar documentos."
+      );
+    } finally {
+      setCarregando(
+        false
+      );
+    }
+  }
+
+  useEffect(
+    () => {
+      carregar();
+    },
+    [
+      atendimento?.id,
+    ]
+  );
+
+  async function enviar() {
+    if (!arquivo) {
+      setErro(
+        "Selecione um arquivo."
+      );
+
+      return;
+    }
+
+    if (
+      arquivo.size >
+      MAX_BYTES
+    ) {
+      setErro(
+        "Nesta versão, cada arquivo pode ter no máximo 3 MB."
+      );
+
+      return;
+    }
+
+    setEnviando(
+      true
+    );
+
+    setErro("");
+    setSucesso("");
+
+    try {
+      const base64 =
+        await arquivoParaBase64(
+          arquivo
+        );
+
+      const resposta =
+        await fetch(
+          "/api/crm?action=upload-documento",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify({
+                atendimentoId:
+                  atendimento.id,
+
+                nomeArquivo:
+                  arquivo.name,
+
+                mimeType:
+                  arquivo.type ||
+                  "application/octet-stream",
+
+                tipoDocumento,
+
+                observacoes:
+                  observacoes.trim(),
+
+                base64,
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível anexar o documento."
+        );
+      }
+
+      setArquivo(
+        null
+      );
+
+      setObservacoes(
+        ""
+      );
+
+      setTipoDocumento(
+        "OUTRO"
+      );
+
+      setSucesso(
+        "Documento anexado ao banco do cliente."
+      );
+
+      const input =
+        document.getElementById(
+          `finder-doc-${atendimento.id}`
+        );
+
+      if (input) {
+        input.value = "";
+      }
+
+      await carregar();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao anexar documento."
+      );
+    } finally {
+      setEnviando(
+        false
+      );
+    }
+  }
+
+  async function excluir(
+    documento
+  ) {
+    if (
+      !window.confirm(
+        `Remover "${documento.nomeArquivo}" do banco documental deste atendimento?`
+      )
+    ) {
+      return;
+    }
+
+    setErro("");
+    setSucesso("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=excluir-documento",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify({
+                documentoId:
+                  documento.id,
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível excluir o documento."
+        );
+      }
+
+      setSucesso(
+        "Documento removido."
+      );
+
+      await carregar();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao excluir documento."
+      );
+    }
+  }
+
+  async function gerarAnalise() {
+    if (
+      !documentos.length
+    ) {
+      setErro(
+        "Anexe documentos antes de gerar a análise."
+      );
+
+      return;
+    }
+
+    setAnalisando(
+      true
+    );
+
+    setErro("");
+    setSucesso("");
+
+    try {
+      const resposta =
+        await fetch(
+          "/api/crm?action=gerar-analise-documental",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify({
+                atendimentoId:
+                  atendimento.id,
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível gerar a análise prévia."
+        );
+      }
+
+      setSucesso(
+        "Análise prévia gerada. O consultor deve validar os achados antes de usar com o cliente."
+      );
+
+      await carregar();
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao gerar análise prévia."
+      );
+    } finally {
+      setAnalisando(
+        false
+      );
+    }
+  }
+
+  const ultimaAnalise =
+    analises?.[0] ||
+    null;
+
+  const listaAnalise = (
+    titulo,
+    itens,
+    cor =
+      NAVY
+  ) => {
+    if (
+      !Array.isArray(
+        itens
+      ) ||
+      !itens.length
+    ) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          marginTop: 10,
+        }}
+      >
+        <strong
+          style={{
+            display:
+              "block",
+            fontSize: 10,
+            color: cor,
+            marginBottom: 5,
+          }}
+        >
+          {titulo}
+        </strong>
+
+        <div
+          style={{
+            display:
+              "grid",
+            gap: 5,
+          }}
+        >
+          {itens.map(
+            (
+              item,
+              index
+            ) => (
+              <div
+                key={`${titulo}-${index}`}
+                style={{
+                  background:
+                    "#F7F8FB",
+                  borderRadius: 8,
+                  padding:
+                    "7px 9px",
+                  fontSize: 10,
+                  lineHeight: 1.45,
+                }}
+              >
+                {item}
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Card
+      style={{
+        marginBottom: 12,
+        border:
+          "1px solid #D8DEEA",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent:
+            "space-between",
+          alignItems:
+            "flex-start",
+          gap: 10,
+          flexWrap:
+            "wrap",
+          marginBottom: 12,
+        }}
+      >
+        <div>
+          <strong
+            style={{
+              fontSize: 12,
+            }}
+          >
+            Banco documental do cliente
+          </strong>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 9.5,
+              marginTop: 3,
+              lineHeight: 1.4,
+            }}
+          >
+            Anexe documentos deste atendimento. A IA cruza os textos extraídos com o diagnóstico para preparar o consultor.
+          </div>
+        </div>
+
+        <span
+          style={{
+            background:
+              "#EEF3FF",
+            color:
+              "#31589C",
+            borderRadius: 999,
+            padding:
+              "5px 8px",
+            fontSize: 9,
+            fontWeight: 900,
+          }}
+        >
+          {documentos.length} documento(s)
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(220px,1.4fr) minmax(170px,.8fr)",
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
+        <input
+          id={`finder-doc-${atendimento.id}`}
+          type="file"
+          accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,.json,.xml,.md"
+          onChange={
+            (e) =>
+              setArquivo(
+                e.target
+                  .files?.[0] ||
+                null
+              )
+          }
+          style={{
+            border:
+              "1px solid #D8DEEA",
+            borderRadius: 9,
+            padding: 9,
+            fontSize: 10,
+            background: WHITE,
+          }}
+        />
+
+        <select
+          value={
+            tipoDocumento
+          }
+          onChange={
+            (e) =>
+              setTipoDocumento(
+                e.target.value
+              )
+          }
+          style={{
+            border:
+              "1px solid #D8DEEA",
+            borderRadius: 9,
+            padding: 9,
+            fontSize: 10,
+            background: WHITE,
+          }}
+        >
+          <option value="OUTRO">Outro</option>
+          <option value="CONTRATO">Contrato</option>
+          <option value="BALANCETE">Balancete</option>
+          <option value="DRE">DRE</option>
+          <option value="EXTRATO">Extrato</option>
+          <option value="NOTA_FISCAL">Nota fiscal</option>
+          <option value="FOLHA">Folha</option>
+          <option value="CONTRATO_SOCIAL">Contrato social</option>
+          <option value="RELATORIO_FISCAL">Relatório fiscal</option>
+          <option value="PARCELAMENTO">Parcelamento</option>
+          <option value="CERTIDAO">Certidão</option>
+          <option value="SOCIETARIO">Societário</option>
+          <option value="TRIBUTARIO">Tributário</option>
+          <option value="FINANCEIRO">Financeiro</option>
+        </select>
+      </div>
+
+      <textarea
+        rows={2}
+        value={observacoes}
+        onChange={
+          (e) =>
+            setObservacoes(
+              e.target.value
+            )
+        }
+        placeholder="Observação opcional sobre o documento, período ou finalidade..."
+        style={{
+          width: "100%",
+          boxSizing:
+            "border-box",
+          border:
+            "1px solid #D8DEEA",
+          borderRadius: 9,
+          padding: 9,
+          fontSize: 10,
+          resize:
+            "vertical",
+          marginBottom: 8,
+        }}
+      />
+
+      {arquivo && (
+        <div
+          style={{
+            background:
+              "#F7F8FB",
+            borderRadius: 8,
+            padding: 8,
+            fontSize: 9.5,
+            marginBottom: 8,
+          }}
+        >
+          {arquivo.name} · {tamanhoArquivo(
+            arquivo.size
+          )}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "flex",
+          gap: 7,
+          flexWrap: "wrap",
+        }}
+      >
+        <Botao
+          onClick={enviar}
+          disabled={
+            enviando ||
+            !arquivo
+          }
+          style={{
+            padding:
+              "8px 10px",
+            fontSize: 10,
+          }}
+        >
+          <Plus size={13} />
+
+          {enviando
+            ? "Enviando..."
+            : "Anexar documento"}
+        </Botao>
+
+        <Botao
+          secundario
+          onClick={
+            gerarAnalise
+          }
+          disabled={
+            analisando ||
+            !documentos.length
+          }
+          style={{
+            padding:
+              "8px 10px",
+            fontSize: 10,
+          }}
+        >
+          <Activity size={13} />
+
+          {analisando
+            ? "Analisando..."
+            : "Gerar análise prévia"}
+        </Botao>
+
+        <Botao
+          secundario
+          onClick={carregar}
+          disabled={
+            carregando
+          }
+          style={{
+            padding:
+              "8px 10px",
+            fontSize: 10,
+          }}
+        >
+          <RefreshCcw
+            size={13}
+          />
+          Atualizar
+        </Botao>
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 9,
+          color: MUTED,
+          lineHeight: 1.4,
+        }}
+      >
+        Limite desta versão: 3 MB por arquivo. Formatos analisáveis: PDF com texto, DOCX, XLS/XLSX, CSV, TXT, JSON, XML e Markdown.
+      </div>
+
+      {erro && (
+        <div
+          style={{
+            marginTop: 9,
+            background:
+              "#FAECE7",
+            color:
+              "#993C1D",
+            borderRadius: 8,
+            padding: 8,
+            fontSize: 10,
+          }}
+        >
+          {erro}
+        </div>
+      )}
+
+      {sucesso && (
+        <div
+          style={{
+            marginTop: 9,
+            background:
+              "#E1F5EE",
+            color:
+              "#0F6E56",
+            borderRadius: 8,
+            padding: 8,
+            fontSize: 10,
+          }}
+        >
+          {sucesso}
+        </div>
+      )}
+
+      {documentos.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          {documentos.map(
+            (doc) => (
+              <div
+                key={doc.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "1fr auto",
+                  gap: 8,
+                  alignItems:
+                    "center",
+                  border:
+                    "1px solid #E3E7EF",
+                  borderRadius: 9,
+                  padding: 9,
+                }}
+              >
+                <div>
+                  <strong
+                    style={{
+                      display:
+                        "block",
+                      fontSize: 10.5,
+                    }}
+                  >
+                    {doc.nomeArquivo}
+                  </strong>
+
+                  <div
+                    style={{
+                      color: MUTED,
+                      fontSize: 9,
+                      marginTop: 3,
+                    }}
+                  >
+                    {doc.tipoDocumento} · {tamanhoArquivo(
+                      doc.tamanhoBytes
+                    )} · {doc.statusAnalise}
+                  </div>
+
+                  <div
+                    style={{
+                      color: MUTED,
+                      fontSize: 8.8,
+                      marginTop: 2,
+                    }}
+                  >
+                    Texto extraído: {doc.textoExtraidoChars || 0} caracteres · por {doc.anexadoPor || "-"}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      excluir(
+                        doc
+                      )
+                  }
+                  style={{
+                    border:
+                      "1px solid #F0C8C8",
+                    background:
+                      "#FFF7F7",
+                    color:
+                      "#A12B2B",
+                    borderRadius: 7,
+                    padding:
+                      "6px 7px",
+                    cursor:
+                      "pointer",
+                  }}
+                >
+                  <Trash2
+                    size={13}
+                  />
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      {ultimaAnalise && (
+        <div
+          style={{
+            marginTop: 14,
+            border:
+              "2px solid #17233D",
+            borderRadius: 12,
+            padding: 12,
+            background: WHITE,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent:
+                "space-between",
+              gap: 8,
+              alignItems:
+                "center",
+            }}
+          >
+            <strong
+              style={{
+                fontSize: 11.5,
+              }}
+            >
+              Análise prévia para o consultor
+            </strong>
+
+            <span
+              style={{
+                background:
+                  ultimaAnalise.confianca ===
+                  "ALTA"
+                    ? "#E1F5EE"
+                    : ultimaAnalise.confianca ===
+                      "BAIXA"
+                    ? "#FCEBEB"
+                    : "#FFF3CD",
+                color:
+                  NAVY,
+                borderRadius: 999,
+                padding:
+                  "4px 7px",
+                fontSize: 8.5,
+                fontWeight: 900,
+              }}
+            >
+              CONFIANÇA {ultimaAnalise.confianca || "MEDIA"}
+            </span>
+          </div>
+
+          <div
+            style={{
+              marginTop: 9,
+              fontSize: 10.5,
+              lineHeight: 1.55,
+            }}
+          >
+            {ultimaAnalise.resumo}
+          </div>
+
+          {listaAnalise(
+            "Achados",
+            ultimaAnalise.achados
+          )}
+
+          {listaAnalise(
+            "Divergências",
+            ultimaAnalise.divergencias,
+            "#993C1D"
+          )}
+
+          {listaAnalise(
+            "Riscos",
+            ultimaAnalise.riscos,
+            "#A12B2B"
+          )}
+
+          {listaAnalise(
+            "O que o consultor precisa validar",
+            ultimaAnalise.pontosValidacao,
+            "#31589C"
+          )}
+
+          {listaAnalise(
+            "Dados/documentos faltantes",
+            ultimaAnalise.dadosFaltantes
+          )}
+
+          {listaAnalise(
+            "Oportunidades consultivas",
+            ultimaAnalise.oportunidades,
+            "#0F6E56"
+          )}
+
+          <div
+            style={{
+              marginTop: 10,
+              background:
+                "#FFF3EF",
+              borderRadius: 8,
+              padding: 8,
+              fontSize: 9,
+              color: MUTED,
+              lineHeight: 1.45,
+            }}
+          >
+            Uso interno. Esta análise é preliminar e deve ser revisada pelo consultor antes de qualquer orientação ao cliente.
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AtendimentosDepartamento({
   token,
   onAbrirDiagnostico,
@@ -7786,6 +8816,11 @@ function AtendimentosDepartamento({
                 padding: 16,
               }}
             >
+              <DocumentosAtendimento
+                token={token}
+                atendimento={atendimentoAberto}
+              />
+
               <Card
                 style={{
                   marginBottom: 12,
