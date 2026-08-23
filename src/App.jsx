@@ -8806,254 +8806,75 @@ function AcessoEvento({
   onVoltar,
   onLiberado,
 }) {
-  const origemUrl =
-    useMemo(() => {
-      try {
-        const params =
-          new URLSearchParams(
-            window.location.search
-          );
+  const origemUrl = useMemo(
+    () =>
+      normalizarOrigem(
+        new URLSearchParams(window.location.search).get("origem") || ""
+      ),
+    []
+  );
 
-        return String(
-          params.get("origem") ||
-          ""
-        )
-          .trim()
-          .toLowerCase();
-      } catch {
-        return "";
-      }
-    }, []);
+  const [origemDigitada, setOrigemDigitada] = useState(origemUrl);
+  const [erro, setErro] = useState("");
 
-  const [origem, setOrigem] =
-    useState(
-      origemUrl
-    );
+  const origemFinal = normalizarOrigem(origemDigitada || origemUrl);
 
-  const [codigo, setCodigo] =
-    useState("");
-
-  const [evento, setEvento] =
-    useState(null);
-
-  const [erro, setErro] =
-    useState("");
-
-  const [carregandoEvento, setCarregandoEvento] =
-    useState(
-      Boolean(origemUrl)
-    );
-
-  const [validando, setValidando] =
-    useState(false);
-
-  useEffect(() => {
-    if (!origemUrl) {
-      return;
-    }
-
-    let ativo = true;
-
-    async function identificar() {
-      setCarregandoEvento(true);
-      setErro("");
-
-      try {
-        const resposta =
-          await fetch(
-            `/api/acessos?action=evento-publico&origem=${encodeURIComponent(
-              origemUrl
-            )}`
-          );
-
-        const data =
-          await resposta
-            .json()
-            .catch(() => null);
-
-        if (
-          !resposta.ok ||
-          !data?.sucesso
-        ) {
-          throw new Error(
-            data?.error ||
-            "Não foi possível identificar este evento."
-          );
-        }
-
-        if (ativo) {
-          setEvento(
-            data.evento ||
-            null
-          );
-        }
-      } catch (error) {
-        if (ativo) {
-          setErro(
-            error?.message ||
-            "Não foi possível identificar este evento."
-          );
-        }
-      } finally {
-        if (ativo) {
-          setCarregandoEvento(false);
-        }
-      }
-    }
-
-    identificar();
-
-    return () => {
-      ativo = false;
-    };
-  }, [origemUrl]);
-
-  async function validar() {
-    const origemFinal =
-      String(
-        origem ||
-        evento?.origem ||
-        ""
-      )
-        .trim()
-        .toLowerCase();
-
-    if (!origemFinal) {
-      setErro(
-        "Informe a origem do evento."
-      );
-      return;
-    }
-
-    if (!codigo.trim()) {
-      setErro(
-        "Digite o código de acesso do evento."
-      );
-      return;
-    }
-
-    setValidando(true);
+  function entrar() {
     setErro("");
 
-    try {
-      const resposta =
-        await fetch(
-          "/api/acessos?action=validar-evento",
-          {
-            method: "POST",
-            headers: {
-              "content-type":
-                "application/json",
-            },
-            body:
-              JSON.stringify({
-                origem:
-                  origemFinal,
-                codigo:
-                  codigo.trim(),
-              }),
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso ||
-        !data?.evento
-      ) {
-        throw new Error(
-          data?.error ||
-          "Código de acesso inválido."
-        );
-      }
-
-      try {
-        sessionStorage.setItem(
-          "finder_evento_contexto",
-          JSON.stringify(
-            data.evento
-          )
-        );
-
-        sessionStorage.setItem(
-          "finder_evento_token",
-          data.tokenEvento ||
-          ""
-        );
-      } catch {}
-
-      onLiberado(
-        data.evento
-      );
-    } catch (error) {
-      setErro(
-        error?.message ||
-        "Não foi possível validar o evento."
-      );
-    } finally {
-      setValidando(false);
+    if (!origemFinal) {
+      setErro("Informe a origem.");
+      return;
     }
-  }
 
-  const input = {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid #D8DEEA",
-    borderRadius: 10,
-    padding: "12px 13px",
-    fontFamily: BODY_FONT,
-    fontSize: 14,
-    color: NAVY,
-    marginBottom: 12,
-  };
+    onLiberado({
+      origem: origemFinal,
+      campanha: origemFinal,
+      eventoNome: origemFinal,
+      responsavel: "",
+    });
+  }
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background:
-          "linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)",
+        background: NAVY,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 20,
-        boxSizing: "border-box",
+        padding: 24,
         fontFamily: BODY_FONT,
       }}
     >
       <div
         style={{
           width: "100%",
-          maxWidth: 430,
+          maxWidth: 760,
           background: WHITE,
-          borderRadius: 20,
-          padding: 30,
-          boxShadow:
-            "0 24px 70px rgba(0,0,0,.28)",
+          borderRadius: 28,
+          padding: "48px 46px",
+          boxSizing: "border-box",
         }}
       >
         <img
           src="/finder-logo.png"
           alt="Finder of Solutions"
           style={{
-            width: 175,
-            maxWidth: "70%",
-            objectFit: "contain",
-            marginBottom: 20,
+            width: 290,
+            maxWidth: "80%",
+            height: "auto",
+            marginBottom: 42,
           }}
         />
 
         <div
           style={{
             color: CORAL,
-            fontSize: 10,
+            fontSize: 13,
             fontWeight: 900,
-            letterSpacing: 1,
-            marginBottom: 6,
+            letterSpacing: 1.8,
+            marginBottom: 8,
           }}
         >
           RESPONDER DIAGNÓSTICO
@@ -9061,150 +8882,70 @@ function AcessoEvento({
 
         <h1
           style={{
-            margin: "0 0 7px",
-            color: NAVY,
-            fontSize: 26,
-            lineHeight: 1.1,
             fontFamily: DISPLAY_FONT,
+            color: NAVY,
+            fontSize: 38,
+            lineHeight: 1.05,
+            margin: "0 0 14px",
           }}
         >
-          {evento?.nome ||
-            "Acesso ao evento"}
+          Acesso ao evento
         </h1>
 
         <p
           style={{
-            margin: "0 0 20px",
             color: MUTED,
-            fontSize: 12.5,
-            lineHeight: 1.55,
+            fontSize: 17,
+            lineHeight: 1.5,
+            margin: "0 0 28px",
           }}
         >
-          {evento?.campanha
-            ? evento.campanha
-            : origemUrl
-            ? "Digite o código disponibilizado pela equipe do evento."
-            : "Informe a origem e o código disponibilizados pela equipe Finder."}
+          Informe a origem disponibilizada pela equipe Finder.
         </p>
-
-        {carregandoEvento && (
-          <div
-            style={{
-              background: "#EEF3FF",
-              color: "#31589C",
-              borderRadius: 9,
-              padding: 10,
-              fontSize: 11,
-              marginBottom: 12,
-            }}
-          >
-            Identificando evento...
-          </div>
-        )}
-
-        {!origemUrl && (
-          <>
-            <label
-              style={{
-                display: "block",
-                color: NAVY,
-                fontSize: 10.5,
-                fontWeight: 800,
-                marginBottom: 6,
-              }}
-            >
-              ORIGEM DO EVENTO
-            </label>
-
-            <input
-              value={origem}
-              onChange={(e) => {
-                setOrigem(
-                  e.target.value
-                    .trim()
-                    .toLowerCase()
-                );
-                setErro("");
-              }}
-              placeholder="Ex.: xbusiness"
-              autoCapitalize="none"
-              style={input}
-            />
-          </>
-        )}
-
-        {origemUrl && (
-          <div
-            style={{
-              background: "#F7F8FB",
-              borderRadius: 9,
-              padding: 10,
-              marginBottom: 12,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 8.5,
-                color: MUTED,
-                fontWeight: 900,
-              }}
-            >
-              ORIGEM
-            </div>
-
-            <div
-              style={{
-                marginTop: 3,
-                color: NAVY,
-                fontSize: 12,
-                fontWeight: 800,
-              }}
-            >
-              {evento?.origem ||
-                origemUrl}
-            </div>
-          </div>
-        )}
 
         <label
           style={{
             display: "block",
             color: NAVY,
-            fontSize: 10.5,
-            fontWeight: 800,
-            marginBottom: 6,
+            fontWeight: 900,
+            fontSize: 13,
+            marginBottom: 8,
           }}
         >
-          CÓDIGO DE ACESSO
+          ORIGEM
         </label>
 
         <input
-          type="password"
-          value={codigo}
-          onChange={(e) => {
-            setCodigo(
-              e.target.value
-            );
-            setErro("");
+          value={origemDigitada}
+          onChange={(e) => setOrigemDigitada(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") entrar();
           }}
-          onKeyDown={(e) =>
-            e.key === "Enter" &&
-            validar()
-          }
-          placeholder="Digite o código"
-          autoFocus={!carregandoEvento}
-          style={input}
+          placeholder="Ex.: xbusiness"
+          autoFocus={!origemUrl}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            border: "1px solid #D8DEEA",
+            borderRadius: 14,
+            padding: "16px 18px",
+            fontSize: 17,
+            color: NAVY,
+            outline: "none",
+            marginBottom: 18,
+          }}
         />
 
         {erro && (
           <div
             style={{
-              background: "#FAECE7",
-              color: "#993C1D",
+              marginBottom: 14,
+              padding: "10px 12px",
               borderRadius: 9,
-              padding: 10,
-              fontSize: 11.5,
-              marginBottom: 12,
+              background: "#FFF0EC",
+              color: "#9A3412",
+              fontSize: 12,
+              fontWeight: 700,
             }}
           >
             {erro}
@@ -9213,34 +8954,21 @@ function AcessoEvento({
 
         <button
           type="button"
-          onClick={validar}
-          disabled={
-            validando ||
-            carregandoEvento
-          }
+          onClick={entrar}
+          disabled={!origemFinal}
           style={{
             width: "100%",
             border: 0,
-            borderRadius: 10,
-            padding: "12px 14px",
-            background:
-              validando ||
-              carregandoEvento
-                ? "#D8DEEA"
-                : CORAL,
+            borderRadius: 14,
+            padding: "17px 18px",
+            background: origemFinal ? CORAL : "#D8DEEA",
             color: WHITE,
-            fontSize: 13,
             fontWeight: 900,
-            cursor:
-              validando ||
-              carregandoEvento
-                ? "not-allowed"
-                : "pointer",
+            fontSize: 17,
+            cursor: origemFinal ? "pointer" : "not-allowed",
           }}
         >
-          {validando
-            ? "Validando..."
-            : "Iniciar diagnóstico"}
+          Iniciar diagnóstico
         </button>
 
         <button
@@ -9248,11 +8976,11 @@ function AcessoEvento({
           onClick={onVoltar}
           style={{
             width: "100%",
-            marginTop: 10,
+            marginTop: 15,
             border: 0,
             background: "transparent",
             color: MUTED,
-            fontSize: 11,
+            fontSize: 14,
             cursor: "pointer",
           }}
         >
