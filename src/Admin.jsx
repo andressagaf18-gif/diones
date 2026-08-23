@@ -17325,6 +17325,21 @@ function Cliente360({
   ] = useState("");
 
   const [
+    filtroEstruturaCliente,
+    setFiltroEstruturaCliente,
+  ] = useState("");
+
+  const [
+    filtroOrigemCliente,
+    setFiltroOrigemCliente,
+  ] = useState("");
+
+  const [
+    filtroPrioridadeCliente,
+    setFiltroPrioridadeCliente,
+  ] = useState("");
+
+  const [
     carregando,
     setCarregando,
   ] = useState(false);
@@ -19855,7 +19870,10 @@ function Cliente360({
                 )
               )}
 
-              {!clienteAberto.historico?.length && (
+              {!(
+                clienteAberto.timeline?.length ||
+                clienteAberto.historico?.length
+              ) && (
                 <div
                   style={{
                     color: MUTED,
