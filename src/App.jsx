@@ -8,13 +8,15 @@ import {
 
 import Admin from "./Admin";
 
-const NAVY = "#17233D";
-const ICE = "#E9EDF5";
+const NAVY = "#0D1B2F";
+const ICE = "#EEF3F9";
 const CORAL = "#FF6B4A";
-const MUTED = "#5B667A";
+const MUTED = "#61708A";
 const WHITE = "#FFFFFF";
-const BG = "#F3F5F8";
-const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
+const BG = "#F4F7FB";
+const BLUE = "#4F7CFF";
+const CYAN = "#16C7D9";
+const DISPLAY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const MAX_DORES = 3;
 
@@ -1392,13 +1394,38 @@ function StepDots({ step }) {
   const order = ["cadastro", "cnpj", "porte", "dor", "checklist", "analisando", "resultado"];
   const idx = order.indexOf(step);
   if (idx === -1) return null;
+
   return (
-    <div style={{ display: "flex", gap: 6, justifyContent: "center", padding: "14px 0 4px" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: 7,
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "16px 18px 6px",
+      }}
+    >
       {order.map((s, i) => (
-        <div key={s} style={{
-          width: i === idx ? 16 : 6, height: 6, borderRadius: 3,
-          background: i <= idx ? CORAL : "#D8DEEA", transition: "all 0.25s",
-        }} />
+        <div
+          key={s}
+          style={{
+            width:
+              i === idx
+                ? 24
+                : 7,
+            height: 7,
+            borderRadius: 999,
+            background:
+              i <= idx
+                ? "linear-gradient(90deg,#4F7CFF,#16C7D9)"
+                : "#DCE4EF",
+            transition: "all .25s ease",
+            boxShadow:
+              i === idx
+                ? "0 4px 12px rgba(79,124,255,.22)"
+                : "none",
+          }}
+        />
       ))}
     </div>
   );
@@ -1410,10 +1437,27 @@ function PrimaryButton({ children, onClick, disabled, style }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        width: "100%", padding: "13px 16px", borderRadius: 12, border: "none",
-        background: disabled ? "#D8DEEA" : CORAL, color: WHITE, fontFamily: BODY_FONT,
-        fontSize: 14.5, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        width: "100%",
+        padding: "13px 16px",
+        borderRadius: 12,
+        border: "none",
+        background: disabled
+          ? "#D8DEEA"
+          : "linear-gradient(135deg,#4F7CFF,#16C7D9)",
+        color: WHITE,
+        fontFamily: BODY_FONT,
+        fontSize: 14,
+        fontWeight: 800,
+        cursor: disabled
+          ? "not-allowed"
+          : "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        boxShadow: disabled
+          ? "none"
+          : "0 10px 24px rgba(79,124,255,.22)",
         ...style,
       }}
     >
@@ -5495,15 +5539,98 @@ function DiagnosticoPrototipo({
 
 
   return (
-    <div style={{ background: "#EEF0F5", minHeight: 760, display: "flex", justifyContent: "center", padding: "32px 16px", fontFamily: BODY_FONT }}>
-      <div style={{ width: 380, borderRadius: 40, background: NAVY, padding: 12, boxShadow: "0 30px 60px rgba(23,35,61,0.25)" }}>
-        <div style={{ width: 120, height: 22, background: NAVY, borderRadius: 12, margin: "0 auto 4px", position: "relative" }}>
-          <div style={{ width: 46, height: 6, background: "#0B1526", borderRadius: 4, position: "absolute", left: "50%", top: 8, transform: "translateX(-50%)" }} />
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at top right, rgba(79,124,255,.16), transparent 30%), linear-gradient(180deg,#07111F 0%,#0A1526 38%,#F4F7FB 38%,#F4F7FB 100%)",
+        padding: "34px 16px 60px",
+        fontFamily: BODY_FONT,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 980,
+          margin: "0 auto",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            marginBottom: 18,
+            color: WHITE,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 1.2,
+                color: "#7DE0E9",
+                marginBottom: 4,
+              }}
+            >
+              FINDER INTELLIGENCE
+            </div>
+
+            <div
+              style={{
+                fontSize: 19,
+                fontWeight: 900,
+              }}
+            >
+              Diagnóstico consultivo
+            </div>
+          </div>
+
+          <div
+            style={{
+              border:
+                "1px solid rgba(255,255,255,.12)",
+              background:
+                "rgba(255,255,255,.06)",
+              borderRadius: 999,
+              padding: "7px 10px",
+              fontSize: 9.5,
+              color: "#B8C7DA",
+            }}
+          >
+            Seguro · Guiado · Inteligente
+          </div>
         </div>
-        <div style={{ background: WHITE, borderRadius: 28, minHeight: 686, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+
+        <div
+          style={{
+            background:
+              "rgba(255,255,255,.98)",
+            borderRadius: 24,
+            minHeight: 650,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            position: "relative",
+            border:
+              "1px solid rgba(255,255,255,.70)",
+            boxShadow:
+              "0 28px 70px rgba(5,14,29,.20)",
+          }}
+        >
           <StepDots step={step} />
 
-          <div style={{ flex: 1, padding: "18px 22px 22px", display: "flex", flexDirection: "column" }}>
+          <div
+            style={{
+              flex: 1,
+              padding:
+                "22px clamp(20px,4vw,46px) 34px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
 
             {step === "intro" && (
               <div
@@ -9383,3 +9510,4 @@ export default function App() {
     />
   );
 }
+
