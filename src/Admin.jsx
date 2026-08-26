@@ -22920,7 +22920,7 @@ export default function Admin() {
       <FinderTechLayout
         aba={aba}
         setAba={setAba}
-        logout={logout}
+        logout={sair}
         titulo="Visão Geral"
         subtitulo="Indicadores, operação comercial e inteligência Finder"
       >
