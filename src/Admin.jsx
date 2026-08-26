@@ -4585,7 +4585,6 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
           })}
         </div>
       )}
-      </div>
     </div>
   );
 }
