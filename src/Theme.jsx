@@ -1,10 +1,10 @@
 export const finderTheme = {
   colors: {
-    bg: "#08111F",
+    bg: "#07111F",
     bgSoft: "#0D1728",
     panel: "#101C2F",
     panelSoft: "#15243A",
-    panelLight: "#F6F8FC",
+    panelLight: "#F5F7FB",
     card: "#FFFFFF",
     text: "#E8EEF8",
     textDark: "#17233D",
@@ -36,20 +36,74 @@ export const finderStyles = {
   page: {
     minHeight: "100vh",
     background:
-      "radial-gradient(circle at top right, rgba(79,124,255,.16), transparent 28%), linear-gradient(180deg,#08111F 0%,#0B1526 100%)",
+      "radial-gradient(circle at top right, rgba(79,124,255,.15), transparent 26%), linear-gradient(180deg,#07111F 0%,#0A1424 100%)",
   },
 
   shell: {
     display: "grid",
-    gridTemplateColumns: "260px minmax(0,1fr)",
+    gridTemplateColumns:
+      "250px minmax(0,1fr)",
     minHeight: "100vh",
   },
 
   content: {
     minWidth: 0,
-    background: "#F6F8FC",
+    background: "#F5F7FB",
     borderTopLeftRadius: 26,
     borderBottomLeftRadius: 26,
     overflow: "hidden",
+    boxShadow:
+      "-10px 0 30px rgba(0,0,0,.06)",
   },
 };
+
+export const finderGlobalCss = `
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: #F5F7FB;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    transition:
+      border-color .18s ease,
+      box-shadow .18s ease,
+      transform .18s ease,
+      background .18s ease;
+  }
+
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: #4F7CFF !important;
+    box-shadow: 0 0 0 3px rgba(79,124,255,.10);
+  }
+
+  @media (max-width: 1100px) {
+    .finder-search-global {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 880px) {
+    .finder-sidebar {
+      position: static !important;
+      height: auto !important;
+    }
+
+    .finder-topbar {
+      position: static !important;
+    }
+  }
+`;
