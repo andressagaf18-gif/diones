@@ -157,8 +157,7 @@ export function FinderSidebar({
               item.icon;
 
             const ativo =
-              aba ===
-              item.id;
+              aba === item.id;
 
             return (
               <button
