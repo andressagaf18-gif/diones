@@ -8429,6 +8429,8 @@ function AtendimentosDepartamento({
 
   return (
     <div>
+      {!atendimentoInicialId && (
+        <>
       <div
         style={{
           display: "grid",
@@ -8952,6 +8954,32 @@ function AtendimentosDepartamento({
         </strong>{" "}
         atendimentos
       </div>
+        </>
+      )}
+
+      {atendimentoInicialId &&
+        !atendimentoAberto && (
+          <Card
+            style={{
+              borderLeft:
+                `4px solid ${CORAL}`,
+            }}
+          >
+            <strong>
+              Carregando atendimento selecionado...
+            </strong>
+
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 10.5,
+                marginTop: 5,
+              }}
+            >
+              Aguarde enquanto o sistema abre somente o caso escolhido no BI.
+            </div>
+          </Card>
+        )}
 
       {atendimentoAberto && (
         <div
@@ -8999,37 +9027,39 @@ function AtendimentosDepartamento({
               </strong>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setAtendimentoAberto(
-                  null
-                );
-                setDiagnosticoAtendimento(
-                  null
-                );
-                setHistoricoAtendimento(
-                  []
-                );
-                setPropostasAtendimento(
-                  []
-                );
-                limparFormularioProposta();
-              }}
-              style={{
-                border:
-                  "1px solid rgba(255,255,255,.45)",
-                background:
-                  "transparent",
-                color: WHITE,
-                borderRadius: 8,
-                padding: "6px 10px",
-                cursor: "pointer",
-                fontWeight: 800,
-              }}
-            >
-              Fechar
-            </button>
+            {!atendimentoInicialId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAtendimentoAberto(
+                    null
+                  );
+                  setDiagnosticoAtendimento(
+                    null
+                  );
+                  setHistoricoAtendimento(
+                    []
+                  );
+                  setPropostasAtendimento(
+                    []
+                  );
+                  limparFormularioProposta();
+                }}
+                style={{
+                  border:
+                    "1px solid rgba(255,255,255,.45)",
+                  background:
+                    "transparent",
+                  color: WHITE,
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                Fechar
+              </button>
+            )}
           </div>
 
           {carregandoCaso ? (
@@ -10693,6 +10723,8 @@ function AtendimentosDepartamento({
         </div>
       )}
 
+      {!atendimentoInicialId && (
+        <>
       {erro && (
         <div
           style={{
@@ -17338,6 +17370,9 @@ function CentralUsuariosAcessos({
           token={token}
         />
       )}
+        </>
+      )}
+
     </div>
   );
 }
