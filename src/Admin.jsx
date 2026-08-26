@@ -12766,7 +12766,6 @@ async function salvarPropostaCaso() {
               </div>
             </div>
           )}
-          </div>
         </div>
       )}
 
