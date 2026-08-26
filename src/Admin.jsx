@@ -6696,6 +6696,7 @@ function DocumentosAtendimento({
 function AtendimentosDepartamento({
   token,
   onAbrirDiagnostico,
+  atendimentoInicialId = "",
 }) {
   const [
     atendimentos,
@@ -6777,6 +6778,11 @@ function AtendimentosDepartamento({
     atendimentoAberto,
     setAtendimentoAberto,
   ] = useState(null);
+
+  const [
+    atendimentoInicialProcessado,
+    setAtendimentoInicialProcessado,
+  ] = useState("");
 
   const [
     diagnosticoAtendimento,
@@ -7790,6 +7796,59 @@ function AtendimentosDepartamento({
   useEffect(() => {
     carregarTudo();
   }, []);
+
+  useEffect(() => {
+    const idSolicitado =
+      String(
+        atendimentoInicialId ||
+        sessionStorage.getItem(
+          "finder_dashboard_atendimento_id"
+        ) ||
+        ""
+      );
+
+    if (
+      !idSolicitado ||
+      !atendimentos.length ||
+      atendimentoInicialProcessado ===
+        idSolicitado
+    ) {
+      return;
+    }
+
+    const encontrado =
+      atendimentos.find(
+        (item) =>
+          String(
+            item.id
+          ) ===
+          idSolicitado
+      );
+
+    if (!encontrado) {
+      setErro(
+        "O atendimento selecionado não foi encontrado entre os registros disponíveis."
+      );
+
+      setAtendimentoInicialProcessado(
+        idSolicitado
+      );
+
+      return;
+    }
+
+    setAtendimentoInicialProcessado(
+      idSolicitado
+    );
+
+    abrirAtendimento(
+      encontrado
+    );
+  }, [
+    atendimentos,
+    atendimentoInicialId,
+    atendimentoInicialProcessado,
+  ]);
 
   const mapaLeads = useMemo(() => {
     const mapa = {};
@@ -20400,6 +20459,11 @@ export default function Admin() {
     setAtendimentoDetalhe,
   ] = useState(false);
 
+  const [
+    atendimentoSelecionadoId,
+    setAtendimentoSelecionadoId,
+  ] = useState("");
+
   const usuarioSessao = useMemo(() => {
     try { return JSON.parse(sessionStorage.getItem("finder_admin_user") || "{}"); }
     catch { return {}; }
@@ -20430,6 +20494,7 @@ export default function Admin() {
     setToken("");
     setDiagnosticoId(null);
     setAtendimentoDetalhe(false);
+    setAtendimentoSelecionadoId("");
     setAba("dashboard");
   }
 
@@ -20462,14 +20527,26 @@ export default function Admin() {
   ) {
     setDiagnosticoId(null);
     setAba("atendimentos");
-    setAtendimentoDetalhe(
-      Boolean(atendimentoId)
+
+    const id =
+      atendimentoId
+        ? String(
+            atendimentoId
+          )
+        : "";
+
+    setAtendimentoSelecionadoId(
+      id
     );
 
-    if (atendimentoId) {
+    setAtendimentoDetalhe(
+      Boolean(id)
+    );
+
+    if (id) {
       sessionStorage.setItem(
         "finder_dashboard_atendimento_id",
-        String(atendimentoId)
+        id
       );
     }
   }
@@ -20548,6 +20625,10 @@ export default function Admin() {
           }
           onClick={() => {
             setAtendimentoDetalhe(false);
+            setAtendimentoSelecionadoId("");
+            sessionStorage.removeItem(
+              "finder_dashboard_atendimento_id"
+            );
             setAba(
               "atendimentos"
             );
@@ -20853,6 +20934,7 @@ export default function Admin() {
               type="button"
               onClick={() => {
                 setAtendimentoDetalhe(false);
+                setAtendimentoSelecionadoId("");
                 sessionStorage.removeItem(
                   "finder_dashboard_atendimento_id"
                 );
@@ -20873,6 +20955,9 @@ export default function Admin() {
               token={token}
               onAbrirDiagnostico={
                 setDiagnosticoId
+              }
+              atendimentoInicialId={
+                atendimentoSelecionadoId
               }
             />
           </main>
