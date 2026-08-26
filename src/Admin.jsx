@@ -35,6 +35,7 @@ import {
   History,
   UserCog,
   Pencil,
+  Sparkles,
 } from "lucide-react";
 import Dashboard from "./Dashboard";
 import OperacionalBI from "./OperacionalBI";
@@ -6862,6 +6863,16 @@ function AtendimentosDepartamento({
   ] = useState(false);
 
   const [
+    montandoPropostaIA,
+    setMontandoPropostaIA,
+  ] = useState(false);
+
+  const [
+    retornoPropostaIA,
+    setRetornoPropostaIA,
+  ] = useState(null);
+
+  const [
     propostaEditandoId,
     setPropostaEditandoId,
   ] = useState("");
@@ -6918,6 +6929,7 @@ function AtendimentosDepartamento({
 
   function limparFormularioProposta() {
     setPropostaEditandoId("");
+    setRetornoPropostaIA(null);
 
     setPropostaForm({
       servico: "",
@@ -6996,7 +7008,147 @@ function AtendimentosDepartamento({
     }
   }
 
-  async function salvarPropostaCaso() {
+  async function montarPropostaIA() {
+    if (!atendimentoAberto?.id) {
+      setErro(
+        "Abra um atendimento antes de montar a proposta."
+      );
+      return;
+    }
+
+    setMontandoPropostaIA(true);
+    setErro("");
+    setRetornoPropostaIA(null);
+
+    try {
+      const resposta = await fetch(
+        "/api/crm?action=montar-proposta-ia",
+        {
+          method: "POST",
+          headers: {
+            "content-type":
+              "application/json",
+            Authorization:
+              `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            atendimentoId:
+              atendimentoAberto.id,
+          }),
+        }
+      );
+
+      const data =
+        await resposta
+          .json()
+          .catch(() => null);
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
+        throw new Error(
+          data?.error ||
+          "Não foi possível montar a proposta com IA."
+        );
+      }
+
+      const propostaIA =
+        data.proposta || {};
+
+      setPropostaForm(
+        (atual) => ({
+          ...atual,
+          tituloProposta:
+            propostaIA.tituloProposta ||
+            atual.tituloProposta,
+          resumoExecutivo:
+            propostaIA.resumoExecutivo ||
+            atual.resumoExecutivo,
+          servico:
+            propostaIA.servico ||
+            atual.servico,
+          descricao:
+            propostaIA.descricao ||
+            atual.descricao,
+          escopo:
+            propostaIA.escopo ||
+            atual.escopo,
+          entregaveis:
+            propostaIA.entregaveis ||
+            atual.entregaveis,
+          tipoReceita:
+            propostaIA.tipoReceita ||
+            atual.tipoReceita,
+          condicoesPagamento:
+            propostaIA.condicoesPagamento ||
+            atual.condicoesPagamento,
+          prazoExecucao:
+            propostaIA.prazoExecucao ||
+            atual.prazoExecucao,
+          observacoes:
+            propostaIA.observacoes ||
+            atual.observacoes,
+
+          valorTotal:
+            Number(
+              propostaIA.valorTotal || 0
+            ) > 0
+              ? String(
+                  propostaIA.valorTotal
+                )
+              : atual.valorTotal,
+
+          mensalidade:
+            Number(
+              propostaIA.mensalidade || 0
+            ) > 0
+              ? String(
+                  propostaIA.mensalidade
+                )
+              : atual.mensalidade,
+
+          taxaImplantacao:
+            Number(
+              propostaIA.taxaImplantacao || 0
+            ) > 0
+              ? String(
+                  propostaIA.taxaImplantacao
+                )
+              : atual.taxaImplantacao,
+        })
+      );
+
+      setRetornoPropostaIA({
+        confianca:
+          propostaIA.confianca ||
+          "MEDIA",
+
+        baseUtilizada:
+          Array.isArray(
+            propostaIA.baseUtilizada
+          )
+            ? propostaIA.baseUtilizada
+            : [],
+
+        alertasRevisao:
+          Array.isArray(
+            propostaIA.alertasRevisao
+          )
+            ? propostaIA.alertasRevisao
+            : [],
+      });
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Erro ao montar proposta com IA."
+      );
+    } finally {
+      setMontandoPropostaIA(false);
+    }
+  }
+
+async function salvarPropostaCaso() {
     if (!atendimentoAberto) return;
 
     if (!propostaForm.servico.trim()) {
@@ -10161,6 +10313,137 @@ function AtendimentosDepartamento({
                           ? "Editar proposta"
                           : "Nova proposta"}
                       </h3>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          marginBottom: 10,
+                        }}
+                      >
+                        <Botao
+                          secundario
+                          onClick={
+                            montarPropostaIA
+                          }
+                          disabled={
+                            montandoPropostaIA
+                          }
+                        >
+                          <Sparkles
+                            size={14}
+                          />
+
+                          {montandoPropostaIA
+                            ? "Montando com IA..."
+                            : "Montar proposta com IA"}
+                        </Botao>
+                      </div>
+
+                      {retornoPropostaIA && (
+                        <div
+                          style={{
+                            background:
+                              "#F7F8FB",
+                            border:
+                              "1px solid #DDE3EC",
+                            borderRadius: 10,
+                            padding: 10,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent:
+                                "space-between",
+                              gap: 8,
+                              alignItems:
+                                "center",
+                            }}
+                          >
+                            <strong
+                              style={{
+                                fontSize: 10.5,
+                              }}
+                            >
+                              Rascunho preparado pela IA
+                            </strong>
+
+                            <span
+                              style={{
+                                background:
+                                  "#EEF3FF",
+                                color:
+                                  "#31589C",
+                                borderRadius: 999,
+                                padding:
+                                  "4px 7px",
+                                fontSize: 8.5,
+                                fontWeight: 900,
+                              }}
+                            >
+                              Confiança {retornoPropostaIA.confianca}
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              color: MUTED,
+                              fontSize: 9,
+                              marginTop: 7,
+                            }}
+                          >
+                            Revise todos os campos antes de salvar. A IA não inventa valores que não estejam na base.
+                          </div>
+
+                          {!!retornoPropostaIA.baseUtilizada?.length && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                fontSize: 9,
+                              }}
+                            >
+                              <strong>
+                                Base utilizada:
+                              </strong>{" "}
+                              {retornoPropostaIA.baseUtilizada.join(
+                                ", "
+                              )}
+                            </div>
+                          )}
+
+                          {!!retornoPropostaIA.alertasRevisao?.length && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                display: "grid",
+                                gap: 4,
+                              }}
+                            >
+                              {retornoPropostaIA.alertasRevisao.map(
+                                (alerta, index) => (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      background:
+                                        "#FFF7E7",
+                                      color:
+                                        "#854F0B",
+                                      borderRadius: 7,
+                                      padding: 7,
+                                      fontSize: 8.8,
+                                    }}
+                                  >
+                                    {alerta}
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div
                         style={{
