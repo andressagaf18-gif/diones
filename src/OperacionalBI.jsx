@@ -1,4 +1,5 @@
 import {
+  Children,
   useEffect,
   useMemo,
   useState,
@@ -164,22 +165,235 @@ function Card({ children, style = {}, onClick }) {
 }
 
 function Select({ value, onChange, children }) {
+  const [aberto, setAberto] = useState(false);
+
+  const opcoes = Children.toArray(children)
+    .flatMap((item) => {
+      if (!item?.props) return [];
+
+      if (
+        item.type === "option"
+      ) {
+        return [
+          {
+            value:
+              item.props.value ??
+              "",
+            label:
+              item.props.children,
+          },
+        ];
+      }
+
+      return Children.toArray(
+        item.props.children
+      )
+        .filter(
+          (filho) =>
+            filho?.type ===
+            "option"
+        )
+        .map((filho) => ({
+          value:
+            filho.props.value ??
+            "",
+          label:
+            filho.props.children,
+        }));
+    });
+
+  const selecionada =
+    opcoes.find(
+      (opcao) =>
+        String(
+          opcao.value
+        ) ===
+        String(value)
+    ) || opcoes[0];
+
+  function escolher(
+    novoValor
+  ) {
+    onChange?.({
+      target: {
+        value:
+          novoValor,
+      },
+    });
+
+    setAberto(false);
+  }
+
   return (
-    <select
-      value={value}
-      onChange={onChange}
+    <div
       style={{
-        border: `1px solid ${BORDER}`,
-        borderRadius: 10,
-        padding: "10px 11px",
-        background: WHITE,
-        color: NAVY,
-        fontSize: 11,
+        position: "relative",
         minWidth: 155,
+        zIndex: aberto
+          ? 1000
+          : "auto",
       }}
     >
-      {children}
-    </select>
+      <button
+        type="button"
+        onClick={() =>
+          setAberto(
+            (atual) =>
+              !atual
+          )
+        }
+        style={{
+          width: "100%",
+          minHeight: 38,
+          border:
+            `1px solid ${
+              aberto
+                ? "#1265C4"
+                : BORDER
+            }`,
+          borderRadius: 10,
+          padding:
+            "10px 34px 10px 11px",
+          background: WHITE,
+          color: NAVY,
+          fontSize: 11,
+          textAlign: "left",
+          cursor: "pointer",
+          position: "relative",
+          boxShadow:
+            aberto
+              ? "0 0 0 2px rgba(18,101,196,.12)"
+              : "none",
+        }}
+      >
+        <span>
+          {
+            selecionada?.label ??
+            "Selecionar"
+          }
+        </span>
+
+        <span
+          aria-hidden="true"
+          style={{
+            position:
+              "absolute",
+            right: 11,
+            top: "50%",
+            transform:
+              aberto
+                ? "translateY(-50%) rotate(180deg)"
+                : "translateY(-50%)",
+            fontSize: 12,
+            lineHeight: 1,
+          }}
+        >
+          ▾
+        </span>
+      </button>
+
+      {aberto && (
+        <>
+          <button
+            type="button"
+            aria-label="Fechar seleção"
+            onClick={() =>
+              setAberto(false)
+            }
+            style={{
+              position:
+                "fixed",
+              inset: 0,
+              border: 0,
+              padding: 0,
+              background:
+                "transparent",
+              zIndex: 999,
+              cursor:
+                "default",
+            }}
+          />
+
+          <div
+            style={{
+              position:
+                "absolute",
+              top:
+                "calc(100% + 5px)",
+              left: 0,
+              right: 0,
+              maxHeight: 260,
+              overflowY: "auto",
+              background: WHITE,
+              border:
+                `1px solid ${BORDER}`,
+              borderRadius: 10,
+              boxShadow:
+                "0 12px 30px rgba(23,35,61,.18)",
+              padding: 5,
+              zIndex: 1001,
+            }}
+          >
+            {opcoes.map(
+              (
+                opcao,
+                indice
+              ) => {
+                const ativa =
+                  String(
+                    opcao.value
+                  ) ===
+                  String(
+                    value
+                  );
+
+                return (
+                  <button
+                    key={`${String(
+                      opcao.value
+                    )}-${indice}`}
+                    type="button"
+                    onClick={() =>
+                      escolher(
+                        opcao.value
+                      )
+                    }
+                    style={{
+                      width:
+                        "100%",
+                      border: 0,
+                      borderRadius: 7,
+                      padding:
+                        "9px 10px",
+                      background:
+                        ativa
+                          ? "#EEF4FF"
+                          : WHITE,
+                      color:
+                        NAVY,
+                      fontSize:
+                        10.5,
+                      fontWeight:
+                        ativa
+                          ? 800
+                          : 500,
+                      textAlign:
+                        "left",
+                      cursor:
+                        "pointer",
+                    }}
+                  >
+                    {
+                      opcao.label
+                    }
+                  </button>
+                );
+              }
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
