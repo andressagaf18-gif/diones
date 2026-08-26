@@ -1376,26 +1376,6 @@ function PrimaryButton({ children, onClick, disabled, style }) {
 }
 
 function DiagnosticoPrototipo() {
-  const SENHA_ACESSO_APP = "181022";
-  const [acessoLiberado, setAcessoLiberado] = useState(() => {
-    try { return sessionStorage.getItem("finder_app_acesso") === "liberado"; }
-    catch { return false; }
-  });
-  const [senhaAcesso, setSenhaAcesso] = useState("");
-  const [erroSenhaAcesso, setErroSenhaAcesso] = useState("");
-
-  function validarAcessoApp(event) {
-    event?.preventDefault?.();
-    if (senhaAcesso === SENHA_ACESSO_APP) {
-      try { sessionStorage.setItem("finder_app_acesso", "liberado"); } catch {}
-      setAcessoLiberado(true);
-      setErroSenhaAcesso("");
-      setSenhaAcesso("");
-      return;
-    }
-    setErroSenhaAcesso("Senha incorreta. Tente novamente.");
-  }
-
   const [step, setStep] = useState("intro");
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("");
@@ -5987,26 +5967,6 @@ function DiagnosticoPrototipo() {
   }
 
 
-  if (!acessoLiberado) {
-    return (
-      <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, boxSizing:"border-box", fontFamily:BODY_FONT }}>
-        <form onSubmit={validarAcessoApp} style={{ width:"100%", maxWidth:390, background:WHITE, borderRadius:18, padding:28, boxShadow:"0 24px 70px rgba(0,0,0,.28)" }}>
-          <div style={{ fontSize:11, fontWeight:900, letterSpacing:1.2, color:CORAL, marginBottom:7 }}>FINDER OF SOLUTIONS</div>
-          <h1 style={{ margin:"0 0 7px", color:NAVY, fontSize:26, lineHeight:1.1, fontFamily:DISPLAY_FONT }}>Acesso ao diagnóstico</h1>
-          <p style={{ margin:"0 0 20px", color:MUTED, fontSize:13, lineHeight:1.55 }}>Digite a senha para acessar o aplicativo.</p>
-          <label htmlFor="senha-acesso-app" style={{ display:"block", color:NAVY, fontSize:11, fontWeight:800, marginBottom:6 }}>SENHA</label>
-          <input id="senha-acesso-app" type="password" inputMode="numeric" autoFocus value={senhaAcesso}
-            onChange={(event)=>{ setSenhaAcesso(event.target.value); setErroSenhaAcesso(""); }}
-            placeholder="Digite a senha"
-            style={{ width:"100%", boxSizing:"border-box", border:erroSenhaAcesso ? "1px solid #D92D20" : "1px solid #D0D5DD", borderRadius:10, padding:"12px 13px", fontSize:15, outline:"none", marginBottom:erroSenhaAcesso ? 7 : 14 }}
-          />
-          {erroSenhaAcesso && <div style={{ color:"#D92D20", fontSize:11.5, marginBottom:12 }}>{erroSenhaAcesso}</div>}
-          <button type="submit" style={{ width:"100%", border:0, borderRadius:10, padding:"12px 14px", background:CORAL, color:WHITE, fontSize:13, fontWeight:900, cursor:"pointer" }}>Entrar</button>
-        </form>
-      </div>
-    );
-  }
-
   return (
     <div
       className="finder-public-stage"
@@ -8885,6 +8845,283 @@ function TelaInicialFinder({
   );
 }
 
+function TelaOrigemEvento({
+  onVoltar,
+  onContinuar,
+}) {
+  const [origem, setOrigem] =
+    useState(() => {
+      try {
+        const params =
+          new URLSearchParams(
+            window.location.search
+          );
+
+        return (
+          params.get("origem") ||
+          ""
+        );
+      } catch {
+        return "";
+      }
+    });
+
+  const [erro, setErro] =
+    useState("");
+
+  function continuar() {
+    const valor =
+      String(
+        origem ||
+        ""
+      )
+        .trim()
+        .toLowerCase()
+        .replace(
+          /\s+/g,
+          "-"
+        )
+        .replace(
+          /[^a-z0-9_-]/g,
+          ""
+        );
+
+    if (!valor) {
+      setErro(
+        "Informe a origem do evento."
+      );
+      return;
+    }
+
+    try {
+      const url =
+        new URL(
+          window.location.href
+        );
+
+      url.searchParams.set(
+        "origem",
+        valor
+      );
+
+      window.history.replaceState(
+        {},
+        "",
+        url.toString()
+      );
+
+      sessionStorage.setItem(
+        "finder_origem_atual",
+        valor
+      );
+    } catch {}
+
+    onContinuar(
+      valor
+    );
+  }
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "#F3F5F8",
+        display: "flex",
+        alignItems: "center",
+        justifyContent:
+          "center",
+        padding: 20,
+        fontFamily:
+          BODY_FONT,
+        boxSizing:
+          "border-box",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: WHITE,
+          borderRadius: 20,
+          padding: 30,
+          boxSizing:
+            "border-box",
+          boxShadow:
+            "0 24px 60px rgba(23,35,61,.14)",
+        }}
+      >
+        <img
+          src="/finder-logo.png"
+          alt="Finder of Solutions"
+          style={{
+            width: 180,
+            maxWidth: "70%",
+            objectFit:
+              "contain",
+            marginBottom: 22,
+          }}
+        />
+
+        <div
+          style={{
+            color: CORAL,
+            fontSize: 10.5,
+            fontWeight: 900,
+            letterSpacing: 1.1,
+            marginBottom: 7,
+          }}
+        >
+          RESPONDER DIAGNÓSTICO
+        </div>
+
+        <h1
+          style={{
+            margin:
+              "0 0 7px",
+            color: NAVY,
+            fontSize: 28,
+            fontFamily:
+              DISPLAY_FONT,
+          }}
+        >
+          Vincular origem
+        </h1>
+
+        <p
+          style={{
+            margin:
+              "0 0 20px",
+            color: MUTED,
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          Informe a origem cadastrada para este evento, campanha ou parceiro. Não é necessário senha.
+        </p>
+
+        <label
+          htmlFor="origem-evento"
+          style={{
+            display: "block",
+            color: NAVY,
+            fontSize: 11,
+            fontWeight: 900,
+            marginBottom: 6,
+          }}
+        >
+          ORIGEM
+        </label>
+
+        <input
+          id="origem-evento"
+          value={origem}
+          onChange={(e) => {
+            setOrigem(
+              e.target.value
+            );
+            setErro("");
+          }}
+          onKeyDown={(e) => {
+            if (
+              e.key ===
+              "Enter"
+            ) {
+              continuar();
+            }
+          }}
+          autoFocus
+          placeholder="Ex.: xbusiness"
+          style={{
+            width: "100%",
+            minHeight: 46,
+            boxSizing:
+              "border-box",
+            border:
+              erro
+                ? "1px solid #D92D20"
+                : "1px solid #D8DEEA",
+            borderRadius: 10,
+            padding:
+              "12px 13px",
+            fontFamily:
+              BODY_FONT,
+            fontSize: 16,
+            color: NAVY,
+            outline: "none",
+          }}
+        />
+
+        {erro && (
+          <div
+            style={{
+              color:
+                "#D92D20",
+              fontSize: 11.5,
+              marginTop: 7,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+
+        <div
+          style={{
+            background:
+              "#F7F8FB",
+            border:
+              "1px solid #E3E7EF",
+            borderRadius: 10,
+            padding: 10,
+            marginTop: 12,
+            color: MUTED,
+            fontSize: 11.5,
+            lineHeight: 1.5,
+          }}
+        >
+          A origem será vinculada ao lead e ao diagnóstico para aparecer nos filtros e relatórios do Admin.
+        </div>
+
+        <button
+          type="button"
+          onClick={continuar}
+          style={{
+            width: "100%",
+            minHeight: 46,
+            marginTop: 14,
+            border: 0,
+            borderRadius: 10,
+            background: CORAL,
+            color: WHITE,
+            fontWeight: 900,
+            cursor: "pointer",
+            fontSize: 14,
+          }}
+        >
+          Iniciar diagnóstico
+        </button>
+
+        <button
+          type="button"
+          onClick={onVoltar}
+          style={{
+            width: "100%",
+            marginTop: 10,
+            border: 0,
+            background:
+              "transparent",
+            color: MUTED,
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          ← Voltar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function LoginSistema({
   onVoltar,
   onLogin,
@@ -9165,6 +9402,40 @@ function LoginSistema({
 }
 
 export default function App() {
+  function iniciarFormulario() {
+    try {
+      const params =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      const origem =
+        params.get(
+          "origem"
+        );
+
+      if (
+        origem &&
+        origem.trim()
+      ) {
+        sessionStorage.setItem(
+          "finder_origem_atual",
+          origem.trim()
+        );
+
+        setModo(
+          "diagnostico"
+        );
+
+        return;
+      }
+    } catch {}
+
+    setModo(
+      "origem"
+    );
+  }
+
   const [modo, setModo] =
     useState(() => {
       try {
@@ -9205,6 +9476,26 @@ export default function App() {
 
   if (
     modo ===
+    "origem"
+  ) {
+    return (
+      <TelaOrigemEvento
+        onVoltar={() =>
+          setModo(
+            "inicio"
+          )
+        }
+        onContinuar={() =>
+          setModo(
+            "diagnostico"
+          )
+        }
+      />
+    );
+  }
+
+  if (
+    modo ===
     "login-sistema"
   ) {
     return (
@@ -9225,10 +9516,8 @@ export default function App() {
 
   return (
     <TelaInicialFinder
-      onResponderDiagnostico={() =>
-        setModo(
-          "diagnostico"
-        )
+      onResponderDiagnostico={
+        iniciarFormulario
       }
       onEntrarSistema={() =>
         setModo(
