@@ -1,22 +1,17 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
   CalendarCheck, RotateCcw, Megaphone, Scale, Calculator, Wallet,
   ClipboardList, Target, Settings2, Building2, Sparkles, Users, TrendingUp,
-  AlertTriangle, Percent, Cpu, Flame, X, Plus, User, Clock3,
+  AlertTriangle, Percent, Cpu, Flame, X, Plus, User,
 } from "lucide-react";
 
-import Admin from "./Admin";
-
-const NAVY = "#0D1B2F";
-const ICE = "#EEF3F9";
+const NAVY = "#17233D";
+const ICE = "#E9EDF5";
 const CORAL = "#FF6B4A";
-const MUTED = "#61708A";
+const MUTED = "#5B667A";
 const WHITE = "#FFFFFF";
-const BG = "#F4F7FB";
-const BLUE = "#4F7CFF";
-const CYAN = "#16C7D9";
-const DISPLAY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const MAX_DORES = 3;
 
@@ -240,23 +235,6 @@ const ESTRUTURAS_NEGOCIO = [
   { id: "spe", label: "SPE" },
   { id: "avaliar_holding", label: "Quero avaliar se uma holding faz sentido" },
   { id: "pessoa_fisica", label: "Pessoa Física / Consultoria pessoal" },
-  { id: "reforma_tributaria", label: "Reforma Tributária / IBS e CBS" },
-];
-
-const OBJETIVOS_REFORMA_TRIBUTARIA = [
-  "Entender como IBS e CBS vão funcionar",
-  "Saber se minha carga tributária pode aumentar ou diminuir",
-  "Comparar a tributação atual com a Reforma Tributária",
-  "Entender créditos de IBS/CBS nas compras e despesas",
-  "Revisar preço de venda e margem",
-  "Avaliar impacto nos fornecedores e clientes",
-  "Adequar notas fiscais, ERP e processos fiscais",
-  "Revisar contratos e repasse dos novos tributos",
-  "Entender os impactos para o Simples Nacional",
-  "Avaliar Lucro Presumido x Lucro Real",
-  "Avaliar impactos em holding, imóveis ou locações",
-  "Planejar a empresa para 2027 em diante",
-  "Tenho uma dúvida específica",
 ];
 
 const TIPOS_HOLDING = [
@@ -929,50 +907,6 @@ const DORES_EVENTO = [
   "Outro",
 ];
 
-const DORES_REFORMA = [
-  "Não sei quanto a Reforma pode alterar minha carga tributária",
-  "Não sei quais compras e despesas poderão gerar créditos",
-  "Tenho receio de perder margem com a nova tributação",
-  "Ainda não revisei preços e contratos",
-  "Meu ERP / sistema fiscal ainda não está preparado",
-  "Não sei como meus clientes serão impactados",
-  "Não sei como meus fornecedores afetarão meus créditos",
-  "Tenho dúvidas sobre Simples Nacional",
-  "Quero comparar Lucro Presumido x Lucro Real",
-  "Tenho operações com benefícios ou tratamentos específicos",
-  "Tenho operações interestaduais, importação ou exportação",
-  "Preciso de um plano de adequação para 2027 em diante",
-  "Outro",
-];
-
-const IMPACTOS_REFORMA = [
-  "Aumento de carga tributária",
-  "Redução de margem",
-  "Necessidade de reajustar preços",
-  "Perda de competitividade",
-  "Créditos tributários não aproveitados",
-  "Risco de erro em nota fiscal",
-  "Risco contratual",
-  "Impacto no fluxo de caixa",
-  "Impacto nos clientes",
-  "Impacto nos fornecedores",
-  "Necessidade de trocar ou ajustar sistema",
-  "Incerteza para decisões de investimento",
-];
-
-const AREAS_REFORMA = [
-  { id: "reforma_carga", label: "Carga tributária e cenários", Icon: Percent },
-  { id: "reforma_creditos", label: "Créditos de IBS/CBS", Icon: Calculator },
-  { id: "reforma_precos", label: "Preço, margem e repasse", Icon: TrendingUp },
-  { id: "reforma_clientes", label: "Clientes e modelo B2B/B2C", Icon: Users },
-  { id: "reforma_fornecedores", label: "Fornecedores e cadeia de créditos", Icon: Building2 },
-  { id: "reforma_fiscal", label: "Notas fiscais e parametrização", Icon: ClipboardList },
-  { id: "reforma_sistemas", label: "ERP / tecnologia", Icon: Cpu },
-  { id: "reforma_contratos", label: "Contratos e cláusulas tributárias", Icon: Scale },
-  { id: "reforma_regime", label: "Regime tributário e planejamento", Icon: Target },
-  { id: "reforma_transicao", label: "Cronograma de adequação", Icon: Clock3 },
-];
-
 const DORES_HOLDING = [
   "Patrimônio desorganizado entre pessoa física e jurídica",
   "Sucessão familiar ainda não planejada",
@@ -1394,38 +1328,20 @@ function StepDots({ step }) {
   const order = ["cadastro", "cnpj", "porte", "dor", "checklist", "analisando", "resultado"];
   const idx = order.indexOf(step);
   if (idx === -1) return null;
-
   return (
     <div
       style={{
         display: "flex",
-        gap: 7,
+        gap: 6,
         justifyContent: "center",
-        alignItems: "center",
-        padding: "16px 18px 6px",
+        padding: "14px 18px 4px",
       }}
     >
       {order.map((s, i) => (
-        <div
-          key={s}
-          style={{
-            width:
-              i === idx
-                ? 24
-                : 7,
-            height: 7,
-            borderRadius: 999,
-            background:
-              i <= idx
-                ? "linear-gradient(90deg,#4F7CFF,#16C7D9)"
-                : "#DCE4EF",
-            transition: "all .25s ease",
-            boxShadow:
-              i === idx
-                ? "0 4px 12px rgba(79,124,255,.22)"
-                : "none",
-          }}
-        />
+        <div key={s} style={{
+          width: i === idx ? 16 : 6, height: 6, borderRadius: 3,
+          background: i <= idx ? CORAL : "#D8DEEA", transition: "all 0.25s",
+        }} />
       ))}
     </div>
   );
@@ -1438,26 +1354,17 @@ function PrimaryButton({ children, onClick, disabled, style }) {
       disabled={disabled}
       style={{
         width: "100%",
+        minHeight: 48,
         padding: "13px 16px",
         borderRadius: 12,
         border: "none",
-        background: disabled
-          ? "#D8DEEA"
-          : "linear-gradient(135deg,#4F7CFF,#16C7D9)",
+        background: disabled ? "#D8DEEA" : CORAL,
         color: WHITE,
         fontFamily: BODY_FONT,
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: 800,
-        cursor: disabled
-          ? "not-allowed"
-          : "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        boxShadow: disabled
-          ? "none"
-          : "0 10px 24px rgba(79,124,255,.22)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         ...style,
       }}
     >
@@ -1466,9 +1373,27 @@ function PrimaryButton({ children, onClick, disabled, style }) {
   );
 }
 
-function DiagnosticoPrototipo({
-  contextoEvento = null,
-}) {
+function DiagnosticoPrototipo() {
+  const SENHA_ACESSO_APP = "181022";
+  const [acessoLiberado, setAcessoLiberado] = useState(() => {
+    try { return sessionStorage.getItem("finder_app_acesso") === "liberado"; }
+    catch { return false; }
+  });
+  const [senhaAcesso, setSenhaAcesso] = useState("");
+  const [erroSenhaAcesso, setErroSenhaAcesso] = useState("");
+
+  function validarAcessoApp(event) {
+    event?.preventDefault?.();
+    if (senhaAcesso === SENHA_ACESSO_APP) {
+      try { sessionStorage.setItem("finder_app_acesso", "liberado"); } catch {}
+      setAcessoLiberado(true);
+      setErroSenhaAcesso("");
+      setSenhaAcesso("");
+      return;
+    }
+    setErroSenhaAcesso("Senha incorreta. Tente novamente.");
+  }
+
   const [step, setStep] = useState("intro");
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("");
@@ -1485,19 +1410,6 @@ function DiagnosticoPrototipo({
   const [atividadePredominante, setAtividadePredominante] = useState(null);
   const [descricaoNegocio, setDescricaoNegocio] = useState("");
   const [estruturaNegocio, setEstruturaNegocio] = useState("operacional");
-  const [objetivosReforma, setObjetivosReforma] = useState([]);
-  const [duvidaReforma, setDuvidaReforma] = useState("");
-  const [perfilClientesReforma, setPerfilClientesReforma] = useState("");
-  const [comprasCreditoReforma, setComprasCreditoReforma] = useState("");
-  const [folhaReforma, setFolhaReforma] = useState("");
-  const [repassePrecoReforma, setRepassePrecoReforma] = useState("");
-  const [erpReforma, setErpReforma] = useState("");
-  const [contratosReforma, setContratosReforma] = useState("");
-  const [beneficiosReforma, setBeneficiosReforma] = useState("");
-  const [operacoesReforma, setOperacoesReforma] = useState([]);
-  const [preparacaoReforma, setPreparacaoReforma] = useState("");
-
-
   const [tiposHolding, setTiposHolding] = useState([]);
   const [objetivosHolding, setObjetivosHolding] = useState([]);
   const [patrimonioHolding, setPatrimonioHolding] = useState("");
@@ -1580,9 +1492,6 @@ function DiagnosticoPrototipo({
   const trilhaSPEAtiva =
     estruturaNegocio === "spe";
 
-  const trilhaReformaAtiva =
-    estruturaNegocio === "reforma_tributaria";
-
   // Regras de CNPJ por estrutura:
   // PF e avaliação de Holding não exigem CNPJ.
   // Holding existente e Grupo exigem CNPJ.
@@ -1606,8 +1515,6 @@ function DiagnosticoPrototipo({
       ? AREAS_GRUPO
       : trilhaSPEAtiva
       ? AREAS_SPE
-      : trilhaReformaAtiva
-      ? AREAS_REFORMA
       : AREAS;
 
   const doresDisponiveis =
@@ -1619,8 +1526,6 @@ function DiagnosticoPrototipo({
       ? DORES_GRUPO
       : trilhaSPEAtiva
       ? DORES_SPE
-      : trilhaReformaAtiva
-      ? DORES_REFORMA
       : DORES_EVENTO;
 
   const impactosDisponiveis =
@@ -1632,8 +1537,6 @@ function DiagnosticoPrototipo({
       ? IMPACTOS_GRUPO
       : trilhaSPEAtiva
       ? IMPACTOS_SPE
-      : trilhaReformaAtiva
-      ? IMPACTOS_REFORMA
       : IMPACTOS_DOR;
 
   const tituloContextoDiagnostico =
@@ -1645,8 +1548,6 @@ function DiagnosticoPrototipo({
             ? "sua necessidade de estrutura patrimonial"
             : "sua holding e estrutura patrimonial"
         )
-      : trilhaReformaAtiva
-      ? "os impactos da Reforma Tributária no seu negócio"
       : "seu negócio";
 
   const perfilPF = {
@@ -1670,34 +1571,6 @@ function DiagnosticoPrototipo({
     patrimonioAproximado: patrimonioHolding,
     receitasPatrimoniais: receitasHolding,
     situacaoSucessoria: sucessaoHolding,
-  };
-
-  const perfilReformaTributaria = {
-    ativo: trilhaReformaAtiva,
-    objetivos: objetivosReforma,
-    duvidaEspecifica: duvidaReforma.trim(),
-    interessePrincipal:
-      objetivosReforma[0] || "",
-    perfilClientes:
-      perfilClientesReforma,
-    potencialCreditoCompras:
-      comprasCreditoReforma,
-    pesoFolha:
-      folhaReforma,
-    capacidadeRepassePreco:
-      repassePrecoReforma,
-    preparacaoERP:
-      erpReforma,
-    revisaoContratos:
-      contratosReforma,
-    beneficiosTratamentos:
-      beneficiosReforma,
-    operacoesEspeciais:
-      operacoesReforma,
-    nivelPreparacao:
-      preparacaoReforma,
-    exigeAnaliseConsultiva:
-      trilhaReformaAtiva,
   };
 
   const perfilGrupo = {
@@ -1962,19 +1835,16 @@ function DiagnosticoPrototipo({
         );
 
         const origem =
-          contextoEvento?.origem ||
           params.get("origem") ||
           params.get("utm_source") ||
           "direto";
 
         const campanha =
-          contextoEvento?.campanha ||
           params.get("campanha") ||
           params.get("utm_campaign") ||
           "";
 
         const promoter =
-          contextoEvento?.responsavel ||
           params.get("promoter") ||
           "";
 
@@ -2576,7 +2446,6 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
-        reformaTributaria: perfilReformaTributaria,
       },
     };
 
@@ -2651,15 +2520,7 @@ function DiagnosticoPrototipo({
     let cancelado = false;
     const labels = gruposSelecionados.map((g) => g.label);
     const msgs =
-      trilhaReformaAtiva
-        ? [
-            `Temas: ${objetivosReforma.slice(0, 3).join(", ") || "Reforma Tributária"}`,
-            `Cruzando regime ${regime || "-"} com atividade e faturamento`,
-            "Analisando cadeia de créditos, clientes e fornecedores",
-            "Verificando preço, margem, contratos e preparação do ERP",
-            "Classificando necessidade de simulação e próximos passos",
-          ]
-        : trilhaPFAtiva
+      trilhaPFAtiva
         ? [
             `Objetivos: ${
               objetivosPF
@@ -2697,8 +2558,6 @@ function DiagnosticoPrototipo({
       segmento:
         trilhaPFAtiva
           ? "Pessoa Física / Consultoria Financeira"
-          : trilhaReformaAtiva
-          ? "Reforma Tributária / IBS e CBS"
           : segmentoPredominante,
 
       categoria:
@@ -2716,18 +2575,11 @@ function DiagnosticoPrototipo({
                 .join(" + ") ||
               "Pessoa Física"
             )
-          : trilhaReformaAtiva
-          ? (
-              objetivosReforma.join(" + ") ||
-              "Reforma Tributária"
-            )
           : categoriaPrincipal,
 
       codigoQuestionario:
         trilhaPFAtiva
           ? "PF_CONSULTORIA"
-          : trilhaReformaAtiva
-          ? "REFORMA_TRIBUTARIA_CONSULTIVA"
           : codigoQuestionario,
       cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
       cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
@@ -2767,14 +2619,12 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
-        reformaTributaria: perfilReformaTributaria,
         grupo: perfilGrupo,
         spe: perfilSPE,
       },
 
       holding: perfilHolding,
       pessoaFisica: perfilPF,
-      reformaTributaria: perfilReformaTributaria,
       grupo: perfilGrupo,
       spe: perfilSPE,
 
@@ -3390,8 +3240,6 @@ function DiagnosticoPrototipo({
           ? "Holding / Estrutura Patrimonial"
           : trilhaPFAtiva
           ? "Pessoa Física / Consultoria Financeira"
-          : trilhaReformaAtiva
-          ? "Reforma Tributária / IBS e CBS"
           : segmentoPredominante,
 
       categoriaAtual:
@@ -3423,11 +3271,6 @@ function DiagnosticoPrototipo({
                 .join(" + ") ||
               "Pessoa Física"
             )
-          : trilhaReformaAtiva
-          ? (
-              objetivosReforma.join(" + ") ||
-              "Reforma Tributária"
-            )
           : categoriaPrincipal,
       cnaePrincipal: empresaPrincipal?.cnaePrincipal || null,
       cnaesSecundarios: empresaPrincipal?.cnaesSecundarios || [],
@@ -3440,36 +3283,16 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
-        reformaTributaria: perfilReformaTributaria,
         grupo: perfilGrupo,
         spe: perfilSPE,
       },
 
       holding: perfilHolding,
       pessoaFisica: perfilPF,
-      reformaTributaria: perfilReformaTributaria,
       grupo: perfilGrupo,
       spe: perfilSPE,
 
-      instrucoesEspeciais: trilhaReformaAtiva
-        ? [
-            "Tratar este fluxo como triagem consultiva especializada em Reforma Tributária, IBS e CBS.",
-            "Não responder apenas de forma genérica. Relacionar as perguntas à atividade, CNAE, regime tributário, faturamento, perfil B2B/B2C e estrutura de custos.",
-            "Investigar impacto econômico e operacional, não apenas alíquota nominal.",
-            "Separar carga bruta, créditos potenciais, efeito líquido, margem, precificação e fluxo de caixa.",
-            "Investigar quais compras, insumos, serviços e despesas podem compor a cadeia de créditos, sem presumir direito a crédito sem validação.",
-            "Considerar o peso da folha, especialmente quando a operação depende fortemente de mão de obra e possui poucos custos creditáveis.",
-            "Avaliar se o cliente vende para outras empresas ou consumidor final, pois capacidade de crédito e repasse podem alterar o impacto comercial.",
-            "Perguntar sobre contratos, política de preços, repasse tributário, fornecedores e capacidade de renegociação.",
-            "Avaliar preparação do ERP, emissão fiscal, cadastros de produtos/serviços e parametrizações necessárias.",
-            "Se houver benefício fiscal, regime especial, operação interestadual, importação, exportação, marketplace, imóveis ou grupo empresarial, aprofundar o tratamento específico.",
-            "Se o usuário indicar Simples Nacional, investigar impacto comercial dos créditos na cadeia e não afirmar automaticamente que haverá aumento ou redução de carga.",
-            "Se o usuário indicar Lucro Presumido ou Lucro Real, comparar cenários apenas como estimativa preliminar e sinalizar necessidade de simulação com dados reais.",
-            "Classificar ao final se o caso é: dúvida informativa, adequação operacional, simulação tributária, revisão de preços/margem, revisão contratual ou planejamento tributário completo.",
-            "Identificar claramente quais dados ainda faltam para uma simulação confiável.",
-            "Nunca apresentar falsa precisão. Quando não houver dados suficientes, usar faixas, cenários e ressalvas.",
-          ]
-        : trilhaHoldingAtiva
+      instrucoesEspeciais: trilhaHoldingAtiva
         ? [
             "Tratar a holding como estrutura especializada, e não como simples empresa de serviços.",
             "Investigar patrimônio, imóveis, participações societárias, receitas patrimoniais, governança, sucessão e tributação.",
@@ -4274,28 +4097,6 @@ function DiagnosticoPrototipo({
         leadId,
         sessionId:
           sessionIdLead,
-
-        eventoId:
-          contextoEvento?.id ||
-          contextoEvento?.eventoId ||
-          "",
-
-        eventoNome:
-          contextoEvento?.nome ||
-          contextoEvento?.eventoNome ||
-          "",
-
-        origem:
-          contextoEvento?.origem ||
-          "",
-
-        campanha:
-          contextoEvento?.campanha ||
-          "",
-
-        responsavelOrigem:
-          contextoEvento?.responsavel ||
-          "",
       },
 
       responsavel: {
@@ -4360,6 +4161,7 @@ function DiagnosticoPrototipo({
             endereco: empresaPrincipal?.endereco || {},
           },
       perfil: {
+        estruturaNegocio,
         faturamento: faturamento?.label || "",
         colaboradores: colaboradores || "",
         regime: regime || "",
@@ -4369,7 +4171,6 @@ function DiagnosticoPrototipo({
         estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
-        reformaTributaria: perfilReformaTributaria,
         grupo: perfilGrupo,
         spe: perfilSPE,
         doresSelecionadas,
@@ -5538,97 +5339,181 @@ function DiagnosticoPrototipo({
   }
 
 
+  if (!acessoLiberado) {
+    return (
+      <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, boxSizing:"border-box", fontFamily:BODY_FONT }}>
+        <form onSubmit={validarAcessoApp} style={{ width:"100%", maxWidth:390, background:WHITE, borderRadius:18, padding:28, boxShadow:"0 24px 70px rgba(0,0,0,.28)" }}>
+          <div style={{ fontSize:11, fontWeight:900, letterSpacing:1.2, color:CORAL, marginBottom:7 }}>FINDER OF SOLUTIONS</div>
+          <h1 style={{ margin:"0 0 7px", color:NAVY, fontSize:26, lineHeight:1.1, fontFamily:DISPLAY_FONT }}>Acesso ao diagnóstico</h1>
+          <p style={{ margin:"0 0 20px", color:MUTED, fontSize:13, lineHeight:1.55 }}>Digite a senha para acessar o aplicativo.</p>
+          <label htmlFor="senha-acesso-app" style={{ display:"block", color:NAVY, fontSize:11, fontWeight:800, marginBottom:6 }}>SENHA</label>
+          <input id="senha-acesso-app" type="password" inputMode="numeric" autoFocus value={senhaAcesso}
+            onChange={(event)=>{ setSenhaAcesso(event.target.value); setErroSenhaAcesso(""); }}
+            placeholder="Digite a senha"
+            style={{ width:"100%", boxSizing:"border-box", border:erroSenhaAcesso ? "1px solid #D92D20" : "1px solid #D0D5DD", borderRadius:10, padding:"12px 13px", fontSize:15, outline:"none", marginBottom:erroSenhaAcesso ? 7 : 14 }}
+          />
+          {erroSenhaAcesso && <div style={{ color:"#D92D20", fontSize:11.5, marginBottom:12 }}>{erroSenhaAcesso}</div>}
+          <button type="submit" style={{ width:"100%", border:0, borderRadius:10, padding:"12px 14px", background:CORAL, color:WHITE, fontSize:13, fontWeight:900, cursor:"pointer" }}>Entrar</button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div
+      className="finder-public-stage"
       style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top right, rgba(79,124,255,.16), transparent 30%), linear-gradient(180deg,#07111F 0%,#0A1526 38%,#F4F7FB 38%,#F4F7FB 100%)",
-        padding: "34px 16px 60px",
+        background: "#EEF0F5",
+        minHeight: 760,
+        display: "flex",
+        justifyContent: "center",
+        padding: "32px 16px",
         fontFamily: BODY_FONT,
+        boxSizing: "border-box",
       }}
     >
+      <style>{`
+        .finder-public-stage {
+          width: 100%;
+          overflow-x: hidden;
+        }
+
+        .finder-phone-shell {
+          width: 380px;
+          max-width: 100%;
+        }
+
+        .finder-form-content {
+          min-width: 0;
+        }
+
+        .finder-form-content input,
+        .finder-form-content select,
+        .finder-form-content textarea,
+        .finder-form-content button {
+          max-width: 100%;
+        }
+
+        .finder-form-content textarea {
+          font-size: 16px !important;
+        }
+
+        @media (max-width: 600px) {
+          html,
+          body,
+          #root {
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            overflow-x: hidden;
+          }
+
+          .finder-public-stage {
+            display: block !important;
+            min-height: 100vh !important;
+            padding: 0 !important;
+            background: #FFFFFF !important;
+          }
+
+          .finder-phone-shell {
+            width: 100% !important;
+            max-width: none !important;
+            min-height: 100vh !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+            background: #FFFFFF !important;
+            box-shadow: none !important;
+          }
+
+          .finder-phone-notch {
+            display: none !important;
+          }
+
+          .finder-phone-screen {
+            min-height: 100vh !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+          }
+
+          .finder-form-content {
+            padding: 14px 18px 24px !important;
+          }
+
+          .finder-form-content h1 {
+            line-height: 1.15 !important;
+          }
+
+          .finder-form-content button {
+            touch-action: manipulation;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .finder-form-content {
+            padding-left: 14px !important;
+            padding-right: 14px !important;
+          }
+        }
+      `}</style>
+
       <div
+        className="finder-phone-shell"
         style={{
-          width: "100%",
-          maxWidth: 980,
-          margin: "0 auto",
+          width: 380,
+          borderRadius: 40,
+          background: NAVY,
+          padding: 12,
+          boxShadow: "0 30px 60px rgba(23,35,61,0.25)",
+          boxSizing: "border-box",
         }}
       >
         <div
+          className="finder-phone-notch"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            marginBottom: 18,
-            color: WHITE,
+            width: 120,
+            height: 22,
+            background: NAVY,
+            borderRadius: 12,
+            margin: "0 auto 4px",
+            position: "relative",
           }}
         >
-          <div>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 900,
-                letterSpacing: 1.2,
-                color: "#7DE0E9",
-                marginBottom: 4,
-              }}
-            >
-              FINDER INTELLIGENCE
-            </div>
-
-            <div
-              style={{
-                fontSize: 19,
-                fontWeight: 900,
-              }}
-            >
-              Diagnóstico consultivo
-            </div>
-          </div>
-
           <div
             style={{
-              border:
-                "1px solid rgba(255,255,255,.12)",
-              background:
-                "rgba(255,255,255,.06)",
-              borderRadius: 999,
-              padding: "7px 10px",
-              fontSize: 9.5,
-              color: "#B8C7DA",
+              width: 46,
+              height: 6,
+              background: "#0B1526",
+              borderRadius: 4,
+              position: "absolute",
+              left: "50%",
+              top: 8,
+              transform: "translateX(-50%)",
             }}
-          >
-            Seguro · Guiado · Inteligente
-          </div>
+          />
         </div>
 
         <div
+          className="finder-phone-screen"
           style={{
-            background:
-              "rgba(255,255,255,.98)",
-            borderRadius: 24,
-            minHeight: 650,
+            background: WHITE,
+            borderRadius: 28,
+            minHeight: 686,
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
             position: "relative",
-            border:
-              "1px solid rgba(255,255,255,.70)",
-            boxShadow:
-              "0 28px 70px rgba(5,14,29,.20)",
           }}
         >
           <StepDots step={step} />
 
           <div
+            className="finder-form-content"
             style={{
               flex: 1,
-              padding:
-                "22px clamp(20px,4vw,46px) 34px",
+              padding: "18px 22px 22px",
               display: "flex",
               flexDirection: "column",
+              boxSizing: "border-box",
             }}
           >
 
@@ -5870,20 +5755,6 @@ function DiagnosticoPrototipo({
                           setDor90Dias("");
                           setImpactosDor([]);
 
-                          if (item.id !== "reforma_tributaria") {
-                            setObjetivosReforma([]);
-                            setDuvidaReforma("");
-                            setPerfilClientesReforma("");
-                            setComprasCreditoReforma("");
-                            setFolhaReforma("");
-                            setRepassePrecoReforma("");
-                            setErpReforma("");
-                            setContratosReforma("");
-                            setBeneficiosReforma("");
-                            setOperacoesReforma([]);
-                            setPreparacaoReforma("");
-                          }
-
                           if (
                             ![
                               "holding",
@@ -5947,156 +5818,6 @@ function DiagnosticoPrototipo({
                     );
                   })}
                 </div>
-
-                {trilhaReformaAtiva && (
-                  <div
-                    style={{
-                      background: "#FFF7F3",
-                      border: `1px solid ${CORAL}`,
-                      borderRadius: 12,
-                      padding: 14,
-                      marginBottom: 14,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        marginBottom: 5,
-                      }}
-                    >
-                      <AlertTriangle
-                        size={16}
-                        color={CORAL}
-                      />
-
-                      <strong
-                        style={{
-                          fontSize: 13,
-                          color: NAVY,
-                        }}
-                      >
-                        Diagnóstico da Reforma Tributária
-                      </strong>
-                    </div>
-
-                    <p
-                      style={{
-                        fontSize: 10.7,
-                        color: MUTED,
-                        margin: "0 0 13px",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      Selecione os temas que deseja entender. O diagnóstico usará
-                      CNPJ, atividade, regime, faturamento e respostas da operação
-                      para direcionar uma análise preliminar de IBS, CBS, créditos,
-                      precificação e adequações necessárias.
-                    </p>
-
-                    <label style={labelStyle}>
-                      O que você quer avaliar sobre a Reforma Tributária?
-                    </label>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 7,
-                        marginBottom: 14,
-                      }}
-                    >
-                      {OBJETIVOS_REFORMA_TRIBUTARIA.map(
-                        (objetivo) => {
-                          const selecionado =
-                            objetivosReforma.includes(
-                              objetivo
-                            );
-
-                          return (
-                            <button
-                              key={objetivo}
-                              type="button"
-                              onClick={() =>
-                                setObjetivosReforma(
-                                  (atuais) =>
-                                    atuais.includes(
-                                      objetivo
-                                    )
-                                      ? atuais.filter(
-                                          (item) =>
-                                            item !==
-                                            objetivo
-                                        )
-                                      : [
-                                          ...atuais,
-                                          objetivo,
-                                        ]
-                                )
-                              }
-                              style={{
-                                ...chipStyle(
-                                  selecionado
-                                ),
-                                width: "100%",
-                                minHeight: 48,
-                                textAlign: "left",
-                              }}
-                            >
-                              {objetivo}
-                            </button>
-                          );
-                        }
-                      )}
-                    </div>
-
-                    {objetivosReforma.includes(
-                      "Tenho uma dúvida específica"
-                    ) && (
-                      <>
-                        <label style={labelStyle}>
-                          Conte sua dúvida sobre a Reforma Tributária
-                        </label>
-
-                        <textarea
-                          value={duvidaReforma}
-                          onChange={(e) =>
-                            setDuvidaReforma(
-                              e.target.value
-                            )
-                          }
-                          placeholder="Ex.: Minha empresa presta serviços no Lucro Presumido. Quero entender se a carga pode aumentar, como ficam os créditos e se precisarei rever meus preços."
-                          rows={4}
-                          style={{
-                            ...inputStyle,
-                            resize: "vertical",
-                            fontFamily: BODY_FONT,
-                            marginBottom: 10,
-                          }}
-                        />
-                      </>
-                    )}
-
-                    <div
-                      style={{
-                        background: WHITE,
-                        borderRadius: 9,
-                        padding: 10,
-                        fontSize: 10.2,
-                        color: MUTED,
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <strong style={{ color: NAVY }}>
-                        Importante:
-                      </strong>{" "}
-                      o resultado será uma análise preliminar. Carga efetiva,
-                      aproveitamento de créditos, enquadramentos específicos e
-                      decisão de regime exigem validação dos dados reais da operação.
-                    </div>
-                  </div>
-                )}
 
                 {trilhaGrupoAtiva && (
                   <div style={{ background: "#F7F8FB", border: "1px solid #E3E7EF", borderRadius: 12, padding: 14, marginBottom: 14 }}>
@@ -6569,19 +6290,6 @@ function DiagnosticoPrototipo({
                         !finalidadeSPE.trim()
                       )
                     )
- ||
-                    (
-                      trilhaReformaAtiva &&
-                      (
-                        objetivosReforma.length === 0 ||
-                        (
-                          objetivosReforma.includes(
-                            "Tenho uma dúvida específica"
-                          ) &&
-                          duvidaReforma.trim().length < 10
-                        )
-                      )
-                    )
                   }
                   onClick={() => {
                     if (trilhaPFAtiva || avaliarHoldingAtiva) {
@@ -6620,8 +6328,6 @@ function DiagnosticoPrototipo({
                     ? "CNPJs do grupo empresarial"
                     : estruturaNegocio === "spe"
                     ? "CNPJ da SPE"
-                    : estruturaNegocio === "reforma_tributaria"
-                    ? "CNPJ para análise da Reforma Tributária"
                     : "CNPJ da empresa"}
                 </p>
 
@@ -6637,8 +6343,6 @@ function DiagnosticoPrototipo({
                     ? "Informe o CNPJ da holding existente. Os dados cadastrais serão cruzados com patrimônio, participações, receitas, governança e sucessão."
                     : estruturaNegocio === "grupo"
                     ? `Adicione a empresa-base e, se necessário, outras empresas do grupo. Você pode adicionar até ${MAX_EMPRESAS} CNPJs.`
-                    : estruturaNegocio === "reforma_tributaria"
-                    ? "Informe o CNPJ da empresa. Vamos usar atividade econômica, regime, faturamento e perfil da operação para direcionar a análise de IBS, CBS, créditos, preços e adequações."
                     : "Adicione o CNPJ que será a base do diagnóstico."}
                 </p>
 
@@ -7101,516 +6805,9 @@ function DiagnosticoPrototipo({
                 />
 
                 <div style={{ flex: 1, minHeight: 4 }} />
-                <PrimaryButton
-                  disabled={!faturamento || !colaboradores || !regime}
-                  onClick={() =>
-                    setStep(
-                      trilhaReformaAtiva
-                        ? "reforma_detalhes"
-                        : "dor"
-                    )
-                  }
-                >
+                <PrimaryButton disabled={!faturamento || !colaboradores || !regime} onClick={() => setStep("dor")}>
                   Continuar <ArrowRight size={16} />
                 </PrimaryButton>
-              </div>
-            )}
-
-            {step === "reforma_detalhes" && trilhaReformaAtiva && (
-              <div
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 15,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      color: CORAL,
-                      fontSize: 9.5,
-                      fontWeight: 900,
-                      letterSpacing: 0.8,
-                      marginBottom: 5,
-                    }}
-                  >
-                    REFORMA TRIBUTÁRIA · TRIAGEM CONSULTIVA
-                  </div>
-
-                  <p
-                    style={{
-                      fontFamily: DISPLAY_FONT,
-                      fontSize: 22,
-                      fontWeight: 700,
-                      color: NAVY,
-                      margin: "0 0 5px",
-                    }}
-                  >
-                    Como a sua operação funciona hoje?
-                  </p>
-
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: MUTED,
-                      lineHeight: 1.5,
-                      margin: 0,
-                    }}
-                  >
-                    Essas respostas ajudam a separar uma dúvida genérica de um caso que
-                    realmente exige simulação, revisão de preços, créditos, contratos ou sistema.
-                  </p>
-                </div>
-
-                <div
-                  style={{
-                    background: "#F7F8FB",
-                    borderRadius: 12,
-                    padding: 13,
-                  }}
-                >
-                  <strong
-                    style={{
-                      display: "block",
-                      fontSize: 11,
-                      marginBottom: 7,
-                    }}
-                  >
-                    Temas selecionados
-                  </strong>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 6,
-                    }}
-                  >
-                    {objetivosReforma.map(
-                      (item) => (
-                        <span
-                          key={item}
-                          style={{
-                            background: "#FFF3EF",
-                            color: "#993C1D",
-                            borderRadius: 999,
-                            padding: "5px 8px",
-                            fontSize: 9.5,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {item}
-                        </span>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Quem são seus principais clientes?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["B2B", "Outras empresas (B2B)"],
-                      ["B2C", "Consumidor final (B2C)"],
-                      ["MISTO", "Empresas e consumidor final"],
-                      ["GOVERNO", "Governo / setor público"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setPerfilClientesReforma(
-                            id
-                          )
-                        }
-                        style={chipStyle(
-                          perfilClientesReforma ===
-                            id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Quanto das suas compras e despesas pode estar ligado à operação?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["BAIXO", "Baixo — poucos insumos/despesas"],
-                      ["MEDIO", "Médio — compras relevantes"],
-                      ["ALTO", "Alto — insumos/custos relevantes"],
-                      ["NAO_SEI", "Não sei avaliar"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setComprasCreditoReforma(
-                            id
-                          )
-                        }
-                        style={chipStyle(
-                          comprasCreditoReforma ===
-                            id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Qual o peso da folha de pagamento na sua operação?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["BAIXO", "Baixo"],
-                      ["MEDIO", "Médio"],
-                      ["ALTO", "Alto"],
-                      ["NAO_SEI", "Não sei"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setFolhaReforma(
-                            id
-                          )
-                        }
-                        style={chipStyle(
-                          folhaReforma === id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Sua empresa consegue repassar aumento de custo tributário para o preço?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["SIM", "Sim, com relativa facilidade"],
-                      ["PARCIAL", "Só parcialmente"],
-                      ["NAO", "Não, o mercado limita o preço"],
-                      ["NAO_SEI", "Não sei"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setRepassePrecoReforma(
-                            id
-                          )
-                        }
-                        style={chipStyle(
-                          repassePrecoReforma ===
-                            id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Como está seu ERP / sistema fiscal para IBS e CBS?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["PRONTO", "Já está parametrizado / em testes"],
-                      ["ANDAMENTO", "Fornecedor está ajustando"],
-                      ["NAO_INICIADO", "Ainda não começamos"],
-                      ["NAO_SEI", "Não sei"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setErpReforma(id)
-                        }
-                        style={chipStyle(
-                          erpReforma === id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Os contratos e políticas comerciais já foram revisados para a transição tributária?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["SIM", "Sim"],
-                      ["PARCIAL", "Parcialmente"],
-                      ["NAO", "Ainda não"],
-                      ["NAO_APLICA", "Não se aplica / não sei"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setContratosReforma(
-                            id
-                          )
-                        }
-                        style={chipStyle(
-                          contratosReforma ===
-                            id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    A empresa possui benefício fiscal, regime especial ou tratamento diferenciado relevante?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["SIM", "Sim"],
-                      ["NAO", "Não"],
-                      ["NAO_SEI", "Não sei"],
-                      ["ANALISAR", "Preciso analisar"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setBeneficiosReforma(
-                            id
-                          )
-                        }
-                        style={chipStyle(
-                          beneficiosReforma ===
-                            id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Sua empresa possui alguma destas operações?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      "Venda interestadual",
-                      "Prestação em vários municípios/estados",
-                      "Importação",
-                      "Exportação",
-                      "Marketplace / plataforma",
-                      "Locação / imóveis",
-                      "Operações entre empresas do grupo",
-                      "Nenhuma das anteriores",
-                    ].map((item) => {
-                      const ativo =
-                        operacoesReforma.includes(
-                          item
-                        );
-
-                      return (
-                        <button
-                          key={item}
-                          type="button"
-                          onClick={() =>
-                            setOperacoesReforma(
-                              (atuais) =>
-                                ativo
-                                  ? atuais.filter(
-                                      (x) =>
-                                        x !== item
-                                    )
-                                  : [
-                                      ...atuais,
-                                      item,
-                                    ]
-                            )
-                          }
-                          style={chipStyle(ativo)}
-                        >
-                          {item}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>
-                    Em qual estágio de preparação sua empresa está?
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 7,
-                    }}
-                  >
-                    {[
-                      ["NAO_INICIOU", "Ainda não iniciamos"],
-                      ["ENTENDENDO", "Estamos entendendo os impactos"],
-                      ["MAPEANDO", "Já estamos mapeando operações e sistemas"],
-                      ["SIMULANDO", "Já fazemos simulações e plano de ação"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setPreparacaoReforma(
-                            id
-                          )
-                        }
-                        style={chipStyle(
-                          preparacaoReforma ===
-                            id
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    background: "#EEF3FF",
-                    borderLeft: "4px solid #31589C",
-                    borderRadius: 10,
-                    padding: 11,
-                    fontSize: 10.5,
-                    lineHeight: 1.5,
-                    color: NAVY,
-                  }}
-                >
-                  <strong>Por que perguntamos isso?</strong>{" "}
-                  Empresas com perfil B2B, grande volume de insumos, folha elevada,
-                  baixa capacidade de repasse, benefícios fiscais ou operações
-                  especiais podem ter impactos muito diferentes. O objetivo é
-                  identificar onde uma simulação individualizada realmente faz sentido.
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    marginTop: "auto",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStep("porte")
-                    }
-                    style={{
-                      ...chipStyle(false),
-                      flex: 1,
-                    }}
-                  >
-                    Voltar
-                  </button>
-
-                  <PrimaryButton
-                    disabled={
-                      !perfilClientesReforma ||
-                      !comprasCreditoReforma ||
-                      !folhaReforma ||
-                      !repassePrecoReforma ||
-                      !erpReforma ||
-                      !contratosReforma ||
-                      !beneficiosReforma ||
-                      !preparacaoReforma
-                    }
-                    onClick={() =>
-                      setStep("dor")
-                    }
-                    style={{ flex: 1 }}
-                  >
-                    Continuar
-                    <ArrowRight size={16} />
-                  </PrimaryButton>
-                </div>
               </div>
             )}
 
@@ -7622,8 +6819,6 @@ function DiagnosticoPrototipo({
                       ? "Vamos entender os pontos críticos da holding"
                       : trilhaPFAtiva
                       ? "Vamos entender sua vida financeira"
-                      : trilhaReformaAtiva
-                      ? "Onde a Reforma Tributária pode exigir uma decisão"
                       : "Vamos entender sua principal dor"}
                   </p>
                   <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5, margin: 0 }}>
@@ -7631,8 +6826,6 @@ function DiagnosticoPrototipo({
                       ? "Essas respostas serão cruzadas com patrimônio, finalidade da holding, CNAEs, sucessão e estrutura societária para gerar perguntas específicas."
                       : trilhaPFAtiva
                       ? "As respostas serão cruzadas com os objetivos escolhidos para que o diagnóstico e os próximos passos sejam personalizados."
-                      : trilhaReformaAtiva
-                      ? "Agora vamos transformar sua dúvida em pontos concretos de análise: carga, créditos, preço, sistema, contratos, fornecedores e clientes."
                       : "Essas respostas serão cruzadas com o CNAE e com o checklist para tornar o relatório mais específico."}
                   </p>
                 </div>
@@ -7643,8 +6836,6 @@ function DiagnosticoPrototipo({
                       ? "Quais situações mais preocupam na holding ou no patrimônio hoje?"
                       : trilhaPFAtiva
                       ? "Quais situações mais incomodam sua vida financeira hoje?"
-                      : trilhaReformaAtiva
-                      ? "Quais riscos ou dúvidas mais preocupam você na Reforma Tributária?"
                       : "Quais problemas mais incomodam sua empresa hoje?"}
                   </p>
 
@@ -7692,8 +6883,6 @@ function DiagnosticoPrototipo({
                       ? "Qual decisão ou problema patrimonial você gostaria de resolver primeiro?"
                       : trilhaPFAtiva
                       ? "Qual objetivo financeiro você gostaria de priorizar agora?"
-                      : trilhaReformaAtiva
-                      ? "Qual decisão sobre a Reforma Tributária você precisa tomar primeiro?"
                       : "Se pudesse resolver apenas um problema nos próximos 90 dias, qual seria?"}
                   </label>
 
@@ -7705,8 +6894,6 @@ function DiagnosticoPrototipo({
                         ? "Ex.: definir se vale a pena integralizar os imóveis; organizar sucessão; revisar tributação dos aluguéis; estruturar regras entre os herdeiros..."
                         : trilhaPFAtiva
                         ? "Ex.: organizar meu orçamento; quitar dívidas; formar reserva; começar a investir; planejar aposentadoria..."
-                        : trilhaReformaAtiva
-                        ? "Ex.: saber se preciso reajustar preços; estimar a carga; mapear créditos; preparar o ERP; rever contratos antes de 2027..."
                         : "Ex.: aumentar vendas; descobrir por que o caixa não sobra; reduzir retrabalho..."
                     }
                     rows={3}
@@ -7730,8 +6917,6 @@ function DiagnosticoPrototipo({
                       ? "Como esse problema está afetando sua vida financeira?"
                       : trilhaHoldingAtiva
                       ? "Qual impacto essa situação está causando no patrimônio ou na estrutura?"
-                      : trilhaReformaAtiva
-                      ? "Qual impacto você teme ou já identificou com a Reforma Tributária?"
                       : "Qual impacto esse problema está causando?"}
                   </p>
 
@@ -7776,8 +6961,6 @@ function DiagnosticoPrototipo({
                       ? "Quais frentes do grupo empresarial merecem mais atenção?"
                       : trilhaSPEAtiva
                       ? "Quais frentes da SPE merecem mais atenção?"
-                      : trilhaReformaAtiva
-                      ? "Quais frentes da Reforma devem ser aprofundadas?"
                       : "Quais áreas merecem mais atenção?"}
                   </p>
 
@@ -8679,10 +7862,27 @@ function ScoreRing({ score, color }) {
   );
 }
 
-const labelStyle = { fontSize: 11.5, color: MUTED, marginBottom: 6, display: "block", fontWeight: 600 };
+const labelStyle = {
+  fontSize: 12,
+  color: MUTED,
+  marginBottom: 6,
+  display: "block",
+  fontWeight: 700,
+};
+
 const inputStyle = {
-  width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #D8DEEA",
-  fontSize: 13.5, marginBottom: 14, fontFamily: BODY_FONT, color: NAVY, boxSizing: "border-box",
+  width: "100%",
+  minHeight: 46,
+  padding: "11px 12px",
+  borderRadius: 11,
+  border: "1px solid #D8DEEA",
+  fontSize: 16,
+  marginBottom: 14,
+  fontFamily: BODY_FONT,
+  color: NAVY,
+  background: WHITE,
+  boxSizing: "border-box",
+  outline: "none",
 };
 const sectionTitleStyle = { fontSize: 11.5, fontWeight: 700, color: NAVY, textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 8px" };
 const badgeStyle = {
@@ -8691,8 +7891,13 @@ const badgeStyle = {
 };
 function chipStyle(active) {
   return {
-    padding: "9px 10px", borderRadius: 10, border: active ? `1px solid ${CORAL}` : "1px solid #D8DEEA",
-    background: active ? CORAL : WHITE, color: active ? WHITE : NAVY, fontSize: 12.5,
+    minHeight: 44,
+    padding: "10px 11px",
+    borderRadius: 11,
+    border: active ? `1px solid ${CORAL}` : "1px solid #D8DEEA",
+    background: active ? CORAL : WHITE,
+    color: active ? WHITE : NAVY,
+    fontSize: 13,
     fontFamily: BODY_FONT, cursor: "pointer", textAlign: "left", fontWeight: 600,
   };
 }
@@ -8706,808 +7911,60 @@ function miniChipStyle(active) {
 
 
 // =========================================================
-// TELA INICIAL — DIAGNÓSTICO OU SISTEMA
+// LOGIN DO APP
 // =========================================================
-
-function TelaInicialFinder({
-  onResponderDiagnostico,
-  onEntrarSistema,
-}) {
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background:
-          "linear-gradient(135deg,#0E1A33 0%,#17233D 55%,#253451 100%)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-        boxSizing: "border-box",
-        fontFamily: BODY_FONT,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 760,
-          background: WHITE,
-          borderRadius: 24,
-          padding: 30,
-          boxShadow:
-            "0 28px 80px rgba(0,0,0,.28)",
-        }}
-      >
-        <img
-          src="/finder-logo.png"
-          alt="Finder of Solutions"
-          style={{
-            width: 190,
-            maxWidth: "65%",
-            objectFit: "contain",
-            marginBottom: 22,
-          }}
-        />
-
-        <div
-          style={{
-            color: CORAL,
-            fontSize: 10.5,
-            fontWeight: 900,
-            letterSpacing: 1,
-            marginBottom: 6,
-          }}
-        >
-          FINDER OF SOLUTIONS
-        </div>
-
-        <h1
-          style={{
-            margin: "0 0 7px",
-            color: NAVY,
-            fontSize: 30,
-            lineHeight: 1.1,
-            fontFamily: DISPLAY_FONT,
-          }}
-        >
-          Como deseja continuar?
-        </h1>
-
-        <p
-          style={{
-            margin: "0 0 24px",
-            color: MUTED,
-            fontSize: 13,
-            lineHeight: 1.55,
-          }}
-        >
-          Responda o diagnóstico empresarial ou acesse o sistema interno da Finder.
-        </p>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit,minmax(260px,1fr))",
-            gap: 14,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onResponderDiagnostico}
-            style={{
-              border: `2px solid ${CORAL}`,
-              background: "#FFF7F3",
-              borderRadius: 18,
-              padding: 22,
-              textAlign: "left",
-              cursor: "pointer",
-              minHeight: 170,
-              fontFamily: BODY_FONT,
-            }}
-          >
-            <div
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                background: CORAL,
-                color: WHITE,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 900,
-                fontSize: 19,
-                marginBottom: 16,
-              }}
-            >
-              1
-            </div>
-
-            <strong
-              style={{
-                display: "block",
-                color: NAVY,
-                fontSize: 19,
-                marginBottom: 7,
-              }}
-            >
-              Responder diagnóstico
-            </strong>
-
-            <span
-              style={{
-                display: "block",
-                color: MUTED,
-                fontSize: 12,
-                lineHeight: 1.5,
-              }}
-            >
-              Acesse o diagnóstico empresarial usando o código do evento ou da campanha.
-            </span>
-
-            <div
-              style={{
-                color: CORAL,
-                fontSize: 11,
-                fontWeight: 900,
-                marginTop: 16,
-              }}
-            >
-              COMEÇAR →
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={onEntrarSistema}
-            style={{
-              border: "2px solid #D8DEEA",
-              background: WHITE,
-              borderRadius: 18,
-              padding: 22,
-              textAlign: "left",
-              cursor: "pointer",
-              minHeight: 170,
-              fontFamily: BODY_FONT,
-            }}
-          >
-            <div
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                background: NAVY,
-                color: WHITE,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 900,
-                fontSize: 19,
-                marginBottom: 16,
-              }}
-            >
-              2
-            </div>
-
-            <strong
-              style={{
-                display: "block",
-                color: NAVY,
-                fontSize: 19,
-                marginBottom: 7,
-              }}
-            >
-              Entrar no sistema
-            </strong>
-
-            <span
-              style={{
-                display: "block",
-                color: MUTED,
-                fontSize: 12,
-                lineHeight: 1.5,
-              }}
-            >
-              Acesso restrito à equipe Finder, consultores, gestores e administradores.
-            </span>
-
-            <div
-              style={{
-                color: NAVY,
-                fontSize: 11,
-                fontWeight: 900,
-                marginTop: 16,
-              }}
-            >
-              ACESSAR →
-            </div>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AcessoEvento({
-  onVoltar,
-  onLiberado,
-}) {
-  function normalizarOrigemEvento(valor = "") {
-    return String(valor || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 80);
-  }
-
-  const origemUrl = useMemo(
-    () =>
-      normalizarOrigemEvento(
-        new URLSearchParams(window.location.search).get("origem") || ""
-      ),
-    []
-  );
-
-  const [origemDigitada, setOrigemDigitada] = useState(origemUrl);
+export default function AppComAcesso() {
+  const [token, setToken] = useState(() => sessionStorage.getItem("finder_app_token") || "");
+  const [usuario, setUsuario] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("finder_app_user") || "{}"); } catch { return {}; }
+  });
+  const [login, setLogin] = useState("");
+  const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
-
-  const origemFinal = normalizarOrigemEvento(origemDigitada || origemUrl);
-
-  function entrar() {
-    setErro("");
-
-    if (!origemFinal) {
-      setErro("Informe a origem.");
-      return;
-    }
-
-    const contexto = {
-      origem: origemFinal,
-      campanha: origemFinal,
-      eventoNome: origemFinal,
-      responsavel: "",
-    };
-
-    try {
-      sessionStorage.setItem(
-        "finder_evento_contexto",
-        JSON.stringify(contexto)
-      );
-    } catch {}
-
-    onLiberado(contexto);
-  }
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: NAVY,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        fontFamily: BODY_FONT,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 760,
-          background: WHITE,
-          borderRadius: 28,
-          padding: "48px 46px",
-          boxSizing: "border-box",
-        }}
-      >
-        <img
-          src="/finder-logo.png"
-          alt="Finder of Solutions"
-          style={{
-            width: 290,
-            maxWidth: "80%",
-            height: "auto",
-            marginBottom: 42,
-          }}
-        />
-
-        <div
-          style={{
-            color: CORAL,
-            fontSize: 13,
-            fontWeight: 900,
-            letterSpacing: 1.8,
-            marginBottom: 8,
-          }}
-        >
-          RESPONDER DIAGNÓSTICO
-        </div>
-
-        <h1
-          style={{
-            fontFamily: DISPLAY_FONT,
-            color: NAVY,
-            fontSize: 38,
-            lineHeight: 1.05,
-            margin: "0 0 14px",
-          }}
-        >
-          Acesso ao evento
-        </h1>
-
-        <p
-          style={{
-            color: MUTED,
-            fontSize: 17,
-            lineHeight: 1.5,
-            margin: "0 0 28px",
-          }}
-        >
-          Informe a origem disponibilizada pela equipe Finder.
-        </p>
-
-        <label
-          style={{
-            display: "block",
-            color: NAVY,
-            fontWeight: 900,
-            fontSize: 13,
-            marginBottom: 8,
-          }}
-        >
-          ORIGEM
-        </label>
-
-        <input
-          value={origemDigitada}
-          onChange={(e) => setOrigemDigitada(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") entrar();
-          }}
-          placeholder="Ex.: xbusiness"
-          autoFocus={!origemUrl}
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            border: "1px solid #D8DEEA",
-            borderRadius: 14,
-            padding: "16px 18px",
-            fontSize: 17,
-            color: NAVY,
-            outline: "none",
-            marginBottom: 18,
-          }}
-        />
-
-        {erro && (
-          <div
-            style={{
-              marginBottom: 14,
-              padding: "10px 12px",
-              borderRadius: 9,
-              background: "#FFF0EC",
-              color: "#9A3412",
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            {erro}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={entrar}
-          disabled={!origemFinal}
-          style={{
-            width: "100%",
-            border: 0,
-            borderRadius: 14,
-            padding: "17px 18px",
-            background: origemFinal ? CORAL : "#D8DEEA",
-            color: WHITE,
-            fontWeight: 900,
-            fontSize: 17,
-            cursor: origemFinal ? "pointer" : "not-allowed",
-          }}
-        >
-          Iniciar diagnóstico
-        </button>
-
-        <button
-          type="button"
-          onClick={onVoltar}
-          style={{
-            width: "100%",
-            marginTop: 15,
-            border: 0,
-            background: "transparent",
-            color: MUTED,
-            fontSize: 14,
-            cursor: "pointer",
-          }}
-        >
-          ← Voltar
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function LoginSistema({
-  onVoltar,
-  onLogin,
-}) {
-  const [login, setLogin] =
-    useState("");
-
-  const [senha, setSenha] =
-    useState("");
-
-  const [erro, setErro] =
-    useState("");
-
-  const [carregando, setCarregando] =
-    useState(false);
+  const [carregando, setCarregando] = useState(false);
 
   async function entrar() {
-    if (
-      !login.trim() ||
-      !senha
-    ) {
-      setErro(
-        "Digite seu login e senha."
-      );
-      return;
-    }
-
-    setCarregando(true);
-    setErro("");
-
+    if (!login.trim() || !senha) { setErro("Digite seu login e senha."); return; }
+    setCarregando(true); setErro("");
     try {
-      const resposta =
-        await fetch(
-          "/api/acessos?action=login",
-          {
-            method: "POST",
-            headers: {
-              "content-type":
-                "application/json",
-            },
-            body:
-              JSON.stringify({
-                login:
-                  login.trim(),
-                senha,
-                tipo:
-                  "SISTEMA",
-              }),
-          }
-        );
-
-      const data =
-        await resposta
-          .json()
-          .catch(() => null);
-
-      if (
-        !resposta.ok ||
-        !data?.sucesso ||
-        !data?.token
-      ) {
-        throw new Error(
-          data?.error ||
-          "Login ou senha inválidos."
-        );
-      }
-
-      sessionStorage.setItem(
-        "finder_admin_token",
-        data.token
-      );
-
-      sessionStorage.setItem(
-        "finder_admin_user",
-        JSON.stringify(
-          data.usuario ||
-          {}
-        )
-      );
-
-      onLogin(
-        data.usuario ||
-        {}
-      );
-    } catch (error) {
-      setErro(
-        error?.message ||
-        "Não foi possível entrar no sistema."
-      );
-    } finally {
-      setCarregando(false);
-    }
+      const r = await fetch("/api/acessos?action=login", {
+        method:"POST", headers:{"content-type":"application/json"},
+        body:JSON.stringify({login:login.trim(), senha, tipo:"APP"})
+      });
+      const d = await r.json().catch(()=>null);
+      if (!r.ok || !d?.sucesso || !d?.token) throw new Error(d?.error || "Login ou senha inválidos.");
+      sessionStorage.setItem("finder_app_token", d.token);
+      sessionStorage.setItem("finder_app_user", JSON.stringify(d.usuario || {}));
+      setUsuario(d.usuario || {}); setToken(d.token);
+    } catch(e) { setErro(e?.message || "Não foi possível entrar no App."); }
+    finally { setCarregando(false); }
   }
 
-  const input = {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid #D8DEEA",
-    borderRadius: 10,
-    padding: "12px 13px",
-    fontFamily: BODY_FONT,
-    fontSize: 14,
-    color: NAVY,
-    marginBottom: 12,
-  };
+  useEffect(() => {
+    if (!token) return;
+    const handler = (ev) => {
+      const el = ev.target?.closest?.("button,a,[role='button']");
+      if (!el) return;
+      const descricao = String(el.innerText || el.getAttribute("aria-label") || "").trim().slice(0,160);
+      if (!descricao) return;
+      fetch("/api/acessos?action=auditar", {method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({acao:"CLICK",modulo:"APP",recurso:"interface",descricao})}).catch(()=>null);
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, [token]);
 
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: BG,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-        fontFamily: BODY_FONT,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 430,
-          background: WHITE,
-          borderRadius: 20,
-          padding: 30,
-          boxShadow:
-            "0 24px 60px rgba(23,35,61,.14)",
-        }}
-      >
-        <img
-          src="/finder-logo.png"
-          alt="Finder of Solutions"
-          style={{
-            width: 180,
-            maxWidth: "70%",
-            objectFit: "contain",
-            marginBottom: 22,
-          }}
-        />
-
-        <h1
-          style={{
-            margin: "0 0 7px",
-            color: NAVY,
-            fontSize: 28,
-            fontFamily: DISPLAY_FONT,
-          }}
-        >
-          Entrar no sistema
-        </h1>
-
-        <p
-          style={{
-            margin: "0 0 22px",
-            fontSize: 13,
-            color: MUTED,
-          }}
-        >
-          Acesso individual conforme as permissões definidas pelo administrador.
-        </p>
-
-        <input
-          value={login}
-          onChange={(e) => {
-            setLogin(
-              e.target.value
-            );
-            setErro("");
-          }}
-          placeholder="Login ou e-mail"
-          autoComplete="username"
-          style={input}
-        />
-
-        <input
-          type="password"
-          value={senha}
-          onChange={(e) => {
-            setSenha(
-              e.target.value
-            );
-            setErro("");
-          }}
-          onKeyDown={(e) =>
-            e.key === "Enter" &&
-            entrar()
-          }
-          placeholder="Senha"
-          autoComplete="current-password"
-          style={input}
-        />
-
-        {erro && (
-          <div
-            style={{
-              background: "#FAECE7",
-              color: "#993C1D",
-              padding: 10,
-              borderRadius: 9,
-              fontSize: 12,
-              marginBottom: 10,
-            }}
-          >
-            {erro}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={entrar}
-          disabled={carregando}
-          style={{
-            width: "100%",
-            border: 0,
-            borderRadius: 10,
-            padding: "12px 14px",
-            background: NAVY,
-            color: WHITE,
-            fontWeight: 800,
-            cursor:
-              carregando
-                ? "not-allowed"
-                : "pointer",
-            opacity:
-              carregando
-                ? 0.6
-                : 1,
-          }}
-        >
-          {carregando
-            ? "Validando..."
-            : "Entrar"}
-        </button>
-
-        <button
-          type="button"
-          onClick={onVoltar}
-          style={{
-            width: "100%",
-            marginTop: 10,
-            border: 0,
-            background: "transparent",
-            color: MUTED,
-            fontSize: 11,
-            cursor: "pointer",
-          }}
-        >
-          ← Voltar
-        </button>
+  if (!token) {
+    return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#F3F5F8",padding:20,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+      <div style={{width:"100%",maxWidth:420,background:"white",borderRadius:20,padding:30,boxShadow:"0 24px 60px rgba(23,35,61,.14)"}}>
+        <img src="/finder-logo.png" alt="Finder of Solutions" style={{width:180,maxWidth:"70%",objectFit:"contain",marginBottom:22}}/>
+        <h1 style={{margin:"0 0 7px",color:"#17233D",fontSize:28}}>Acesso ao Diagnóstico</h1>
+        <p style={{margin:"0 0 22px",fontSize:13,color:"#5B667A"}}>Entre com o usuário criado pelo administrador.</p>
+        <input value={login} onChange={e=>{setLogin(e.target.value);setErro("")}} placeholder="Login ou e-mail" autoComplete="username" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
+        <input type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErro("")}} onKeyDown={e=>e.key==="Enter"&&entrar()} placeholder="Senha" autoComplete="current-password" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
+        {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,fontSize:12,marginBottom:10}}>{erro}</div>}
+        <button onClick={entrar} disabled={carregando} style={{width:"100%",border:0,borderRadius:10,padding:"12px 14px",background:"#17233D",color:"white",fontWeight:700,cursor:"pointer"}}>{carregando?"Validando...":"Entrar"}</button>
       </div>
-    </div>
-  );
+    </div>;
+  }
+  return <DiagnosticoPrototipo usuarioAcesso={usuario} tokenAcesso={token} />;
 }
-
-export default function App() {
-  const [modo, setModo] =
-    useState(() => {
-      try {
-        const temAdmin =
-          Boolean(
-            sessionStorage.getItem(
-              "finder_admin_token"
-            )
-          );
-
-        if (temAdmin) {
-          return "sistema";
-        }
-
-        const contexto =
-          JSON.parse(
-            sessionStorage.getItem(
-              "finder_evento_contexto"
-            ) ||
-            "null"
-          );
-
-        if (contexto?.origem) {
-          return "diagnostico";
-        }
-
-        return "inicio";
-      } catch {
-        return "inicio";
-      }
-    });
-
-  const [
-    contextoEvento,
-    setContextoEvento,
-  ] = useState(() => {
-    try {
-      return JSON.parse(
-        sessionStorage.getItem(
-          "finder_evento_contexto"
-        ) ||
-        "null"
-      );
-    } catch {
-      return null;
-    }
-  });
-
-  if (
-    modo === "sistema"
-  ) {
-    return <Admin />;
-  }
-
-  if (
-    modo === "diagnostico" &&
-    contextoEvento
-  ) {
-    return (
-      <DiagnosticoPrototipo
-        contextoEvento={
-          contextoEvento
-        }
-      />
-    );
-  }
-
-  if (
-    modo === "evento"
-  ) {
-    return (
-      <AcessoEvento
-        onVoltar={() =>
-          setModo("inicio")
-        }
-        onLiberado={(
-          evento
-        ) => {
-          setContextoEvento(
-            evento
-          );
-          setModo(
-            "diagnostico"
-          );
-        }}
-      />
-    );
-  }
-
-  if (
-    modo === "login-sistema"
-  ) {
-    return (
-      <LoginSistema
-        onVoltar={() =>
-          setModo("inicio")
-        }
-        onLogin={() =>
-          setModo("sistema")
-        }
-      />
-    );
-  }
-
-  return (
-    <TelaInicialFinder
-      onResponderDiagnostico={() =>
-        setModo("evento")
-      }
-      onEntrarSistema={() =>
-        setModo(
-          "login-sistema"
-        )
-      }
-    />
-  );
-}
-
