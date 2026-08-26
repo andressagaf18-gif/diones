@@ -6,6 +6,8 @@ import {
   AlertTriangle, Percent, Cpu, Flame, X, Plus, User,
 } from "lucide-react";
 
+import Admin from "./Admin";
+
 const NAVY = "#17233D";
 const ICE = "#E9EDF5";
 const CORAL = "#FF6B4A";
@@ -1465,6 +1467,22 @@ function DiagnosticoPrototipo() {
   const toastTimer = useRef(null);
 
   // =========================================================
+  // CONTINUAR DE ONDE PAROU
+  // Salva o progresso localmente neste aparelho/navegador.
+  // =========================================================
+  const CHAVE_RASCUNHO =
+    "finder_diagnostico_rascunho_v1";
+
+  const PRAZO_RASCUNHO_MS =
+    7 * 24 * 60 * 60 * 1000;
+
+  const [rascunhoPendente, setRascunhoPendente] =
+    useState(null);
+
+  const [retomadaDecidida, setRetomadaDecidida] =
+    useState(false);
+
+  // =========================================================
   // CRM / RASTREAMENTO DO LEAD
   // Complemento: não altera o fluxo existente do diagnóstico.
   // =========================================================
@@ -1817,6 +1835,622 @@ function DiagnosticoPrototipo() {
   const todasRespondidas = todasPerguntas.length > 0 && todasPerguntas.every((q) => respostas[q.id]);
 
   // =========================================================
+  // RASCUNHO AUTOMÁTICO — RESTAURAÇÃO E AUTOSAVE
+  // =========================================================
+  function limparRascunhoLocal() {
+    try {
+      localStorage.removeItem(
+        CHAVE_RASCUNHO
+      );
+    } catch {}
+  }
+
+  function aplicarRascunho(
+    rascunho
+  ) {
+    if (!rascunho) {
+      return;
+    }
+
+    setStep(
+      rascunho.step ||
+      "intro"
+    );
+
+    setNome(
+      rascunho.nome ||
+      ""
+    );
+
+    setCargo(
+      rascunho.cargo ||
+      ""
+    );
+
+    setTelefone(
+      rascunho.telefone ||
+      ""
+    );
+
+    setEmail(
+      rascunho.email ||
+      ""
+    );
+
+    setConsentimentoEmail(
+      rascunho.consentimentoEmail !==
+        false
+    );
+
+    setCnpjInput(
+      rascunho.cnpjInput ||
+      ""
+    );
+
+    setEmpresas(
+      Array.isArray(
+        rascunho.empresas
+      )
+        ? rascunho.empresas
+        : []
+    );
+
+    setCnaesEmpresa(
+      Array.isArray(
+        rascunho.cnaesEmpresa
+      )
+        ? rascunho.cnaesEmpresa
+        : []
+    );
+
+    setAtividadesSelecionadas(
+      Array.isArray(
+        rascunho.atividadesSelecionadas
+      )
+        ? rascunho.atividadesSelecionadas
+        : []
+    );
+
+    setAtividadePredominante(
+      rascunho.atividadePredominante ||
+      null
+    );
+
+    setDescricaoNegocio(
+      rascunho.descricaoNegocio ||
+      ""
+    );
+
+    setEstruturaNegocio(
+      rascunho.estruturaNegocio ||
+      "operacional"
+    );
+
+    setTiposHolding(
+      Array.isArray(
+        rascunho.tiposHolding
+      )
+        ? rascunho.tiposHolding
+        : []
+    );
+
+    setObjetivosHolding(
+      Array.isArray(
+        rascunho.objetivosHolding
+      )
+        ? rascunho.objetivosHolding
+        : []
+    );
+
+    setPatrimonioHolding(
+      rascunho.patrimonioHolding ||
+      ""
+    );
+
+    setReceitasHolding(
+      rascunho.receitasHolding ||
+      ""
+    );
+
+    setSucessaoHolding(
+      rascunho.sucessaoHolding ||
+      ""
+    );
+
+    setObjetivosPF(
+      Array.isArray(
+        rascunho.objetivosPF
+      )
+        ? rascunho.objetivosPF
+        : []
+    );
+
+    setRendaMensalPF(
+      rascunho.rendaMensalPF ||
+      ""
+    );
+
+    setGastosMensaisPF(
+      rascunho.gastosMensaisPF ||
+      ""
+    );
+
+    setDividasPF(
+      rascunho.dividasPF ||
+      ""
+    );
+
+    setReservaPF(
+      rascunho.reservaPF ||
+      ""
+    );
+
+    setPatrimonioPF(
+      rascunho.patrimonioPF ||
+      ""
+    );
+
+    setInvestimentosPF(
+      rascunho.investimentosPF ||
+      ""
+    );
+
+    setAposentadoriaPF(
+      rascunho.aposentadoriaPF ||
+      ""
+    );
+
+    setDependentesPF(
+      rascunho.dependentesPF ||
+      ""
+    );
+
+    setNomeGrupo(
+      rascunho.nomeGrupo ||
+      ""
+    );
+
+    setFuncaoEmpresasGrupo(
+      rascunho.funcaoEmpresasGrupo ||
+      ""
+    );
+
+    setSociosComunsGrupo(
+      rascunho.sociosComunsGrupo ||
+      ""
+    );
+
+    setFinanceiroCentralizadoGrupo(
+      rascunho.financeiroCentralizadoGrupo ||
+      ""
+    );
+
+    setPessoasCompartilhadasGrupo(
+      rascunho.pessoasCompartilhadasGrupo ||
+      ""
+    );
+
+    setOperacoesIntercompanyGrupo(
+      rascunho.operacoesIntercompanyGrupo ||
+      ""
+    );
+
+    setGovernancaGrupo(
+      rascunho.governancaGrupo ||
+      ""
+    );
+
+    setSpeConstituida(
+      rascunho.speConstituida ||
+      ""
+    );
+
+    setNomeProjetoSPE(
+      rascunho.nomeProjetoSPE ||
+      ""
+    );
+
+    setFinalidadeSPE(
+      rascunho.finalidadeSPE ||
+      ""
+    );
+
+    setSociosSPE(
+      rascunho.sociosSPE ||
+      ""
+    );
+
+    setValorProjetoSPE(
+      rascunho.valorProjetoSPE ||
+      ""
+    );
+
+    setAportesSPE(
+      rascunho.aportesSPE ||
+      ""
+    );
+
+    setFinanciamentoSPE(
+      rascunho.financiamentoSPE ||
+      ""
+    );
+
+    setPrazoSPE(
+      rascunho.prazoSPE ||
+      ""
+    );
+
+    setReceitaPrevistaSPE(
+      rascunho.receitaPrevistaSPE ||
+      ""
+    );
+
+    setCustosPrevistosSPE(
+      rascunho.custosPrevistosSPE ||
+      ""
+    );
+
+    setFaseProjetoSPE(
+      rascunho.faseProjetoSPE ||
+      ""
+    );
+
+    setPerguntasDinamicas(
+      Array.isArray(
+        rascunho.perguntasDinamicas
+      )
+        ? rascunho.perguntasDinamicas
+        : []
+    );
+
+    setNegocioInterpretado(
+      rascunho.negocioInterpretado ||
+      null
+    );
+
+    setFaturamento(
+      rascunho.faturamento ??
+      null
+    );
+
+    setColaboradores(
+      rascunho.colaboradores ??
+      null
+    );
+
+    setRegime(
+      rascunho.regime ??
+      null
+    );
+
+    setObservacao(
+      rascunho.observacao ||
+      ""
+    );
+
+    setDores(
+      Array.isArray(
+        rascunho.dores
+      )
+        ? rascunho.dores
+        : []
+    );
+
+    setDoresSelecionadas(
+      Array.isArray(
+        rascunho.doresSelecionadas
+      )
+        ? rascunho.doresSelecionadas
+        : []
+    );
+
+    setDor90Dias(
+      rascunho.dor90Dias ||
+      ""
+    );
+
+    setImpactosDor(
+      Array.isArray(
+        rascunho.impactosDor
+      )
+        ? rascunho.impactosDor
+        : []
+    );
+
+    setRespostas(
+      rascunho.respostas &&
+      typeof rascunho.respostas ===
+        "object"
+        ? rascunho.respostas
+        : {}
+    );
+
+    if (
+      rascunho.leadId
+    ) {
+      setLeadId(
+        rascunho.leadId
+      );
+    }
+
+    if (
+      rascunho.sessionIdLead
+    ) {
+      setSessionIdLead(
+        rascunho.sessionIdLead
+      );
+
+      try {
+        sessionStorage.setItem(
+          "finder_diagnostico_session_id",
+          rascunho.sessionIdLead
+        );
+
+        localStorage.setItem(
+          "finder_diagnostico_session_id",
+          rascunho.sessionIdLead
+        );
+      } catch {}
+    }
+  }
+
+  useEffect(() => {
+    try {
+      const bruto =
+        localStorage.getItem(
+          CHAVE_RASCUNHO
+        );
+
+      if (!bruto) {
+        setRetomadaDecidida(
+          true
+        );
+        return;
+      }
+
+      const salvo =
+        JSON.parse(
+          bruto
+        );
+
+      const atualizadoEm =
+        Number(
+          salvo?.atualizadoEm ||
+          0
+        );
+
+      const expirado =
+        !atualizadoEm ||
+        Date.now() -
+          atualizadoEm >
+          PRAZO_RASCUNHO_MS;
+
+      const concluido =
+        salvo?.concluido ===
+          true ||
+        salvo?.step ===
+          "resultado";
+
+      if (
+        expirado ||
+        concluido
+      ) {
+        limparRascunhoLocal();
+        setRetomadaDecidida(
+          true
+        );
+        return;
+      }
+
+      setRascunhoPendente(
+        salvo
+      );
+    } catch {
+      limparRascunhoLocal();
+      setRetomadaDecidida(
+        true
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      !retomadaDecidida
+    ) {
+      return;
+    }
+
+    if (
+      step ===
+      "resultado"
+    ) {
+      limparRascunhoLocal();
+      return;
+    }
+
+    const rascunho = {
+      versao: 1,
+      atualizadoEm:
+        Date.now(),
+      concluido: false,
+
+      step,
+      nome,
+      cargo,
+      telefone,
+      email,
+      consentimentoEmail,
+      cnpjInput,
+      empresas,
+      cnaesEmpresa,
+      atividadesSelecionadas,
+      atividadePredominante,
+      descricaoNegocio,
+      estruturaNegocio,
+      tiposHolding,
+      objetivosHolding,
+      patrimonioHolding,
+      receitasHolding,
+      sucessaoHolding,
+
+      objetivosPF,
+      rendaMensalPF,
+      gastosMensaisPF,
+      dividasPF,
+      reservaPF,
+      patrimonioPF,
+      investimentosPF,
+      aposentadoriaPF,
+      dependentesPF,
+
+      nomeGrupo,
+      funcaoEmpresasGrupo,
+      sociosComunsGrupo,
+      financeiroCentralizadoGrupo,
+      pessoasCompartilhadasGrupo,
+      operacoesIntercompanyGrupo,
+      governancaGrupo,
+
+      speConstituida,
+      nomeProjetoSPE,
+      finalidadeSPE,
+      sociosSPE,
+      valorProjetoSPE,
+      aportesSPE,
+      financiamentoSPE,
+      prazoSPE,
+      receitaPrevistaSPE,
+      custosPrevistosSPE,
+      faseProjetoSPE,
+
+      perguntasDinamicas,
+      negocioInterpretado,
+      faturamento,
+      colaboradores,
+      regime,
+      observacao,
+      dores,
+      doresSelecionadas,
+      dor90Dias,
+      impactosDor,
+      respostas,
+
+      leadId,
+      sessionIdLead,
+    };
+
+    const timer =
+      setTimeout(
+        () => {
+          try {
+            localStorage.setItem(
+              CHAVE_RASCUNHO,
+              JSON.stringify(
+                rascunho
+              )
+            );
+          } catch {}
+        },
+        350
+      );
+
+    return () =>
+      clearTimeout(
+        timer
+      );
+  }, [
+    retomadaDecidida,
+    step,
+    nome,
+    cargo,
+    telefone,
+    email,
+    consentimentoEmail,
+    cnpjInput,
+    empresas,
+    cnaesEmpresa,
+    atividadesSelecionadas,
+    atividadePredominante,
+    descricaoNegocio,
+    estruturaNegocio,
+    tiposHolding,
+    objetivosHolding,
+    patrimonioHolding,
+    receitasHolding,
+    sucessaoHolding,
+    objetivosPF,
+    rendaMensalPF,
+    gastosMensaisPF,
+    dividasPF,
+    reservaPF,
+    patrimonioPF,
+    investimentosPF,
+    aposentadoriaPF,
+    dependentesPF,
+    nomeGrupo,
+    funcaoEmpresasGrupo,
+    sociosComunsGrupo,
+    financeiroCentralizadoGrupo,
+    pessoasCompartilhadasGrupo,
+    operacoesIntercompanyGrupo,
+    governancaGrupo,
+    speConstituida,
+    nomeProjetoSPE,
+    finalidadeSPE,
+    sociosSPE,
+    valorProjetoSPE,
+    aportesSPE,
+    financiamentoSPE,
+    prazoSPE,
+    receitaPrevistaSPE,
+    custosPrevistosSPE,
+    faseProjetoSPE,
+    perguntasDinamicas,
+    negocioInterpretado,
+    faturamento,
+    colaboradores,
+    regime,
+    observacao,
+    dores,
+    doresSelecionadas,
+    dor90Dias,
+    impactosDor,
+    respostas,
+    leadId,
+    sessionIdLead,
+  ]);
+
+  function continuarRascunho() {
+    aplicarRascunho(
+      rascunhoPendente
+    );
+
+    setRascunhoPendente(
+      null
+    );
+
+    setRetomadaDecidida(
+      true
+    );
+  }
+
+  function comecarNovamente() {
+    limparRascunhoLocal();
+
+    setRascunhoPendente(
+      null
+    );
+
+    setRetomadaDecidida(
+      true
+    );
+
+    setStep(
+      "intro"
+    );
+  }
+
+  // =========================================================
   // CRM — REGISTRA O ACESSO ASSIM QUE O CLIENTE ABRE O LINK
   // =========================================================
   useEffect(() => {
@@ -1874,7 +2508,11 @@ function DiagnosticoPrototipo() {
         let sessionId =
           sessionStorage.getItem(
             chaveSessao
-          ) || "";
+          ) ||
+          localStorage.getItem(
+            chaveSessao
+          ) ||
+          "";
 
         if (!sessionId) {
           const uuid =
@@ -1889,6 +2527,11 @@ function DiagnosticoPrototipo() {
             `sessao_${uuid}`;
 
           sessionStorage.setItem(
+            chaveSessao,
+            sessionId
+          );
+
+          localStorage.setItem(
             chaveSessao,
             sessionId
           );
@@ -1970,6 +2613,11 @@ function DiagnosticoPrototipo() {
             sessionId
         ) {
           sessionStorage.setItem(
+            chaveSessao,
+            data.sessionId
+          );
+
+          localStorage.setItem(
             chaveSessao,
             data.sessionId
           );
@@ -5506,6 +6154,93 @@ function DiagnosticoPrototipo() {
         >
           <StepDots step={step} />
 
+          {rascunhoPendente && (
+            <div
+              style={{
+                margin:
+                  "10px 18px 4px",
+                padding: 14,
+                borderRadius: 14,
+                background:
+                  "#FFF7F3",
+                border:
+                  "1px solid #FFD8CC",
+              }}
+            >
+              <div
+                style={{
+                  color: NAVY,
+                  fontSize: 14,
+                  fontWeight: 900,
+                }}
+              >
+                Continuar de onde você parou?
+              </div>
+
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  marginTop: 5,
+                }}
+              >
+                Encontramos um diagnóstico em andamento neste aparelho. Seu preenchimento foi salvo automaticamente.
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  marginTop: 12,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={
+                    continuarRascunho
+                  }
+                  style={{
+                    width: "100%",
+                    minHeight: 46,
+                    border: 0,
+                    borderRadius: 11,
+                    background:
+                      CORAL,
+                    color: WHITE,
+                    fontSize: 13,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Continuar de onde parei
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    comecarNovamente
+                  }
+                  style={{
+                    width: "100%",
+                    minHeight: 44,
+                    border:
+                      "1px solid #D8DEEA",
+                    borderRadius: 11,
+                    background:
+                      WHITE,
+                    color: NAVY,
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  Começar novamente
+                </button>
+              </div>
+            </div>
+          )}
+
           <div
             className="finder-form-content"
             style={{
@@ -5514,6 +6249,16 @@ function DiagnosticoPrototipo() {
               display: "flex",
               flexDirection: "column",
               boxSizing: "border-box",
+              opacity:
+                rascunhoPendente
+                  ? 0.32
+                  : 1,
+              pointerEvents:
+                rascunhoPendente
+                  ? "none"
+                  : "auto",
+              transition:
+                "opacity .2s ease",
             }}
           >
 
@@ -7913,58 +8658,584 @@ function miniChipStyle(active) {
 // =========================================================
 // LOGIN DO APP
 // =========================================================
-export default function AppComAcesso() {
-  const [token, setToken] = useState(() => sessionStorage.getItem("finder_app_token") || "");
-  const [usuario, setUsuario] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem("finder_app_user") || "{}"); } catch { return {}; }
-  });
-  const [login, setLogin] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
+function TelaInicialFinder({
+  onResponderDiagnostico,
+  onEntrarSistema,
+}) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#F3F5F8",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        fontFamily: BODY_FONT,
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          background: WHITE,
+          borderRadius: 24,
+          padding: "34px 30px",
+          boxSizing: "border-box",
+          boxShadow:
+            "0 24px 60px rgba(23,35,61,.12)",
+        }}
+      >
+        <img
+          src="/finder-logo.png"
+          alt="Finder of Solutions"
+          style={{
+            width: 210,
+            maxWidth: "72%",
+            objectFit: "contain",
+            marginBottom: 24,
+          }}
+        />
+
+        <div
+          style={{
+            color: CORAL,
+            fontSize: 11,
+            fontWeight: 900,
+            letterSpacing: 1.3,
+            marginBottom: 7,
+          }}
+        >
+          FINDER OF SOLUTIONS
+        </div>
+
+        <h1
+          style={{
+            margin: "0 0 8px",
+            color: NAVY,
+            fontFamily: DISPLAY_FONT,
+            fontSize: 34,
+            lineHeight: 1.05,
+          }}
+        >
+          Como deseja acessar?
+        </h1>
+
+        <p
+          style={{
+            margin: "0 0 24px",
+            color: MUTED,
+            fontSize: 13.5,
+            lineHeight: 1.5,
+          }}
+        >
+          Escolha entre responder o diagnóstico ou acessar o sistema interno da Finder.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(240px,1fr))",
+            gap: 14,
+          }}
+        >
+          <button
+            type="button"
+            onClick={
+              onResponderDiagnostico
+            }
+            style={{
+              border:
+                `2px solid ${CORAL}`,
+              background:
+                "#FFF7F3",
+              borderRadius: 18,
+              padding: 22,
+              textAlign: "left",
+              cursor: "pointer",
+              minHeight: 165,
+              fontFamily: BODY_FONT,
+            }}
+          >
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                background: CORAL,
+                color: WHITE,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: 19,
+                marginBottom: 16,
+              }}
+            >
+              1
+            </div>
+
+            <strong
+              style={{
+                display: "block",
+                color: NAVY,
+                fontSize: 19,
+                marginBottom: 7,
+              }}
+            >
+              Preencher formulário
+            </strong>
+
+            <span
+              style={{
+                display: "block",
+                color: MUTED,
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              Inicie ou continue o diagnóstico empresarial.
+            </span>
+
+            <div
+              style={{
+                color: CORAL,
+                fontSize: 11,
+                fontWeight: 900,
+                marginTop: 16,
+              }}
+            >
+              COMEÇAR →
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              onEntrarSistema
+            }
+            style={{
+              border:
+                "2px solid #D8DEEA",
+              background: WHITE,
+              borderRadius: 18,
+              padding: 22,
+              textAlign: "left",
+              cursor: "pointer",
+              minHeight: 165,
+              fontFamily: BODY_FONT,
+            }}
+          >
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                background: NAVY,
+                color: WHITE,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: 19,
+                marginBottom: 16,
+              }}
+            >
+              2
+            </div>
+
+            <strong
+              style={{
+                display: "block",
+                color: NAVY,
+                fontSize: 19,
+                marginBottom: 7,
+              }}
+            >
+              Acesso ao sistema
+            </strong>
+
+            <span
+              style={{
+                display: "block",
+                color: MUTED,
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              Área restrita para equipe, consultores, gestores e administradores.
+            </span>
+
+            <div
+              style={{
+                color: NAVY,
+                fontSize: 11,
+                fontWeight: 900,
+                marginTop: 16,
+              }}
+            >
+              ACESSAR →
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginSistema({
+  onVoltar,
+  onLogin,
+}) {
+  const [login, setLogin] =
+    useState("");
+
+  const [senha, setSenha] =
+    useState("");
+
+  const [erro, setErro] =
+    useState("");
+
+  const [carregando, setCarregando] =
+    useState(false);
 
   async function entrar() {
-    if (!login.trim() || !senha) { setErro("Digite seu login e senha."); return; }
-    setCarregando(true); setErro("");
+    if (
+      !login.trim() ||
+      !senha
+    ) {
+      setErro(
+        "Digite seu login e senha."
+      );
+      return;
+    }
+
+    setCarregando(true);
+    setErro("");
+
     try {
-      const r = await fetch("/api/acessos?action=login", {
-        method:"POST", headers:{"content-type":"application/json"},
-        body:JSON.stringify({login:login.trim(), senha, tipo:"APP"})
-      });
-      const d = await r.json().catch(()=>null);
-      if (!r.ok || !d?.sucesso || !d?.token) throw new Error(d?.error || "Login ou senha inválidos.");
-      sessionStorage.setItem("finder_app_token", d.token);
-      sessionStorage.setItem("finder_app_user", JSON.stringify(d.usuario || {}));
-      setUsuario(d.usuario || {}); setToken(d.token);
-    } catch(e) { setErro(e?.message || "Não foi possível entrar no App."); }
-    finally { setCarregando(false); }
+      const resposta =
+        await fetch(
+          "/api/acessos?action=login",
+          {
+            method: "POST",
+
+            headers: {
+              "content-type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                login:
+                  login.trim(),
+
+                senha,
+
+                tipo:
+                  "SISTEMA",
+              }),
+          }
+        );
+
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso ||
+        !data?.token
+      ) {
+        throw new Error(
+          data?.error ||
+          "Login ou senha inválidos."
+        );
+      }
+
+      sessionStorage.setItem(
+        "finder_admin_token",
+        data.token
+      );
+
+      sessionStorage.setItem(
+        "finder_admin_user",
+        JSON.stringify(
+          data.usuario ||
+          {}
+        )
+      );
+
+      onLogin(
+        data.usuario ||
+        {}
+      );
+    } catch (error) {
+      setErro(
+        error?.message ||
+        "Não foi possível entrar no sistema."
+      );
+    } finally {
+      setCarregando(false);
+    }
   }
 
-  useEffect(() => {
-    if (!token) return;
-    const handler = (ev) => {
-      const el = ev.target?.closest?.("button,a,[role='button']");
-      if (!el) return;
-      const descricao = String(el.innerText || el.getAttribute("aria-label") || "").trim().slice(0,160);
-      if (!descricao) return;
-      fetch("/api/acessos?action=auditar", {method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({acao:"CLICK",modulo:"APP",recurso:"interface",descricao})}).catch(()=>null);
-    };
-    document.addEventListener("click", handler, true);
-    return () => document.removeEventListener("click", handler, true);
-  }, [token]);
+  const input = {
+    width: "100%",
+    boxSizing: "border-box",
+    border:
+      "1px solid #D8DEEA",
+    borderRadius: 10,
+    padding: "12px 13px",
+    fontFamily: BODY_FONT,
+    fontSize: 16,
+    color: NAVY,
+    marginBottom: 12,
+    outline: "none",
+  };
 
-  if (!token) {
-    return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#F3F5F8",padding:20,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
-      <div style={{width:"100%",maxWidth:420,background:"white",borderRadius:20,padding:30,boxShadow:"0 24px 60px rgba(23,35,61,.14)"}}>
-        <img src="/finder-logo.png" alt="Finder of Solutions" style={{width:180,maxWidth:"70%",objectFit:"contain",marginBottom:22}}/>
-        <h1 style={{margin:"0 0 7px",color:"#17233D",fontSize:28}}>Acesso ao Diagnóstico</h1>
-        <p style={{margin:"0 0 22px",fontSize:13,color:"#5B667A"}}>Entre com o usuário criado pelo administrador.</p>
-        <input value={login} onChange={e=>{setLogin(e.target.value);setErro("")}} placeholder="Login ou e-mail" autoComplete="username" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
-        <input type="password" value={senha} onChange={e=>{setSenha(e.target.value);setErro("")}} onKeyDown={e=>e.key==="Enter"&&entrar()} placeholder="Senha" autoComplete="current-password" style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",border:"1px solid #D8DEEA",borderRadius:10,marginBottom:10}}/>
-        {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,fontSize:12,marginBottom:10}}>{erro}</div>}
-        <button onClick={entrar} disabled={carregando} style={{width:"100%",border:0,borderRadius:10,padding:"12px 14px",background:"#17233D",color:"white",fontWeight:700,cursor:"pointer"}}>{carregando?"Validando...":"Entrar"}</button>
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#F3F5F8",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        fontFamily: BODY_FONT,
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: WHITE,
+          borderRadius: 20,
+          padding: 30,
+          boxSizing: "border-box",
+          boxShadow:
+            "0 24px 60px rgba(23,35,61,.14)",
+        }}
+      >
+        <img
+          src="/finder-logo.png"
+          alt="Finder of Solutions"
+          style={{
+            width: 180,
+            maxWidth: "70%",
+            objectFit: "contain",
+            marginBottom: 22,
+          }}
+        />
+
+        <h1
+          style={{
+            margin: "0 0 7px",
+            color: NAVY,
+            fontSize: 28,
+            fontFamily: DISPLAY_FONT,
+          }}
+        >
+          Acesso ao sistema
+        </h1>
+
+        <p
+          style={{
+            margin: "0 0 22px",
+            fontSize: 13,
+            color: MUTED,
+          }}
+        >
+          Entre com seu usuário ou e-mail e senha cadastrados pelo administrador.
+        </p>
+
+        <input
+          value={login}
+          onChange={(e) => {
+            setLogin(
+              e.target.value
+            );
+
+            setErro("");
+          }}
+          placeholder="Login ou e-mail"
+          autoComplete="username"
+          style={input}
+        />
+
+        <input
+          type="password"
+          value={senha}
+          onChange={(e) => {
+            setSenha(
+              e.target.value
+            );
+
+            setErro("");
+          }}
+          onKeyDown={(e) => {
+            if (
+              e.key ===
+              "Enter"
+            ) {
+              entrar();
+            }
+          }}
+          placeholder="Senha"
+          autoComplete="current-password"
+          style={input}
+        />
+
+        {erro && (
+          <div
+            style={{
+              background:
+                "#FAECE7",
+              color:
+                "#993C1D",
+              padding: 10,
+              borderRadius: 9,
+              fontSize: 12,
+              marginBottom: 10,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={entrar}
+          disabled={
+            carregando
+          }
+          style={{
+            width: "100%",
+            minHeight: 46,
+            border: 0,
+            borderRadius: 10,
+            padding:
+              "12px 14px",
+            background:
+              carregando
+                ? "#D8DEEA"
+                : NAVY,
+            color: WHITE,
+            fontWeight: 800,
+            cursor:
+              carregando
+                ? "not-allowed"
+                : "pointer",
+            fontSize: 14,
+          }}
+        >
+          {carregando
+            ? "Validando..."
+            : "Entrar"}
+        </button>
+
+        <button
+          type="button"
+          onClick={
+            onVoltar
+          }
+          style={{
+            width: "100%",
+            marginTop: 10,
+            border: 0,
+            background:
+              "transparent",
+            color: MUTED,
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          ← Voltar
+        </button>
       </div>
-    </div>;
-  }
-  return <DiagnosticoPrototipo usuarioAcesso={usuario} tokenAcesso={token} />;
+    </div>
+  );
 }
+
+export default function App() {
+  const [modo, setModo] =
+    useState(() => {
+      try {
+        const temAdmin =
+          Boolean(
+            sessionStorage.getItem(
+              "finder_admin_token"
+            )
+          );
+
+        if (
+          temAdmin
+        ) {
+          return "sistema";
+        }
+
+        return "inicio";
+      } catch {
+        return "inicio";
+      }
+    });
+
+  if (
+    modo === "sistema"
+  ) {
+    return (
+      <Admin />
+    );
+  }
+
+  if (
+    modo === "diagnostico"
+  ) {
+    return (
+      <DiagnosticoPrototipo />
+    );
+  }
+
+  if (
+    modo ===
+    "login-sistema"
+  ) {
+    return (
+      <LoginSistema
+        onVoltar={() =>
+          setModo(
+            "inicio"
+          )
+        }
+        onLogin={() =>
+          setModo(
+            "sistema"
+          )
+        }
+      />
+    );
+  }
+
+  return (
+    <TelaInicialFinder
+      onResponderDiagnostico={() =>
+        setModo(
+          "diagnostico"
+        )
+      }
+      onEntrarSistema={() =>
+        setModo(
+          "login-sistema"
+        )
+      }
+    />
+  );
+}
+
