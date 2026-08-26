@@ -71,50 +71,52 @@ export function FinderSidebar({
 }) {
   return (
     <aside
+      className="finder-sidebar"
       style={{
         position: "sticky",
         top: 0,
         height: "100vh",
         padding: "20px 14px",
         background:
-          "linear-gradient(180deg,#08111F 0%,#0A1424 100%)",
+          "linear-gradient(180deg,#07111F 0%,#0A1526 58%,#0C1830 100%)",
         color: C.text,
         boxSizing: "border-box",
         overflowY: "auto",
+        borderRight:
+          "1px solid rgba(255,255,255,.04)",
       }}
     >
       <div
         style={{
-          padding: "8px 10px 18px",
+          padding:
+            "8px 10px 20px",
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: 11,
         }}
       >
         <div
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
+            width: 40,
+            height: 40,
+            borderRadius: 13,
             display: "grid",
             placeItems: "center",
             background:
-              "linear-gradient(135deg,#4F7CFF,#16C7D9)",
+              "linear-gradient(135deg,#4F7CFF,#13CAD7)",
             boxShadow:
-              "0 8px 22px rgba(79,124,255,.32)",
+              "0 10px 26px rgba(79,124,255,.35)",
           }}
         >
-          <Sparkles
-            size={18}
-          />
+          <Sparkles size={18} />
         </div>
 
         <div>
           <div
             style={{
-              fontSize: 13,
-              fontWeight: 900,
-              letterSpacing: .4,
+              fontSize: 13.5,
+              fontWeight: 950,
+              letterSpacing: .5,
             }}
           >
             FINDER
@@ -122,10 +124,11 @@ export function FinderSidebar({
 
           <div
             style={{
-              fontSize: 9,
+              fontSize: 8.7,
               color: C.muted,
-              marginTop: 1,
-              letterSpacing: 1.1,
+              marginTop: 2,
+              letterSpacing: 1.25,
+              fontWeight: 800,
             }}
           >
             INTELLIGENCE
@@ -135,11 +138,12 @@ export function FinderSidebar({
 
       <div
         style={{
-          fontSize: 8,
-          color: C.muted,
+          fontSize: 7.8,
+          color: "#7487A5",
           fontWeight: 900,
-          letterSpacing: 1.2,
-          padding: "0 10px 7px",
+          letterSpacing: 1.35,
+          padding:
+            "0 10px 8px",
         }}
       >
         OPERAÇÃO
@@ -170,18 +174,21 @@ export function FinderSidebar({
                 }
                 style={{
                   width: "100%",
-                  border: 0,
+                  border:
+                    ativo
+                      ? "1px solid rgba(79,124,255,.22)"
+                      : "1px solid transparent",
                   borderRadius: 12,
                   padding:
                     "10px 11px",
                   background:
                     ativo
-                      ? "linear-gradient(90deg,rgba(79,124,255,.22),rgba(22,199,217,.10))"
+                      ? "linear-gradient(90deg,rgba(79,124,255,.18),rgba(22,199,217,.08))"
                       : "transparent",
                   color:
                     ativo
                       ? C.white
-                      : C.muted,
+                      : "#9BAAC0",
                   display: "flex",
                   alignItems: "center",
                   gap: 10,
@@ -192,10 +199,10 @@ export function FinderSidebar({
                     ativo
                       ? 900
                       : 700,
-                  borderLeft:
+                  boxShadow:
                     ativo
-                      ? "3px solid #4F7CFF"
-                      : "3px solid transparent",
+                      ? "inset 3px 0 0 #4F7CFF"
+                      : "none",
                 }}
               >
                 <Icon
@@ -203,7 +210,7 @@ export function FinderSidebar({
                   color={
                     ativo
                       ? C.cyan
-                      : C.muted
+                      : "#7F90AA"
                   }
                 />
 
@@ -228,13 +235,13 @@ export function FinderSidebar({
 
       <div
         style={{
-          marginTop: 20,
-          padding: "12px 10px",
-          borderRadius: 14,
+          marginTop: 22,
+          padding: 12,
+          borderRadius: 15,
           background:
-            "linear-gradient(135deg,rgba(79,124,255,.16),rgba(22,199,217,.08))",
+            "linear-gradient(135deg,rgba(79,124,255,.15),rgba(22,199,217,.06))",
           border:
-            "1px solid rgba(255,255,255,.06)",
+            "1px solid rgba(79,124,255,.12)",
         }}
       >
         <div
@@ -242,9 +249,9 @@ export function FinderSidebar({
             display: "flex",
             alignItems: "center",
             gap: 8,
-            color: C.cyan,
+            color: "#62DCE6",
             fontWeight: 900,
-            fontSize: 9.5,
+            fontSize: 9.8,
           }}
         >
           <Bot size={14} />
@@ -253,13 +260,13 @@ export function FinderSidebar({
 
         <div
           style={{
-            color: C.muted,
+            color: "#8EA1BC",
             fontSize: 8.7,
-            lineHeight: 1.45,
+            lineHeight: 1.5,
             marginTop: 6,
           }}
         >
-          Diagnósticos, documentos, propostas e próximos passos assistidos por IA.
+          Inteligência integrada a diagnósticos, documentos, propostas e atendimento.
         </div>
       </div>
 
@@ -272,10 +279,11 @@ export function FinderSidebar({
           border:
             "1px solid rgba(255,255,255,.08)",
           background:
-            "transparent",
-          color: C.muted,
+            "rgba(255,255,255,.02)",
+          color: "#91A3BC",
           borderRadius: 11,
-          padding: "9px 10px",
+          padding:
+            "9px 10px",
           cursor: "pointer",
           fontSize: 9.5,
           fontWeight: 800,
@@ -294,14 +302,15 @@ export function FinderTopbar({
 }) {
   return (
     <header
+      className="finder-topbar"
       style={{
-        minHeight: 74,
+        minHeight: 76,
         padding:
           "14px 20px",
         boxSizing:
           "border-box",
         background:
-          "rgba(255,255,255,.92)",
+          "rgba(255,255,255,.93)",
         borderBottom:
           "1px solid #E8ECF3",
         display: "flex",
@@ -313,15 +322,16 @@ export function FinderTopbar({
         top: 0,
         zIndex: 50,
         backdropFilter:
-          "blur(14px)",
+          "blur(16px)",
       }}
     >
       <div>
         <div
           style={{
             color: C.textDark,
-            fontSize: 18,
-            fontWeight: 900,
+            fontSize: 19,
+            fontWeight: 950,
+            letterSpacing: -.25,
           }}
         >
           {titulo}
@@ -333,7 +343,7 @@ export function FinderTopbar({
               color:
                 C.mutedDark,
               fontSize: 9.5,
-              marginTop: 2,
+              marginTop: 3,
             }}
           >
             {subtitulo}
@@ -349,8 +359,9 @@ export function FinderTopbar({
         }}
       >
         <div
+          className="finder-search-global"
           style={{
-            minWidth: 260,
+            minWidth: 250,
             border:
               "1px solid #E3E7EF",
             background:
@@ -365,9 +376,7 @@ export function FinderTopbar({
               C.mutedDark,
           }}
         >
-          <Search
-            size={14}
-          />
+          <Search size={14} />
 
           <span
             style={{
@@ -383,7 +392,8 @@ export function FinderTopbar({
             display: "flex",
             alignItems: "center",
             gap: 8,
-            padding: "7px 9px",
+            padding:
+              "7px 9px",
             borderRadius: 12,
             background:
               "#F8FAFD",
