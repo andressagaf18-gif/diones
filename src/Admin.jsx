@@ -37,6 +37,7 @@ import {
   Pencil,
 } from "lucide-react";
 import Dashboard from "./Dashboard";
+import OperacionalBI from "./OperacionalBI";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -20394,6 +20395,11 @@ export default function Admin() {
     setAba,
   ] = useState("dashboard");
 
+  const [
+    atendimentoDetalhe,
+    setAtendimentoDetalhe,
+  ] = useState(false);
+
   const usuarioSessao = useMemo(() => {
     try { return JSON.parse(sessionStorage.getItem("finder_admin_user") || "{}"); }
     catch { return {}; }
@@ -20423,6 +20429,7 @@ export default function Admin() {
 
     setToken("");
     setDiagnosticoId(null);
+    setAtendimentoDetalhe(false);
     setAba("dashboard");
   }
 
@@ -20455,6 +20462,9 @@ export default function Admin() {
   ) {
     setDiagnosticoId(null);
     setAba("atendimentos");
+    setAtendimentoDetalhe(
+      Boolean(atendimentoId)
+    );
 
     if (atendimentoId) {
       sessionStorage.setItem(
@@ -20536,11 +20546,12 @@ export default function Admin() {
             aba !==
             "atendimentos"
           }
-          onClick={() =>
+          onClick={() => {
+            setAtendimentoDetalhe(false);
             setAba(
               "atendimentos"
-            )
-          }
+            );
+          }}
         >
           <Target size={14} />
           Atendimentos
@@ -20781,15 +20792,27 @@ export default function Admin() {
     "diagnosticos"
   ) {
     return (
-      <div>
+      <div
+        style={{
+          minHeight: "100vh",
+          background: BG,
+          fontFamily: BODY_FONT,
+          color: NAVY,
+        }}
+      >
+        <Cabecalho
+          titulo="Diagnósticos"
+          subtitulo="BI interativo de diagnóstico, origem, estrutura, tipo e desempenho"
+        />
+
         <BarraAbas />
 
-        <ListaDiagnosticos
+        <OperacionalBI
           token={token}
-          onAbrir={
+          modo="diagnosticos"
+          onAbrirDiagnostico={
             setDiagnosticoId
           }
-          onLogout={sair}
         />
       </div>
     );
@@ -20799,6 +20822,64 @@ export default function Admin() {
     aba ===
     "atendimentos"
   ) {
+    if (
+      atendimentoDetalhe
+    ) {
+      return (
+        <div
+          style={{
+            minHeight: "100vh",
+            background: BG,
+            fontFamily: BODY_FONT,
+            color: NAVY,
+          }}
+        >
+          <Cabecalho
+            titulo="Atendimento"
+            subtitulo="Execução consultiva e histórico do caso"
+          />
+
+          <BarraAbas />
+
+          <main
+            style={{
+              maxWidth: 1320,
+              margin: "0 auto",
+              padding:
+                "26px 22px 50px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setAtendimentoDetalhe(false);
+                sessionStorage.removeItem(
+                  "finder_dashboard_atendimento_id"
+                );
+              }}
+              style={{
+                border: 0,
+                background: "transparent",
+                color: CORAL,
+                fontWeight: 900,
+                cursor: "pointer",
+                marginBottom: 10,
+              }}
+            >
+              ← Voltar para o BI de Atendimentos
+            </button>
+
+            <AtendimentosDepartamento
+              token={token}
+              onAbrirDiagnostico={
+                setDiagnosticoId
+              }
+            />
+          </main>
+        </div>
+      );
+    }
+
     return (
       <div
         style={{
@@ -20810,26 +20891,21 @@ export default function Admin() {
       >
         <Cabecalho
           titulo="Atendimentos"
-          subtitulo="Execução consultiva por departamento"
+          subtitulo="BI interativo de execução consultiva, áreas, prazos e responsáveis"
         />
 
         <BarraAbas />
 
-        <main
-          style={{
-            maxWidth: 1320,
-            margin: "0 auto",
-            padding:
-              "26px 22px 50px",
-          }}
-        >
-          <AtendimentosDepartamento
-            token={token}
-            onAbrirDiagnostico={
-              setDiagnosticoId
-            }
-          />
-        </main>
+        <OperacionalBI
+          token={token}
+          modo="atendimentos"
+          onAbrirDiagnostico={
+            setDiagnosticoId
+          }
+          onAbrirAtendimento={
+            abrirAtendimentoDashboard
+          }
+        />
       </div>
     );
   }
