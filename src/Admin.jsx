@@ -40,6 +40,8 @@ import {
 import Dashboard from "./Dashboard";
 import OperacionalBI from "./OperacionalBI";
 import PropostaPDFButton from "./PropostaPDF";
+import { FinderSidebar, FinderTopbar } from "./TechShell";
+import { finderStyles } from "./Theme";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -22511,6 +22513,49 @@ function Cliente360({
   );
 }
 
+
+function FinderTechLayout({
+  aba,
+  setAba,
+  logout,
+  titulo,
+  subtitulo,
+  children,
+}) {
+  return (
+    <div
+      style={
+        finderStyles.page
+      }
+    >
+      <div
+        style={
+          finderStyles.shell
+        }
+      >
+        <FinderSidebar
+          aba={aba}
+          setAba={setAba}
+          onLogout={logout}
+        />
+
+        <section
+          style={
+            finderStyles.content
+          }
+        >
+          <FinderTopbar
+            titulo={titulo}
+            subtitulo={subtitulo}
+          />
+
+          {children}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 // =========================================================
 // COMPONENTE PRINCIPAL
 // =========================================================
@@ -22872,25 +22917,13 @@ export default function Admin() {
     "dashboard"
   ) {
     return (
-      <div
-        style={{
-          minHeight:
-            "100vh",
-          background:
-            BG,
-          fontFamily:
-            BODY_FONT,
-          color:
-            NAVY,
-        }}
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={logout}
+        titulo="Visão Geral"
+        subtitulo="Indicadores, operação comercial e inteligência Finder"
       >
-        <Cabecalho
-          titulo="Dashboard"
-          subtitulo="Inteligência gerencial e comercial da Finder"
-        />
-
-        <BarraAbas />
-
         <Dashboard
           onAbrirLead={
             abrirLeadDashboard
@@ -22902,7 +22935,7 @@ export default function Admin() {
             abrirAtendimentoDashboard
           }
         />
-      </div>
+      </FinderTechLayout>
     );
   }
 
