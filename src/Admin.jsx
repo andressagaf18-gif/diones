@@ -13013,6 +13013,8 @@ function AtendimentosDepartamento({
           )}
         </div>
       )}
+        </>
+      )}
     </div>
   );
 }
