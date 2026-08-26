@@ -2210,6 +2210,389 @@ async function listarVersoesProposta(req, res) {
   });
 }
 
+
+async function consultaIASegura(fn, fallback = []) {
+  try {
+    return await fn();
+  } catch (error) {
+    console.warn("[proposta-ia]", error?.message || error);
+    return fallback;
+  }
+}
+
+function extrairTextoRespostaIA(data) {
+  if (typeof data?.output_text === "string") {
+    return data.output_text;
+  }
+
+  const partes = [];
+
+  for (const item of data?.output || []) {
+    for (const content of item?.content || []) {
+      if (typeof content?.text === "string") {
+        partes.push(content.text);
+      }
+    }
+  }
+
+  return partes.join("\n");
+}
+
+function parseJsonSeguroIA(textoResposta) {
+  const limpo = String(textoResposta || "")
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
+  return JSON.parse(limpo);
+}
+
+async function montarContextoPropostaIA(atendimentoId) {
+  const atendimentos = await sql`
+    SELECT
+      a.*,
+      r.nome AS responsavel_nome
+    FROM crm_atendimentos_departamento a
+    LEFT JOIN crm_responsaveis r
+      ON r.id = a.responsavel_id
+    WHERE a.id = ${atendimentoId}
+    LIMIT 1
+  `;
+
+  const atendimento = atendimentos?.[0];
+
+  if (!atendimento) {
+    return null;
+  }
+
+  const leads = await sql`
+    SELECT *
+    FROM diagnostico_leads
+    WHERE id = ${atendimento.lead_id}
+    LIMIT 1
+  `;
+
+  const lead = leads?.[0] || null;
+
+  const diagnosticos =
+    atendimento.diagnostico_id
+      ? await consultaIASegura(
+          () =>
+            sql`
+              SELECT *
+              FROM diagnosticos
+              WHERE id = ${atendimento.diagnostico_id}
+              LIMIT 1
+            `,
+          []
+        )
+      : [];
+
+  const documentos = await consultaIASegura(
+    () =>
+      sql`
+        SELECT
+          id,
+          nome_arquivo,
+          tipo_documento,
+          status_analise,
+          texto_extraido_chars,
+          criado_em
+        FROM crm_documentos_cliente
+        WHERE atendimento_id = ${atendimentoId}
+        ORDER BY criado_em DESC
+        LIMIT 30
+      `,
+    []
+  );
+
+  const analises = await consultaIASegura(
+    () =>
+      sql`
+        SELECT
+          id,
+          resumo,
+          achados,
+          divergencias,
+          riscos,
+          pontos_validacao,
+          oportunidades,
+          dados_faltantes,
+          confianca,
+          criado_em
+        FROM crm_analises_documentais
+        WHERE atendimento_id = ${atendimentoId}
+        ORDER BY criado_em DESC
+        LIMIT 10
+      `,
+    []
+  );
+
+  const historico = await consultaIASegura(
+    () =>
+      sql`
+        SELECT *
+        FROM crm_atendimento_historico
+        WHERE atendimento_id = ${atendimentoId}
+        ORDER BY criado_em DESC
+        LIMIT 50
+      `,
+    []
+  );
+
+  const propostas = await consultaIASegura(
+    () =>
+      sql`
+        SELECT *
+        FROM crm_propostas
+        WHERE atendimento_id = ${atendimentoId}
+        ORDER BY created_at DESC
+        LIMIT 20
+      `,
+    []
+  );
+
+  return {
+    atendimento,
+    lead,
+    diagnostico: diagnosticos?.[0] || null,
+    documentos,
+    analises,
+    historico,
+    propostas,
+  };
+}
+
+async function montarPropostaComIA(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) {
+    return;
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({
+      sucesso: false,
+      error: "OPENAI_API_KEY não configurada.",
+    });
+  }
+
+  const atendimentoId =
+    texto(req.body?.atendimentoId, 140);
+
+  if (!atendimentoId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "atendimentoId é obrigatório.",
+    });
+  }
+
+  const contexto =
+    await montarContextoPropostaIA(atendimentoId);
+
+  if (!contexto) {
+    return res.status(404).json({
+      sucesso: false,
+      error: "Atendimento não encontrado.",
+    });
+  }
+
+  const dadosCompactos = {
+    atendimento: {
+      area: contexto.atendimento?.area || "",
+      scoreArea: contexto.atendimento?.score_area ?? null,
+      nivelArea: contexto.atendimento?.nivel_area || "",
+      statusAtendimento:
+        contexto.atendimento?.status_atendimento || "",
+      statusOportunidade:
+        contexto.atendimento?.status_oportunidade || "",
+      proximaAcao:
+        contexto.atendimento?.proxima_acao || "",
+      responsavelNome:
+        contexto.atendimento?.responsavel_nome || "",
+    },
+
+    cliente: {
+      razaoSocial:
+        contexto.lead?.razao_social || "",
+      nome:
+        contexto.lead?.nome || "",
+      cnpj:
+        contexto.lead?.cnpj || "",
+      origem:
+        contexto.lead?.origem || "",
+      estruturaNegocio:
+        contexto.lead?.estrutura_negocio || "",
+      statusComercial:
+        contexto.lead?.status_comercial || "",
+      intencao:
+        contexto.lead?.intencao || "",
+      contextoCliente:
+        contexto.lead?.contexto_cliente || {},
+    },
+
+    diagnostico:
+      contexto.diagnostico || null,
+
+    analisesDocumentais:
+      contexto.analises || [],
+
+    documentos:
+      contexto.documentos || [],
+
+    historicoRecente:
+      contexto.historico || [],
+
+    propostasAnteriores:
+      (contexto.propostas || []).map(
+        (p) => ({
+          servico: p.servico,
+          descricao: p.descricao,
+          valorTotal: p.valor_total,
+          mensalidade: p.mensalidade,
+          taxaImplantacao: p.taxa_implantacao,
+          status: p.status,
+          escopo: p.escopo,
+          entregaveis: p.entregaveis,
+        })
+      ),
+  };
+
+  const prompt = `
+Você é um consultor comercial sênior da Finder of Solutions.
+
+Monte um RASCUNHO de proposta comercial usando somente os dados fornecidos.
+
+REGRAS:
+- Não invente fatos.
+- Não invente preços.
+- Não use valorTotal, mensalidade ou taxaImplantacao com números que não existam na base.
+- Se não houver preço definido, use 0.
+- A proposta deve refletir as dores, riscos, achados e oportunidades realmente identificados.
+- Diferencie problema confirmado de informação ausente.
+- Linguagem profissional, comercial e fácil para cliente leigo.
+- O consultor humano revisará tudo antes de salvar.
+- Não prometa resultado garantido.
+- Retorne APENAS JSON válido.
+
+Formato:
+{
+  "tituloProposta": "...",
+  "resumoExecutivo": "...",
+  "servico": "...",
+  "descricao": "...",
+  "escopo": "...",
+  "entregaveis": "...",
+  "tipoReceita": "PONTUAL|RECORRENTE|MISTA",
+  "condicoesPagamento": "...",
+  "prazoExecucao": "...",
+  "observacoes": "...",
+  "valorTotal": 0,
+  "mensalidade": 0,
+  "taxaImplantacao": 0,
+  "confianca": "ALTA|MEDIA|BAIXA",
+  "baseUtilizada": ["..."],
+  "alertasRevisao": ["..."]
+}
+
+DADOS:
+${JSON.stringify(dadosCompactos, null, 2).slice(0, 95000)}
+`;
+
+  const resposta = await fetch(
+    "https://api.openai.com/v1/responses",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization:
+          `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model:
+          process.env.OPENAI_PROPOSTA_MODEL ||
+          "gpt-5.4-mini",
+        input: prompt,
+      }),
+    }
+  );
+
+  const data =
+    await resposta.json().catch(() => null);
+
+  if (!resposta.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "Erro ao montar proposta com IA."
+    );
+  }
+
+  const resultado = parseJsonSeguroIA(
+    extrairTextoRespostaIA(data)
+  );
+
+  return res.status(200).json({
+    sucesso: true,
+    proposta: {
+      tituloProposta:
+        texto(resultado.tituloProposta, 500),
+      resumoExecutivo:
+        texto(resultado.resumoExecutivo, 12000),
+      servico:
+        texto(resultado.servico, 500),
+      descricao:
+        texto(resultado.descricao, 8000),
+      escopo:
+        texto(resultado.escopo, 16000),
+      entregaveis:
+        texto(resultado.entregaveis, 12000),
+      tipoReceita:
+        ["PONTUAL", "RECORRENTE", "MISTA"].includes(
+          String(
+            resultado.tipoReceita || ""
+          ).toUpperCase()
+        )
+          ? String(
+              resultado.tipoReceita
+            ).toUpperCase()
+          : "PONTUAL",
+      condicoesPagamento:
+        texto(resultado.condicoesPagamento, 4000),
+      prazoExecucao:
+        texto(resultado.prazoExecucao, 3000),
+      observacoes:
+        texto(resultado.observacoes, 8000),
+      valorTotal:
+        numero(resultado.valorTotal, 0),
+      mensalidade:
+        numero(resultado.mensalidade, 0),
+      taxaImplantacao:
+        numero(resultado.taxaImplantacao, 0),
+      confianca:
+        texto(
+          resultado.confianca || "MEDIA",
+          20
+        ).toUpperCase(),
+      baseUtilizada:
+        Array.isArray(resultado.baseUtilizada)
+          ? resultado.baseUtilizada
+          : [],
+      alertasRevisao:
+        Array.isArray(resultado.alertasRevisao)
+          ? resultado.alertasRevisao
+          : [],
+    },
+  });
+}
+
 async function listarPropostas(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -6194,6 +6577,12 @@ export default async function handler(req, res) {
 
       case "salvar-proposta":
         return salvarProposta(
+          req,
+          res
+        );
+
+      case "montar-proposta-ia":
+        return montarPropostaComIA(
           req,
           res
         );
