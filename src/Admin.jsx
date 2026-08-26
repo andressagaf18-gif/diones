@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import Dashboard from "./Dashboard";
 import OperacionalBI from "./OperacionalBI";
+import PropostaPDFButton from "./PropostaPDF";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -6879,6 +6880,13 @@ function AtendimentosDepartamento({
     validade: "",
     motivoPerda: "",
     observacoes: "",
+    tituloProposta: "",
+    resumoExecutivo: "",
+    escopo: "",
+    entregaveis: "",
+    condicoesPagamento: "",
+    prazoExecucao: "",
+    motivoVersao: "",
   });
 
 
@@ -6922,6 +6930,13 @@ function AtendimentosDepartamento({
       validade: "",
       motivoPerda: "",
       observacoes: "",
+      tituloProposta: "",
+      resumoExecutivo: "",
+      escopo: "",
+      entregaveis: "",
+      condicoesPagamento: "",
+      prazoExecucao: "",
+      motivoVersao: "",
     });
   }
 
@@ -7043,6 +7058,20 @@ function AtendimentosDepartamento({
               propostaForm.motivoPerda.trim(),
             observacoes:
               propostaForm.observacoes.trim(),
+            tituloProposta:
+              propostaForm.tituloProposta.trim(),
+            resumoExecutivo:
+              propostaForm.resumoExecutivo.trim(),
+            escopo:
+              propostaForm.escopo.trim(),
+            entregaveis:
+              propostaForm.entregaveis.trim(),
+            condicoesPagamento:
+              propostaForm.condicoesPagamento.trim(),
+            prazoExecucao:
+              propostaForm.prazoExecucao.trim(),
+            motivoVersao:
+              propostaForm.motivoVersao.trim(),
             responsavelId:
               atendimentoAberto.responsavelId ||
               "",
@@ -7144,6 +7173,27 @@ function AtendimentosDepartamento({
       observacoes:
         proposta.observacoes ||
         "",
+      tituloProposta:
+        proposta.tituloProposta ||
+        proposta.servico ||
+        "",
+      resumoExecutivo:
+        proposta.resumoExecutivo ||
+        "",
+      escopo:
+        proposta.escopo ||
+        proposta.descricao ||
+        "",
+      entregaveis:
+        proposta.entregaveis ||
+        "",
+      condicoesPagamento:
+        proposta.condicoesPagamento ||
+        "",
+      prazoExecucao:
+        proposta.prazoExecucao ||
+        "",
+      motivoVersao: "",
     });
   }
 
@@ -9985,6 +10035,9 @@ function AtendimentosDepartamento({
                                         marginTop: 3,
                                       }}
                                     >
+                                      {proposta.numeroProposta ||
+                                        "SEM NÚMERO"}{" "}
+                                      · v{proposta.versaoAtual || 1} ·{" "}
                                       {statusPropostaLabel(
                                         proposta.status
                                       )}{" "}
@@ -10030,6 +10083,17 @@ function AtendimentosDepartamento({
                                   >
                                     Editar
                                   </Botao>
+
+                                  <PropostaPDFButton
+                                    proposta={proposta}
+                                    atendimento={atendimentoAberto}
+                                    lead={leadDoAtendimento(
+                                      atendimentoAberto
+                                    )}
+                                    onErro={setErro}
+                                  >
+                                    Gerar PDF
+                                  </PropostaPDFButton>
 
                                   <button
                                     type="button"
@@ -10106,6 +10170,48 @@ function AtendimentosDepartamento({
                       >
                         <input
                           value={
+                            propostaForm.tituloProposta
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "tituloProposta",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Título da proposta"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                          }}
+                        />
+
+                        <textarea
+                          value={
+                            propostaForm.resumoExecutivo
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "resumoExecutivo",
+                              e.target.value
+                            )
+                          }
+                          rows={3}
+                          placeholder="Resumo executivo / contexto da oportunidade"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            resize: "vertical",
+                            fontFamily:
+                              BODY_FONT,
+                          }}
+                        />
+
+                        <input
+                          value={
                             propostaForm.servico
                           }
                           onChange={(e) =>
@@ -10134,7 +10240,7 @@ function AtendimentosDepartamento({
                             )
                           }
                           rows={3}
-                          placeholder="Escopo resumido"
+                          placeholder="Descrição comercial resumida"
                           style={{
                             border:
                               "1px solid #D8DEEA",
@@ -10146,6 +10252,124 @@ function AtendimentosDepartamento({
                               BODY_FONT,
                           }}
                         />
+
+                        <textarea
+                          value={
+                            propostaForm.escopo
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "escopo",
+                              e.target.value
+                            )
+                          }
+                          rows={5}
+                          placeholder="Escopo detalhado da proposta"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            resize: "vertical",
+                            fontFamily:
+                              BODY_FONT,
+                          }}
+                        />
+
+                        <textarea
+                          value={
+                            propostaForm.entregaveis
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "entregaveis",
+                              e.target.value
+                            )
+                          }
+                          rows={4}
+                          placeholder="Entregáveis"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            resize: "vertical",
+                            fontFamily:
+                              BODY_FONT,
+                          }}
+                        />
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(2,minmax(0,1fr))",
+                            gap: 8,
+                          }}
+                        >
+                          <input
+                            value={
+                              propostaForm.condicoesPagamento
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "condicoesPagamento",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Condições de pagamento"
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              borderRadius: 8,
+                              padding: 9,
+                              minWidth: 0,
+                            }}
+                          />
+
+                          <input
+                            value={
+                              propostaForm.prazoExecucao
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "prazoExecucao",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Prazo de execução"
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              borderRadius: 8,
+                              padding: 9,
+                              minWidth: 0,
+                            }}
+                          />
+                        </div>
+
+                        {propostaEditandoId && (
+                          <input
+                            value={
+                              propostaForm.motivoVersao
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "motivoVersao",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Motivo da nova versão (ex.: ajuste de valor)"
+                            style={{
+                              border:
+                                "1px solid #F1C8B8",
+                              background:
+                                "#FFF8F5",
+                              borderRadius: 8,
+                              padding: 9,
+                            }}
+                          />
+                        )}
 
                         <div
                           style={{
