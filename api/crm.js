@@ -404,6 +404,84 @@ async function prepararSchema() {
   `;
 
   await sql`
+    CREATE SEQUENCE IF NOT EXISTS
+      crm_proposta_numero_seq
+    START 1
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      numero_proposta TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      versao_atual INTEGER NOT NULL DEFAULT 1
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      titulo_proposta TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      resumo_executivo TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      escopo TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      entregaveis TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      condicoes_pagamento TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE crm_propostas
+    ADD COLUMN IF NOT EXISTS
+      prazo_execucao TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS
+      crm_proposta_versoes (
+        id TEXT PRIMARY KEY,
+        proposta_id TEXT NOT NULL,
+        numero_proposta TEXT NOT NULL DEFAULT '',
+        versao INTEGER NOT NULL,
+        snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+        motivo_versao TEXT NOT NULL DEFAULT '',
+        criado_por_id TEXT NOT NULL DEFAULT '',
+        criado_por_nome TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS
+      idx_crm_proposta_versoes_proposta
+    ON crm_proposta_versoes (
+      proposta_id,
+      versao DESC
+    )
+  `;
+
+  await sql`
     CREATE INDEX IF NOT EXISTS idx_crm_atendimento_historico_atendimento
     ON crm_atendimento_historico (atendimento_id, created_at DESC)
   `;
@@ -2064,9 +2142,72 @@ function mapearProposta(item) {
     enviadoEm: item.enviado_em,
     ganhoEm: item.ganho_em,
     perdidoEm: item.perdido_em,
+    numeroProposta: item.numero_proposta || "",
+    versaoAtual: Number(item.versao_atual || 1),
+    tituloProposta: item.titulo_proposta || "",
+    resumoExecutivo: item.resumo_executivo || "",
+    escopo: item.escopo || "",
+    entregaveis: item.entregaveis || "",
+    condicoesPagamento: item.condicoes_pagamento || "",
+    prazoExecucao: item.prazo_execucao || "",
     criadoEm: item.created_at,
     atualizadoEm: item.updated_at,
   };
+}
+
+async function listarVersoesProposta(req, res) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) return;
+
+  const propostaId =
+    texto(req.query?.propostaId, 140);
+
+  if (!propostaId) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "propostaId é obrigatório.",
+    });
+  }
+
+  const atual = await sql`
+    SELECT *
+    FROM crm_propostas
+    WHERE id = ${propostaId}
+    LIMIT 1
+  `;
+
+  const versoes = await sql`
+    SELECT *
+    FROM crm_proposta_versoes
+    WHERE proposta_id = ${propostaId}
+    ORDER BY versao DESC, created_at DESC
+  `;
+
+  return res.status(200).json({
+    sucesso: true,
+    atual: atual?.[0]
+      ? mapearProposta(atual[0])
+      : null,
+    versoes: versoes.map(
+      (item) => ({
+        id: item.id,
+        propostaId: item.proposta_id,
+        numeroProposta: item.numero_proposta,
+        versao: Number(item.versao || 1),
+        snapshot: item.snapshot || {},
+        motivoVersao: item.motivo_versao || "",
+        criadoPorNome: item.criado_por_nome || "",
+        criadoEm: item.created_at,
+      })
+    ),
+  });
 }
 
 async function listarPropostas(req, res) {
@@ -2221,6 +2362,57 @@ async function salvarProposta(req, res) {
       8000
     );
 
+  const tituloProposta =
+    texto(
+      body.tituloProposta !== undefined
+        ? body.tituloProposta
+        : atual?.titulo_proposta || servico,
+      500
+    );
+
+  const resumoExecutivo =
+    texto(
+      body.resumoExecutivo !== undefined
+        ? body.resumoExecutivo
+        : atual?.resumo_executivo,
+      12000
+    );
+
+  const escopo =
+    texto(
+      body.escopo !== undefined
+        ? body.escopo
+        : atual?.escopo || descricao,
+      16000
+    );
+
+  const entregaveis =
+    texto(
+      body.entregaveis !== undefined
+        ? body.entregaveis
+        : atual?.entregaveis,
+      12000
+    );
+
+  const condicoesPagamento =
+    texto(
+      body.condicoesPagamento !== undefined
+        ? body.condicoesPagamento
+        : atual?.condicoes_pagamento,
+      4000
+    );
+
+  const prazoExecucao =
+    texto(
+      body.prazoExecucao !== undefined
+        ? body.prazoExecucao
+        : atual?.prazo_execucao,
+      3000
+    );
+
+  const motivoVersao =
+    texto(body.motivoVersao, 2000);
+
   const valorTotal =
     numeroFinanceiro(
       body.valorTotal !== undefined
@@ -2291,6 +2483,57 @@ async function salvarProposta(req, res) {
       ? atual?.perdido_em || new Date()
       : atual?.perdido_em || null;
 
+  let numeroProposta =
+    atual?.numero_proposta || "";
+
+  let versaoAtual =
+    Number(atual?.versao_atual || 1);
+
+  if (!atual) {
+    const numero = await sql`
+      SELECT
+        nextval(
+          'crm_proposta_numero_seq'
+        )::BIGINT AS numero
+    `;
+
+    numeroProposta =
+      `FND-${new Date().getFullYear()}-${String(
+        numero?.[0]?.numero || 1
+      ).padStart(5, "0")}`;
+
+    versaoAtual = 1;
+  } else {
+    const snapshot =
+      mapearProposta(atual);
+
+    await sql`
+      INSERT INTO
+        crm_proposta_versoes (
+          id,
+          proposta_id,
+          numero_proposta,
+          versao,
+          snapshot,
+          motivo_versao,
+          criado_por_nome,
+          created_at
+        )
+      VALUES (
+        ${gerarId("propv")},
+        ${propostaId},
+        ${numeroProposta},
+        ${versaoAtual},
+        ${JSON.stringify(snapshot)}::jsonb,
+        ${motivoVersao},
+        ${responsavelNome || "Sistema"},
+        NOW()
+      )
+    `;
+
+    versaoAtual += 1;
+  }
+
   const linhas = await sql`
     INSERT INTO crm_propostas (
       id,
@@ -2313,6 +2556,14 @@ async function salvarProposta(req, res) {
       enviado_em,
       ganho_em,
       perdido_em,
+      numero_proposta,
+      versao_atual,
+      titulo_proposta,
+      resumo_executivo,
+      escopo,
+      entregaveis,
+      condicoes_pagamento,
+      prazo_execucao,
       created_at,
       updated_at
     )
@@ -2337,6 +2588,14 @@ async function salvarProposta(req, res) {
       ${enviadoEm},
       ${ganhoEm},
       ${perdidoEm},
+      ${numeroProposta},
+      ${versaoAtual},
+      ${tituloProposta},
+      ${resumoExecutivo},
+      ${escopo},
+      ${entregaveis},
+      ${condicoesPagamento},
+      ${prazoExecucao},
       NOW(),
       NOW()
     )
@@ -2357,6 +2616,14 @@ async function salvarProposta(req, res) {
       enviado_em = EXCLUDED.enviado_em,
       ganho_em = EXCLUDED.ganho_em,
       perdido_em = EXCLUDED.perdido_em,
+      numero_proposta = EXCLUDED.numero_proposta,
+      versao_atual = EXCLUDED.versao_atual,
+      titulo_proposta = EXCLUDED.titulo_proposta,
+      resumo_executivo = EXCLUDED.resumo_executivo,
+      escopo = EXCLUDED.escopo,
+      entregaveis = EXCLUDED.entregaveis,
+      condicoes_pagamento = EXCLUDED.condicoes_pagamento,
+      prazo_execucao = EXCLUDED.prazo_execucao,
       updated_at = NOW()
     RETURNING *
   `;
@@ -5915,6 +6182,12 @@ export default async function handler(req, res) {
 
       case "listar-propostas":
         return listarPropostas(
+          req,
+          res
+        );
+
+      case "listar-versoes-proposta":
+        return listarVersoesProposta(
           req,
           res
         );
