@@ -6785,6 +6785,11 @@ function AtendimentosDepartamento({
   ] = useState("");
 
   const [
+    abaCaso,
+    setAbaCaso,
+  ] = useState("resumo");
+
+  const [
     diagnosticoAtendimento,
     setDiagnosticoAtendimento,
   ] = useState(null);
@@ -7274,6 +7279,8 @@ function AtendimentosDepartamento({
   async function abrirAtendimento(
     atendimento
   ) {
+    setAbaCaso("resumo");
+
     setAtendimentoAberto(
       atendimento
     );
@@ -8981,7 +8988,1537 @@ function AtendimentosDepartamento({
           </Card>
         )}
 
-      {atendimentoAberto && (
+      {atendimentoInicialId &&
+        atendimentoAberto && (
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <Card
+              style={{
+                padding: 0,
+                overflow: "hidden",
+                border:
+                  "1px solid #DDE3EC",
+              }}
+            >
+              <div
+                style={{
+                  background: NAVY,
+                  color: WHITE,
+                  padding:
+                    "16px 18px",
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  alignItems:
+                    "flex-start",
+                  gap: 14,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 900,
+                      color: "#FFB7A7",
+                      letterSpacing: 1,
+                    }}
+                  >
+                    ATENDIMENTO · {atendimentoAberto.area || "GERAL"}
+                  </div>
+
+                  <h2
+                    style={{
+                      margin: "5px 0 0",
+                      fontFamily:
+                        DISPLAY_FONT,
+                      fontSize: 24,
+                    }}
+                  >
+                    {nomeClienteAtendimento(
+                      atendimentoAberto
+                    )}
+                  </h2>
+
+                  <div
+                    style={{
+                      marginTop: 5,
+                      color: "#D8DEEA",
+                      fontSize: 10,
+                    }}
+                  >
+                    {formatarCnpj(
+                      leadDoAtendimento(
+                        atendimentoAberto
+                      )?.cnpj
+                    )}{" "}
+                    ·{" "}
+                    {leadDoAtendimento(
+                      atendimentoAberto
+                    )?.origem ||
+                      "origem não informada"}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 7,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      background:
+                        "rgba(255,255,255,.12)",
+                      border:
+                        "1px solid rgba(255,255,255,.18)",
+                      borderRadius: 999,
+                      padding:
+                        "6px 9px",
+                      fontSize: 9,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {statusAtendimentoLabel(
+                      atendimentoAberto.statusAtendimento
+                    )}
+                  </span>
+
+                  <span
+                    style={{
+                      background:
+                        "#FFF3EF",
+                      color:
+                        "#993C1D",
+                      borderRadius: 999,
+                      padding:
+                        "6px 9px",
+                      fontSize: 9,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {atendimentoAberto.responsavelNome ||
+                      "Sem responsável"}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding:
+                    "12px 16px",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(150px,1fr))",
+                  gap: 8,
+                  background:
+                    "#FAFBFD",
+                }}
+              >
+                {[
+                  [
+                    "Status",
+                    statusAtendimentoLabel(
+                      atendimentoAberto.statusAtendimento
+                    ),
+                  ],
+                  [
+                    "Oportunidade",
+                    atendimentoAberto.statusOportunidade ||
+                      "NÃO ANALISADA",
+                  ],
+                  [
+                    "Score da área",
+                    Number.isFinite(
+                      Number(
+                        atendimentoAberto.scoreArea
+                      )
+                    )
+                      ? `${Number(
+                          atendimentoAberto.scoreArea
+                        )}/100`
+                      : "-",
+                  ],
+                  [
+                    "Próxima ação",
+                    atendimentoAberto.proximaAcao ||
+                      "-",
+                  ],
+                  [
+                    "Próximo contato",
+                    formatarData(
+                      atendimentoAberto.proximoContato
+                    ),
+                  ],
+                  [
+                    "Propostas",
+                    propostasAtendimento.length,
+                  ],
+                ].map(
+                  ([titulo, valor]) => (
+                    <div
+                      key={titulo}
+                      style={{
+                        background:
+                          WHITE,
+                        border:
+                          "1px solid #E3E7EF",
+                        borderRadius: 10,
+                        padding: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: MUTED,
+                          fontSize: 8,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {titulo.toUpperCase()}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          color: NAVY,
+                        }}
+                      >
+                        {valor}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            </Card>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 7,
+                flexWrap: "wrap",
+                position: "sticky",
+                top: 0,
+                zIndex: 20,
+                background: BG,
+                padding:
+                  "4px 0 8px",
+              }}
+            >
+              {[
+                ["resumo", "Visão geral"],
+                ["diagnostico", "Diagnóstico"],
+                ["documentos", "Documentos"],
+                ["acionamento", "Acionamento"],
+                [
+                  "propostas",
+                  `Propostas (${propostasAtendimento.length})`,
+                ],
+                [
+                  "historico",
+                  `Histórico (${historicoAtendimento.length})`,
+                ],
+              ].map(
+                ([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() =>
+                      setAbaCaso(id)
+                    }
+                    style={{
+                      border:
+                        abaCaso === id
+                          ? `1px solid ${CORAL}`
+                          : "1px solid #D8DEEA",
+                      background:
+                        abaCaso === id
+                          ? "#FFF3EF"
+                          : WHITE,
+                      color:
+                        abaCaso === id
+                          ? "#993C1D"
+                          : NAVY,
+                      borderRadius: 999,
+                      padding:
+                        "8px 11px",
+                      cursor: "pointer",
+                      fontSize: 9.5,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              )}
+            </div>
+
+            {carregandoCaso ? (
+              <Card>
+                Carregando atendimento...
+              </Card>
+            ) : (
+              <>
+                {abaCaso ===
+                  "resumo" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(0,1.2fr) minmax(300px,.8fr)",
+                      gap: 12,
+                    }}
+                  >
+                    <Card>
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 10px",
+                          fontFamily:
+                            DISPLAY_FONT,
+                        }}
+                      >
+                        Visão executiva do atendimento
+                      </h3>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(2,minmax(0,1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              color: MUTED,
+                              fontSize: 8.5,
+                              fontWeight: 900,
+                            }}
+                          >
+                            ÁREA
+                          </div>
+                          <strong>
+                            {atendimentoAberto.area ||
+                              "-"}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <div
+                            style={{
+                              color: MUTED,
+                              fontSize: 8.5,
+                              fontWeight: 900,
+                            }}
+                          >
+                            NÍVEL
+                          </div>
+                          <strong>
+                            {atendimentoAberto.nivelArea ||
+                              "-"}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <div
+                            style={{
+                              color: MUTED,
+                              fontSize: 8.5,
+                              fontWeight: 900,
+                            }}
+                          >
+                            RESPONSÁVEL
+                          </div>
+                          <strong>
+                            {atendimentoAberto.responsavelNome ||
+                              "-"}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <div
+                            style={{
+                              color: MUTED,
+                              fontSize: 8.5,
+                              fontWeight: 900,
+                            }}
+                          >
+                            ÚLTIMA ATUALIZAÇÃO
+                          </div>
+                          <strong>
+                            {formatarData(
+                              atendimentoAberto.updatedAt
+                            )}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 14,
+                          padding: 12,
+                          background:
+                            "#F7F8FB",
+                          borderRadius: 10,
+                        }}
+                      >
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 8.5,
+                            fontWeight: 900,
+                          }}
+                        >
+                          PRÓXIMA AÇÃO
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {atendimentoAberto.proximaAcao ||
+                            "Nenhuma próxima ação definida."}
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card
+                      style={{
+                        borderTop:
+                          `4px solid ${CORAL}`,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 10px",
+                          fontFamily:
+                            DISPLAY_FONT,
+                        }}
+                      >
+                        Ações rápidas
+                      </h3>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <Botao
+                          onClick={() =>
+                            setAbaCaso(
+                              "acionamento"
+                            )
+                          }
+                        >
+                          Registrar acionamento
+                        </Botao>
+
+                        <Botao
+                          secundario
+                          onClick={() =>
+                            setAbaCaso(
+                              "propostas"
+                            )
+                          }
+                        >
+                          <Plus size={13} />
+                          Criar proposta
+                        </Botao>
+
+                        <Botao
+                          secundario
+                          onClick={() =>
+                            setAbaCaso(
+                              "documentos"
+                            )
+                          }
+                        >
+                          Ver documentos
+                        </Botao>
+
+                        {atendimentoAberto.diagnosticoId && (
+                          <Botao
+                            secundario
+                            onClick={() =>
+                              onAbrirDiagnostico?.(
+                                atendimentoAberto.diagnosticoId
+                              )
+                            }
+                          >
+                            Abrir diagnóstico completo
+                          </Botao>
+                        )}
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
+                {abaCaso ===
+                  "diagnostico" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 12,
+                    }}
+                  >
+                    <Card>
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 10px",
+                          fontFamily:
+                            DISPLAY_FONT,
+                        }}
+                      >
+                        Diagnóstico da área
+                      </h3>
+
+                      {eixoDoAtendimento() ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit,minmax(220px,1fr))",
+                            gap: 10,
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                color: MUTED,
+                                fontSize: 8.5,
+                                fontWeight: 900,
+                              }}
+                            >
+                              SCORE
+                            </div>
+                            <strong
+                              style={{
+                                fontSize: 22,
+                              }}
+                            >
+                              {eixoDoAtendimento()?.score ??
+                                atendimentoAberto.scoreArea ??
+                                "-"}
+                            </strong>
+                          </div>
+
+                          <div>
+                            <div
+                              style={{
+                                color: MUTED,
+                                fontSize: 8.5,
+                                fontWeight: 900,
+                              }}
+                            >
+                              NÍVEL
+                            </div>
+                            <strong>
+                              {eixoDoAtendimento()?.nivel ||
+                                atendimentoAberto.nivelArea ||
+                                "-"}
+                            </strong>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 10,
+                          }}
+                        >
+                          Não foi encontrado um eixo específico para esta área.
+                        </div>
+                      )}
+                    </Card>
+
+                    <Card>
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 10px",
+                          fontFamily:
+                            DISPLAY_FONT,
+                        }}
+                      >
+                        Perguntas e respostas da área
+                      </h3>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        {perguntasDoAtendimento()
+                          .map(
+                            (item, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  border:
+                                    "1px solid #E3E7EF",
+                                  borderRadius: 9,
+                                  padding: 10,
+                                }}
+                              >
+                                <strong
+                                  style={{
+                                    fontSize: 9.5,
+                                  }}
+                                >
+                                  {item.pergunta ||
+                                    item.texto ||
+                                    `Pergunta ${index + 1}`}
+                                </strong>
+
+                                <div
+                                  style={{
+                                    marginTop: 5,
+                                    color: MUTED,
+                                    fontSize: 9.5,
+                                  }}
+                                >
+                                  {textoSeguro(
+                                    item.resposta
+                                  ) || "-"}
+                                </div>
+                              </div>
+                            )
+                          )}
+
+                        {!perguntasDoAtendimento()
+                          .length && (
+                          <div
+                            style={{
+                              color: MUTED,
+                              fontSize: 10,
+                            }}
+                          >
+                            Nenhuma resposta específica armazenada para este departamento.
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
+                {abaCaso ===
+                  "documentos" && (
+                  <DocumentosAtendimento
+                    token={token}
+                    atendimento={
+                      atendimentoAberto
+                    }
+                  />
+                )}
+
+                {abaCaso ===
+                  "acionamento" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(0,1fr) minmax(300px,.8fr)",
+                      gap: 12,
+                    }}
+                  >
+                    <Card>
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 10px",
+                          fontFamily:
+                            DISPLAY_FONT,
+                        }}
+                      >
+                        Registrar acionamento
+                      </h3>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <select
+                          value={
+                            tipoAcionamento
+                          }
+                          onChange={(e) =>
+                            setTipoAcionamento(
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            background:
+                              WHITE,
+                          }}
+                        >
+                          <option value="WHATSAPP">
+                            WhatsApp
+                          </option>
+                          <option value="LIGACAO">
+                            Ligação
+                          </option>
+                          <option value="EMAIL">
+                            E-mail
+                          </option>
+                          <option value="REUNIAO">
+                            Reunião
+                          </option>
+                          <option value="VIDEOCONFERENCIA">
+                            Videoconferência
+                          </option>
+                          <option value="PROPOSTA">
+                            Proposta
+                          </option>
+                          <option value="ANALISE_INTERNA">
+                            Análise interna
+                          </option>
+                          <option value="OUTRO">
+                            Outro
+                          </option>
+                        </select>
+
+                        <input
+                          value={
+                            resultadoAcionamento
+                          }
+                          onChange={(e) =>
+                            setResultadoAcionamento(
+                              e.target.value
+                            )
+                          }
+                          placeholder="Resultado do contato"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                          }}
+                        />
+
+                        <textarea
+                          value={
+                            descricaoAcionamento
+                          }
+                          onChange={(e) =>
+                            setDescricaoAcionamento(
+                              e.target.value
+                            )
+                          }
+                          rows={4}
+                          placeholder="O que aconteceu?"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            resize:
+                              "vertical",
+                            fontFamily:
+                              BODY_FONT,
+                          }}
+                        />
+
+                        <Botao
+                          onClick={
+                            registrarAcionamentoCaso
+                          }
+                          disabled={
+                            salvandoAcionamento
+                          }
+                        >
+                          <Save size={13} />
+                          {salvandoAcionamento
+                            ? "Salvando..."
+                            : "Registrar acionamento"}
+                        </Botao>
+                      </div>
+                    </Card>
+
+                    <Card>
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 10px",
+                          fontFamily:
+                            DISPLAY_FONT,
+                        }}
+                      >
+                        Próxima ação
+                      </h3>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <select
+                          value={statusCaso}
+                          onChange={(e) =>
+                            setStatusCaso(
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            background:
+                              WHITE,
+                          }}
+                        >
+                          <option value="NAO_INICIADO">
+                            Não iniciado
+                          </option>
+                          <option value="EM_ANDAMENTO">
+                            Em andamento
+                          </option>
+                          <option value="AGUARDANDO_CLIENTE">
+                            Aguardando cliente
+                          </option>
+                          <option value="AGUARDANDO_INTERNO">
+                            Aguardando interno
+                          </option>
+                          <option value="CONCLUIDO">
+                            Concluído
+                          </option>
+                        </select>
+
+                        <select
+                          value={
+                            oportunidadeCaso
+                          }
+                          onChange={(e) =>
+                            setOportunidadeCaso(
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            background:
+                              WHITE,
+                          }}
+                        >
+                          <option value="NAO_ANALISADA">
+                            Não analisada
+                          </option>
+                          <option value="SEM_OPORTUNIDADE">
+                            Sem oportunidade
+                          </option>
+                          <option value="OPORTUNIDADE_IDENTIFICADA">
+                            Oportunidade identificada
+                          </option>
+                          <option value="PROPOSTA">
+                            Proposta
+                          </option>
+                          <option value="FECHADO">
+                            Fechado
+                          </option>
+                        </select>
+
+                        <textarea
+                          value={
+                            proximaAcaoCaso
+                          }
+                          onChange={(e) =>
+                            setProximaAcaoCaso(
+                              e.target.value
+                            )
+                          }
+                          rows={3}
+                          placeholder="Próxima ação"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            resize:
+                              "vertical",
+                            fontFamily:
+                              BODY_FONT,
+                          }}
+                        />
+
+                        <input
+                          type="datetime-local"
+                          value={
+                            proximoContatoCaso
+                          }
+                          onChange={(e) =>
+                            setProximoContatoCaso(
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                          }}
+                        />
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
+                {abaCaso ===
+                  "propostas" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(0,1.1fr) minmax(330px,.9fr)",
+                      gap: 12,
+                    }}
+                  >
+                    <Card>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent:
+                            "space-between",
+                          alignItems:
+                            "center",
+                          gap: 8,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div>
+                          <h3
+                            style={{
+                              margin: 0,
+                              fontFamily:
+                                DISPLAY_FONT,
+                            }}
+                          >
+                            Propostas do atendimento
+                          </h3>
+
+                          <div
+                            style={{
+                              color: MUTED,
+                              fontSize: 9,
+                              marginTop: 3,
+                            }}
+                          >
+                            {propostasAtendimento.length} proposta(s) vinculada(s)
+                          </div>
+                        </div>
+
+                        <Botao
+                          secundario
+                          onClick={() =>
+                            limparFormularioProposta()
+                          }
+                        >
+                          <Plus size={13} />
+                          Nova
+                        </Botao>
+                      </div>
+
+                      {carregandoPropostas ? (
+                        <div>
+                          Carregando propostas...
+                        </div>
+                      ) : propostasAtendimento.length ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          {propostasAtendimento.map(
+                            (proposta) => (
+                              <div
+                                key={
+                                  proposta.id
+                                }
+                                style={{
+                                  border:
+                                    "1px solid #E3E7EF",
+                                  borderRadius: 10,
+                                  padding: 11,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent:
+                                      "space-between",
+                                    gap: 8,
+                                  }}
+                                >
+                                  <div>
+                                    <strong>
+                                      {proposta.servico}
+                                    </strong>
+
+                                    <div
+                                      style={{
+                                        color: MUTED,
+                                        fontSize: 9,
+                                        marginTop: 3,
+                                      }}
+                                    >
+                                      {statusPropostaLabel(
+                                        proposta.status
+                                      )}{" "}
+                                      ·{" "}
+                                      {proposta.tipoReceita ||
+                                        "PONTUAL"}
+                                    </div>
+                                  </div>
+
+                                  <strong>
+                                    {formatarMoeda(
+                                      proposta.valorTotal
+                                    )}
+                                  </strong>
+                                </div>
+
+                                {proposta.descricao && (
+                                  <div
+                                    style={{
+                                      marginTop: 7,
+                                      fontSize: 9.5,
+                                      color: MUTED,
+                                    }}
+                                  >
+                                    {proposta.descricao}
+                                  </div>
+                                )}
+
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 7,
+                                    marginTop: 9,
+                                  }}
+                                >
+                                  <Botao
+                                    secundario
+                                    onClick={() =>
+                                      carregarPropostaNoFormulario(
+                                        proposta
+                                      )
+                                    }
+                                  >
+                                    Editar
+                                  </Botao>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      excluirPropostaCaso(
+                                        proposta
+                                      )
+                                    }
+                                    style={{
+                                      border:
+                                        "1px solid #E2B8B8",
+                                      background:
+                                        "#FFF7F7",
+                                      color:
+                                        "#A12B2B",
+                                      borderRadius: 8,
+                                      padding:
+                                        "7px 9px",
+                                      cursor:
+                                        "pointer",
+                                    }}
+                                  >
+                                    <Trash2
+                                      size={13}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            border:
+                              "1px dashed #C9D1DF",
+                            borderRadius: 10,
+                            padding: 18,
+                            color: MUTED,
+                            fontSize: 10,
+                            textAlign:
+                              "center",
+                          }}
+                        >
+                          Nenhuma proposta criada para este atendimento.
+                        </div>
+                      )}
+                    </Card>
+
+                    <Card
+                      style={{
+                        borderTop:
+                          `4px solid ${CORAL}`,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 10px",
+                          fontFamily:
+                            DISPLAY_FONT,
+                        }}
+                      >
+                        {propostaEditandoId
+                          ? "Editar proposta"
+                          : "Nova proposta"}
+                      </h3>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <input
+                          value={
+                            propostaForm.servico
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "servico",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Serviço / solução"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                          }}
+                        />
+
+                        <textarea
+                          value={
+                            propostaForm.descricao
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "descricao",
+                              e.target.value
+                            )
+                          }
+                          rows={3}
+                          placeholder="Escopo resumido"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            resize:
+                              "vertical",
+                            fontFamily:
+                              BODY_FONT,
+                          }}
+                        />
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(2,minmax(0,1fr))",
+                            gap: 8,
+                          }}
+                        >
+                          <select
+                            value={
+                              propostaForm.tipoReceita
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "tipoReceita",
+                                e.target.value
+                              )
+                            }
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              borderRadius: 8,
+                              padding: 9,
+                              background:
+                                WHITE,
+                            }}
+                          >
+                            <option value="PONTUAL">
+                              Pontual
+                            </option>
+                            <option value="RECORRENTE">
+                              Recorrente
+                            </option>
+                            <option value="MISTA">
+                              Projeto + recorrência
+                            </option>
+                          </select>
+
+                          <select
+                            value={
+                              propostaForm.status
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "status",
+                                e.target.value
+                              )
+                            }
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              borderRadius: 8,
+                              padding: 9,
+                              background:
+                                WHITE,
+                            }}
+                          >
+                            <option value="RASCUNHO">
+                              Rascunho
+                            </option>
+                            <option value="ENVIADA">
+                              Enviada
+                            </option>
+                            <option value="NEGOCIACAO">
+                              Negociação
+                            </option>
+                            <option value="GANHA">
+                              Ganha
+                            </option>
+                            <option value="PERDIDA">
+                              Perdida
+                            </option>
+                            <option value="CANCELADA">
+                              Cancelada
+                            </option>
+                          </select>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(3,minmax(0,1fr))",
+                            gap: 8,
+                          }}
+                        >
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={
+                              propostaForm.valorTotal
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "valorTotal",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Valor total"
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              borderRadius: 8,
+                              padding: 9,
+                              minWidth: 0,
+                            }}
+                          />
+
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={
+                              propostaForm.mensalidade
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "mensalidade",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Mensalidade"
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              borderRadius: 8,
+                              padding: 9,
+                              minWidth: 0,
+                            }}
+                          />
+
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={
+                              propostaForm.taxaImplantacao
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "taxaImplantacao",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Implantação"
+                            style={{
+                              border:
+                                "1px solid #D8DEEA",
+                              borderRadius: 8,
+                              padding: 9,
+                              minWidth: 0,
+                            }}
+                          />
+                        </div>
+
+                        <input
+                          type="date"
+                          value={
+                            propostaForm.validade
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "validade",
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                          }}
+                        />
+
+                        {propostaForm.status ===
+                          "PERDIDA" && (
+                          <textarea
+                            value={
+                              propostaForm.motivoPerda
+                            }
+                            onChange={(e) =>
+                              editarCampoProposta(
+                                "motivoPerda",
+                                e.target.value
+                              )
+                            }
+                            rows={2}
+                            placeholder="Motivo da perda"
+                            style={{
+                              border:
+                                "1px solid #E2B8B8",
+                              borderRadius: 8,
+                              padding: 9,
+                              resize:
+                                "vertical",
+                              fontFamily:
+                                BODY_FONT,
+                            }}
+                          />
+                        )}
+
+                        <textarea
+                          value={
+                            propostaForm.observacoes
+                          }
+                          onChange={(e) =>
+                            editarCampoProposta(
+                              "observacoes",
+                              e.target.value
+                            )
+                          }
+                          rows={2}
+                          placeholder="Observações"
+                          style={{
+                            border:
+                              "1px solid #D8DEEA",
+                            borderRadius: 8,
+                            padding: 9,
+                            resize:
+                              "vertical",
+                            fontFamily:
+                              BODY_FONT,
+                          }}
+                        />
+
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                          }}
+                        >
+                          <Botao
+                            onClick={
+                              salvarPropostaCaso
+                            }
+                            disabled={
+                              salvandoProposta
+                            }
+                          >
+                            <Save size={13} />
+                            {salvandoProposta
+                              ? "Salvando..."
+                              : propostaEditandoId
+                              ? "Salvar alterações"
+                              : "Criar proposta"}
+                          </Botao>
+
+                          {propostaEditandoId && (
+                            <Botao
+                              secundario
+                              onClick={
+                                limparFormularioProposta
+                              }
+                            >
+                              Cancelar edição
+                            </Botao>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
+                {abaCaso ===
+                  "historico" && (
+                  <Card>
+                    <h3
+                      style={{
+                        margin:
+                          "0 0 10px",
+                        fontFamily:
+                          DISPLAY_FONT,
+                      }}
+                    >
+                      Histórico do atendimento
+                    </h3>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      {historicoAtendimento.map(
+                        (item) => (
+                          <div
+                            key={item.id}
+                            style={{
+                              borderLeft:
+                                `3px solid ${CORAL}`,
+                              paddingLeft: 10,
+                              paddingBottom: 8,
+                            }}
+                          >
+                            <div
+                              style={{
+                                color: MUTED,
+                                fontSize: 8.5,
+                              }}
+                            >
+                              {formatarData(
+                                item.criadoEm
+                              )}{" "}
+                              ·{" "}
+                              {item.tipoAcionamento ||
+                                item.tipoEvento ||
+                                "Registro"}
+                            </div>
+
+                            <strong
+                              style={{
+                                display:
+                                  "block",
+                                marginTop: 3,
+                                fontSize: 10,
+                              }}
+                            >
+                              {item.resultado ||
+                                "Atividade"}
+                            </strong>
+
+                            {item.descricao && (
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  fontSize: 9.5,
+                                }}
+                              >
+                                {item.descricao}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      )}
+
+                      {!historicoAtendimento.length && (
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 10,
+                          }}
+                        >
+                          Ainda não existe histórico para este atendimento.
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {erro && (
+              <div
+                style={{
+                  background:
+                    "#FAECE7",
+                  color:
+                    "#993C1D",
+                  borderRadius: 9,
+                  padding: 10,
+                  fontSize: 10,
+                }}
+              >
+                {erro}
+              </div>
+            )}
+          </div>
+        )}
+
+      {!atendimentoInicialId &&
+        atendimentoAberto && (
         <div
           style={{
             marginBottom: 20,
