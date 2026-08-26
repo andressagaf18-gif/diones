@@ -4585,6 +4585,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -12766,6 +12767,7 @@ async function salvarPropostaCaso() {
               </div>
             </div>
           )}
+          </div>
         </div>
       )}
 
