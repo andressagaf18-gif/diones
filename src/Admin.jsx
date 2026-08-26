@@ -22939,33 +22939,79 @@ export default function Admin() {
     );
   }
 
-  if (
-    aba ===
-    "clientes"
-  ) {
+  const paginas = {
+    clientes: {
+      titulo: "Clientes 360º",
+      subtitulo:
+        "Visão consolidada de relacionamento, diagnóstico, documentos, IA e oportunidades",
+    },
+    leads: {
+      titulo: "Leads / CRM",
+      subtitulo:
+        "Funil comercial, priorização e distribuição de oportunidades",
+    },
+    diagnosticos: {
+      titulo: "Diagnósticos",
+      subtitulo:
+        "Inteligência operacional por origem, estrutura, tipo e desempenho",
+    },
+    atendimentos: {
+      titulo: atendimentoDetalhe
+        ? "Atendimento"
+        : "Atendimentos",
+      subtitulo: atendimentoDetalhe
+        ? "Execução consultiva, histórico, documentos, propostas e IA"
+        : "Execução consultiva, responsáveis, prazos e oportunidades",
+    },
+    equipe: {
+      titulo: "Equipe / Capacidade",
+      subtitulo:
+        "Especialidades, permissões e capacidade operacional",
+    },
+    usuarios: {
+      titulo: "Usuários e Acessos",
+      subtitulo:
+        "Gestão de logins, perfis, eventos e permissões",
+    },
+    auditoria: {
+      titulo: "Auditoria",
+      subtitulo:
+        "Histórico de acessos, cliques e alterações do sistema",
+    },
+  };
+
+  function ConteudoPadrao({
+    children,
+    maxWidth = 1440,
+    padding = "22px 22px 50px",
+  }) {
     return (
-      <div
+      <main
         style={{
-          minHeight: "100vh",
-          background: BG,
+          width: "100%",
+          maxWidth,
+          margin: "0 auto",
+          padding,
+          boxSizing: "border-box",
           fontFamily: BODY_FONT,
           color: NAVY,
         }}
       >
-        <Cabecalho
-          titulo="Clientes 360º"
-          subtitulo="Visão consolidada da empresa, diagnóstico, atendimento, documentos, IA e oportunidades"
-        />
+        {children}
+      </main>
+    );
+  }
 
-        <BarraAbas />
-
-        <main
-          style={{
-            maxWidth: 1320,
-            margin: "0 auto",
-            padding: "26px 22px 50px",
-          }}
-        >
+  if (aba === "clientes") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.clientes.titulo}
+        subtitulo={paginas.clientes.subtitulo}
+      >
+        <ConteudoPadrao>
           <Cliente360
             token={token}
             onAbrirDiagnostico={
@@ -22975,73 +23021,47 @@ export default function Admin() {
               abrirAtendimentoDashboard
             }
           />
-        </main>
-      </div>
+        </ConteudoPadrao>
+      </FinderTechLayout>
     );
   }
 
-  if (
-    aba ===
-    "diagnosticos"
-  ) {
+  if (aba === "diagnosticos") {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: BG,
-          fontFamily: BODY_FONT,
-          color: NAVY,
-        }}
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.diagnosticos.titulo}
+        subtitulo={paginas.diagnosticos.subtitulo}
       >
-        <Cabecalho
-          titulo="Diagnósticos"
-          subtitulo="BI interativo de diagnóstico, origem, estrutura, tipo e desempenho"
-        />
-
-        <BarraAbas />
-
-        <OperacionalBI
-          token={token}
-          modo="diagnosticos"
-          onAbrirDiagnostico={
-            setDiagnosticoId
-          }
-        />
-      </div>
+        <ConteudoPadrao
+          maxWidth="none"
+          padding="18px 18px 44px"
+        >
+          <OperacionalBI
+            token={token}
+            modo="diagnosticos"
+            onAbrirDiagnostico={
+              setDiagnosticoId
+            }
+          />
+        </ConteudoPadrao>
+      </FinderTechLayout>
     );
   }
 
-  if (
-    aba ===
-    "atendimentos"
-  ) {
-    if (
-      atendimentoDetalhe
-    ) {
+  if (aba === "atendimentos") {
+    if (atendimentoDetalhe) {
       return (
-        <div
-          style={{
-            minHeight: "100vh",
-            background: BG,
-            fontFamily: BODY_FONT,
-            color: NAVY,
-          }}
+        <FinderTechLayout
+          aba={aba}
+          setAba={setAba}
+          logout={sair}
+          titulo={paginas.atendimentos.titulo}
+          subtitulo={paginas.atendimentos.subtitulo}
         >
-          <Cabecalho
-            titulo="Atendimento"
-            subtitulo="Execução consultiva e histórico do caso"
-          />
-
-          <BarraAbas />
-
-          <main
-            style={{
-              maxWidth: 1320,
-              margin: "0 auto",
-              padding:
-                "26px 22px 50px",
-            }}
-          >
+          <ConteudoPadrao>
             <button
               type="button"
               onClick={() => {
@@ -23052,12 +23072,19 @@ export default function Admin() {
                 );
               }}
               style={{
-                border: 0,
-                background: "transparent",
-                color: CORAL,
+                border:
+                  "1px solid #DDE3EC",
+                background:
+                  "#FFFFFF",
+                color: NAVY,
                 fontWeight: 900,
                 cursor: "pointer",
-                marginBottom: 10,
+                marginBottom: 14,
+                padding:
+                  "9px 12px",
+                borderRadius: 10,
+                boxShadow:
+                  "0 6px 18px rgba(15,31,56,.06)",
               }}
             >
               ← Voltar para o BI de Atendimentos
@@ -23072,125 +23099,109 @@ export default function Admin() {
                 atendimentoSelecionadoId
               }
             />
-          </main>
-        </div>
+          </ConteudoPadrao>
+        </FinderTechLayout>
       );
     }
 
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: BG,
-          fontFamily: BODY_FONT,
-          color: NAVY,
-        }}
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.atendimentos.titulo}
+        subtitulo={paginas.atendimentos.subtitulo}
       >
-        <Cabecalho
-          titulo="Atendimentos"
-          subtitulo="BI interativo de execução consultiva, áreas, prazos e responsáveis"
-        />
-
-        <BarraAbas />
-
-        <OperacionalBI
-          token={token}
-          modo="atendimentos"
-          onAbrirDiagnostico={
-            setDiagnosticoId
-          }
-          onAbrirAtendimento={
-            abrirAtendimentoDashboard
-          }
-        />
-      </div>
+        <ConteudoPadrao
+          maxWidth="none"
+          padding="18px 18px 44px"
+        >
+          <OperacionalBI
+            token={token}
+            modo="atendimentos"
+            onAbrirDiagnostico={
+              setDiagnosticoId
+            }
+            onAbrirAtendimento={
+              abrirAtendimentoDashboard
+            }
+          />
+        </ConteudoPadrao>
+      </FinderTechLayout>
     );
   }
 
   if (aba === "usuarios") {
-    return <div style={{minHeight:"100vh",background:BG,fontFamily:BODY_FONT,color:NAVY}}>
-      <Cabecalho titulo="Usuários e Acessos" subtitulo="Criação de logins do App e do Sistema" />
-      <BarraAbas />
-      <main style={{maxWidth:1320,margin:"0 auto",padding:"26px 22px 50px"}}><CentralUsuariosAcessos token={token}/></main>
-    </div>;
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.usuarios.titulo}
+        subtitulo={paginas.usuarios.subtitulo}
+      >
+        <ConteudoPadrao>
+          <CentralUsuariosAcessos
+            token={token}
+          />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
   }
 
   if (aba === "auditoria") {
-    return <div style={{minHeight:"100vh",background:BG,fontFamily:BODY_FONT,color:NAVY}}>
-      <Cabecalho titulo="Auditoria" subtitulo="Histórico de acessos, cliques e alterações" />
-      <BarraAbas />
-      <main style={{maxWidth:1320,margin:"0 auto",padding:"26px 22px 50px"}}><AuditoriaSistema token={token}/></main>
-    </div>;
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.auditoria.titulo}
+        subtitulo={paginas.auditoria.subtitulo}
+      >
+        <ConteudoPadrao>
+          <AuditoriaSistema
+            token={token}
+          />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
   }
 
-  if (
-    aba ===
-    "equipe"
-  ) {
+  if (aba === "equipe") {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: BG,
-          fontFamily: BODY_FONT,
-          color: NAVY,
-        }}
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.equipe.titulo}
+        subtitulo={paginas.equipe.subtitulo}
       >
-        <Cabecalho
-          titulo="Equipe / Capacidade"
-          subtitulo="Especialidades, permissões e capacidade de atendimento"
-        />
-
-        <BarraAbas />
-
-        <main
-          style={{
-            maxWidth: 1320,
-            margin: "0 auto",
-            padding:
-              "26px 22px 50px",
-          }}
-        >
+        <ConteudoPadrao>
           <EquipeCapacidade
             token={token}
           />
-        </main>
-      </div>
+        </ConteudoPadrao>
+      </FinderTechLayout>
     );
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: BG,
-        fontFamily: BODY_FONT,
-        color: NAVY,
-      }}
+    <FinderTechLayout
+      aba="leads"
+      setAba={setAba}
+      logout={sair}
+      titulo={paginas.leads.titulo}
+      subtitulo={paginas.leads.subtitulo}
     >
-      <Cabecalho
-        titulo="Leads / CRM"
-        subtitulo="Funil do diagnóstico empresarial"
-      />
-
-      <BarraAbas />
-
-      <main
-        style={{
-          maxWidth: 1320,
-          margin: "0 auto",
-          padding:
-            "26px 22px 50px",
-        }}
-      >
+      <ConteudoPadrao>
         <LeadsCRM
           token={token}
           onAbrirDiagnostico={
             setDiagnosticoId
           }
         />
-      </main>
-    </div>
+      </ConteudoPadrao>
+    </FinderTechLayout>
   );
 }
 
