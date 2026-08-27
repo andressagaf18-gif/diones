@@ -838,6 +838,22 @@ export default function Tributario({
     observacaoOrigem: "",
   });
 
+
+  const [
+    atividadesSelecionadas,
+    setAtividadesSelecionadas,
+  ] = useState([]);
+
+  const [
+    atividadePrincipalSelecionada,
+    setAtividadePrincipalSelecionada,
+  ] = useState("");
+
+  const [
+    descricaoAtividadeCliente,
+    setDescricaoAtividadeCliente,
+  ] = useState("");
+
   const [
     historicoProjeto,
     setHistoricoProjeto,
@@ -1045,6 +1061,48 @@ export default function Tributario({
       if (!dadosManuais.regimeAtual) {
         dadosFaltantes.push(
           "Regime tributário atual"
+        );
+      }
+
+      const atividadePrincipalReal =
+        atividadesSelecionadas.find(
+          (item) =>
+            chaveAtividade(
+              item
+            ) ===
+            atividadePrincipalSelecionada
+        ) ||
+        null;
+
+      if (
+        atividadePrincipalReal
+      ) {
+        pontos.push(
+          `Atividade principal considerada na análise: ${
+            atividadePrincipalReal.codigo ||
+            ""
+          } · ${
+            atividadePrincipalReal.descricao ||
+            ""
+          }.`
+        );
+      }
+
+      if (
+        atividadesSelecionadas.length >
+        1
+      ) {
+        pontos.push(
+          `Foram selecionadas ${atividadesSelecionadas.length} atividades/CNAEs para cruzamento tributário.`
+        );
+      }
+
+      if (
+        descricaoAtividadeCliente
+          .trim()
+      ) {
+        pontos.push(
+          `Operação informada pelo consultor/cliente: ${descricaoAtividadeCliente.trim()}`
         );
       }
 
@@ -1316,6 +1374,42 @@ export default function Tributario({
         }
       );
 
+
+      const atividadesCnpj =
+        normalizarListaCnaes({
+          dados,
+        });
+
+      if (
+        atividadesCnpj.length
+      ) {
+        setAtividadesSelecionadas(
+          (atuais) =>
+            atuais.length
+              ? atuais
+              : atividadesCnpj
+        );
+
+        const principalCnpj =
+          atividadesCnpj.find(
+            (item) =>
+              item.tipo ===
+              "principal"
+          );
+
+        if (
+          principalCnpj
+        ) {
+          setAtividadePrincipalSelecionada(
+            (atual) =>
+              atual ||
+              chaveAtividade(
+                principalCnpj
+              )
+          );
+        }
+      }
+
       registrarHistorico(
         "CNPJ_CONSULTADO",
         `CNPJ ${formatarCnpj(digits)} consultado com sucesso.`,
@@ -1346,6 +1440,226 @@ export default function Tributario({
         {
           carregando: false,
         }
+      );
+    }
+  }
+
+  function normalizarListaCnaes(
+    empresa
+  ) {
+    const dados =
+      empresa?.dados ||
+      {};
+
+    const lista = [];
+
+    const principal =
+      dados.cnaePrincipal ||
+      dados.cnae_principal ||
+      dados.atividade_principal ||
+      dados.atividadePrincipal ||
+      null;
+
+    function pushAtividade(
+      item,
+      tipo = "secundaria"
+    ) {
+      if (!item) {
+        return;
+      }
+
+      if (
+        typeof item ===
+        "string"
+      ) {
+        lista.push({
+          codigo: item,
+          descricao: item,
+          tipo,
+        });
+        return;
+      }
+
+      const codigo =
+        item.codigo ||
+        item.code ||
+        item.cnae ||
+        item.id ||
+        "";
+
+      const descricao =
+        item.descricao ||
+        item.text ||
+        item.nome ||
+        item.description ||
+        "";
+
+      if (
+        !codigo &&
+        !descricao
+      ) {
+        return;
+      }
+
+      lista.push({
+        codigo:
+          String(codigo),
+        descricao:
+          String(descricao),
+        tipo,
+      });
+    }
+
+    if (
+      Array.isArray(
+        principal
+      )
+    ) {
+      principal.forEach(
+        (item) =>
+          pushAtividade(
+            item,
+            "principal"
+          )
+      );
+    } else {
+      pushAtividade(
+        principal,
+        "principal"
+      );
+    }
+
+    const secundarios =
+      dados.cnaesSecundarios ||
+      dados.cnaes_secundarios ||
+      dados.atividadesSecundarias ||
+      dados.atividades_secundarias ||
+      dados.secondaryCnaes ||
+      [];
+
+    if (
+      Array.isArray(
+        secundarios
+      )
+    ) {
+      secundarios.forEach(
+        (item) =>
+          pushAtividade(
+            item,
+            "secundaria"
+          )
+      );
+    }
+
+    const unicos =
+      [];
+
+    const vistos =
+      new Set();
+
+    for (
+      const item of lista
+    ) {
+      const chave =
+        `${item.codigo}|${item.descricao}`
+          .toLowerCase();
+
+      if (
+        vistos.has(chave)
+      ) {
+        continue;
+      }
+
+      vistos.add(
+        chave
+      );
+
+      unicos.push(
+        item
+      );
+    }
+
+    return unicos;
+  }
+
+  const atividadesDisponiveis =
+    empresas
+      .flatMap(
+        (empresa) =>
+          normalizarListaCnaes(
+            empresa
+          )
+      );
+
+  function chaveAtividade(
+    item
+  ) {
+    return `${item.codigo}|${item.descricao}`;
+  }
+
+  function alternarAtividade(
+    item
+  ) {
+    const chave =
+      chaveAtividade(
+        item
+      );
+
+    setAtividadesSelecionadas(
+      (atuais) => {
+        const existe =
+          atuais.some(
+            (a) =>
+              chaveAtividade(a) ===
+              chave
+          );
+
+        if (existe) {
+          return atuais.filter(
+            (a) =>
+              chaveAtividade(a) !==
+              chave
+          );
+        }
+
+        return [
+          ...atuais,
+          item,
+        ];
+      }
+    );
+  }
+
+  function preencherAtividadesPadrao() {
+    if (
+      !atividadesDisponiveis.length
+    ) {
+      return;
+    }
+
+    const principais =
+      atividadesDisponiveis.filter(
+        (item) =>
+          item.tipo ===
+          "principal"
+      );
+
+    if (
+      principais.length &&
+      !atividadePrincipalSelecionada
+    ) {
+      setAtividadePrincipalSelecionada(
+        chaveAtividade(
+          principais[0]
+        )
+      );
+    }
+
+    if (
+      !atividadesSelecionadas.length
+    ) {
+      setAtividadesSelecionadas(
+        atividadesDisponiveis
       );
     }
   }
@@ -2406,6 +2720,107 @@ export default function Tributario({
           </div>
         </Card>
 
+        <Card
+          style={{
+            marginBottom: 14,
+          }}
+        >
+          <strong
+            style={{
+              display: "block",
+              marginBottom: 10,
+            }}
+          >
+            Atividades consideradas
+          </strong>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 7,
+            }}
+          >
+            {atividadesSelecionadas.length ? (
+              atividadesSelecionadas.map(
+                (
+                  item,
+                  index
+                ) => {
+                  const principal =
+                    chaveAtividade(
+                      item
+                    ) ===
+                    atividadePrincipalSelecionada;
+
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        border:
+                          principal
+                            ? "1px solid #31589C"
+                            : "1px solid #E3E7EF",
+                        background:
+                          principal
+                            ? "#F8FAFF"
+                            : WHITE,
+                        borderRadius: 9,
+                        padding: 9,
+                        fontSize: 10,
+                      }}
+                    >
+                      <strong>
+                        {item.codigo ||
+                          "CNAE"}{" "}
+                        ·{" "}
+                        {item.descricao ||
+                          "Atividade"}
+                      </strong>
+
+                      {principal && (
+                        <span
+                          style={{
+                            marginLeft: 7,
+                            color: "#31589C",
+                            fontSize: 8,
+                            fontWeight: 900,
+                          }}
+                        >
+                          PRINCIPAL REAL
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+              )
+            ) : (
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 10,
+                }}
+              >
+                Nenhuma atividade selecionada.
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              marginTop: 10,
+              color: MUTED,
+              fontSize: 9.5,
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>
+              Operação descrita:
+            </strong>{" "}
+            {descricaoAtividadeCliente ||
+              "-"}
+          </div>
+        </Card>
+
         {!!arquivos.length && (
           <Card
             style={{
@@ -2768,6 +3183,80 @@ export default function Tributario({
                 </div>
               </Card>
             </div>
+
+            <Card
+              style={{
+                marginBottom: 14,
+              }}
+            >
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 9,
+                  fontWeight: 900,
+                  marginBottom: 8,
+                }}
+              >
+                ATIVIDADE CONSIDERADA PELA ANÁLISE
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                {atividadesSelecionadas.map(
+                  (
+                    item,
+                    index
+                  ) => (
+                    <div
+                      key={index}
+                      style={{
+                        fontSize: 10,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      <strong>
+                        {item.codigo ||
+                          "CNAE"}{" "}
+                        ·{" "}
+                        {item.descricao ||
+                          "Atividade"}
+                      </strong>
+                      {chaveAtividade(
+                        item
+                      ) ===
+                      atividadePrincipalSelecionada && (
+                        <span
+                          style={{
+                            color: "#31589C",
+                            fontSize: 8,
+                            fontWeight: 900,
+                            marginLeft: 6,
+                          }}
+                        >
+                          PRINCIPAL
+                        </span>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 9.5,
+                  marginTop: 8,
+                  lineHeight: 1.5,
+                }}
+              >
+                {descricaoAtividadeCliente ||
+                  "-"}
+              </div>
+            </Card>
 
             <Card
               style={{
@@ -3545,6 +4034,255 @@ export default function Tributario({
           </div>
         </div>
       </div>
+
+      <Card
+        style={{
+          marginBottom: 14,
+          borderTop:
+            "4px solid #31589C",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent:
+              "space-between",
+            gap: 10,
+            alignItems:
+              "flex-start",
+            flexWrap: "wrap",
+            marginBottom: 10,
+          }}
+        >
+          <div>
+            <strong
+              style={{
+                display: "block",
+                fontSize: 14,
+              }}
+            >
+              Atividades da empresa
+            </strong>
+
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 10,
+                marginTop: 4,
+                lineHeight: 1.5,
+              }}
+            >
+              Os CNAEs vieram da consulta do CNPJ. Confirme quais atividades realmente fazem parte da operação e indique qual é a atividade principal de fato.
+            </div>
+          </div>
+
+          <Botao
+            secundario
+            onClick={
+              preencherAtividadesPadrao
+            }
+          >
+            Selecionar CNAEs encontrados
+          </Botao>
+        </div>
+
+        {!atividadesDisponiveis.length ? (
+          <div
+            style={{
+              background:
+                "#FFF8E8",
+              color: "#855A09",
+              borderRadius: 10,
+              padding: 10,
+              fontSize: 10,
+            }}
+          >
+            Nenhum CNAE foi identificado na resposta atual da consulta. Você pode continuar e descrever a atividade manualmente abaixo.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            {atividadesDisponiveis.map(
+              (
+                item,
+                index
+              ) => {
+                const chave =
+                  chaveAtividade(
+                    item
+                  );
+
+                const selecionada =
+                  atividadesSelecionadas.some(
+                    (atividade) =>
+                      chaveAtividade(
+                        atividade
+                      ) === chave
+                  );
+
+                const principal =
+                  atividadePrincipalSelecionada ===
+                  chave;
+
+                return (
+                  <div
+                    key={`${chave}-${index}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "auto minmax(0,1fr) auto",
+                      gap: 10,
+                      alignItems: "center",
+                      border:
+                        selecionada
+                          ? "1px solid #BFCBF0"
+                          : "1px solid #E3E7EF",
+                      background:
+                        selecionada
+                          ? "#F8FAFF"
+                          : WHITE,
+                      borderRadius: 10,
+                      padding: 10,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={
+                        selecionada
+                      }
+                      onChange={() =>
+                        alternarAtividade(
+                          item
+                        )
+                      }
+                    />
+
+                    <div>
+                      <strong
+                        style={{
+                          display: "block",
+                          fontSize: 10.5,
+                        }}
+                      >
+                        {item.codigo ||
+                          "CNAE"}{" "}
+                        ·{" "}
+                        {item.descricao ||
+                          "Atividade"}
+                      </strong>
+
+                      <div
+                        style={{
+                          color: MUTED,
+                          fontSize: 8.5,
+                          marginTop: 3,
+                        }}
+                      >
+                        Origem Receita:{" "}
+                        {item.tipo ===
+                        "principal"
+                          ? "CNAE principal cadastrado"
+                          : "CNAE secundário cadastrado"}
+                      </div>
+                    </div>
+
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 9,
+                        fontWeight: 900,
+                        cursor:
+                          selecionada
+                            ? "pointer"
+                            : "not-allowed",
+                        opacity:
+                          selecionada
+                            ? 1
+                            : .4,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="atividade-principal-real"
+                        disabled={
+                          !selecionada
+                        }
+                        checked={
+                          principal
+                        }
+                        onChange={() =>
+                          setAtividadePrincipalSelecionada(
+                            chave
+                          )
+                        }
+                      />
+                      Principal real
+                    </label>
+                  </div>
+                );
+              }
+            )}
+          </div>
+        )}
+
+        <label
+          style={{
+            display: "block",
+            marginTop: 12,
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              fontSize: 9.5,
+              fontWeight: 900,
+              marginBottom: 5,
+            }}
+          >
+            DESCREVA O QUE A EMPRESA REALMENTE FAZ
+          </span>
+
+          <textarea
+            rows={4}
+            value={
+              descricaoAtividadeCliente
+            }
+            onChange={(e) =>
+              setDescricaoAtividadeCliente(
+                e.target.value
+              )
+            }
+            placeholder="Ex.: Representação comercial de equipamentos industriais, venda por comissão e intermediação B2B para empresas do Paraná e Santa Catarina."
+            style={{
+              ...inputStyle(),
+              resize: "vertical",
+              fontFamily:
+                BODY_FONT,
+            }}
+          />
+        </label>
+
+        <div
+          style={{
+            marginTop: 10,
+            background:
+              "#EEF3FF",
+            color: "#31589C",
+            borderRadius: 10,
+            padding: 10,
+            fontSize: 9.5,
+            lineHeight: 1.5,
+          }}
+        >
+          A IA usará em conjunto: CNAE principal cadastrado, CNAEs selecionados, atividade principal real, descrição da operação, documentos e dados manuais.
+        </div>
+      </Card>
 
       <Card
         style={{
