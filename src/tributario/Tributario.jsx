@@ -863,6 +863,16 @@ export default function Tributario({
   ] = useState("resumo");
 
   const [
+    diagnosticoGerado,
+    setDiagnosticoGerado,
+  ] = useState(null);
+
+  const [
+    gerandoDiagnostico,
+    setGerandoDiagnostico,
+  ] = useState(false);
+
+  const [
     erro,
     setErro,
   ] = useState("");
@@ -944,6 +954,247 @@ export default function Tributario({
         [campo]: valor,
       })
     );
+  }
+
+  function numeroSeguro(
+    valor
+  ) {
+    const texto =
+      String(
+        valor ?? ""
+      )
+        .replace(/\./g, "")
+        .replace(",", ".");
+
+    const numero =
+      Number(texto);
+
+    return Number.isFinite(numero)
+      ? numero
+      : 0;
+  }
+
+  function gerarDiagnosticoPreliminar() {
+    setGerandoDiagnostico(
+      true
+    );
+
+    try {
+      const faturamento =
+        numeroSeguro(
+          dadosManuais.faturamento12m
+        );
+
+      const folha =
+        numeroSeguro(
+          dadosManuais.folha12m
+        );
+
+      const compras =
+        numeroSeguro(
+          dadosManuais.compras12m
+        );
+
+      const despesas =
+        numeroSeguro(
+          dadosManuais.despesasDedutiveis
+        );
+
+      const b2b =
+        numeroSeguro(
+          dadosManuais.percentualB2B
+        );
+
+      const margem =
+        numeroSeguro(
+          dadosManuais.margemOperacional
+        );
+
+      const fatorFolha =
+        faturamento > 0
+          ? folha / faturamento
+          : null;
+
+      const indiceCompras =
+        faturamento > 0
+          ? compras / faturamento
+          : null;
+
+      const indiceDespesas =
+        faturamento > 0
+          ? despesas / faturamento
+          : null;
+
+      const pontos = [];
+      const riscos = [];
+      const oportunidades = [];
+      const dadosFaltantes = [];
+
+      if (!faturamento) {
+        dadosFaltantes.push(
+          "Faturamento dos últimos 12 meses"
+        );
+      }
+
+      if (!folha) {
+        dadosFaltantes.push(
+          "Folha e pró-labore dos últimos 12 meses"
+        );
+      }
+
+      if (!dadosManuais.regimeAtual) {
+        dadosFaltantes.push(
+          "Regime tributário atual"
+        );
+      }
+
+      if (tipoProjeto === "planejamento") {
+        if (
+          fatorFolha !== null &&
+          fatorFolha >= 0.28
+        ) {
+          oportunidades.push(
+            "A relação folha/faturamento está em faixa relevante para análise de Fator R, quando aplicável à atividade."
+          );
+        }
+
+        if (
+          indiceDespesas !== null &&
+          indiceDespesas >= 0.20
+        ) {
+          oportunidades.push(
+            "O volume de despesas informado merece comparação detalhada com Lucro Real, pois pode alterar a eficiência tributária."
+          );
+        }
+
+        if (
+          margem > 0 &&
+          margem <= 15
+        ) {
+          oportunidades.push(
+            "A margem operacional informada é relativamente baixa; isso reforça a necessidade de comparar Lucro Presumido e Lucro Real."
+          );
+        }
+
+        if (
+          b2b >= 50
+        ) {
+          riscos.push(
+            "A participação relevante de vendas B2B exige avaliar o efeito comercial dos créditos tributários concedidos aos clientes."
+          );
+        }
+
+        pontos.push(
+          "Comparar Simples Nacional, Lucro Presumido e Lucro Real com memória de cálculo."
+        );
+
+        pontos.push(
+          "Separar receitas por atividade/CNAE e verificar anexos, Fator R e incidências específicas."
+        );
+
+        pontos.push(
+          "Conferir folha, pró-labore, retenções, compras e despesas dedutíveis."
+        );
+      } else {
+        if (
+          b2b >= 50
+        ) {
+          riscos.push(
+            "A empresa possui perfil B2B relevante; a competitividade poderá depender do crédito transferido ao cliente na sistemática IBS/CBS."
+          );
+        }
+
+        if (
+          indiceCompras !== null &&
+          indiceCompras < 0.20
+        ) {
+          riscos.push(
+            "O nível de compras informado é baixo em relação ao faturamento, o que pode limitar o volume de créditos no novo modelo."
+          );
+        }
+
+        if (
+          indiceCompras !== null &&
+          indiceCompras >= 0.30
+        ) {
+          oportunidades.push(
+            "O volume de compras/insumos sugere potencial relevante de apropriação de créditos, sujeito à validação documental."
+          );
+        }
+
+        pontos.push(
+          "Mapear receitas, compras, serviços tomados e itens potencialmente geradores de créditos."
+        );
+
+        pontos.push(
+          "Avaliar impacto da transição IBS/CBS sobre preço, margem e contratos."
+        );
+
+        pontos.push(
+          "Separar operações B2B e B2C para medir efeito comercial e creditício."
+        );
+      }
+
+      if (
+        arquivos.length > 0
+      ) {
+        oportunidades.push(
+          `${arquivos.length} documento(s) já foram selecionados para apoiar a validação da análise.`
+        );
+      }
+
+      const conclusao =
+        dadosFaltantes.length === 0
+          ? "A base mínima está preenchida e o projeto pode avançar para os cálculos tributários detalhados."
+          : "Foi possível montar um diagnóstico preliminar, mas ainda há dados essenciais que precisam ser confirmados antes da recomendação final.";
+
+      const resultado = {
+        criadoEm:
+          new Date().toISOString(),
+        tipoProjeto,
+        conclusao,
+        pontos,
+        riscos,
+        oportunidades,
+        dadosFaltantes,
+        indicadores: {
+          faturamento,
+          folha,
+          compras,
+          despesas,
+          b2b,
+          margem,
+          fatorFolha,
+          indiceCompras,
+          indiceDespesas,
+        },
+      };
+
+      setDiagnosticoGerado(
+        resultado
+      );
+
+      registrarHistorico(
+        "DIAGNOSTICO_GERADO",
+        "Diagnóstico tributário preliminar gerado.",
+        {
+          riscos:
+            riscos.length,
+          oportunidades:
+            oportunidades.length,
+          dadosFaltantes:
+            dadosFaltantes.length,
+        }
+      );
+
+      setAbaAnalise(
+        "diagnostico"
+      );
+    } finally {
+      setGerandoDiagnostico(
+        false
+      );
+    }
   }
 
   function escolherProjeto(
@@ -2374,6 +2625,12 @@ export default function Tributario({
             ["resumo", "Visão geral"],
             ["cliente", "Cliente / Origem"],
             [
+              "diagnostico",
+              diagnosticoGerado
+                ? "Diagnóstico"
+                : "Montar diagnóstico",
+            ],
+            [
               "historico",
               `Histórico (${historicoProjeto.length})`,
             ],
@@ -2563,7 +2820,7 @@ export default function Tributario({
                   fontWeight: 900,
                 }}
               >
-                PRÓXIMA IMPLEMENTAÇÃO
+                DIAGNÓSTICO TRIBUTÁRIO
               </div>
 
               <h3
@@ -2572,7 +2829,7 @@ export default function Tributario({
                   fontFamily: DISPLAY_FONT,
                 }}
               >
-                Leitura real dos documentos pela IA
+                Montar diagnóstico preliminar
               </h3>
 
               <div
@@ -2582,8 +2839,24 @@ export default function Tributario({
                   lineHeight: 1.55,
                 }}
               >
-                O próximo backend salvará o projeto, documentos, responsável, origem e histórico em banco próprio do módulo Tributário.
+                Use os dados já informados para montar agora um diagnóstico preliminar com pontos de atenção, oportunidades, dados faltantes e próximos passos.
               </div>
+
+              <Botao
+                onClick={
+                  gerarDiagnosticoPreliminar
+                }
+                disabled={
+                  gerandoDiagnostico
+                }
+                style={{
+                  marginTop: 12,
+                }}
+              >
+                {gerandoDiagnostico
+                  ? "Montando diagnóstico..."
+                  : "Montar diagnóstico →"}
+              </Botao>
             </Card>
           </>
         )}
@@ -2725,6 +2998,347 @@ export default function Tributario({
                 </div>
               </div>
             </Card>
+          </div>
+        )}
+
+        {abaAnalise ===
+          "diagnostico" && (
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            {!diagnosticoGerado ? (
+              <Card
+                style={{
+                  background:
+                    "#FFF9F7",
+                  border:
+                    "1px solid #F2C5B8",
+                }}
+              >
+                <div
+                  style={{
+                    color: CORAL,
+                    fontSize: 9,
+                    fontWeight: 900,
+                  }}
+                >
+                  DIAGNÓSTICO TRIBUTÁRIO
+                </div>
+
+                <h3
+                  style={{
+                    margin:
+                      "6px 0 6px",
+                    fontFamily:
+                      DISPLAY_FONT,
+                  }}
+                >
+                  Gerar diagnóstico preliminar
+                </h3>
+
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 10.5,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  O sistema utilizará os dados informados e a estrutura do projeto para produzir uma primeira leitura consultiva.
+                </div>
+
+                <Botao
+                  onClick={
+                    gerarDiagnosticoPreliminar
+                  }
+                  disabled={
+                    gerandoDiagnostico
+                  }
+                  style={{
+                    marginTop: 12,
+                  }}
+                >
+                  {gerandoDiagnostico
+                    ? "Montando diagnóstico..."
+                    : "Gerar diagnóstico agora"}
+                </Botao>
+              </Card>
+            ) : (
+              <>
+                <Card
+                  style={{
+                    borderLeft:
+                      "4px solid #31589C",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#31589C",
+                      fontSize: 9,
+                      fontWeight: 900,
+                    }}
+                  >
+                    RESUMO EXECUTIVO
+                  </div>
+
+                  <h3
+                    style={{
+                      margin:
+                        "6px 0 6px",
+                      fontFamily:
+                        DISPLAY_FONT,
+                    }}
+                  >
+                    Diagnóstico preliminar
+                  </h3>
+
+                  <div
+                    style={{
+                      color: MUTED,
+                      fontSize: 10.5,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {diagnosticoGerado.conclusao}
+                  </div>
+                </Card>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(260px,1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <Card>
+                    <strong>
+                      Pontos de análise
+                    </strong>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 7,
+                        marginTop: 10,
+                      }}
+                    >
+                      {diagnosticoGerado.pontos.map(
+                        (
+                          item,
+                          index
+                        ) => (
+                          <div
+                            key={index}
+                            style={{
+                              background:
+                                "#F7F8FB",
+                              borderRadius: 8,
+                              padding: 9,
+                              fontSize: 10,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {item}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <strong>
+                      Riscos / atenção
+                    </strong>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 7,
+                        marginTop: 10,
+                      }}
+                    >
+                      {diagnosticoGerado.riscos.length ? (
+                        diagnosticoGerado.riscos.map(
+                          (
+                            item,
+                            index
+                          ) => (
+                            <div
+                              key={index}
+                              style={{
+                                background:
+                                  "#FFF4F0",
+                                color:
+                                  "#8E321C",
+                                borderRadius: 8,
+                                padding: 9,
+                                fontSize: 10,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {item}
+                            </div>
+                          )
+                        )
+                      ) : (
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 10,
+                          }}
+                        >
+                          Nenhum alerta relevante identificado com os dados atuais.
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <strong>
+                      Oportunidades
+                    </strong>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 7,
+                        marginTop: 10,
+                      }}
+                    >
+                      {diagnosticoGerado.oportunidades.length ? (
+                        diagnosticoGerado.oportunidades.map(
+                          (
+                            item,
+                            index
+                          ) => (
+                            <div
+                              key={index}
+                              style={{
+                                background:
+                                  "#EEF9F3",
+                                color:
+                                  "#176B47",
+                                borderRadius: 8,
+                                padding: 9,
+                                fontSize: 10,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {item}
+                            </div>
+                          )
+                        )
+                      ) : (
+                        <div
+                          style={{
+                            color: MUTED,
+                            fontSize: 10,
+                          }}
+                        >
+                          Ainda não há dados suficientes para apontar oportunidades.
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <strong>
+                      Dados faltantes
+                    </strong>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 7,
+                        marginTop: 10,
+                      }}
+                    >
+                      {diagnosticoGerado.dadosFaltantes.length ? (
+                        diagnosticoGerado.dadosFaltantes.map(
+                          (
+                            item,
+                            index
+                          ) => (
+                            <div
+                              key={index}
+                              style={{
+                                background:
+                                  "#FFF8E8",
+                                color:
+                                  "#855A09",
+                                borderRadius: 8,
+                                padding: 9,
+                                fontSize: 10,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {item}
+                            </div>
+                          )
+                        )
+                      ) : (
+                        <div
+                          style={{
+                            color:
+                              "#176B47",
+                            background:
+                              "#EEF9F3",
+                            borderRadius: 8,
+                            padding: 9,
+                            fontSize: 10,
+                          }}
+                        >
+                          Base mínima preenchida.
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                </div>
+
+                <Card>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent:
+                        "space-between",
+                      gap: 10,
+                      alignItems:
+                        "center",
+                      flexWrap:
+                        "wrap",
+                    }}
+                  >
+                    <div>
+                      <strong>
+                        Atualizar diagnóstico
+                      </strong>
+
+                      <div
+                        style={{
+                          color: MUTED,
+                          fontSize: 9.5,
+                          marginTop: 3,
+                        }}
+                      >
+                        Se você alterar dados ou documentos, gere novamente para atualizar a leitura.
+                      </div>
+                    </div>
+
+                    <Botao
+                      secundario
+                      onClick={
+                        gerarDiagnosticoPreliminar
+                      }
+                    >
+                      Gerar novamente
+                    </Botao>
+                  </div>
+                </Card>
+              </>
+            )}
           </div>
         )}
 
