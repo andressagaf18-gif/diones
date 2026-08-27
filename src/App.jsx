@@ -3017,7 +3017,14 @@ function DiagnosticoPrototipo() {
   }
 
   // =========================================================
-  // CRM — ATUALIZA STATUS, PROGRESSO E DADOS CONHECIDOS
+  // CRM — AUTOSAVE PROGRESSIVO DO LEAD
+  //
+  // Objetivo:
+  // - tudo que o cliente já informou fica disponível no CRM;
+  // - se ele abandonar o formulário, a Finder consegue ver
+  //   exatamente até onde chegou e quais dados já forneceu;
+  // - evita uma requisição a cada tecla usando debounce;
+  // - mudança de etapa continua refletida no progresso.
   // =========================================================
   useEffect(() => {
     if (
@@ -3037,32 +3044,109 @@ function DiagnosticoPrototipo() {
         ? "CONCLUIDO"
         : "EM_PREENCHIMENTO";
 
+    const empresaLead =
+      empresaPrincipal || {};
+
+    const cnpjLead =
+      fluxoSemCnpj
+        ? ""
+        : empresaLead?.cnpjDigits ||
+          empresaLead?.cnpj ||
+          "";
+
+    const razaoSocialLead =
+      trilhaPFAtiva
+        ? nome || "Pessoa Física"
+        : avaliarHoldingAtiva
+        ? nome
+          ? `Avaliação de Holding — ${nome}`
+          : "Avaliação de Holding"
+        : trilhaSPEAtiva &&
+          speConstituida !== "sim"
+        ? nomeProjetoSPE ||
+          "SPE em estruturação"
+        : trilhaGrupoAtiva
+        ? nomeGrupo ||
+          empresaLead?.razao ||
+          empresaLead?.razaoSocial ||
+          "Grupo empresarial"
+        : empresaLead?.razao ||
+          empresaLead?.razaoSocial ||
+          "";
+
+    const respostasParciais =
+      todasPerguntas
+        .filter(
+          (pergunta) =>
+            Boolean(
+              respostas[
+                pergunta.id
+              ]
+            )
+        )
+        .map(
+          (pergunta) => ({
+            id:
+              pergunta.id,
+
+            area:
+              pergunta.area ||
+              "",
+
+            areaId:
+              pergunta.areaId ||
+              "",
+
+            tema:
+              pergunta.tema ||
+              "",
+
+            pergunta:
+              pergunta.pergunta ||
+              pergunta.text ||
+              "",
+
+            resposta:
+              respostas[
+                pergunta.id
+              ] ||
+              "",
+          })
+        );
+
     const payload = {
       statusDiagnostico,
 
       etapaAtual:
-        String(step || "")
-          .toUpperCase(),
+        String(
+          step ||
+          ""
+        ).toUpperCase(),
 
       progressoPercentual:
         progresso,
 
       nome:
-        nome || "",
+        nome ||
+        "",
+
+      cargo:
+        cargo ||
+        "",
 
       email:
-        email || "",
+        email ||
+        "",
 
       telefone:
-        telefone || "",
+        telefone ||
+        "",
 
       cnpj:
-        empresaPrincipal?.cnpjDigits ||
-        "",
+        cnpjLead,
 
       razaoSocial:
-        empresaPrincipal?.razao ||
-        "",
+        razaoSocialLead,
 
       diagnosticoId:
         diagnosticoIdSalvo ||
@@ -3071,9 +3155,138 @@ function DiagnosticoPrototipo() {
       estruturaNegocio,
 
       contextoCliente: {
-        estruturaNegocio,
-        holding: perfilHolding,
-        pessoaFisica: perfilPF,
+        versao:
+          "CRM_PROGRESSIVO_V2",
+
+        atualizadoEm:
+          new Date()
+            .toISOString(),
+
+        etapaAtual:
+          String(
+            step ||
+            ""
+          ).toUpperCase(),
+
+        progressoPercentual:
+          progresso,
+
+        cadastro: {
+          nome:
+            nome ||
+            "",
+
+          cargo:
+            cargo ||
+            "",
+
+          telefone:
+            telefone ||
+            "",
+
+          email:
+            email ||
+            "",
+
+          consentimentoEmail:
+            consentimentoEmail !==
+            false,
+        },
+
+        empresa: {
+          cnpj:
+            cnpjLead,
+
+          razaoSocial:
+            razaoSocialLead,
+
+          descricaoNegocio:
+            descricaoNegocio ||
+            "",
+
+          estruturaNegocio,
+
+          segmento:
+            segmentoPredominante ||
+            "",
+
+          categoria:
+            categoriaPrincipal ||
+            "",
+
+          codigoQuestionario:
+            codigoQuestionario ||
+            "",
+
+          cnaesDisponiveis:
+            Array.isArray(
+              cnaesEmpresa
+            )
+              ? cnaesEmpresa
+              : [],
+
+          cnaesSelecionados:
+            atividadesSelecionadasObjetos,
+
+          atividadePredominante:
+            atividadePredominante ||
+            null,
+        },
+
+        perfil: {
+          faturamento:
+            faturamento ||
+            null,
+
+          colaboradores:
+            colaboradores ||
+            null,
+
+          regime:
+            regime ||
+            null,
+
+          observacao:
+            observacao ||
+            "",
+
+          doresSelecionadas:
+            doresSelecionadas,
+
+          areasSelecionadas:
+            dores,
+
+          dor90Dias:
+            dor90Dias ||
+            "",
+
+          impactosDor:
+            impactosDor,
+
+          totalPerguntas:
+            todasPerguntas.length,
+
+          totalRespondidas:
+            respostasParciais.length,
+
+          respostasParciais,
+        },
+
+        holding:
+          perfilHolding,
+
+        pessoaFisica:
+          perfilPF,
+
+        grupo:
+          perfilGrupo,
+
+        spe:
+          perfilSPE,
+
+        negocioInterpretado:
+          negocioInterpretado ||
+          null,
       },
     };
 
@@ -3089,37 +3302,69 @@ function DiagnosticoPrototipo() {
       return;
     }
 
-    ultimaAtualizacaoLeadRef.current =
-      assinatura;
-
+    // Não bloqueamos novas atualizações em caso de erro.
+    // A assinatura só é efetivada quando a chamada é disparada.
     const timer =
       setTimeout(
-        () => {
-          atualizarLeadCRM(
-            payload
-          );
+        async () => {
+          try {
+            await atualizarLeadCRM(
+              payload
+            );
+
+            ultimaAtualizacaoLeadRef.current =
+              assinatura;
+          } catch (
+            erro
+          ) {
+            console.warn(
+              "[CRM] Autosave progressivo não concluído:",
+              erro
+            );
+          }
         },
-        250
+        800
       );
 
     return () =>
-      clearTimeout(timer);
+      clearTimeout(
+        timer
+      );
   }, [
     step,
     leadId,
     sessionIdLead,
+
     nome,
+    cargo,
     email,
     telefone,
-    empresaPrincipal?.cnpjDigits,
-    empresaPrincipal?.razao,
-    diagnosticoIdSalvo,
+    consentimentoEmail,
+
+    cnpjInput,
+    empresas,
+    cnaesEmpresa,
+    atividadesSelecionadas,
+    atividadePredominante,
+    descricaoNegocio,
     estruturaNegocio,
+
+    faturamento,
+    colaboradores,
+    regime,
+    observacao,
+
+    dores,
+    doresSelecionadas,
+    dor90Dias,
+    impactosDor,
+
     tiposHolding,
     objetivosHolding,
     patrimonioHolding,
     receitasHolding,
     sucessaoHolding,
+
     objetivosPF,
     rendaMensalPF,
     gastosMensaisPF,
@@ -3129,8 +3374,33 @@ function DiagnosticoPrototipo() {
     investimentosPF,
     aposentadoriaPF,
     dependentesPF,
+
+    nomeGrupo,
+    funcaoEmpresasGrupo,
+    sociosComunsGrupo,
+    financeiroCentralizadoGrupo,
+    pessoasCompartilhadasGrupo,
+    operacoesIntercompanyGrupo,
+    governancaGrupo,
+
+    speConstituida,
+    nomeProjetoSPE,
+    finalidadeSPE,
+    sociosSPE,
+    valorProjetoSPE,
+    aportesSPE,
+    financiamentoSPE,
+    prazoSPE,
+    receitaPrevistaSPE,
+    custosPrevistosSPE,
+    faseProjetoSPE,
+
+    perguntasDinamicas,
+    negocioInterpretado,
     todasPerguntas.length,
     respostas,
+
+    diagnosticoIdSalvo,
   ]);
 
   useEffect(() => {
