@@ -42,6 +42,7 @@ import OperacionalBI from "./OperacionalBI";
 import PropostaPDFButton from "./PropostaPDF";
 import { FinderSidebar, FinderTopbar } from "./TechShell";
 import { finderStyles } from "./Theme";
+import Tributario from "./tributario/Tributario";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -22784,6 +22785,10 @@ export default function Admin() {
           <History size={14} />
           Auditoria
         </Botao>
+        <Botao secundario={aba !== "tributario"} onClick={() => setAba("tributario")}>
+          <Gauge size={14} />
+          Tributário
+        </Botao>
       </div>
     );
   }
@@ -22978,6 +22983,11 @@ export default function Admin() {
       subtitulo:
         "Histórico de acessos, cliques e alterações do sistema",
     },
+    tributario: {
+      titulo: "Inteligência Tributária",
+      subtitulo:
+        "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
+    },
   };
 
   function ConteudoPadrao({
@@ -23160,6 +23170,24 @@ export default function Admin() {
       >
         <ConteudoPadrao>
           <AuditoriaSistema
+            token={token}
+          />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "tributario") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.tributario.titulo}
+        subtitulo={paginas.tributario.subtitulo}
+      >
+        <ConteudoPadrao>
+          <Tributario
             token={token}
           />
         </ConteudoPadrao>
