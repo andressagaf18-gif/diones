@@ -4796,7 +4796,6 @@ function DiagnosticoPrototipo() {
         observacao: observacao || "",
         descricaoNegocio: descricaoNegocio || "",
         negocioInterpretado: negocioInterpretado || null,
-        estruturaNegocio,
         holding: perfilHolding,
         pessoaFisica: perfilPF,
         grupo: perfilGrupo,
@@ -9527,4 +9526,3 @@ export default function App() {
     />
   );
 }
-
