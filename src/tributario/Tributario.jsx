@@ -1833,13 +1833,240 @@ export default function Tributario({
           </div>
 
           <Botao
-            disabled
+            onClick={() =>
+              setTela(
+                "analise"
+              )
+            }
             style={{
               marginTop: 12,
             }}
           >
-            Iniciar análise IA — V2
+            Iniciar análise tributária →
           </Botao>
+        </Card>
+      </div>
+    );
+  }
+
+  if (
+    tela ===
+    "analise"
+  ) {
+    return (
+      <div
+        style={{
+          fontFamily: BODY_FONT,
+          color: NAVY,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() =>
+            setTela(
+              "revisao"
+            )
+          }
+          style={{
+            border: 0,
+            background: "transparent",
+            color: MUTED,
+            cursor: "pointer",
+            fontWeight: 800,
+            marginBottom: 12,
+          }}
+        >
+          ← Voltar à revisão
+        </button>
+
+        <div
+          style={{
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              color:
+                tipoProjeto === "reforma"
+                  ? CORAL
+                  : "#31589C",
+              fontSize: 9,
+              fontWeight: 900,
+            }}
+          >
+            {tipoProjeto === "reforma"
+              ? "REFORMA TRIBUTÁRIA"
+              : "PLANEJAMENTO TRIBUTÁRIO"}
+          </div>
+
+          <h2
+            style={{
+              margin: "4px 0 5px",
+              fontFamily: DISPLAY_FONT,
+            }}
+          >
+            Análise tributária
+          </h2>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10.5,
+            }}
+          >
+            A base foi aceita e o fluxo não fica mais bloqueado.
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(220px,1fr))",
+            gap: 10,
+            marginBottom: 14,
+          }}
+        >
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 9,
+                fontWeight: 900,
+              }}
+            >
+              EMPRESAS
+            </div>
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 900,
+                marginTop: 4,
+              }}
+            >
+              {empresasConsultadas}
+            </div>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 9,
+                fontWeight: 900,
+              }}
+            >
+              DOCUMENTOS
+            </div>
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 900,
+                marginTop: 4,
+              }}
+            >
+              {arquivos.length}
+            </div>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 9,
+                fontWeight: 900,
+              }}
+            >
+              TIPO
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 14,
+                fontWeight: 900,
+              }}
+            >
+              {tipoProjeto === "reforma"
+                ? "Reforma Tributária"
+                : "Planejamento Tributário"}
+            </div>
+          </Card>
+        </div>
+
+        <Card
+          style={{
+            marginBottom: 14,
+            borderLeft:
+              "4px solid #31589C",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              color: "#31589C",
+              fontWeight: 900,
+            }}
+          >
+            ETAPA LIBERADA
+          </div>
+
+          <h3
+            style={{
+              margin: "6px 0 6px",
+              fontFamily: DISPLAY_FONT,
+            }}
+          >
+            Base pronta para processamento
+          </h3>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10.5,
+              lineHeight: 1.55,
+            }}
+          >
+            O sistema agora permite avançar normalmente após selecionar os documentos. 
+            Esta tela confirma que a empresa, os arquivos e a modalidade chegaram à etapa de análise.
+          </div>
+        </Card>
+
+        <Card
+          style={{
+            background: "#FFF9F7",
+            border:
+              "1px solid #F2C5B8",
+          }}
+        >
+          <div
+            style={{
+              color: CORAL,
+              fontSize: 9,
+              fontWeight: 900,
+            }}
+          >
+            PRÓXIMA IMPLEMENTAÇÃO
+          </div>
+
+          <h3
+            style={{
+              margin: "6px 0 6px",
+              fontFamily: DISPLAY_FONT,
+            }}
+          >
+            Leitura real dos documentos pela IA
+          </h3>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10.5,
+              lineHeight: 1.55,
+            }}
+          >
+            Para a IA analisar de verdade esses PDFs, XMLs e planilhas, o próximo arquivo será o backend próprio do módulo tributário. 
+            Ele ficará separado do CRM e salvará os documentos em uma base exclusiva do Tributário.
+          </div>
         </Card>
       </div>
     );
