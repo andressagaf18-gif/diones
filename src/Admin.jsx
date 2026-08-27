@@ -22787,7 +22787,7 @@ export default function Admin() {
         </Botao>
         <Botao secundario={aba !== "tributario"} onClick={() => setAba("tributario")}>
           <Gauge size={14} />
-          Tributário
+          Inteligência Tributária
         </Botao>
       </div>
     );
@@ -22986,7 +22986,7 @@ export default function Admin() {
     tributario: {
       titulo: "Inteligência Tributária",
       subtitulo:
-        "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
+        "Reforma Tributária (IBS/CBS) e Planejamento Tributário com análise documental, IA, histórico e acompanhamento por responsável.",
     },
   };
 
