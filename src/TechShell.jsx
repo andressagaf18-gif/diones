@@ -63,11 +63,6 @@ const itensPadrao = [
     icon: History,
   },
   {
-    id: "simulador-fiscal",
-    label: "Simulador Fiscal",
-    icon: Sparkles,
-  },
-  {
     id: "tributario",
     label: "Inteligência Tributária",
     icon: Gauge,
