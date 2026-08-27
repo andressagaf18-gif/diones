@@ -827,6 +827,42 @@ export default function Tributario({
   ] = useState({});
 
   const [
+    dadosProjeto,
+    setDadosProjeto,
+  ] = useState({
+    responsavelFinder: "",
+    origemCliente: "",
+    contatoNome: "",
+    contatoEmail: "",
+    contatoTelefone: "",
+    observacaoOrigem: "",
+  });
+
+  const [
+    historicoProjeto,
+    setHistoricoProjeto,
+  ] = useState([]);
+
+  const [
+    projetoId,
+    setProjetoId,
+  ] = useState(() => {
+    try {
+      return (
+        crypto?.randomUUID?.() ||
+        `tax_${Date.now()}_${Math.random()}`
+      );
+    } catch {
+      return `tax_${Date.now()}_${Math.random()}`;
+    }
+  });
+
+  const [
+    abaAnalise,
+    setAbaAnalise,
+  ] = useState("resumo");
+
+  const [
     erro,
     setErro,
   ] = useState("");
@@ -841,10 +877,90 @@ export default function Tributario({
       [empresas]
     );
 
+  function formatarDataHora(
+    valor
+  ) {
+    try {
+      return new Date(
+        valor
+      ).toLocaleString(
+        "pt-BR",
+        {
+          dateStyle: "short",
+          timeStyle: "short",
+        }
+      );
+    } catch {
+      return String(
+        valor || "-"
+      );
+    }
+  }
+
+  function registrarHistorico(
+    tipo,
+    descricao,
+    detalhes = {}
+  ) {
+    const evento = {
+      id:
+        crypto?.randomUUID?.() ||
+        `${Date.now()}_${Math.random()}`,
+      tipo,
+      descricao,
+      detalhes,
+      criadoEm:
+        new Date().toISOString(),
+    };
+
+    setHistoricoProjeto(
+      (atuais) => {
+        const novos = [
+          evento,
+          ...atuais,
+        ];
+
+        try {
+          localStorage.setItem(
+            `finder_tax_history_${projetoId}`,
+            JSON.stringify(
+              novos
+            )
+          );
+        } catch {}
+
+        return novos;
+      }
+    );
+  }
+
+  function alterarDadosProjeto(
+    campo,
+    valor
+  ) {
+    setDadosProjeto(
+      (atual) => ({
+        ...atual,
+        [campo]: valor,
+      })
+    );
+  }
+
   function escolherProjeto(
     tipo
   ) {
     setTipoProjeto(tipo);
+
+    registrarHistorico(
+      "PROJETO_CRIADO",
+      tipo === "reforma"
+        ? "Nova análise de Reforma Tributária iniciada."
+        : "Novo Planejamento Tributário iniciado.",
+      {
+        tipoProjeto: tipo,
+      }
+    );
+
     setTela(
       "configuracao"
     );
@@ -948,6 +1064,22 @@ export default function Tributario({
           erro: "",
         }
       );
+
+      registrarHistorico(
+        "CNPJ_CONSULTADO",
+        `CNPJ ${formatarCnpj(digits)} consultado com sucesso.`,
+        {
+          cnpj:
+            formatarCnpj(
+              digits
+            ),
+          razaoSocial:
+            dados.razaoSocial ||
+            dados.razao_social ||
+            dados.nome ||
+            "",
+        }
+      );
     } catch (error) {
       alterarEmpresa(
         empresa.id,
@@ -969,6 +1101,24 @@ export default function Tributario({
 
   function continuarParaDados() {
     if (
+      !dadosProjeto.responsavelFinder.trim()
+    ) {
+      setErro(
+        "Informe o responsável Finder pelo cliente."
+      );
+      return;
+    }
+
+    if (
+      !dadosProjeto.origemCliente
+    ) {
+      setErro(
+        "Informe de onde veio o cliente."
+      );
+      return;
+    }
+
+    if (
       !empresasConsultadas
     ) {
       setErro(
@@ -976,6 +1126,21 @@ export default function Tributario({
       );
       return;
     }
+
+    registrarHistorico(
+      "IDENTIFICACAO_CONFIRMADA",
+      "Responsável, origem e empresas confirmados.",
+      {
+        responsavelFinder:
+          dadosProjeto.responsavelFinder,
+        origemCliente:
+          dadosProjeto.origemCliente,
+        observacaoOrigem:
+          dadosProjeto.observacaoOrigem,
+        empresas:
+          empresasConsultadas,
+      }
+    );
 
     setErro("");
     setTela(
@@ -1022,6 +1187,18 @@ export default function Tributario({
         return;
       }
     }
+
+    registrarHistorico(
+      "BASE_REVISADA",
+      "Base documental/manual enviada para revisão.",
+      {
+        modalidade,
+        documentos:
+          arquivos.length,
+        empresas:
+          empresasConsultadas,
+      }
+    );
 
     setErro("");
     setTela(
@@ -1416,6 +1593,235 @@ export default function Tributario({
                 )
               }
             />
+          </div>
+        </Card>
+
+        <Card
+          style={{
+            marginBottom: 14,
+            borderTop:
+              "4px solid #31589C",
+          }}
+        >
+          <strong
+            style={{
+              display: "block",
+              marginBottom: 4,
+            }}
+          >
+            Identificação do cliente
+          </strong>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10,
+              marginBottom: 12,
+            }}
+          >
+            Registre quem é o responsável pelo relacionamento e de onde este cliente veio.
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(220px,1fr))",
+              gap: 10,
+            }}
+          >
+            <label>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  marginBottom: 5,
+                }}
+              >
+                RESPONSÁVEL FINDER
+              </span>
+
+              <input
+                value={
+                  dadosProjeto.responsavelFinder
+                }
+                onChange={(e) =>
+                  alterarDadosProjeto(
+                    "responsavelFinder",
+                    e.target.value
+                  )
+                }
+                placeholder="Ex.: Diones"
+                style={inputStyle()}
+              />
+            </label>
+
+            <label>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  marginBottom: 5,
+                }}
+              >
+                ORIGEM DO CLIENTE
+              </span>
+
+              <select
+                value={
+                  dadosProjeto.origemCliente
+                }
+                onChange={(e) =>
+                  alterarDadosProjeto(
+                    "origemCliente",
+                    e.target.value
+                  )
+                }
+                style={inputStyle()}
+              >
+                <option value="">
+                  Selecione
+                </option>
+                <option value="INDICACAO">
+                  Indicação
+                </option>
+                <option value="EVENTO">
+                  Evento
+                </option>
+                <option value="INSTAGRAM">
+                  Instagram
+                </option>
+                <option value="SITE">
+                  Site
+                </option>
+                <option value="WHATSAPP">
+                  WhatsApp
+                </option>
+                <option value="CLIENTE_BASE">
+                  Cliente da base
+                </option>
+                <option value="PARCEIRO">
+                  Parceiro
+                </option>
+                <option value="PROSPECCAO_ATIVA">
+                  Prospecção ativa
+                </option>
+                <option value="OUTRO">
+                  Outro
+                </option>
+              </select>
+            </label>
+
+            <label>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  marginBottom: 5,
+                }}
+              >
+                CONTATO DO CLIENTE
+              </span>
+
+              <input
+                value={
+                  dadosProjeto.contatoNome
+                }
+                onChange={(e) =>
+                  alterarDadosProjeto(
+                    "contatoNome",
+                    e.target.value
+                  )
+                }
+                placeholder="Nome do contato"
+                style={inputStyle()}
+              />
+            </label>
+
+            <label>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  marginBottom: 5,
+                }}
+              >
+                E-MAIL
+              </span>
+
+              <input
+                type="email"
+                value={
+                  dadosProjeto.contatoEmail
+                }
+                onChange={(e) =>
+                  alterarDadosProjeto(
+                    "contatoEmail",
+                    e.target.value
+                  )
+                }
+                placeholder="cliente@empresa.com"
+                style={inputStyle()}
+              />
+            </label>
+
+            <label>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  marginBottom: 5,
+                }}
+              >
+                TELEFONE
+              </span>
+
+              <input
+                value={
+                  dadosProjeto.contatoTelefone
+                }
+                onChange={(e) =>
+                  alterarDadosProjeto(
+                    "contatoTelefone",
+                    e.target.value
+                  )
+                }
+                placeholder="(41) 99999-9999"
+                style={inputStyle()}
+              />
+            </label>
+
+            <label>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  marginBottom: 5,
+                }}
+              >
+                DETALHE DA ORIGEM
+              </span>
+
+              <input
+                value={
+                  dadosProjeto.observacaoOrigem
+                }
+                onChange={(e) =>
+                  alterarDadosProjeto(
+                    "observacaoOrigem",
+                    e.target.value
+                  )
+                }
+                placeholder="Ex.: Feira do Empreendedor 2026"
+                style={inputStyle()}
+              />
+            </label>
           </div>
         </Card>
 
@@ -1833,11 +2239,22 @@ export default function Tributario({
           </div>
 
           <Botao
-            onClick={() =>
+            onClick={() => {
+              registrarHistorico(
+                "ANALISE_INICIADA",
+                "Projeto encaminhado para a etapa de análise tributária.",
+                {
+                  tipoProjeto,
+                  modalidade,
+                  documentos:
+                    arquivos.length,
+                }
+              );
+
               setTela(
                 "analise"
-              )
-            }
+              );
+            }}
             style={{
               marginTop: 12,
             }}
@@ -1853,6 +2270,18 @@ export default function Tributario({
     tela ===
     "analise"
   ) {
+    const empresaPrincipal =
+      empresas.find(
+        (empresa) =>
+          empresa.dados
+      );
+
+    const nomeEmpresa =
+      empresaPrincipal?.dados?.razaoSocial ||
+      empresaPrincipal?.dados?.razao_social ||
+      empresaPrincipal?.dados?.nome ||
+      "Cliente";
+
     return (
       <div
         style={{
@@ -1881,15 +2310,17 @@ export default function Tributario({
 
         <div
           style={{
-            marginBottom: 16,
+            background:
+              "linear-gradient(135deg,#0E1A33,#17233D)",
+            color: WHITE,
+            borderRadius: 18,
+            padding: 20,
+            marginBottom: 14,
           }}
         >
           <div
             style={{
-              color:
-                tipoProjeto === "reforma"
-                  ? CORAL
-                  : "#31589C",
+              color: "#FFB7A7",
               fontSize: 9,
               fontWeight: 900,
             }}
@@ -1901,173 +2332,522 @@ export default function Tributario({
 
           <h2
             style={{
-              margin: "4px 0 5px",
+              margin: "5px 0 4px",
               fontFamily: DISPLAY_FONT,
             }}
           >
-            Análise tributária
+            {nomeEmpresa}
           </h2>
 
           <div
             style={{
-              color: MUTED,
+              color: "#D8DEEA",
               fontSize: 10.5,
             }}
           >
-            A base foi aceita e o fluxo não fica mais bloqueado.
+            Responsável Finder:{" "}
+            <strong>
+              {dadosProjeto.responsavelFinder ||
+                "-"}
+            </strong>
+            {" · "}
+            Origem:{" "}
+            <strong>
+              {dadosProjeto.origemCliente ||
+                "-"}
+            </strong>
+            {dadosProjeto.observacaoOrigem
+              ? ` · ${dadosProjeto.observacaoOrigem}`
+              : ""}
           </div>
         </div>
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit,minmax(220px,1fr))",
-            gap: 10,
+            display: "flex",
+            gap: 7,
+            flexWrap: "wrap",
             marginBottom: 14,
           }}
         >
-          <Card>
-            <div
-              style={{
-                color: MUTED,
-                fontSize: 9,
-                fontWeight: 900,
-              }}
-            >
-              EMPRESAS
-            </div>
-            <div
-              style={{
-                fontSize: 26,
-                fontWeight: 900,
-                marginTop: 4,
-              }}
-            >
-              {empresasConsultadas}
-            </div>
-          </Card>
-
-          <Card>
-            <div
-              style={{
-                color: MUTED,
-                fontSize: 9,
-                fontWeight: 900,
-              }}
-            >
-              DOCUMENTOS
-            </div>
-            <div
-              style={{
-                fontSize: 26,
-                fontWeight: 900,
-                marginTop: 4,
-              }}
-            >
-              {arquivos.length}
-            </div>
-          </Card>
-
-          <Card>
-            <div
-              style={{
-                color: MUTED,
-                fontSize: 9,
-                fontWeight: 900,
-              }}
-            >
-              TIPO
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 14,
-                fontWeight: 900,
-              }}
-            >
-              {tipoProjeto === "reforma"
-                ? "Reforma Tributária"
-                : "Planejamento Tributário"}
-            </div>
-          </Card>
+          {[
+            ["resumo", "Visão geral"],
+            ["cliente", "Cliente / Origem"],
+            [
+              "historico",
+              `Histórico (${historicoProjeto.length})`,
+            ],
+          ].map(
+            ([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() =>
+                  setAbaAnalise(
+                    id
+                  )
+                }
+                style={{
+                  border:
+                    abaAnalise === id
+                      ? `1px solid ${CORAL}`
+                      : "1px solid #D8DEEA",
+                  background:
+                    abaAnalise === id
+                      ? "#FFF3EF"
+                      : WHITE,
+                  color:
+                    abaAnalise === id
+                      ? "#993C1D"
+                      : NAVY,
+                  borderRadius: 999,
+                  padding: "8px 11px",
+                  cursor: "pointer",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                }}
+              >
+                {label}
+              </button>
+            )
+          )}
         </div>
 
-        <Card
-          style={{
-            marginBottom: 14,
-            borderLeft:
-              "4px solid #31589C",
-          }}
-        >
+        {abaAnalise ===
+          "resumo" && (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(220px,1fr))",
+                gap: 10,
+                marginBottom: 14,
+              }}
+            >
+              <Card>
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 9,
+                    fontWeight: 900,
+                  }}
+                >
+                  EMPRESAS
+                </div>
+                <div
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 900,
+                    marginTop: 4,
+                  }}
+                >
+                  {empresasConsultadas}
+                </div>
+              </Card>
+
+              <Card>
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 9,
+                    fontWeight: 900,
+                  }}
+                >
+                  DOCUMENTOS
+                </div>
+                <div
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 900,
+                    marginTop: 4,
+                  }}
+                >
+                  {arquivos.length}
+                </div>
+              </Card>
+
+              <Card>
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 9,
+                    fontWeight: 900,
+                  }}
+                >
+                  RESPONSÁVEL
+                </div>
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 14,
+                    fontWeight: 900,
+                  }}
+                >
+                  {dadosProjeto.responsavelFinder ||
+                    "-"}
+                </div>
+              </Card>
+
+              <Card>
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 9,
+                    fontWeight: 900,
+                  }}
+                >
+                  ORIGEM
+                </div>
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 14,
+                    fontWeight: 900,
+                  }}
+                >
+                  {dadosProjeto.origemCliente ||
+                    "-"}
+                </div>
+              </Card>
+            </div>
+
+            <Card
+              style={{
+                marginBottom: 14,
+                borderLeft:
+                  "4px solid #31589C",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "#31589C",
+                  fontWeight: 900,
+                }}
+              >
+                BASE PRONTA
+              </div>
+
+              <h3
+                style={{
+                  margin: "6px 0 6px",
+                  fontFamily: DISPLAY_FONT,
+                }}
+              >
+                Projeto pronto para processamento
+              </h3>
+
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 10.5,
+                  lineHeight: 1.55,
+                }}
+              >
+                A empresa, os documentos, o responsável e a origem do cliente já ficam identificados nesta etapa.
+              </div>
+            </Card>
+
+            <Card
+              style={{
+                background: "#FFF9F7",
+                border:
+                  "1px solid #F2C5B8",
+              }}
+            >
+              <div
+                style={{
+                  color: CORAL,
+                  fontSize: 9,
+                  fontWeight: 900,
+                }}
+              >
+                PRÓXIMA IMPLEMENTAÇÃO
+              </div>
+
+              <h3
+                style={{
+                  margin: "6px 0 6px",
+                  fontFamily: DISPLAY_FONT,
+                }}
+              >
+                Leitura real dos documentos pela IA
+              </h3>
+
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 10.5,
+                  lineHeight: 1.55,
+                }}
+              >
+                O próximo backend salvará o projeto, documentos, responsável, origem e histórico em banco próprio do módulo Tributário.
+              </div>
+            </Card>
+          </>
+        )}
+
+        {abaAnalise ===
+          "cliente" && (
           <div
             style={{
-              fontSize: 9,
-              color: "#31589C",
-              fontWeight: 900,
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(280px,1fr))",
+              gap: 12,
             }}
           >
-            ETAPA LIBERADA
+            <Card>
+              <strong
+                style={{
+                  display: "block",
+                  marginBottom: 10,
+                }}
+              >
+                Responsabilidade interna
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  fontSize: 10.5,
+                }}
+              >
+                <div>
+                  <span
+                    style={{
+                      color: MUTED,
+                    }}
+                  >
+                    Responsável Finder
+                  </span>
+                  <br />
+                  <strong>
+                    {dadosProjeto.responsavelFinder ||
+                      "-"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span
+                    style={{
+                      color: MUTED,
+                    }}
+                  >
+                    Origem
+                  </span>
+                  <br />
+                  <strong>
+                    {dadosProjeto.origemCliente ||
+                      "-"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span
+                    style={{
+                      color: MUTED,
+                    }}
+                  >
+                    Detalhe da origem
+                  </span>
+                  <br />
+                  <strong>
+                    {dadosProjeto.observacaoOrigem ||
+                      "-"}
+                  </strong>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <strong
+                style={{
+                  display: "block",
+                  marginBottom: 10,
+                }}
+              >
+                Contato do cliente
+              </strong>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  fontSize: 10.5,
+                }}
+              >
+                <div>
+                  <span
+                    style={{
+                      color: MUTED,
+                    }}
+                  >
+                    Nome
+                  </span>
+                  <br />
+                  <strong>
+                    {dadosProjeto.contatoNome ||
+                      "-"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span
+                    style={{
+                      color: MUTED,
+                    }}
+                  >
+                    E-mail
+                  </span>
+                  <br />
+                  <strong>
+                    {dadosProjeto.contatoEmail ||
+                      "-"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span
+                    style={{
+                      color: MUTED,
+                    }}
+                  >
+                    Telefone
+                  </span>
+                  <br />
+                  <strong>
+                    {dadosProjeto.contatoTelefone ||
+                      "-"}
+                  </strong>
+                </div>
+              </div>
+            </Card>
           </div>
+        )}
 
-          <h3
-            style={{
-              margin: "6px 0 6px",
-              fontFamily: DISPLAY_FONT,
-            }}
-          >
-            Base pronta para processamento
-          </h3>
+        {abaAnalise ===
+          "historico" && (
+          <Card>
+            <div
+              style={{
+                display: "flex",
+                justifyContent:
+                  "space-between",
+                gap: 10,
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <div>
+                <strong
+                  style={{
+                    fontSize: 14,
+                  }}
+                >
+                  Histórico do projeto
+                </strong>
 
-          <div
-            style={{
-              color: MUTED,
-              fontSize: 10.5,
-              lineHeight: 1.55,
-            }}
-          >
-            O sistema agora permite avançar normalmente após selecionar os documentos. 
-            Esta tela confirma que a empresa, os arquivos e a modalidade chegaram à etapa de análise.
-          </div>
-        </Card>
+                <div
+                  style={{
+                    color: MUTED,
+                    fontSize: 9.5,
+                    marginTop: 3,
+                  }}
+                >
+                  Linha do tempo das principais ações realizadas neste planejamento.
+                </div>
+              </div>
 
-        <Card
-          style={{
-            background: "#FFF9F7",
-            border:
-              "1px solid #F2C5B8",
-          }}
-        >
-          <div
-            style={{
-              color: CORAL,
-              fontSize: 9,
-              fontWeight: 900,
-            }}
-          >
-            PRÓXIMA IMPLEMENTAÇÃO
-          </div>
+              <span
+                style={{
+                  background:
+                    "#EEF3FF",
+                  color: "#31589C",
+                  borderRadius: 999,
+                  padding: "5px 8px",
+                  fontSize: 9,
+                  fontWeight: 900,
+                }}
+              >
+                {historicoProjeto.length} evento(s)
+              </span>
+            </div>
 
-          <h3
-            style={{
-              margin: "6px 0 6px",
-              fontFamily: DISPLAY_FONT,
-            }}
-          >
-            Leitura real dos documentos pela IA
-          </h3>
+            {!historicoProjeto.length ? (
+              <div
+                style={{
+                  color: MUTED,
+                  fontSize: 10,
+                }}
+              >
+                Nenhum evento registrado ainda.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                {historicoProjeto.map(
+                  (evento) => (
+                    <div
+                      key={
+                        evento.id
+                      }
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "135px minmax(0,1fr)",
+                        gap: 10,
+                        border:
+                          "1px solid #E3E7EF",
+                        borderRadius: 10,
+                        padding: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: MUTED,
+                          fontSize: 9,
+                        }}
+                      >
+                        {formatarDataHora(
+                          evento.criadoEm
+                        )}
+                      </div>
 
-          <div
-            style={{
-              color: MUTED,
-              fontSize: 10.5,
-              lineHeight: 1.55,
-            }}
-          >
-            Para a IA analisar de verdade esses PDFs, XMLs e planilhas, o próximo arquivo será o backend próprio do módulo tributário. 
-            Ele ficará separado do CRM e salvará os documentos em uma base exclusiva do Tributário.
-          </div>
-        </Card>
+                      <div>
+                        <strong
+                          style={{
+                            display: "block",
+                            fontSize: 10.5,
+                          }}
+                        >
+                          {evento.descricao}
+                        </strong>
+
+                        <div
+                          style={{
+                            color: "#31589C",
+                            fontSize: 8.5,
+                            fontWeight: 900,
+                            marginTop: 3,
+                          }}
+                        >
+                          {evento.tipo}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </Card>
+        )}
       </div>
     );
   }
