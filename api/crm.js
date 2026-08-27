@@ -111,6 +111,85 @@ function gerarId(prefixo) {
   return `${prefixo}_${crypto.randomUUID()}`;
 }
 
+async function localizarLeadComFallback({
+  leadId = "",
+  sessionId = "",
+}) {
+  const leadIdNormalizado =
+    texto(leadId, 140);
+
+  const sessionIdNormalizado =
+    texto(sessionId, 140);
+
+  if (leadIdNormalizado) {
+    const porId =
+      await sql`
+        SELECT *
+        FROM diagnostico_leads
+        WHERE id = ${leadIdNormalizado}
+        LIMIT 1
+      `;
+
+    if (porId?.[0]) {
+      return porId[0];
+    }
+  }
+
+  if (sessionIdNormalizado) {
+    const porSessao =
+      await sql`
+        SELECT *
+        FROM diagnostico_leads
+        WHERE session_id = ${sessionIdNormalizado}
+        LIMIT 1
+      `;
+
+    if (porSessao?.[0]) {
+      return porSessao[0];
+    }
+  }
+
+  return null;
+}
+
+function mesclarObjetosProfundamente(
+  anterior = {},
+  recebido = {}
+) {
+  const base =
+    anterior &&
+    typeof anterior === "object" &&
+    !Array.isArray(anterior)
+      ? { ...anterior }
+      : {};
+
+  if (
+    !recebido ||
+    typeof recebido !== "object" ||
+    Array.isArray(recebido)
+  ) {
+    return base;
+  }
+
+  for (const [chave, valor] of Object.entries(recebido)) {
+    if (
+      valor &&
+      typeof valor === "object" &&
+      !Array.isArray(valor)
+    ) {
+      base[chave] =
+        mesclarObjetosProfundamente(
+          base[chave],
+          valor
+        );
+    } else {
+      base[chave] = valor;
+    }
+  }
+
+  return base;
+}
+
 // =========================================================
 // ESTRUTURA DO BANCO
 // =========================================================
@@ -827,24 +906,11 @@ async function atualizarLead(req, res) {
     });
   }
 
-  const existente =
-    leadId
-      ? await sql`
-          SELECT *
-          FROM diagnostico_leads
-          WHERE id = ${leadId}
-          LIMIT 1
-        `
-      : await sql`
-          SELECT *
-          FROM diagnostico_leads
-          WHERE session_id =
-            ${sessionId}
-          LIMIT 1
-        `;
-
   const atual =
-    existente?.[0];
+    await localizarLeadComFallback({
+      leadId,
+      sessionId,
+    });
 
   if (!atual) {
     return res.status(404).json({
@@ -969,7 +1035,10 @@ async function atualizarLead(req, res) {
     body.contextoCliente &&
     typeof body.contextoCliente === "object" &&
     !Array.isArray(body.contextoCliente)
-      ? body.contextoCliente
+      ? mesclarObjetosProfundamente(
+          atual.contexto_cliente || {},
+          body.contextoCliente
+        )
       : atual.contexto_cliente || {};
 
   const notaSatisfacao =
@@ -1423,25 +1492,11 @@ async function classificarLead(req, res) {
     });
   }
 
-  const linhas =
-    leadId
-      ? await sql`
-          SELECT *
-          FROM diagnostico_leads
-          WHERE id =
-            ${leadId}
-          LIMIT 1
-        `
-      : await sql`
-          SELECT *
-          FROM diagnostico_leads
-          WHERE session_id =
-            ${sessionId}
-          LIMIT 1
-        `;
-
   const lead =
-    linhas?.[0];
+    await localizarLeadComFallback({
+      leadId,
+      sessionId,
+    });
 
   if (!lead) {
     return res.status(404).json({
