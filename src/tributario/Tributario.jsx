@@ -983,6 +983,52 @@ export default function Tributario({
     );
   }
 
+  function continuarParaAnalise() {
+    const precisaDocumento =
+      modalidade === "documentos" ||
+      modalidade === "hibrido";
+
+    const precisaManual =
+      modalidade === "manual" ||
+      modalidade === "hibrido";
+
+    if (
+      precisaDocumento &&
+      arquivos.length === 0
+    ) {
+      setErro(
+        "Selecione pelo menos um documento para continuar."
+      );
+      return;
+    }
+
+    if (
+      precisaManual
+    ) {
+      const temDadoManual =
+        Object.values(
+          dadosManuais || {}
+        ).some(
+          (valor) =>
+            String(
+              valor ?? ""
+            ).trim() !== ""
+        );
+
+      if (!temDadoManual) {
+        setErro(
+          "Preencha pelo menos um dado manual para continuar."
+        );
+        return;
+      }
+    }
+
+    setErro("");
+    setTela(
+      "revisao"
+    );
+  }
+
   if (
     tela ===
     "inicio"
@@ -1477,6 +1523,328 @@ export default function Tributario({
     );
   }
 
+  if (
+    tela ===
+    "revisao"
+  ) {
+    return (
+      <div
+        style={{
+          fontFamily:
+            BODY_FONT,
+          color: NAVY,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() =>
+            setTela(
+              "dados"
+            )
+          }
+          style={{
+            border: 0,
+            background:
+              "transparent",
+            color: MUTED,
+            cursor: "pointer",
+            fontWeight: 800,
+            marginBottom: 12,
+          }}
+        >
+          ← Voltar aos dados
+        </button>
+
+        <div
+          style={{
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              color:
+                tipoProjeto ===
+                "reforma"
+                  ? CORAL
+                  : "#31589C",
+              fontSize: 9,
+              fontWeight: 900,
+            }}
+          >
+            {tipoProjeto ===
+            "reforma"
+              ? "REFORMA TRIBUTÁRIA"
+              : "PLANEJAMENTO TRIBUTÁRIO"}
+          </div>
+
+          <h2
+            style={{
+              margin:
+                "4px 0 5px",
+              fontFamily:
+                DISPLAY_FONT,
+            }}
+          >
+            Revisão da base
+          </h2>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10.5,
+            }}
+          >
+            Confira o que foi selecionado antes de iniciar a análise tributária.
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(220px,1fr))",
+            gap: 10,
+            marginBottom: 14,
+          }}
+        >
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 9,
+                fontWeight: 900,
+              }}
+            >
+              EMPRESAS
+            </div>
+
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 900,
+                marginTop: 4,
+              }}
+            >
+              {empresasConsultadas}
+            </div>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 9,
+                fontWeight: 900,
+              }}
+            >
+              DOCUMENTOS
+            </div>
+
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 900,
+                marginTop: 4,
+              }}
+            >
+              {arquivos.length}
+            </div>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color: MUTED,
+                fontSize: 9,
+                fontWeight: 900,
+              }}
+            >
+              MODALIDADE
+            </div>
+
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 900,
+                marginTop: 8,
+              }}
+            >
+              {modalidade === "hibrido"
+                ? "Híbrido"
+                : modalidade === "manual"
+                ? "Manual"
+                : "Documentos"}
+            </div>
+          </Card>
+        </div>
+
+        <Card
+          style={{
+            marginBottom: 14,
+          }}
+        >
+          <strong
+            style={{
+              display: "block",
+              marginBottom: 10,
+            }}
+          >
+            Empresas da análise
+          </strong>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            {empresas
+              .filter(
+                (empresa) =>
+                  empresa.dados
+              )
+              .map(
+                (
+                  empresa,
+                  index
+                ) => (
+                  <div
+                    key={
+                      empresa.id
+                    }
+                    style={{
+                      border:
+                        "1px solid #E3E7EF",
+                      borderRadius: 10,
+                      padding: 10,
+                    }}
+                  >
+                    <strong
+                      style={{
+                        fontSize: 11,
+                      }}
+                    >
+                      {index + 1}.{" "}
+                      {empresa.dados.razaoSocial ||
+                        empresa.dados.razao_social ||
+                        empresa.dados.nome ||
+                        "Empresa"}
+                    </strong>
+
+                    <div
+                      style={{
+                        color: MUTED,
+                        fontSize: 9.5,
+                        marginTop: 4,
+                      }}
+                    >
+                      {formatarCnpj(
+                        empresa.dados.cnpj ||
+                        empresa.cnpj
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+          </div>
+        </Card>
+
+        {!!arquivos.length && (
+          <Card
+            style={{
+              marginBottom: 14,
+            }}
+          >
+            <strong
+              style={{
+                display: "block",
+                marginBottom: 10,
+              }}
+            >
+              Documentos selecionados
+            </strong>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              {arquivos.map(
+                (
+                  arquivo,
+                  index
+                ) => (
+                  <div
+                    key={`${arquivo.name}-${index}`}
+                    style={{
+                      background:
+                        "#F7F8FB",
+                      borderRadius: 8,
+                      padding: 9,
+                      fontSize: 10,
+                    }}
+                  >
+                    {arquivo.name}
+                  </div>
+                )
+              )}
+            </div>
+          </Card>
+        )}
+
+        <Card
+          style={{
+            border:
+              "1px solid #F2C5B8",
+            background:
+              "#FFF9F7",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              color: CORAL,
+              fontWeight: 900,
+            }}
+          >
+            BASE PRONTA
+          </div>
+
+          <h3
+            style={{
+              margin:
+                "6px 0 5px",
+              fontFamily:
+                DISPLAY_FONT,
+            }}
+          >
+            Próximo passo: análise por IA
+          </h3>
+
+          <div
+            style={{
+              color: MUTED,
+              fontSize: 10.5,
+              lineHeight: 1.55,
+            }}
+          >
+            A seleção agora pode avançar normalmente. Na próxima versão, este botão enviará os documentos ao banco próprio do módulo e iniciará a extração e conferência pela IA.
+          </div>
+
+          <Botao
+            disabled
+            style={{
+              marginTop: 12,
+            }}
+          >
+            Iniciar análise IA — V2
+          </Botao>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -1661,6 +2029,20 @@ export default function Tributario({
           />
         )}
 
+        {erro && (
+          <div
+            style={{
+              background: "#FAECE7",
+              color: "#993C1D",
+              borderRadius: 10,
+              padding: 10,
+              fontSize: 10.5,
+            }}
+          >
+            {erro}
+          </div>
+        )}
+
         <Card
           style={{
             border:
@@ -1677,7 +2059,7 @@ export default function Tributario({
               fontWeight: 900,
             }}
           >
-            PRÓXIMA ETAPA · V2
+            PRÓXIMA ETAPA
           </div>
 
           <h3
@@ -1688,7 +2070,7 @@ export default function Tributario({
                 DISPLAY_FONT,
             }}
           >
-            Extração, conferência e diagnóstico por IA
+            Revisar base antes da análise
           </h3>
 
           <div
@@ -1698,18 +2080,20 @@ export default function Tributario({
               lineHeight: 1.55,
             }}
           >
-            A V2 persistirá os projetos/documentos em banco próprio, extrairá dados dos arquivos, apontará divergências e pedirá confirmação do consultor antes de qualquer cálculo.
+            Continue para conferir empresas, documentos e dados manuais que formarão a base do diagnóstico tributário.
           </div>
 
           <Botao
-            disabled
+            onClick={
+              continuarParaAnalise
+            }
             style={{
               marginTop: 12,
               background:
                 "#31589C",
             }}
           >
-            Gerar diagnóstico tributário
+            Continuar para análise →
           </Botao>
         </Card>
       </div>
