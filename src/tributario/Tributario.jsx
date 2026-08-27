@@ -889,6 +889,26 @@ export default function Tributario({
   ] = useState(false);
 
   const [
+    diagnosticoOrigem,
+    setDiagnosticoOrigem,
+  ] = useState("");
+
+  const [
+    arquivosProcessadosIa,
+    setArquivosProcessadosIa,
+  ] = useState([]);
+
+  const [
+    progressoIa,
+    setProgressoIa,
+  ] = useState({
+    etapa: "",
+    atual: 0,
+    total: 0,
+    mensagem: "",
+  });
+
+  const [
     erro,
     setErro,
   ] = useState("");
@@ -990,7 +1010,7 @@ export default function Tributario({
       : 0;
   }
 
-  function gerarDiagnosticoPreliminar() {
+  function gerarDiagnosticoIaReal() {
     setGerandoDiagnostico(
       true
     );
@@ -1293,374 +1313,111 @@ export default function Tributario({
     );
   }
 
-  async function buscarCnpj(
-    empresa
-  ) {
+  async function buscarCnpj(empresa) {
     const digits =
-      somenteDigitos(
-        empresa.cnpj
-      );
+      somenteDigitos(empresa.cnpj);
 
-    if (
-      digits.length !== 14
-    ) {
-      alterarEmpresa(
-        empresa.id,
-        {
-          erro:
-            "Informe um CNPJ com 14 dígitos.",
-        }
-      );
-
+    if (digits.length !== 14) {
+      alterarEmpresa(empresa.id, {
+        erro:
+          "Informe um CNPJ com 14 dígitos.",
+      });
       return;
     }
 
-    alterarEmpresa(
-      empresa.id,
-      {
-        carregando: true,
-        erro: "",
-      }
-    );
+    alterarEmpresa(empresa.id, {
+      carregando: true,
+      erro: "",
+    });
 
     try {
-      const resposta =
-        await fetch(
-          `/api/cnpj?cnpj=${encodeURIComponent(
-            digits
-          )}`,
-          {
-            headers:
-              token
-                ? {
-                    Authorization:
-                      `Bearer ${token}`,
-                  }
-                : {},
-          }
-        );
+      const resposta = await fetch(
+        `/api/cnpj?cnpj=${encodeURIComponent(digits)}`
+      );
 
-      const data =
-        await resposta
-          .json()
-          .catch(
-            () => null
-          );
+      const contentType =
+        resposta.headers.get("content-type") || "";
+
+      let data;
 
       if (
-        !resposta.ok ||
-        !data
+        contentType.includes("application/json")
       ) {
+        data = await resposta.json();
+      } else {
+        const texto = await resposta.text();
+
+        throw new Error(
+          `Resposta inválida de /api/cnpj. Status ${resposta.status}. ${texto.slice(
+            0,
+            120
+          )}`
+        );
+      }
+
+      if (!resposta.ok || !data?.sucesso) {
         throw new Error(
           data?.error ||
-          "Não foi possível consultar o CNPJ."
+          "Erro ao consultar CNPJ."
         );
       }
 
       const dados =
-        data.empresa ||
-        data.dados ||
-        data;
+        normalizarRespostaCnpj(data);
 
-      alterarEmpresa(
-        empresa.id,
-        {
-          cnpj:
-            formatarCnpj(
-              digits
-            ),
-          dados,
-          erro: "",
-        }
-      );
+      alterarEmpresa(empresa.id, {
+        cnpj: formatarCnpj(digits),
+        dados,
+        erro: "",
+      });
 
-
-      const atividadesCnpj =
+      const lista =
         normalizarListaCnaes({
           dados,
         });
 
-      if (
-        atividadesCnpj.length
-      ) {
-        setAtividadesSelecionadas(
-          (atuais) =>
-            atuais.length
-              ? atuais
-              : atividadesCnpj
-        );
+      setAtividadesSelecionadas(lista);
 
-        const principalCnpj =
-          atividadesCnpj.find(
-            (item) =>
-              item.tipo ===
-              "principal"
-          );
+      const principal =
+        lista.find((item) => item.principal) ||
+        lista[0] ||
+        null;
 
-        if (
-          principalCnpj
-        ) {
-          setAtividadePrincipalSelecionada(
-            (atual) =>
-              atual ||
-              chaveAtividade(
-                principalCnpj
-              )
-          );
-        }
-      }
+      setAtividadePrincipalSelecionada(
+        principal
+          ? chaveAtividade(principal)
+          : ""
+      );
 
       registrarHistorico(
         "CNPJ_CONSULTADO",
-        `CNPJ ${formatarCnpj(digits)} consultado com sucesso.`,
+        `CNPJ ${formatarCnpj(
+          digits
+        )} consultado com ${lista.length} CNAE(s).`,
         {
-          cnpj:
-            formatarCnpj(
-              digits
-            ),
           razaoSocial:
-            dados.razaoSocial ||
-            dados.razao_social ||
-            dados.nome ||
-            "",
+            dados.razaoSocial,
+          cnaePrincipal:
+            dados.cnaePrincipal,
+          quantidadeCnaes:
+            lista.length,
         }
       );
     } catch (error) {
-      alterarEmpresa(
-        empresa.id,
-        {
-          erro:
-            error?.message ||
-            "Erro ao consultar CNPJ.",
-        }
+      console.error(
+        "[tributario][cnpj]",
+        error
       );
-    } finally {
-      alterarEmpresa(
-        empresa.id,
-        {
-          carregando: false,
-        }
-      );
-    }
-  }
 
-  function normalizarListaCnaes(
-    empresa
-  ) {
-    const dados =
-      empresa?.dados ||
-      {};
-
-    const lista = [];
-
-    const principal =
-      dados.cnaePrincipal ||
-      dados.cnae_principal ||
-      dados.atividade_principal ||
-      dados.atividadePrincipal ||
-      null;
-
-    function pushAtividade(
-      item,
-      tipo = "secundaria"
-    ) {
-      if (!item) {
-        return;
-      }
-
-      if (
-        typeof item ===
-        "string"
-      ) {
-        lista.push({
-          codigo: item,
-          descricao: item,
-          tipo,
-        });
-        return;
-      }
-
-      const codigo =
-        item.codigo ||
-        item.code ||
-        item.cnae ||
-        item.id ||
-        "";
-
-      const descricao =
-        item.descricao ||
-        item.text ||
-        item.nome ||
-        item.description ||
-        "";
-
-      if (
-        !codigo &&
-        !descricao
-      ) {
-        return;
-      }
-
-      lista.push({
-        codigo:
-          String(codigo),
-        descricao:
-          String(descricao),
-        tipo,
+      alterarEmpresa(empresa.id, {
+        erro:
+          error?.message ||
+          "Erro ao consultar CNPJ.",
       });
-    }
-
-    if (
-      Array.isArray(
-        principal
-      )
-    ) {
-      principal.forEach(
-        (item) =>
-          pushAtividade(
-            item,
-            "principal"
-          )
-      );
-    } else {
-      pushAtividade(
-        principal,
-        "principal"
-      );
-    }
-
-    const secundarios =
-      dados.cnaesSecundarios ||
-      dados.cnaes_secundarios ||
-      dados.atividadesSecundarias ||
-      dados.atividades_secundarias ||
-      dados.secondaryCnaes ||
-      [];
-
-    if (
-      Array.isArray(
-        secundarios
-      )
-    ) {
-      secundarios.forEach(
-        (item) =>
-          pushAtividade(
-            item,
-            "secundaria"
-          )
-      );
-    }
-
-    const unicos =
-      [];
-
-    const vistos =
-      new Set();
-
-    for (
-      const item of lista
-    ) {
-      const chave =
-        `${item.codigo}|${item.descricao}`
-          .toLowerCase();
-
-      if (
-        vistos.has(chave)
-      ) {
-        continue;
-      }
-
-      vistos.add(
-        chave
-      );
-
-      unicos.push(
-        item
-      );
-    }
-
-    return unicos;
-  }
-
-  const atividadesDisponiveis =
-    empresas
-      .flatMap(
-        (empresa) =>
-          normalizarListaCnaes(
-            empresa
-          )
-      );
-
-  function chaveAtividade(
-    item
-  ) {
-    return `${item.codigo}|${item.descricao}`;
-  }
-
-  function alternarAtividade(
-    item
-  ) {
-    const chave =
-      chaveAtividade(
-        item
-      );
-
-    setAtividadesSelecionadas(
-      (atuais) => {
-        const existe =
-          atuais.some(
-            (a) =>
-              chaveAtividade(a) ===
-              chave
-          );
-
-        if (existe) {
-          return atuais.filter(
-            (a) =>
-              chaveAtividade(a) !==
-              chave
-          );
-        }
-
-        return [
-          ...atuais,
-          item,
-        ];
-      }
-    );
-  }
-
-  function preencherAtividadesPadrao() {
-    if (
-      !atividadesDisponiveis.length
-    ) {
-      return;
-    }
-
-    const principais =
-      atividadesDisponiveis.filter(
-        (item) =>
-          item.tipo ===
-          "principal"
-      );
-
-    if (
-      principais.length &&
-      !atividadePrincipalSelecionada
-    ) {
-      setAtividadePrincipalSelecionada(
-        chaveAtividade(
-          principais[0]
-        )
-      );
-    }
-
-    if (
-      !atividadesSelecionadas.length
-    ) {
-      setAtividadesSelecionadas(
-        atividadesDisponiveis
-      );
+    } finally {
+      alterarEmpresa(empresa.id, {
+        carregando: false,
+      });
     }
   }
 
@@ -3085,6 +2842,60 @@ export default function Tributario({
           )}
         </div>
 
+        {(gerandoDiagnostico ||
+          diagnosticoOrigem === "IA_REAL" ||
+          progressoIa.etapa === "ERRO") && (
+          <Card
+            style={{
+              marginBottom: 14,
+              background:
+                diagnosticoOrigem === "IA_REAL"
+                  ? "#EEF9F3"
+                  : progressoIa.etapa === "ERRO"
+                  ? "#FFF4F0"
+                  : "#F8FAFF",
+              border:
+                diagnosticoOrigem === "IA_REAL"
+                  ? "1px solid #BFE5D1"
+                  : progressoIa.etapa === "ERRO"
+                  ? "1px solid #F0C6B9"
+                  : "1px solid #C9D5F5",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 900,
+                color:
+                  diagnosticoOrigem === "IA_REAL"
+                    ? "#176B47"
+                    : progressoIa.etapa === "ERRO"
+                    ? "#993C1D"
+                    : "#31589C",
+              }}
+            >
+              {diagnosticoOrigem === "IA_REAL"
+                ? "✓ ANÁLISE REALIZADA COM IA"
+                : progressoIa.etapa === "ERRO"
+                ? "ERRO NA ANÁLISE"
+                : "FINDER TAX AI · PROCESSANDO"}
+            </div>
+
+            <strong
+              style={{
+                display: "block",
+                marginTop: 5,
+                fontSize: 11.5,
+              }}
+            >
+              {diagnosticoOrigem === "IA_REAL"
+                ? `GPT-5.6 analisou ${arquivosProcessadosIa.length} documento(s), o CNPJ, os CNAEs e as informações preenchidas.`
+                : progressoIa.mensagem ||
+                  "Preparando análise..."}
+            </strong>
+          </Card>
+        )}
+
         {abaAnalise ===
           "resumo" && (
           <>
@@ -3333,7 +3144,7 @@ export default function Tributario({
 
               <Botao
                 onClick={
-                  gerarDiagnosticoPreliminar
+                  gerarDiagnosticoIaReal
                 }
                 disabled={
                   gerandoDiagnostico
@@ -3343,8 +3154,8 @@ export default function Tributario({
                 }}
               >
                 {gerandoDiagnostico
-                  ? "Montando diagnóstico..."
-                  : "Montar diagnóstico →"}
+                  ? "Analisando com IA..."
+                  : "Analisar com IA →"}
               </Botao>
             </Card>
           </>
@@ -3540,7 +3351,7 @@ export default function Tributario({
 
                 <Botao
                   onClick={
-                    gerarDiagnosticoPreliminar
+                    gerarDiagnosticoIaReal
                   }
                   disabled={
                     gerandoDiagnostico
@@ -3550,8 +3361,8 @@ export default function Tributario({
                   }}
                 >
                   {gerandoDiagnostico
-                    ? "Montando diagnóstico..."
-                    : "Gerar diagnóstico agora"}
+                    ? "Analisando com IA..."
+                    : "Analisar documentos e gerar diagnóstico"}
                 </Botao>
               </Card>
             ) : (
@@ -3614,7 +3425,7 @@ export default function Tributario({
                         marginTop: 10,
                       }}
                     >
-                      {diagnosticoGerado.pontos.map(
+                      {(diagnosticoGerado.pontos || diagnosticoGerado.pontosAnalise || []).map(
                         (
                           item,
                           index
@@ -3649,8 +3460,8 @@ export default function Tributario({
                         marginTop: 10,
                       }}
                     >
-                      {diagnosticoGerado.riscos.length ? (
-                        diagnosticoGerado.riscos.map(
+                      {(diagnosticoGerado.riscos || []).length ? (
+                        (diagnosticoGerado.riscos || []).map(
                           (
                             item,
                             index
@@ -3697,8 +3508,8 @@ export default function Tributario({
                         marginTop: 10,
                       }}
                     >
-                      {diagnosticoGerado.oportunidades.length ? (
-                        diagnosticoGerado.oportunidades.map(
+                      {(diagnosticoGerado.oportunidades || []).length ? (
+                        (diagnosticoGerado.oportunidades || []).map(
                           (
                             item,
                             index
@@ -3745,8 +3556,8 @@ export default function Tributario({
                         marginTop: 10,
                       }}
                     >
-                      {diagnosticoGerado.dadosFaltantes.length ? (
-                        diagnosticoGerado.dadosFaltantes.map(
+                      {(diagnosticoGerado.dadosFaltantes || []).length ? (
+                        (diagnosticoGerado.dadosFaltantes || []).map(
                           (
                             item,
                             index
@@ -3787,6 +3598,217 @@ export default function Tributario({
                   </Card>
                 </div>
 
+                {diagnosticoOrigem === "IA_REAL" && (
+                  <>
+                    {diagnosticoGerado.resumoExecutivo && (
+                      <Card
+                        style={{
+                          borderLeft:
+                            "4px solid #176B47",
+                        }}
+                      >
+                        <div
+                          style={{
+                            color: "#176B47",
+                            fontSize: 9,
+                            fontWeight: 900,
+                          }}
+                        >
+                          RESUMO DA IA
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            lineHeight: 1.65,
+                            marginTop: 7,
+                          }}
+                        >
+                          {diagnosticoGerado.resumoExecutivo}
+                        </div>
+                      </Card>
+                    )}
+
+                    {!!diagnosticoGerado.documentosAnalisados?.length && (
+                      <Card>
+                        <strong>
+                          Documentos analisados pela IA
+                        </strong>
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 6,
+                            marginTop: 9,
+                          }}
+                        >
+                          {diagnosticoGerado.documentosAnalisados.map(
+                            (item, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  background: "#F7F8FB",
+                                  borderRadius: 8,
+                                  padding: 9,
+                                  fontSize: 9.5,
+                                }}
+                              >
+                                {item}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </Card>
+                    )}
+
+                    {!!diagnosticoGerado.dadosExtraidos?.length && (
+                      <Card>
+                        <strong>
+                          Dados extraídos dos documentos
+                        </strong>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit,minmax(230px,1fr))",
+                            gap: 8,
+                            marginTop: 10,
+                          }}
+                        >
+                          {diagnosticoGerado.dadosExtraidos.map(
+                            (item, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  border:
+                                    "1px solid #E3E7EF",
+                                  borderRadius: 9,
+                                  padding: 9,
+                                }}
+                              >
+                                <strong
+                                  style={{
+                                    display: "block",
+                                    fontSize: 9.5,
+                                  }}
+                                >
+                                  {item.campo}
+                                </strong>
+                                <div
+                                  style={{
+                                    fontSize: 10.5,
+                                    marginTop: 3,
+                                  }}
+                                >
+                                  {item.valor}
+                                </div>
+                                <div
+                                  style={{
+                                    color: MUTED,
+                                    fontSize: 8,
+                                    marginTop: 4,
+                                  }}
+                                >
+                                  Fonte: {item.fonte} · Confiança: {item.confianca}
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </Card>
+                    )}
+
+                    {!!diagnosticoGerado.divergencias?.length && (
+                      <Card>
+                        <strong>
+                          Divergências encontradas
+                        </strong>
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 7,
+                            marginTop: 9,
+                          }}
+                        >
+                          {diagnosticoGerado.divergencias.map(
+                            (item, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  background: "#FFF8E8",
+                                  color: "#855A09",
+                                  borderRadius: 8,
+                                  padding: 9,
+                                  fontSize: 9.5,
+                                }}
+                              >
+                                {item}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </Card>
+                    )}
+
+                    {!!diagnosticoGerado.perguntasValidacao?.length && (
+                      <Card>
+                        <strong>
+                          Perguntas para validação do consultor
+                        </strong>
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 7,
+                            marginTop: 9,
+                          }}
+                        >
+                          {diagnosticoGerado.perguntasValidacao.map(
+                            (item, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  background: "#F7F8FB",
+                                  borderRadius: 8,
+                                  padding: 9,
+                                  fontSize: 9.5,
+                                }}
+                              >
+                                {index + 1}. {item}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </Card>
+                    )}
+
+                    {diagnosticoGerado.recomendacaoPreliminar && (
+                      <Card
+                        style={{
+                          borderLeft:
+                            `4px solid ${CORAL}`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            color: CORAL,
+                            fontSize: 9,
+                            fontWeight: 900,
+                          }}
+                        >
+                          RECOMENDAÇÃO PRELIMINAR
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            lineHeight: 1.65,
+                            marginTop: 7,
+                          }}
+                        >
+                          {diagnosticoGerado.recomendacaoPreliminar}
+                        </div>
+                      </Card>
+                    )}
+                  </>
+                )}
+
                 <Card>
                   <div
                     style={{
@@ -3819,7 +3841,7 @@ export default function Tributario({
                     <Botao
                       secundario
                       onClick={
-                        gerarDiagnosticoPreliminar
+                        gerarDiagnosticoIaReal
                       }
                     >
                       Gerar novamente
