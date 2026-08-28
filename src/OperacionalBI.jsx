@@ -589,6 +589,8 @@ export default function OperacionalBI({
   const [dataFim, setDataFim] = useState("");
   const [filtroRapido, setFiltroRapido] = useState("");
   const [selecionados, setSelecionados] = useState([]);
+  const [arquivamento, setArquivamento] = useState("ATIVOS");
+  const [processandoArquivoId, setProcessandoArquivoId] = useState("");
 
   async function carregar() {
     setCarregando(true);
@@ -596,40 +598,97 @@ export default function OperacionalBI({
 
     try {
       if (ehDiagnostico) {
-        const resposta = await fetch(
-          "/api/diagnosticos?action=listar&limite=500&offset=0&arquivamento=ATIVOS",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const [respostaDiagnosticos, respostaLeads] = await Promise.all([
+          fetch(
+            `/api/diagnosticos?action=listar&limite=500&offset=0&arquivamento=${encodeURIComponent(
+              arquivamento
+            )}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          ),
+          fetch(
+            "/api/crm?action=listar-leads&limite=300&arquivamento=TODOS",
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          ),
+        ]);
 
-        const data = await resposta.json().catch(() => null);
+        const [dataDiagnosticos, dataLeads] = await Promise.all([
+          respostaDiagnosticos.json().catch(() => null),
+          respostaLeads.json().catch(() => null),
+        ]);
 
-        if (!resposta.ok || !data?.sucesso) {
+        if (!respostaDiagnosticos.ok || !dataDiagnosticos?.sucesso) {
           throw new Error(
-            data?.error || "Não foi possível carregar os diagnósticos."
+            dataDiagnosticos?.error ||
+              "Não foi possível carregar os diagnósticos."
           );
         }
 
-        const lista = Array.isArray(data.diagnosticos)
-          ? data.diagnosticos
+        const lista = Array.isArray(dataDiagnosticos.diagnosticos)
+          ? dataDiagnosticos.diagnosticos
           : [];
 
+        const leads = Array.isArray(dataLeads?.leads)
+          ? dataLeads.leads
+          : [];
+
+        const leadPorDiagnostico = new Map(
+          leads
+            .filter((lead) => lead?.diagnosticoId)
+            .map((lead) => [String(lead.diagnosticoId), lead])
+        );
+
         setRegistros(
-          lista.map((item) => ({
-            ...item,
-            _estrutura: normalizarEstrutura(
-              item.estruturaNegocio || item.estrutura_negocio
-            ),
-            _tipo: tipoDiagnostico(item),
-          }))
+          lista.map((item) => {
+            const leadVinculado =
+              leadPorDiagnostico.get(String(item.id)) || null;
+
+            const enriquecido = {
+              ...item,
+              origem:
+                item.origem ||
+                leadVinculado?.origem ||
+                "direto",
+              campanha:
+                item.campanha ||
+                leadVinculado?.campanha ||
+                "",
+              prioridadeComercial:
+                item.prioridadeComercial ||
+                leadVinculado?.prioridadeComercial ||
+                "",
+              statusDiagnostico:
+                item.statusDiagnostico ||
+                leadVinculado?.statusDiagnostico ||
+                "CONCLUIDO",
+              leadId:
+                item.leadId ||
+                leadVinculado?.leadId ||
+                "",
+              arquivado: Boolean(item.arquivado),
+            };
+
+            return {
+              ...enriquecido,
+              _estrutura: normalizarEstrutura(
+                enriquecido.estruturaNegocio ||
+                  enriquecido.estrutura_negocio
+              ),
+              _tipo: tipoDiagnostico(enriquecido),
+            };
+          })
         );
       } else {
         const [ra, rr] = await Promise.all([
           fetch(
-            "/api/crm?action=listar-atendimentos&arquivamento=ATIVOS",
+            `/api/crm?action=listar-atendimentos&arquivamento=${encodeURIComponent(arquivamento)}`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -684,7 +743,67 @@ export default function OperacionalBI({
 
   useEffect(() => {
     carregar();
-  }, [modo, token]);
+  }, [modo, token, arquivamento]);
+
+  async function alternarArquivamentoDiagnostico(item) {
+    if (!ehDiagnostico || !item?.id) {
+      return;
+    }
+
+    const action = item.arquivado
+      ? "desarquivar"
+      : "arquivar";
+
+    const confirmar = window.confirm(
+      item.arquivado
+        ? "Desarquivar este diagnóstico?"
+        : "Arquivar este diagnóstico? Ele sairá da visão de ativos."
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    setProcessandoArquivoId(item.id);
+    setErro("");
+
+    try {
+      const resposta = await fetch(
+        `/api/diagnosticos?action=${action}`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            diagnosticoId: item.id,
+          }),
+        }
+      );
+
+      const data = await resposta.json().catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(
+          data?.error || "Não foi possível atualizar o arquivamento."
+        );
+      }
+
+      setSelecionados((atuais) =>
+        atuais.filter((id) => id !== item.id)
+      );
+
+      await carregar();
+    } catch (error) {
+      setErro(
+        error?.message ||
+          "Erro ao arquivar/desarquivar diagnóstico."
+      );
+    } finally {
+      setProcessandoArquivoId("");
+    }
+  }
 
   function limpar() {
     setBusca("");
@@ -1411,9 +1530,10 @@ export default function OperacionalBI({
             ) : (
               <>
                 <option value="NAO_INICIADO">Não iniciado</option>
-                <option value="EM_ANDAMENTO">Em andamento</option>
-                <option value="AGUARDANDO_CLIENTE">Aguardando cliente</option>
-                <option value="AGUARDANDO_INTERNO">Aguardando interno</option>
+                <option value="EM_ANALISE">Avaliando</option>
+                <option value="REUNIAO_AGENDADA">Reunião agendada</option>
+                <option value="EM_ATENDIMENTO">Em tratativa</option>
+                <option value="PLANO_APRESENTADO">Proposta / plano apresentado</option>
                 <option value="CONCLUIDO">Concluído</option>
               </>
             )}
@@ -1453,6 +1573,15 @@ export default function OperacionalBI({
               </Select>
             </>
           )}
+
+          <Select
+            value={arquivamento}
+            onChange={(e) => setArquivamento(e.target.value)}
+          >
+            <option value="ATIVOS">Ativos</option>
+            <option value="ARQUIVADOS">Arquivados</option>
+            <option value="TODOS">Todos</option>
+          </Select>
 
           <Select
             value={prioridade}
@@ -1875,13 +2004,37 @@ export default function OperacionalBI({
                       </div>
 
                       <div style={{ marginTop: 7 }}>
-                        <Botao
-                          onClick={() =>
-                            onAbrirDiagnostico?.(item.id)
-                          }
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 6,
+                            flexWrap: "wrap",
+                          }}
                         >
-                          Abrir diagnóstico
-                        </Botao>
+                          <Botao
+                            onClick={() =>
+                              onAbrirDiagnostico?.(item.id)
+                            }
+                          >
+                            Abrir diagnóstico
+                          </Botao>
+
+                          <Botao
+                            secundario
+                            disabled={
+                              processandoArquivoId === item.id
+                            }
+                            onClick={() =>
+                              alternarArquivamentoDiagnostico(item)
+                            }
+                          >
+                            {processandoArquivoId === item.id
+                              ? "Salvando..."
+                              : item.arquivado
+                              ? "Desarquivar"
+                              : "Arquivar"}
+                          </Botao>
+                        </div>
                       </div>
                     </div>
                   </>
