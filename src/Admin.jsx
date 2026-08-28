@@ -9997,14 +9997,17 @@ async function salvarPropostaCaso() {
                           <option value="NAO_INICIADO">
                             Não iniciado
                           </option>
-                          <option value="EM_ANDAMENTO">
-                            Em andamento
+                          <option value="EM_ANALISE">
+                            Avaliando
                           </option>
-                          <option value="AGUARDANDO_CLIENTE">
-                            Aguardando cliente
+                          <option value="REUNIAO_AGENDADA">
+                            Reunião agendada
                           </option>
-                          <option value="AGUARDANDO_INTERNO">
-                            Aguardando interno
+                          <option value="EM_ATENDIMENTO">
+                            Em tratativa
+                          </option>
+                          <option value="PLANO_APRESENTADO">
+                            Proposta / plano apresentado
                           </option>
                           <option value="CONCLUIDO">
                             Concluído
@@ -10032,8 +10035,8 @@ async function salvarPropostaCaso() {
                           <option value="NAO_ANALISADA">
                             Não analisada
                           </option>
-                          <option value="SEM_OPORTUNIDADE">
-                            Sem oportunidade
+                          <option value="EM_ANALISE">
+                            Em análise
                           </option>
                           <option value="OPORTUNIDADE_IDENTIFICADA">
                             Oportunidade identificada
@@ -10041,8 +10044,11 @@ async function salvarPropostaCaso() {
                           <option value="PROPOSTA">
                             Proposta
                           </option>
-                          <option value="FECHADO">
-                            Fechado
+                          <option value="CONTRATADO">
+                            Contratado
+                          </option>
+                          <option value="SEM_OPORTUNIDADE">
+                            Sem oportunidade
                           </option>
                         </select>
 
