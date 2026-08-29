@@ -1560,21 +1560,310 @@ REGRAS:
 // ESCOPO: somente Planejamento Tributário. NÃO trata IBS/CBS/transição.
 // =========================================================
 
+const planejamentoMesesSchema = {
+  type: "object",
+  properties: {
+    jan: { type: ["number", "null"] },
+    fev: { type: ["number", "null"] },
+    mar: { type: ["number", "null"] },
+    abr: { type: ["number", "null"] },
+    mai: { type: ["number", "null"] },
+    jun: { type: ["number", "null"] },
+    jul: { type: ["number", "null"] },
+    ago: { type: ["number", "null"] },
+    set: { type: ["number", "null"] },
+    out: { type: ["number", "null"] },
+    nov: { type: ["number", "null"] },
+    dez: { type: ["number", "null"] },
+  },
+  required: [
+    "jan",
+    "fev",
+    "mar",
+    "abr",
+    "mai",
+    "jun",
+    "jul",
+    "ago",
+    "set",
+    "out",
+    "nov",
+    "dez",
+  ],
+  additionalProperties: false,
+};
+
 const planejamentoExtracaoSchema = {
   type: "object",
   properties: {
-    base: { type: "object", additionalProperties: true },
-    fontes: { type: "array", items: { type: "object", properties: {
-      campo:{type:"string"}, valor:{type:"string"}, documento:{type:"string"}, competencia:{type:"string"},
-      confianca:{type:"string",enum:["ALTA","MEDIA","BAIXA"]}, observacao:{type:"string"}
-    }, required:["campo","valor","documento","competencia","confianca","observacao"], additionalProperties:false } },
-    divergencias:{type:"array",items:{type:"string"}},
-    dadosFaltantes:{type:"array",items:{type:"string"}},
-    documentosAnalisados:{type:"array",items:{type:"string"}},
-    observacaoGeral:{type:"string"}
+    base: {
+      type: "object",
+      properties: {
+        faturamento: {
+          type: "object",
+          properties: {
+            industria: planejamentoMesesSchema,
+            comercio: planejamentoMesesSchema,
+            servicos: planejamentoMesesSchema,
+          },
+          required: [
+            "industria",
+            "comercio",
+            "servicos",
+          ],
+          additionalProperties: false,
+        },
+
+        tributos: {
+          type: "object",
+          properties: {
+            pis: planejamentoMesesSchema,
+            cofins: planejamentoMesesSchema,
+            icms: planejamentoMesesSchema,
+            ipi: planejamentoMesesSchema,
+            iss: planejamentoMesesSchema,
+          },
+          required: [
+            "pis",
+            "cofins",
+            "icms",
+            "ipi",
+            "iss",
+          ],
+          additionalProperties: false,
+        },
+
+        custos: {
+          type: "object",
+          properties: {
+            industria: {
+              type: "object",
+              properties: {
+                estoqueInicial: planejamentoMesesSchema,
+                insumos: planejamentoMesesSchema,
+                maoObraDireta: planejamentoMesesSchema,
+                ggf: planejamentoMesesSchema,
+                estoqueFinal: planejamentoMesesSchema,
+              },
+              required: [
+                "estoqueInicial",
+                "insumos",
+                "maoObraDireta",
+                "ggf",
+                "estoqueFinal",
+              ],
+              additionalProperties: false,
+            },
+
+            comercio: {
+              type: "object",
+              properties: {
+                estoqueInicial: planejamentoMesesSchema,
+                compras: planejamentoMesesSchema,
+                estoqueFinal: planejamentoMesesSchema,
+              },
+              required: [
+                "estoqueInicial",
+                "compras",
+                "estoqueFinal",
+              ],
+              additionalProperties: false,
+            },
+
+            servicos: {
+              type: "object",
+              properties: {
+                servicosInicial: planejamentoMesesSchema,
+                maoObraDireta: planejamentoMesesSchema,
+                gastosDiretos: planejamentoMesesSchema,
+                gastosIndiretos: planejamentoMesesSchema,
+                servicosFinal: planejamentoMesesSchema,
+              },
+              required: [
+                "servicosInicial",
+                "maoObraDireta",
+                "gastosDiretos",
+                "gastosIndiretos",
+                "servicosFinal",
+              ],
+              additionalProperties: false,
+            },
+          },
+          required: [
+            "industria",
+            "comercio",
+            "servicos",
+          ],
+          additionalProperties: false,
+        },
+
+        despesas: {
+          type: "object",
+          properties: {
+            operacionais: planejamentoMesesSchema,
+            comerciais: planejamentoMesesSchema,
+            administrativas: planejamentoMesesSchema,
+            tributarias: planejamentoMesesSchema,
+            diretoria: planejamentoMesesSchema,
+            logistica: planejamentoMesesSchema,
+            ocupacao: planejamentoMesesSchema,
+            outras: planejamentoMesesSchema,
+          },
+          required: [
+            "operacionais",
+            "comerciais",
+            "administrativas",
+            "tributarias",
+            "diretoria",
+            "logistica",
+            "ocupacao",
+            "outras",
+          ],
+          additionalProperties: false,
+        },
+
+        folha: {
+          type: "object",
+          properties: {
+            folha13: planejamentoMesesSchema,
+            proLabore: planejamentoMesesSchema,
+            inssFgts: planejamentoMesesSchema,
+            outros: planejamentoMesesSchema,
+            encargosPatronais: planejamentoMesesSchema,
+          },
+          required: [
+            "folha13",
+            "proLabore",
+            "inssFgts",
+            "outros",
+            "encargosPatronais",
+          ],
+          additionalProperties: false,
+        },
+
+        creditos: {
+          type: "object",
+          properties: {
+            pis: planejamentoMesesSchema,
+            cofins: planejamentoMesesSchema,
+            icms: planejamentoMesesSchema,
+            ipi: planejamentoMesesSchema,
+          },
+          required: [
+            "pis",
+            "cofins",
+            "icms",
+            "ipi",
+          ],
+          additionalProperties: false,
+        },
+
+        parametros: {
+          type: "object",
+          properties: {
+            regimeAtual: {
+              type: ["string", "null"],
+            },
+            simplesAliquotaEfetiva: {
+              type: ["number", "null"],
+            },
+            simplesDas: planejamentoMesesSchema,
+          },
+          required: [
+            "regimeAtual",
+            "simplesAliquotaEfetiva",
+            "simplesDas",
+          ],
+          additionalProperties: false,
+        },
+      },
+      required: [
+        "faturamento",
+        "tributos",
+        "custos",
+        "despesas",
+        "folha",
+        "creditos",
+        "parametros",
+      ],
+      additionalProperties: false,
+    },
+
+    fontes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          campo: {
+            type: "string",
+          },
+          valor: {
+            type: "string",
+          },
+          documento: {
+            type: "string",
+          },
+          competencia: {
+            type: "string",
+          },
+          confianca: {
+            type: "string",
+            enum: [
+              "ALTA",
+              "MEDIA",
+              "BAIXA",
+            ],
+          },
+          observacao: {
+            type: "string",
+          },
+        },
+        required: [
+          "campo",
+          "valor",
+          "documento",
+          "competencia",
+          "confianca",
+          "observacao",
+        ],
+        additionalProperties: false,
+      },
+    },
+
+    divergencias: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+
+    dadosFaltantes: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+
+    documentosAnalisados: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+
+    observacaoGeral: {
+      type: "string",
+    },
   },
-  required:["base","fontes","divergencias","dadosFaltantes","documentosAnalisados","observacaoGeral"],
-  additionalProperties:false
+  required: [
+    "base",
+    "fontes",
+    "divergencias",
+    "dadosFaltantes",
+    "documentosAnalisados",
+    "observacaoGeral",
+  ],
+  additionalProperties: false,
 };
 
 const planejamentoAnaliseSchema = {
