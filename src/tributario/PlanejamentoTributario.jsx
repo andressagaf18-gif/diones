@@ -275,6 +275,67 @@ export default function PlanejamentoTributario({token,onVoltar}){
     </Card>
    }
 
+   {conferenciaIa?.qualidadeBase&&
+    <Card>
+     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Qualidade da base da análise</h3>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
+      {[["Documental",conferenciaIa.qualidadeBase.documentalPct],["Cadastral",conferenciaIa.qualidadeBase.cadastralPct],["Manual",conferenciaIa.qualidadeBase.manualPct],["Calculado",conferenciaIa.qualidadeBase.calculadoPct],["Pendente",conferenciaIa.qualidadeBase.pendentePct]].map(([l,v])=>
+       <div key={l} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:9}}>
+        <small>{l.toUpperCase()}</small><b style={{display:"block",fontSize:16,marginTop:3}}>{Number(v||0).toFixed(0)}%</b>
+       </div>
+      )}
+     </div>
+     <p style={{fontSize:9.5,color:C.muted,lineHeight:1.5,marginBottom:0}}>{conferenciaIa.qualidadeBase.observacao}</p>
+    </Card>
+   }
+
+   {conferenciaIa?.premissas?.length>0&&<Card>
+    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Premissas utilizadas</h3>
+    <ul>{conferenciaIa.premissas.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul>
+   </Card>}
+
+   {(conferenciaIa?.naoAplicaveis?.length>0||conferenciaIa?.periodosNaoExigiveis?.length>0)&&<Card>
+    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Itens que não são pendência</h3>
+    {conferenciaIa.naoAplicaveis?.length>0&&<><b style={{fontSize:10}}>Não aplicáveis</b><ul>{conferenciaIa.naoAplicaveis.map((x,i)=><li key={i} style={{fontSize:9.5}}>{x}</li>)}</ul></>}
+    {conferenciaIa.periodosNaoExigiveis?.length>0&&<><b style={{fontSize:10}}>Períodos não exigíveis / em andamento</b><ul>{conferenciaIa.periodosNaoExigiveis.map((x,i)=><li key={i} style={{fontSize:9.5}}>{x}</li>)}</ul></>}
+   </Card>}
+
+   {conferenciaIa?.beneficiosFiscais?.length>0&&<Card>
+    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Benefícios fiscais e enquadramentos especiais</h3>
+    <p style={{fontSize:9.5,color:C.muted}}>Só considerar benefício com atividade real compatível, requisitos atendidos e fundamento verificável.</p>
+    <div style={{display:"grid",gap:8}}>
+     {conferenciaIa.beneficiosFiscais.map((b,i)=><div key={i} style={{border:`1px solid ${C.border}`,borderRadius:9,padding:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b>{b.nome}</b><b style={{fontSize:9,color:b.situacao==="APLICAVEL"?C.green:b.situacao==="POTENCIAL_VALIDAR"?C.amber:C.muted}}>{b.situacao}</b></div>
+      <div style={{fontSize:9.5,lineHeight:1.55,marginTop:6}}>
+       <div><b>Tributo:</b> {b.tributo||"-"}</div><div><b>Descrição:</b> {b.descricao||"-"}</div>
+       <div><b>Fundamento:</b> {b.fundamentoLegal||"-"} {b.artigo?`— ${b.artigo}`:""}</div>
+       <div><b>Vigência:</b> {b.vigencia||"-"}</div><div><b>Fonte oficial:</b> {b.fonteOficial||"-"}</div>
+       <div><b>Jurisprudência:</b> {b.jurisprudencia||"-"}</div>
+       <div><b>Efeito financeiro:</b> {b.efeitoFinanceiro!=null?moeda(b.efeitoFinanceiro):"Não calculado sem base suficiente"}</div>
+      </div>
+      {b.requisitos?.length>0&&<ul>{b.requisitos.map((x,j)=><li key={j} style={{fontSize:9}}>{x}</li>)}</ul>}
+      {b.observacao&&<p style={{fontSize:9,color:C.muted,marginBottom:0}}>{b.observacao}</p>}
+     </div>)}
+    </div>
+   </Card>}
+
+   {(conferenciaIa?.riscosTributarios?.length>0||conferenciaIa?.oportunidades?.length>0)&&<Card>
+    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Riscos e oportunidades</h3>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+     <div><b style={{fontSize:10,color:C.red}}>Riscos tributários</b><ul>{(conferenciaIa.riscosTributarios||[]).map((x,i)=><li key={i} style={{fontSize:9.5}}>{x}</li>)}</ul></div>
+     <div><b style={{fontSize:10,color:C.green}}>Oportunidades</b><ul>{(conferenciaIa.oportunidades||[]).map((x,i)=><li key={i} style={{fontSize:9.5}}>{x}</li>)}</ul></div>
+    </div>
+   </Card>}
+
+   {conferenciaIa?.planoAcao&&<Card>
+    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Plano de ação</h3>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+     <div><b style={{fontSize:10}}>Imediato</b><ul>{(conferenciaIa.planoAcao.imediato||[]).map((x,i)=><li key={i} style={{fontSize:9}}>{x}</li>)}</ul></div>
+     <div><b style={{fontSize:10}}>Antes de mudar regime</b><ul>{(conferenciaIa.planoAcao.antesMudancaRegime||[]).map((x,i)=><li key={i} style={{fontSize:9}}>{x}</li>)}</ul></div>
+     <div><b style={{fontSize:10}}>Acompanhamento</b><ul>{(conferenciaIa.planoAcao.acompanhamento||[]).map((x,i)=><li key={i} style={{fontSize:9}}>{x}</li>)}</ul></div>
+    </div>
+   </Card>}
+
    <Card>
     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Conferência por fonte</h3>
     {!base.fontes.length?
