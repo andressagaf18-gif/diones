@@ -933,6 +933,7 @@ export default function Tributario({
     tipo: "",
     responsavel: "",
     status: "",
+    arquivamento: "ATIVOS",
   });
 
   const [
@@ -1363,6 +1364,8 @@ export default function Tributario({
                 filtroHistorico.responsavel,
               status:
                 filtroHistorico.status,
+              arquivamento:
+                filtroHistorico.arquivamento,
             },
           }
         );
@@ -1453,6 +1456,121 @@ export default function Tributario({
         error?.message ||
         "Não foi possível validar o diagnóstico."
       );
+    }
+  }
+
+  async function editarProjetoSalvo(id) {
+    setErro("");
+    setCarregandoProjetos(true);
+
+    try {
+      const data = await apiTributarioJson("obter-projeto", {
+        query: { id },
+      });
+
+      const p = data.projeto;
+      if (!p) throw new Error("Projeto não encontrado.");
+
+      setProjetoId(p.id);
+      setTipoProjeto(p.tipoProjeto || "planejamento");
+      setModalidade(p.modalidade || "manual");
+      setDadosProjeto((atual) => ({
+        ...atual,
+        responsavelFinder: p.responsavelFinder || "",
+        origemCliente: p.origemCliente || "",
+        contatoNome: p.contatoNome || "",
+        contatoEmail: p.contatoEmail || "",
+        contatoTelefone: p.contatoTelefone || "",
+        observacaoOrigem: p.observacaoOrigem || "",
+      }));
+
+      if (Array.isArray(p.empresas) && p.empresas.length) {
+        setEmpresas(
+          p.empresas.map((empresa, index) => ({
+            id: empresa.id || `empresa_${index}_${Date.now()}`,
+            cnpj: empresa.cnpj || "",
+            dados: empresa.dados || empresa,
+            carregando: false,
+            erro: "",
+          }))
+        );
+      }
+
+      const at = p.atividades || {};
+      setAtividadesSelecionadas(
+        Array.isArray(at.selecionadas) ? at.selecionadas : []
+      );
+      setAtividadePrincipalSelecionada(at.principalReal || "");
+      setDescricaoAtividadeCliente(at.descricaoReal || "");
+
+      const manuais = p.dadosManuais || {};
+      if (manuais.planejamentoV2 && p.tipoProjeto === "planejamento") {
+        // O Planejamento V2 salva sua própria base e será reaberto mantendo o mesmo projetoId.
+        setTela("planejamento-v2");
+      } else {
+        setDadosManuais((atual) => ({
+          ...atual,
+          ...manuais,
+        }));
+        setTela("configuracao");
+      }
+
+      setProjetoAberto(null);
+    } catch (error) {
+      setErro(error?.message || "Não foi possível editar a inteligência tributária.");
+    } finally {
+      setCarregandoProjetos(false);
+    }
+  }
+
+  async function arquivarProjetoSalvo(id, arquivado = true) {
+    setErro("");
+    try {
+      await apiTributarioJson("arquivar-projeto", {
+        method: "POST",
+        body: { id, arquivado },
+      });
+
+      if (projetoAberto?.id === id) {
+        setProjetoAberto((atual) =>
+          atual ? { ...atual, arquivado } : atual
+        );
+      }
+
+      await carregarProjetosSalvos();
+    } catch (error) {
+      setErro(error?.message || "Não foi possível alterar o arquivamento.");
+    }
+  }
+
+  async function excluirProjetoSalvo(id, nome = "esta inteligência tributária") {
+    const confirmou = window.confirm(
+      `Excluir definitivamente ${nome}?\\n\\nEsta ação excluirá o projeto, diagnósticos, versões e histórico. Não poderá ser desfeita.`
+    );
+
+    if (!confirmou) return;
+
+    const segundaConfirmacao = window.prompt(
+      'Para confirmar a exclusão definitiva, digite EXCLUIR'
+    );
+
+    if (segundaConfirmacao !== "EXCLUIR") return;
+
+    setErro("");
+    try {
+      await apiTributarioJson("excluir-projeto", {
+        method: "POST",
+        body: { id, confirmacao: "EXCLUIR" },
+      });
+
+      if (projetoAberto?.id === id) {
+        setProjetoAberto(null);
+        setTela("inicio");
+      }
+
+      await carregarProjetosSalvos();
+    } catch (error) {
+      setErro(error?.message || "Não foi possível excluir a inteligência tributária.");
     }
   }
 
@@ -2849,7 +2967,7 @@ export default function Tributario({
               display:
                 "grid",
               gridTemplateColumns:
-                "minmax(220px,1.4fr) repeat(3,minmax(150px,1fr)) auto",
+                "minmax(220px,1.4fr) repeat(4,minmax(140px,1fr)) auto",
               gap:
                 8,
               marginBottom:
@@ -2990,6 +3108,21 @@ export default function Tributario({
               </option>
             </select>
 
+            <select
+              value={filtroHistorico.arquivamento}
+              onChange={(e) =>
+                setFiltroHistorico((atual) => ({
+                  ...atual,
+                  arquivamento: e.target.value,
+                }))
+              }
+              style={inputStyle()}
+            >
+              <option value="ATIVOS">Ativos</option>
+              <option value="ARQUIVADOS">Arquivados</option>
+              <option value="TODOS">Ativos + arquivados</option>
+            </select>
+
             <Botao
               onClick={
                 carregarProjetosSalvos
@@ -3031,124 +3164,73 @@ export default function Tributario({
                 (
                   projeto
                 ) => (
-                  <button
-                    key={
-                      projeto.id
-                    }
-                    type="button"
-                    onClick={() =>
-                      abrirProjetoSalvo(
-                        projeto.id
-                      )
-                    }
+                  <div
+                    key={projeto.id}
                     style={{
-                      width:
-                        "100%",
-                      border:
-                        "1px solid #E3E7EF",
-                      borderRadius:
-                        12,
-                      background:
-                        WHITE,
-                      padding:
-                        12,
-                      cursor:
-                        "pointer",
-                      textAlign:
-                        "left",
-                      display:
-                        "grid",
-                      gridTemplateColumns:
-                        "minmax(220px,2fr) minmax(170px,1fr) minmax(140px,1fr) 70px 110px",
-                      gap:
-                        10,
-                      alignItems:
-                        "center",
-                      color:
-                        NAVY,
+                      width:"100%",
+                      border:"1px solid #E3E7EF",
+                      borderRadius:12,
+                      background:projeto.arquivado ? "#F7F8FA" : WHITE,
+                      padding:12,
+                      display:"grid",
+                      gridTemplateColumns:"minmax(220px,2fr) minmax(150px,1fr) minmax(130px,1fr) 60px 105px 245px",
+                      gap:10,
+                      alignItems:"center",
+                      color:NAVY,
+                      opacity:projeto.arquivado ? .72 : 1,
                     }}
                   >
-                    <div>
-                      <strong
-                        style={{
-                          display:
-                            "block",
-                          fontSize:
-                            11.5,
-                        }}
-                      >
-                        {projeto.clienteNome ||
-                          "Cliente"}
+                    <button
+                      type="button"
+                      onClick={() => abrirProjetoSalvo(projeto.id)}
+                      style={{
+                        border:0,background:"transparent",padding:0,cursor:"pointer",
+                        textAlign:"left",color:NAVY
+                      }}
+                    >
+                      <strong style={{display:"block",fontSize:11.5}}>
+                        {projeto.clienteNome || "Cliente"}
                       </strong>
-
-                      <div
-                        style={{
-                          color:
-                            MUTED,
-                          fontSize:
-                            9,
-                          marginTop:
-                            3,
-                        }}
-                      >
-                        {projeto.cnpj ||
-                          "CNPJ não informado"}
+                      <div style={{color:MUTED,fontSize:9,marginTop:3}}>
+                        {projeto.cnpj || "CNPJ não informado"}
+                        {projeto.arquivado ? " · ARQUIVADO" : ""}
                       </div>
-                    </div>
+                    </button>
 
-                    <strong
-                      style={{
-                        fontSize:
-                          9.5,
-                      }}
-                    >
-                      {projeto.tipoProjeto ===
-                      "reforma"
-                        ? "Reforma Tributária"
-                        : "Planejamento Tributário"}
+                    <strong style={{fontSize:9.5}}>
+                      {projeto.tipoProjeto === "reforma" ? "Reforma Tributária" : "Planejamento Tributário"}
                     </strong>
 
-                    <strong
-                      style={{
-                        fontSize:
-                          9.5,
-                      }}
-                    >
-                      {projeto.responsavelFinder ||
-                        "-"}
+                    <strong style={{fontSize:9.5}}>
+                      {projeto.responsavelFinder || "-"}
                     </strong>
 
-                    <strong>
-                      V{projeto.versaoAtual ||
-                        0}
-                    </strong>
+                    <strong>V{projeto.versaoAtual || 0}</strong>
 
-                    <span
-                      style={{
-                        borderRadius:
-                          999,
-                        padding:
-                          "5px 7px",
-                        background:
-                          projeto.status ===
-                          "VALIDADO"
-                            ? "#E9F7EF"
-                            : "#EEF3FF",
-                        color:
-                          projeto.status ===
-                          "VALIDADO"
-                            ? "#176B47"
-                            : "#31589C",
-                        fontSize:
-                          8,
-                        fontWeight:
-                          900,
-                      }}
-                    >
-                      {projeto.status ||
-                        "EM_ANALISE"}
+                    <span style={{
+                      borderRadius:999,padding:"5px 7px",
+                      background:projeto.status==="VALIDADO"?"#E9F7EF":"#EEF3FF",
+                      color:projeto.status==="VALIDADO"?"#176B47":"#31589C",
+                      fontSize:8,fontWeight:900,textAlign:"center"
+                    }}>
+                      {projeto.status || "EM_ANALISE"}
                     </span>
-                  </button>
+
+                    <div style={{display:"flex",gap:5,justifyContent:"flex-end",flexWrap:"wrap"}}>
+                      <button type="button" onClick={()=>editarProjetoSalvo(projeto.id)}
+                        style={{border:"1px solid #CAD3E2",background:WHITE,borderRadius:7,padding:"6px 8px",cursor:"pointer",fontSize:8.5,fontWeight:800}}>
+                        Editar
+                      </button>
+                      <button type="button" onClick={()=>arquivarProjetoSalvo(projeto.id,!projeto.arquivado)}
+                        style={{border:"1px solid #CAD3E2",background:WHITE,borderRadius:7,padding:"6px 8px",cursor:"pointer",fontSize:8.5,fontWeight:800}}>
+                        {projeto.arquivado ? "Reativar" : "Arquivar"}
+                      </button>
+                      <button type="button" onClick={()=>excluirProjetoSalvo(projeto.id,projeto.clienteNome||"esta inteligência tributária")}
+                        style={{border:"1px solid #E7B9B9",background:"#FFF7F7",color:"#A22",borderRadius:7,padding:"6px 8px",cursor:"pointer",fontSize:8.5,fontWeight:800}}>
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
                 )
               )}
             </div>
@@ -3546,6 +3628,28 @@ export default function Tributario({
                 </div>
               </Card>
             </div>
+
+            <Card>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div>
+                  <strong>Gerenciar inteligência tributária</strong>
+                  <div style={{color:MUTED,fontSize:9.5,marginTop:3}}>
+                    Edite mantendo o mesmo projeto e histórico, arquive sem apagar ou exclua definitivamente.
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                  <Botao secundario onClick={()=>editarProjetoSalvo(projetoAberto.id)}>Editar</Botao>
+                  <Botao secundario onClick={()=>arquivarProjetoSalvo(projetoAberto.id,!projetoAberto.arquivado)}>
+                    {projetoAberto.arquivado ? "Reativar" : "Arquivar"}
+                  </Botao>
+                  <button type="button"
+                    onClick={()=>excluirProjetoSalvo(projetoAberto.id,projetoAberto.clienteNome||"esta inteligência tributária")}
+                    style={{border:"1px solid #E7B9B9",background:"#FFF7F7",color:"#A22",borderRadius:8,padding:"8px 11px",cursor:"pointer",fontWeight:900,fontSize:9}}>
+                    Excluir definitivamente
+                  </button>
+                </div>
+              </div>
+            </Card>
 
             <Card>
               <div
