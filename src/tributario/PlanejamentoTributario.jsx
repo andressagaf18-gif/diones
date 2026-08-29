@@ -1,5 +1,6 @@
 // DESTINO REAL: /src/tributario/PlanejamentoTributario.jsx
 import {useMemo,useState} from "react";
+import {jsPDF} from "jspdf";
 import {MESES,ROTULOS,baseVazia,num,moeda,pct,comparar,cenario} from "./planejamento-engine";
 
 const C={navy:"#17233D",blue:"#31589C",coral:"#FF6B4A",muted:"#5B667A",white:"#fff",bg:"#F6F8FC",border:"#E3E7EF",green:"#0F6E56",red:"#993C1D",amber:"#854F0B"};
@@ -24,6 +25,7 @@ function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{m
 
 export default function PlanejamentoTributario({token,onVoltar}){
  const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[conferenciaIa,setConferenciaIa]=useState(null),[conferenciaDesatualizada,setConferenciaDesatualizada]=useState(false),[gerandoConferencia,setGerandoConferencia]=useState(false),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
+ const [gerandoPdf,setGerandoPdf]=useState(false);
  const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}});
  const calc=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
 
@@ -146,6 +148,133 @@ export default function PlanejamentoTributario({token,onVoltar}){
   try{const d=await api("planejamento-analisar",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes,atividadePrincipalReal:principal,descricaoOperacao:descricao},base,calculos:calc,crescimento}});
    setIa(a=>({...a,analise:d.analise}));await salvar("DIAGNOSTICO_GERADO");await api("salvar-diagnostico",{method:"POST",body:{projetoId,tipoProjeto:"planejamento",diagnostico:d.analise,documentos:arquivos.map(f=>({filename:f.name,bytes:f.size})),modelo:d.modelo,usage:d.usage||null}});setAba("relatorio");setOk("Análise IA gerada e salva.");
   }catch(e){setErro(e.message)}finally{setAnalisando(false)}
+ }
+
+
+ async function gerarRelatorioPdf(){
+  setGerandoPdf(true);setErro("");setOk("");
+  try{
+   const doc=new jsPDF({unit:"mm",format:"a4"});
+   const W=210,M=15,MAX=195;
+   let y=16;
+   const nome=empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Planejamento Tributário";
+   const safe=s=>String(s??"").replace(/\s+/g," ").trim();
+   const nova=()=>{doc.addPage();y=16};
+   const garante=h=8=>{if(y+h>282)nova()};
+   const linha=(txto,{size=9,bold=false,indent=0,gap=4}={})=>{
+    const t=safe(txto); if(!t)return;
+    doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);
+    const linhas=doc.splitTextToSize(t,MAX-M-indent);
+    garante(linhas.length*(size*.36)+gap);
+    doc.text(linhas,M+indent,y);
+    y+=linhas.length*(size*.36)+gap;
+   };
+   const titulo=t=>{garante(12);doc.setFont("helvetica","bold");doc.setFontSize(13);doc.text(safe(t),M,y);y+=8};
+   const item=t=>linha(`• ${safe(t)}`,{size:8.8,indent:2,gap:2.5});
+   const campo=(l,v)=>linha(`${l}: ${safe(v||"-")}`,{size:8.8,gap:2.2});
+   const moedaPdf=v=>moeda(num(v));
+
+   // Capa
+   doc.setFillColor(23,35,61);doc.rect(0,0,W,55,"F");
+   doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(18);
+   doc.text("PLANEJAMENTO TRIBUTÁRIO",M,22);
+   doc.setFontSize(12);doc.text(doc.splitTextToSize(nome,175),M,33);
+   doc.setFont("helvetica","normal");doc.setFontSize(8.5);
+   doc.text(`Gerado em ${new Date().toLocaleString("pt-BR")}`,M,48);
+   doc.setTextColor(23,35,61);y=68;
+
+   titulo("Identificação");
+   campo("Empresa",nome);campo("CNPJ",fmtCnpj(cnpj));campo("Responsável Finder",responsavel);
+   campo("Origem",origem);campo("Regime atual",base.parametros?.regimeAtual);
+   campo("Descrição operacional",descricao);
+   if(cnaes?.length){linha("Atividades/CNAEs:",{bold:true,size:8.8});cnaes.forEach(x=>item(`${x.codigo||x.cnae||""} ${x.descricao||""}`));}
+
+   titulo("Resumo executivo");
+   linha(ia?.analise?.resumoExecutivo||"Análise de IA ainda não gerada.",{size:9.2});
+
+   titulo("Comparativo tributário");
+   campo("Simples Nacional",`${moedaPdf(calc.simples.total)} | Carga ${pct(calc.simples.carga)}`);
+   campo("Lucro Presumido",`${moedaPdf(calc.presumido.total)} | Carga ${pct(calc.presumido.carga)}`);
+   campo("Lucro Real",`${moedaPdf(calc.real.total)} | Carga ${pct(calc.real.carga)}`);
+   campo("Menor carga matemática",calc.melhor?.regime||"-");
+   campo("Economia potencial",`${moedaPdf(calc.economia)} | ${pct(calc.economiaPct)}`);
+   linha("Observação: menor carga matemática não representa recomendação automática de regime.",{size:8.3});
+
+   if(conferenciaIa){
+    titulo("Conferência IA");
+    campo("Status da base",conferenciaIa.statusBase);
+    campo("Confiança geral",conferenciaIa.confiancaGeral);
+    campo("Pode comparar regimes",conferenciaIa.podeCompararRegimes?"Sim":"Não");
+    linha(conferenciaIa.resumo,{size:9});
+
+    if(conferenciaIa.qualidadeBase){
+     titulo("Qualidade da base");
+     const q=conferenciaIa.qualidadeBase;
+     campo("Documental",`${num(q.documentalPct).toFixed(0)}%`);
+     campo("Cadastral",`${num(q.cadastralPct).toFixed(0)}%`);
+     campo("Manual",`${num(q.manualPct).toFixed(0)}%`);
+     campo("Calculado",`${num(q.calculadoPct).toFixed(0)}%`);
+     campo("Pendente",`${num(q.pendentePct).toFixed(0)}%`);
+     linha(q.observacao,{size:8.5});
+    }
+
+    if(conferenciaIa.premissas?.length){titulo("Premissas utilizadas");conferenciaIa.premissas.forEach(item);}
+    if(conferenciaIa.dadosFaltantes?.length){titulo("Pendências reais");conferenciaIa.dadosFaltantes.forEach(item);}
+    if(conferenciaIa.naoAplicaveis?.length){titulo("Itens não aplicáveis");conferenciaIa.naoAplicaveis.forEach(item);}
+    if(conferenciaIa.periodosNaoExigiveis?.length){titulo("Períodos não exigíveis / em andamento");conferenciaIa.periodosNaoExigiveis.forEach(item);}
+
+    if(conferenciaIa.beneficiosFiscais?.length){
+     titulo("Benefícios fiscais e enquadramentos");
+     conferenciaIa.beneficiosFiscais.forEach((b,i)=>{
+      linha(`${i+1}. ${b.nome} - ${b.situacao}`,{bold:true,size:9});
+      campo("Tributo",b.tributo);campo("Fundamento",`${b.fundamentoLegal||"-"} ${b.artigo||""}`);
+      campo("Vigência",b.vigencia);campo("Fonte oficial",b.fonteOficial);
+      campo("Jurisprudência",b.jurisprudencia);
+      campo("Efeito financeiro",b.efeitoFinanceiro!=null?moedaPdf(b.efeitoFinanceiro):"Não calculado sem base suficiente");
+      linha(b.descricao,{size:8.5});
+      (b.requisitos||[]).forEach(x=>item(`Requisito: ${x}`));
+      if(b.observacao)linha(b.observacao,{size:8.2});
+     });
+    }
+
+    if(conferenciaIa.riscosTributarios?.length){titulo("Riscos tributários");conferenciaIa.riscosTributarios.forEach(item);}
+    if(conferenciaIa.oportunidades?.length){titulo("Oportunidades");conferenciaIa.oportunidades.forEach(item);}
+    if(conferenciaIa.planoAcao){
+     titulo("Plano de ação");
+     linha("Imediato",{bold:true,size:9});(conferenciaIa.planoAcao.imediato||[]).forEach(item);
+     linha("Antes de mudar regime",{bold:true,size:9});(conferenciaIa.planoAcao.antesMudancaRegime||[]).forEach(item);
+     linha("Acompanhamento",{bold:true,size:9});(conferenciaIa.planoAcao.acompanhamento||[]).forEach(item);
+    }
+   }
+
+   if(ia?.analise){
+    titulo("Recomendação técnica");
+    linha(ia.analise.recomendacao,{size:9.2});
+    if(ia.analise.riscos?.length){titulo("Riscos da análise");ia.analise.riscos.forEach(item);}
+    if(ia.analise.oportunidades?.length){titulo("Oportunidades da análise");ia.analise.oportunidades.forEach(item);}
+    if(ia.analise.validacoesNecessarias?.length){titulo("Validações necessárias");ia.analise.validacoesNecessarias.forEach(item);}
+   }
+
+   titulo("Rastreabilidade e ressalvas");
+   linha("O relatório distingue dados documentais, cadastrais, informados manualmente, calculados e projetados. Valores não comprovados não devem ser tratados como zero.",{size:8.5});
+   linha("Benefícios fiscais e conclusões jurídicas somente devem ser utilizados quando houver fundamento vigente e fonte verificável. Itens marcados para validação exigem conferência profissional antes da implementação.",{size:8.5});
+   linha("Este relatório refere-se ao Planejamento Tributário e não incorpora, nesta versão, análise de IBS/CBS ou Reforma Tributária.",{size:8.5});
+
+   const paginas=doc.getNumberOfPages();
+   for(let p=1;p<=paginas;p++){
+    doc.setPage(p);doc.setDrawColor(220);doc.line(M,288,195,288);
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(100);
+    doc.text(`Finder Intelligence • ${nome}`,M,293);
+    doc.text(`Página ${p} de ${paginas}`,195,293,{align:"right"});
+   }
+
+   const arquivo=`Planejamento_Tributario_${safe(nome).replace(/[^a-zA-Z0-9À-ÿ]+/g,"_").slice(0,55)}.pdf`;
+   doc.save(arquivo);
+   setOk("Relatório PDF gerado.");
+  }catch(e){
+   console.error("[planejamento][pdf]",e);
+   setErro(e?.message||"Não foi possível gerar o PDF.");
+  }finally{setGerandoPdf(false)}
  }
 
  const tabs=[["identificacao","1. Identificação"],["documentos","2. Documentos"],["base","3. Faturamento"],["folha","4. Folha / Fator R"],["custos","5. Custos / Despesas"],["conferencia","6. Conferência IA"],["comparativo","7. Comparativo"],["cenarios","8. Cenários"],["relatorio","9. Relatório"]];
@@ -379,6 +508,6 @@ export default function PlanejamentoTributario({token,onVoltar}){
 
   {aba==="cenarios"&&<div style={{display:"grid",gap:9}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Cenário de crescimento</h3><div style={{display:"flex",gap:6}}>{[0,10,20,30].map(x=><Btn key={x} secondary={crescimento!==x} onClick={()=>setCrescimento(x)}>{x===0?"Atual":`+${x}%`}</Btn>)}<input type="number" value={crescimento} onChange={e=>setCrescimento(num(e.target.value))} style={{...inp,width:100}}/></div></Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><Card><b>Simples</b><h3>{moeda(calc.simples.total)}</h3></Card><Card><b>Presumido</b><h3>{moeda(calc.presumido.total)}</h3></Card><Card><b>Real</b><h3>{moeda(calc.real.total)}</h3></Card></div></div>}
 
-  {aba==="relatorio"&&<div style={{display:"grid",gap:9}}><Card style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff"}}><small style={{color:"#9EBBFF"}}>RESUMO EXECUTIVO</small><h2 style={{fontFamily:DISPLAY}}>{empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Planejamento Tributário"}</h2><p style={{fontSize:10.5,lineHeight:1.6,color:"#D8DEEA"}}>{ia?.analise?.resumoExecutivo||"Gere a análise IA após conferir a base."}</p></Card>{ia?.analise&&<><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Recomendação</h3><p style={{fontSize:10.5,lineHeight:1.6}}>{ia.analise.recomendacao}</p></Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><Card><b>Riscos</b><ul>{(ia.analise.riscos||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card><Card><b>Oportunidades</b><ul>{(ia.analise.oportunidades||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card><Card><b>Validações</b><ul>{(ia.analise.validacoesNecessarias||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card></div></>}</div>}
+  {aba==="relatorio"&&<div style={{display:"grid",gap:9}}><Card><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}><div><b>Relatório final</b><div style={{fontSize:9.5,color:C.muted,marginTop:3}}>Gera o PDF com identificação, comparativo, Conferência IA, benefícios fiscais, riscos, oportunidades, plano de ação, recomendação e ressalvas.</div></div><Btn disabled={gerandoPdf} onClick={gerarRelatorioPdf}>{gerandoPdf?"Gerando PDF...":"Gerar relatório em PDF"}</Btn></div></Card><Card style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff"}}><small style={{color:"#9EBBFF"}}>RESUMO EXECUTIVO</small><h2 style={{fontFamily:DISPLAY}}>{empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Planejamento Tributário"}</h2><p style={{fontSize:10.5,lineHeight:1.6,color:"#D8DEEA"}}>{ia?.analise?.resumoExecutivo||"Gere a análise IA após conferir a base."}</p></Card>{ia?.analise&&<><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Recomendação</h3><p style={{fontSize:10.5,lineHeight:1.6}}>{ia.analise.recomendacao}</p></Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><Card><b>Riscos</b><ul>{(ia.analise.riscos||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card><Card><b>Oportunidades</b><ul>{(ia.analise.oportunidades||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card><Card><b>Validações</b><ul>{(ia.analise.validacoesNecessarias||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card></div></>}</div>}
  </div>
 }
