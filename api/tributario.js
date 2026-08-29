@@ -1596,6 +1596,70 @@ const planejamentoMesesSchema = {
 const planejamentoExtracaoSchema = {
   type: "object",
   properties: {
+    identificacao: {
+      type: "object",
+      properties: {
+        cnpj: { type: ["string", "null"] },
+        razaoSocial: { type: ["string", "null"] },
+        dataAbertura: { type: ["string", "null"] },
+        municipio: { type: ["string", "null"] },
+        uf: { type: ["string", "null"] },
+        regimeAtual: { type: ["string", "null"] },
+        regimeApuracao: { type: ["string", "null"] },
+        optanteSimples: { type: ["boolean", "null"] },
+        possuiFiliais: { type: ["boolean", "null"] }
+      },
+      required: ["cnpj","razaoSocial","dataAbertura","municipio","uf","regimeAtual","regimeApuracao","optanteSimples","possuiFiliais"],
+      additionalProperties: false
+    },
+    simplesNacional: {
+      type: "object",
+      properties: {
+        competencia: { type: ["string", "null"] },
+        rpa: { type: ["number", "null"] },
+        rbt12: { type: ["number", "null"] },
+        rba: { type: ["number", "null"] },
+        rbaa: { type: ["number", "null"] },
+        dasTotal: { type: ["number", "null"] },
+        aliquotaEfetivaObservada: { type: ["number", "null"] },
+        anexo: { type: ["string", "null"] },
+        atividadeTributada: { type: ["string", "null"] },
+        fatorR: { type: ["string", "null"] },
+        fatorRAplicavel: { type: ["boolean", "null"] },
+        mercadoExterno: { type: ["number", "null"] },
+        issMunicipio: { type: ["string", "null"] },
+        composicaoDas: {
+          type: "object",
+          properties: {
+            irpj: { type: ["number", "null"] },
+            csll: { type: ["number", "null"] },
+            cofins: { type: ["number", "null"] },
+            pis: { type: ["number", "null"] },
+            cppInss: { type: ["number", "null"] },
+            icms: { type: ["number", "null"] },
+            ipi: { type: ["number", "null"] },
+            iss: { type: ["number", "null"] }
+          },
+          required: ["irpj","csll","cofins","pis","cppInss","icms","ipi","iss"],
+          additionalProperties: false
+        },
+        receitasHistoricas: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              competencia: { type: "string" },
+              receita: { type: ["number", "null"] },
+              mercado: { type: "string", enum: ["INTERNO","EXTERNO"] }
+            },
+            required: ["competencia","receita","mercado"],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ["competencia","rpa","rbt12","rba","rbaa","dasTotal","aliquotaEfetivaObservada","anexo","atividadeTributada","fatorR","fatorRAplicavel","mercadoExterno","issMunicipio","composicaoDas","receitasHistoricas"],
+      additionalProperties: false
+    },
     base: {
       type: "object",
       properties: {
@@ -1604,16 +1668,11 @@ const planejamentoExtracaoSchema = {
           properties: {
             industria: planejamentoMesesSchema,
             comercio: planejamentoMesesSchema,
-            servicos: planejamentoMesesSchema,
+            servicos: planejamentoMesesSchema
           },
-          required: [
-            "industria",
-            "comercio",
-            "servicos",
-          ],
-          additionalProperties: false,
+          required: ["industria","comercio","servicos"],
+          additionalProperties: false
         },
-
         tributos: {
           type: "object",
           properties: {
@@ -1621,18 +1680,11 @@ const planejamentoExtracaoSchema = {
             cofins: planejamentoMesesSchema,
             icms: planejamentoMesesSchema,
             ipi: planejamentoMesesSchema,
-            iss: planejamentoMesesSchema,
+            iss: planejamentoMesesSchema
           },
-          required: [
-            "pis",
-            "cofins",
-            "icms",
-            "ipi",
-            "iss",
-          ],
-          additionalProperties: false,
+          required: ["pis","cofins","icms","ipi","iss"],
+          additionalProperties: false
         },
-
         custos: {
           type: "object",
           properties: {
@@ -1643,33 +1695,21 @@ const planejamentoExtracaoSchema = {
                 insumos: planejamentoMesesSchema,
                 maoObraDireta: planejamentoMesesSchema,
                 ggf: planejamentoMesesSchema,
-                estoqueFinal: planejamentoMesesSchema,
+                estoqueFinal: planejamentoMesesSchema
               },
-              required: [
-                "estoqueInicial",
-                "insumos",
-                "maoObraDireta",
-                "ggf",
-                "estoqueFinal",
-              ],
-              additionalProperties: false,
+              required: ["estoqueInicial","insumos","maoObraDireta","ggf","estoqueFinal"],
+              additionalProperties: false
             },
-
             comercio: {
               type: "object",
               properties: {
                 estoqueInicial: planejamentoMesesSchema,
                 compras: planejamentoMesesSchema,
-                estoqueFinal: planejamentoMesesSchema,
+                estoqueFinal: planejamentoMesesSchema
               },
-              required: [
-                "estoqueInicial",
-                "compras",
-                "estoqueFinal",
-              ],
-              additionalProperties: false,
+              required: ["estoqueInicial","compras","estoqueFinal"],
+              additionalProperties: false
             },
-
             servicos: {
               type: "object",
               properties: {
@@ -1677,26 +1717,15 @@ const planejamentoExtracaoSchema = {
                 maoObraDireta: planejamentoMesesSchema,
                 gastosDiretos: planejamentoMesesSchema,
                 gastosIndiretos: planejamentoMesesSchema,
-                servicosFinal: planejamentoMesesSchema,
+                servicosFinal: planejamentoMesesSchema
               },
-              required: [
-                "servicosInicial",
-                "maoObraDireta",
-                "gastosDiretos",
-                "gastosIndiretos",
-                "servicosFinal",
-              ],
-              additionalProperties: false,
-            },
+              required: ["servicosInicial","maoObraDireta","gastosDiretos","gastosIndiretos","servicosFinal"],
+              additionalProperties: false
+            }
           },
-          required: [
-            "industria",
-            "comercio",
-            "servicos",
-          ],
-          additionalProperties: false,
+          required: ["industria","comercio","servicos"],
+          additionalProperties: false
         },
-
         despesas: {
           type: "object",
           properties: {
@@ -1707,21 +1736,11 @@ const planejamentoExtracaoSchema = {
             diretoria: planejamentoMesesSchema,
             logistica: planejamentoMesesSchema,
             ocupacao: planejamentoMesesSchema,
-            outras: planejamentoMesesSchema,
+            outras: planejamentoMesesSchema
           },
-          required: [
-            "operacionais",
-            "comerciais",
-            "administrativas",
-            "tributarias",
-            "diretoria",
-            "logistica",
-            "ocupacao",
-            "outras",
-          ],
-          additionalProperties: false,
+          required: ["operacionais","comerciais","administrativas","tributarias","diretoria","logistica","ocupacao","outras"],
+          additionalProperties: false
         },
-
         folha: {
           type: "object",
           properties: {
@@ -1729,141 +1748,59 @@ const planejamentoExtracaoSchema = {
             proLabore: planejamentoMesesSchema,
             inssFgts: planejamentoMesesSchema,
             outros: planejamentoMesesSchema,
-            encargosPatronais: planejamentoMesesSchema,
+            encargosPatronais: planejamentoMesesSchema
           },
-          required: [
-            "folha13",
-            "proLabore",
-            "inssFgts",
-            "outros",
-            "encargosPatronais",
-          ],
-          additionalProperties: false,
+          required: ["folha13","proLabore","inssFgts","outros","encargosPatronais"],
+          additionalProperties: false
         },
-
         creditos: {
           type: "object",
           properties: {
             pis: planejamentoMesesSchema,
             cofins: planejamentoMesesSchema,
             icms: planejamentoMesesSchema,
-            ipi: planejamentoMesesSchema,
+            ipi: planejamentoMesesSchema
           },
-          required: [
-            "pis",
-            "cofins",
-            "icms",
-            "ipi",
-          ],
-          additionalProperties: false,
+          required: ["pis","cofins","icms","ipi"],
+          additionalProperties: false
         },
-
         parametros: {
           type: "object",
           properties: {
-            regimeAtual: {
-              type: ["string", "null"],
-            },
-            simplesAliquotaEfetiva: {
-              type: ["number", "null"],
-            },
-            simplesDas: planejamentoMesesSchema,
+            regimeAtual: { type: ["string", "null"] },
+            simplesAliquotaEfetiva: { type: ["number", "null"] },
+            simplesDas: planejamentoMesesSchema
           },
-          required: [
-            "regimeAtual",
-            "simplesAliquotaEfetiva",
-            "simplesDas",
-          ],
-          additionalProperties: false,
-        },
+          required: ["regimeAtual","simplesAliquotaEfetiva","simplesDas"],
+          additionalProperties: false
+        }
       },
-      required: [
-        "faturamento",
-        "tributos",
-        "custos",
-        "despesas",
-        "folha",
-        "creditos",
-        "parametros",
-      ],
-      additionalProperties: false,
+      required: ["faturamento","tributos","custos","despesas","folha","creditos","parametros"],
+      additionalProperties: false
     },
-
     fontes: {
       type: "array",
       items: {
         type: "object",
         properties: {
-          campo: {
-            type: "string",
-          },
-          valor: {
-            type: "string",
-          },
-          documento: {
-            type: "string",
-          },
-          competencia: {
-            type: "string",
-          },
-          confianca: {
-            type: "string",
-            enum: [
-              "ALTA",
-              "MEDIA",
-              "BAIXA",
-            ],
-          },
-          observacao: {
-            type: "string",
-          },
+          campo: { type: "string" },
+          valor: { type: "string" },
+          documento: { type: "string" },
+          competencia: { type: "string" },
+          confianca: { type: "string", enum: ["ALTA","MEDIA","BAIXA"] },
+          observacao: { type: "string" }
         },
-        required: [
-          "campo",
-          "valor",
-          "documento",
-          "competencia",
-          "confianca",
-          "observacao",
-        ],
-        additionalProperties: false,
-      },
+        required: ["campo","valor","documento","competencia","confianca","observacao"],
+        additionalProperties: false
+      }
     },
-
-    divergencias: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-
-    dadosFaltantes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-
-    documentosAnalisados: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-
-    observacaoGeral: {
-      type: "string",
-    },
+    divergencias: { type: "array", items: { type: "string" } },
+    dadosFaltantes: { type: "array", items: { type: "string" } },
+    documentosAnalisados: { type: "array", items: { type: "string" } },
+    observacaoGeral: { type: "string" }
   },
-  required: [
-    "base",
-    "fontes",
-    "divergencias",
-    "dadosFaltantes",
-    "documentosAnalisados",
-    "observacaoGeral",
-  ],
-  additionalProperties: false,
+  required: ["identificacao","simplesNacional","base","fontes","divergencias","dadosFaltantes","documentosAnalisados","observacaoGeral"],
+  additionalProperties: false
 };
 
 const planejamentoAnaliseSchema = {
@@ -1921,15 +1858,27 @@ Estrutura inspirada na planilha FS® - Planejamento Tributário:
 Meses: jan, fev, mar, abr, mai, jun, jul, ago, set, out, nov, dez.
 
 REGRAS:
-1. Nunca invente valores. Se não estiver comprovado, não preencha.
-2. Diferencie faturamento bruto de base tributável.
-3. PGDAS-D pode sustentar receita, RBT12, Anexo, alíquota efetiva e DAS.
-4. DRE/balancete/razão podem sustentar receitas, custos, despesas e resultado.
-5. Folha/eSocial/pró-labore podem sustentar massa salarial e encargos.
-6. EFD/SPED/XML/apurações podem sustentar ICMS, IPI, PIS, COFINS e créditos.
-7. Registre fonte, competência e confiança de cada dado relevante.
-8. Registre divergências e dados faltantes para comparar Simples, Presumido e Real.
-9. No objeto base retorne somente chaves efetivamente identificadas.
+1. Nunca invente valores.
+2. Como o schema é estrito, todas as chaves devem existir.
+3. Quando um valor não estiver comprovado, retorne null.
+4. Zero só pode ser usado quando o documento comprovar valor zero.
+5. Diferencie faturamento bruto de base tributável.
+6. Em identificacao extraia CNPJ, razão social, abertura, município, UF, regime e regime de apuração.
+7. Em simplesNacional extraia competência, RPA, RBT12, RBA, RBAA, DAS, Anexo, atividade, Fator R e composição do DAS.
+8. Em receitasHistoricas liste TODAS as competências encontradas no formato MM/AAAA.
+9. PGDAS-D pode sustentar receita, RBT12, Anexo, alíquota efetiva e DAS.
+10. DRE/balancete/razão podem sustentar receitas, custos, despesas e resultado.
+11. Folha/eSocial/pró-labore podem sustentar massa salarial e encargos.
+12. EFD/SPED/XML/apurações podem sustentar ICMS, IPI, PIS, COFINS e créditos.
+13. Registre fonte, competência e confiança de cada dado relevante.
+14. Registre divergências e dados faltantes.
+15. Se a declaração disser expressamente prestação de serviços, preencha base.faturamento.servicos. Não duplique a receita em outros grupos.
+16. Preencha parametros.simplesDas na competência correspondente.
+17. aliquotaEfetivaObservada = DAS total / receita do PA * 100, quando ambos estiverem comprovados.
+18. Se o documento disser "Fator r = Não se aplica", retorne fatorRAplicavel=false e fatorR="Não se aplica".
+19. Se constar "Folha de Salários Anteriores: Nenhuma", não conclua que a folha contábil é zero. Registre folha/pró-labore como dado faltante para planejamento, salvo documento específico que comprove zero.
+20. CNAE não deve ser inventado.
+21. Em base.faturamento use jan..dez de 2026 quando esses valores estiverem disponíveis; meses sem comprovação devem ser null.
 `});
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_planejamento_extracao",effort:"medium"});
