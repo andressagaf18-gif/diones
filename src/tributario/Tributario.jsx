@@ -815,6 +815,28 @@ function ReformaTributariaV2({token,onVoltar}){
  function normalizarCnaes(data){const p=data?.cnaePrincipal||data?.cnae?.principal||null,s=data?.cnaesSecundarios||data?.cnae?.secundarios||[],todos=data?.todosCnaes||data?.cnae?.todos||[p,...s].filter(Boolean);return(todos||[]).map((x,i)=>({codigo:String(x?.codigo||x?.cnae||""),descricao:x?.descricao||"",principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&p)})).filter(x=>x.codigo||x.descricao)}
  async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");return{dados:d,cnaes:lista}}
  async function buscarCnpj(){try{setErro("");await consultarCnpj(cnpj);setOk("CNPJ e CNAEs atualizados pela consulta cadastral.")}catch(e){setErro(e.message)}}
+ function adicionarDocumentos(novos){
+  const lista=Array.from(novos||[]);
+  if(!lista.length)return;
+
+  setDocumentos(atuais=>{
+    const mapa=new Map();
+    [...atuais,...lista].forEach(arq=>{
+      const chave=`${arq.name}__${arq.size}__${arq.lastModified}`;
+      if(!mapa.has(chave))mapa.set(chave,arq);
+    });
+    return Array.from(mapa.values());
+  });
+ }
+
+ function removerDocumento(indice){
+  setDocumentos(atuais=>atuais.filter((_,i)=>i!==indice));
+ }
+
+ function limparDocumentos(){
+  setDocumentos([]);
+ }
+
  function aplicarExtracao(x){
   if(!x)return;
   setExtracao(x);
@@ -894,7 +916,48 @@ function ReformaTributariaV2({token,onVoltar}){
 
   {aba==="dados"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados econômicos para simulação</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{field("Receita do período",receita,setReceita,"R$")}{field("Faturamento anual / RBT12",faturamentoAnual,setFaturamentoAnual,"R$")}{field("Compras do período",compras,setCompras,"R$")}{field("Serviços tomados",servicosTomados,setServicosTomados,"R$")}{field("Margem de lucro real estimada %",margem,setMargem,"%")}{field("Folha mensal — empregados",folha,setFolha,"R$")}{field("Pró-labore mensal",proLabore,setProLabore,"R$")}{field("Despesas/custos anuais dedutíveis",despesasDedutiveis,setDespesasDedutiveis,"R$")}{field("Tributos atuais do período",tributosAtuais,setTributosAtuais,"R$")}{field("Créditos atuais",creditosAtuais,setCreditosAtuais,"R$")}{field("Alíquota atual ISS/ICMS %",aliquotaAtual,setAliquotaAtual,"%")}</div></div><div style={card}><h3>Simples Nacional — dados encontrados</h3><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>{field("Anexo",anexoSimples,setAnexoSimples)}{field("Alíquota efetiva %",aliquotaEfetivaSimples,setAliquotaEfetivaSimples,"%")}{field("DAS do período",dasPeriodo,setDasPeriodo,"R$")}{field("Fator R %",fatorR,setFatorR,"%")}</div></div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
 
-  {aba==="documentos"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Documentos para interpretação da IA</h3><input type="file" multiple onChange={e=>setDocumentos(Array.from(e.target.files||[]))}/><p style={{fontSize:9,color:"#697386"}}>{documentos.length} arquivo(s). A IA procura CNPJ, regime, período, receitas, compras, tributos e demais dados comprovados.</p><button onClick={interpretarDocumentos} disabled={extraindo||!documentos.length} style={{padding:"9px 12px",fontWeight:800}}>{extraindo?"Interpretando documentos...":"Interpretar documentos com IA"}</button></div>{extracao&&<div style={card}><h3>Auditoria da extração</h3><p style={{fontSize:9.5}}><b>Documentos:</b> {(extracao.documentosReconhecidos||[]).join(", ")||"-"} · <b>Confiança:</b> {extracao.confiancaGeral||"-"}</p>{(extracao.fontes||[]).map((x,i)=><div key={i} style={{fontSize:9,padding:"5px 0",borderBottom:"1px solid #EEF0F4"}}><b>{x.campo}</b>: {x.valor} <span style={{color:"#697386"}}>({x.documento} · {x.confianca})</span></div>)}{!!extracao.divergencias?.length&&<>{list("Divergências",extracao.divergencias)}</>}{!!extracao.dadosNaoComprovados?.length&&<>{list("Não comprovado nos documentos",extracao.dadosNaoComprovados)}</>}{!!extracao.sugestoesPreenchimentoManual?.length&&<>{list("Complete manualmente para melhorar a análise",extracao.sugestoesPreenchimentoManual)}</>}</div>}</div>}
+  {aba==="documentos"&&<div style={{display:"grid",gap:10}}><div style={card}>
+   <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}>
+    <div>
+     <h3 style={{margin:"0 0 4px"}}>Documentos para interpretação da IA</h3>
+     <p style={{fontSize:9,color:"#697386",margin:0}}>Você pode adicionar arquivos em momentos diferentes. Os novos anexos serão somados aos que já estão na lista.</p>
+    </div>
+    <span style={{background:"#EEF3FF",color:"#31589C",borderRadius:999,padding:"5px 8px",fontSize:9,fontWeight:900}}>{documentos.length} arquivo(s)</span>
+   </div>
+
+   <label style={{display:"inline-flex",alignItems:"center",gap:7,marginTop:12,padding:"9px 12px",border:"1px dashed #AEB8C8",borderRadius:9,background:"#F8FAFD",fontSize:10,fontWeight:800,cursor:"pointer"}}>
+    + Adicionar documentos
+    <input
+     type="file"
+     multiple
+     accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json,.xml,.md,.png,.jpg,.jpeg"
+     style={{display:"none"}}
+     onChange={e=>{
+      adicionarDocumentos(e.target.files);
+      e.target.value="";
+     }}
+    />
+   </label>
+
+   {!!documentos.length&&<div style={{display:"grid",gap:6,marginTop:10}}>
+    {documentos.map((arq,i)=><div key={`${arq.name}_${arq.size}_${arq.lastModified}_${i}`} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",padding:"8px 9px",border:"1px solid #E7EAF0",borderRadius:8,background:"#FBFCFE"}}>
+     <div style={{minWidth:0}}>
+      <div style={{fontSize:9.5,fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{arq.name}</div>
+      <div style={{fontSize:8,color:"#697386"}}>{(arq.size/1024/1024).toFixed(2)} MB</div>
+     </div>
+     <button type="button" onClick={()=>removerDocumento(i)} disabled={extraindo} style={{border:"1px solid #F0C7BD",background:"#FFF6F3",color:"#A5422A",borderRadius:7,padding:"5px 8px",fontSize:8.5,fontWeight:800,cursor:"pointer"}}>Remover</button>
+    </div>)}
+   </div>}
+
+   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:10}}>
+    <button onClick={interpretarDocumentos} disabled={extraindo||!documentos.length} style={{padding:"9px 12px",fontWeight:800}}>
+     {extraindo?"Interpretando documentos...":extracao?"Reinterpretar todos os documentos":"Interpretar documentos com IA"}
+    </button>
+    {!!documentos.length&&<button type="button" onClick={limparDocumentos} disabled={extraindo} style={{padding:"9px 12px",fontWeight:800,border:"1px solid #D8DEEA",background:"#fff",borderRadius:7,cursor:"pointer"}}>Limpar lista</button>}
+   </div>
+
+   <p style={{fontSize:8.5,color:"#697386",margin:"8px 0 0"}}>Ao adicionar um novo arquivo depois da primeira análise, clique em <b>Reinterpretar todos os documentos</b> para a IA consolidar os anexos antigos + novos.</p>
+  </div>{extracao&&<div style={card}><h3>Auditoria da extração</h3><p style={{fontSize:9.5}}><b>Documentos:</b> {(extracao.documentosReconhecidos||[]).join(", ")||"-"} · <b>Confiança:</b> {extracao.confiancaGeral||"-"}</p>{(extracao.fontes||[]).map((x,i)=><div key={i} style={{fontSize:9,padding:"5px 0",borderBottom:"1px solid #EEF0F4"}}><b>{x.campo}</b>: {x.valor} <span style={{color:"#697386"}}>({x.documento} · {x.confianca})</span></div>)}{!!extracao.divergencias?.length&&<>{list("Divergências",extracao.divergencias)}</>}{!!extracao.dadosNaoComprovados?.length&&<>{list("Não comprovado nos documentos",extracao.dadosNaoComprovados)}</>}{!!extracao.sugestoesPreenchimentoManual?.length&&<>{list("Complete manualmente para melhorar a análise",extracao.sugestoesPreenchimentoManual)}</>}</div>}</div>}
 
   {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",analise.dadosFaltantes)}</>}</div>}
 
