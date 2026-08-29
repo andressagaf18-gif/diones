@@ -1806,50 +1806,68 @@ const planejamentoExtracaoSchema = {
 const planejamentoConferenciaSchema = {
   type: "object",
   properties: {
-    statusBase: {
-      type: "string",
-      enum: ["COMPLETA", "PARCIAL", "INSUFICIENTE"]
-    },
-    confiancaGeral: {
-      type: "string",
-      enum: ["ALTA", "MEDIA", "BAIXA"]
-    },
+    statusBase: { type: "string", enum: ["COMPLETA", "PARCIAL", "INSUFICIENTE"] },
+    confiancaGeral: { type: "string", enum: ["ALTA", "MEDIA", "BAIXA"] },
     regimeAtualConfirmado: { type: "string" },
     podeCompararRegimes: { type: "boolean" },
     resumo: { type: "string" },
-    alteracoesDetectadas: {
-      type: "array",
-      items: { type: "string" }
+    alteracoesDetectadas: { type: "array", items: { type: "string" } },
+    dadosConfirmados: { type: "array", items: { type: "string" } },
+    pontosValidacao: { type: "array", items: { type: "string" } },
+    dadosFaltantes: { type: "array", items: { type: "string" } },
+    naoAplicaveis: { type: "array", items: { type: "string" } },
+    periodosNaoExigiveis: { type: "array", items: { type: "string" } },
+    alertasCalculo: { type: "array", items: { type: "string" } },
+    qualidadeBase: {
+      type: "object",
+      properties: {
+        documentalPct: { type: "number" },
+        cadastralPct: { type: "number" },
+        manualPct: { type: "number" },
+        calculadoPct: { type: "number" },
+        pendentePct: { type: "number" },
+        observacao: { type: "string" }
+      },
+      required: ["documentalPct","cadastralPct","manualPct","calculadoPct","pendentePct","observacao"],
+      additionalProperties: false
     },
-    dadosConfirmados: {
+    premissas: { type: "array", items: { type: "string" } },
+    beneficiosFiscais: {
       type: "array",
-      items: { type: "string" }
+      items: {
+        type: "object",
+        properties: {
+          nome: { type: "string" },
+          tributo: { type: "string" },
+          situacao: { type: "string", enum: ["APLICAVEL","POTENCIAL_VALIDAR","NAO_APLICAVEL","NAO_IDENTIFICADO"] },
+          descricao: { type: "string" },
+          requisitos: { type: "array", items: { type: "string" } },
+          fundamentoLegal: { type: "string" },
+          artigo: { type: "string" },
+          vigencia: { type: "string" },
+          fonteOficial: { type: "string" },
+          jurisprudencia: { type: "string" },
+          efeitoFinanceiro: { type: ["number","null"] },
+          observacao: { type: "string" }
+        },
+        required: ["nome","tributo","situacao","descricao","requisitos","fundamentoLegal","artigo","vigencia","fonteOficial","jurisprudencia","efeitoFinanceiro","observacao"],
+        additionalProperties: false
+      }
     },
-    pontosValidacao: {
-      type: "array",
-      items: { type: "string" }
-    },
-    dadosFaltantes: {
-      type: "array",
-      items: { type: "string" }
-    },
-    alertasCalculo: {
-      type: "array",
-      items: { type: "string" }
+    riscosTributarios: { type: "array", items: { type: "string" } },
+    oportunidades: { type: "array", items: { type: "string" } },
+    planoAcao: {
+      type: "object",
+      properties: {
+        imediato: { type: "array", items: { type: "string" } },
+        antesMudancaRegime: { type: "array", items: { type: "string" } },
+        acompanhamento: { type: "array", items: { type: "string" } }
+      },
+      required: ["imediato","antesMudancaRegime","acompanhamento"],
+      additionalProperties: false
     }
   },
-  required: [
-    "statusBase",
-    "confiancaGeral",
-    "regimeAtualConfirmado",
-    "podeCompararRegimes",
-    "resumo",
-    "alteracoesDetectadas",
-    "dadosConfirmados",
-    "pontosValidacao",
-    "dadosFaltantes",
-    "alertasCalculo"
-  ],
+  required: ["statusBase","confiancaGeral","regimeAtualConfirmado","podeCompararRegimes","resumo","alteracoesDetectadas","dadosConfirmados","pontosValidacao","dadosFaltantes","naoAplicaveis","periodosNaoExigiveis","alertasCalculo","qualidadeBase","premissas","beneficiosFiscais","riscosTributarios","oportunidades","planoAcao"],
   additionalProperties: false
 };
 
@@ -1976,20 +1994,31 @@ ORIGEM:
 ${String(body.origem || "")}
 
 REGRAS:
-1. Identifique mudanças relevantes entre a extração original e a base atual.
-2. Alteração manual não é erro por si só; deve ser registrada para rastreabilidade.
-3. Confirme o que está suportado por documento, consulta cadastral ou preenchimento manual.
-4. Aponte divergências de faturamento, regime, folha, Fator R, custos, despesas e créditos.
-5. Se faltarem custos/despesas/créditos, diga que Lucro Real pode estar distorcido.
-6. Se Simples estiver baseado apenas em alíquota observada do DAS, registre essa limitação.
-7. Se CNAE/atividade real estiverem inconsistentes, bloqueie a conclusão.
-8. "podeCompararRegimes" só pode ser true quando houver base mínima razoável para comparação.
-9. Mesmo que possa comparar, deixe claro o que ainda precisa validação profissional.
-10. O status:
-   - COMPLETA = base suficientemente documentada/conferida;
-   - PARCIAL = pode avançar com ressalvas;
-   - INSUFICIENTE = não deve servir para recomendação final.
-`,
+1. A data de referência é a data atual do servidor: ${new Date().toISOString().slice(0,10)}.
+2. Nunca classifique mês futuro como dado faltante. Coloque-o em periodosNaoExigiveis.
+3. Mês corrente ainda não encerrado não deve ser exigido como faturamento definitivo.
+4. Se CNAE, descrição operacional ou outro dado já estiver preenchido na BASE ATUAL/ATIVIDADES, não o repita como pendência; registre como dado manual quando não houver documento.
+5. Diferencie: DADO FALTANTE, NÃO APLICÁVEL, PERÍODO NÃO EXIGÍVEL e DADO INFORMADO MANUALMENTE.
+6. Alteração manual não é erro; registre-a para rastreabilidade.
+7. Não exija estoque de empresa sem operação com estoque. Não exija ICMS/IPI quando não aplicáveis.
+8. Custos, despesas, folha, retenções e créditos só são pendências quando materialmente necessários ao regime/operação.
+9. Se faltarem custos/despesas/créditos relevantes, alerte que o Lucro Real pode estar distorcido.
+10. Se o Simples usar somente alíquota observada histórica, registre a limitação.
+11. Incompatibilidade entre CNAE e atividade real deve ir para validação e pode bloquear recomendação final.
+12. podeCompararRegimes pode ser true em base PARCIAL apenas para simulação preliminar.
+13. qualidadeBase representa cobertura/origem dos dados, não uma falsa precisão estatística. Explique a metodologia.
+14. Registre em premissas a competência de corte, dados manuais, projeções e limitações.
+15. Benefício fiscal nunca pode ser afirmado apenas pelo CNAE. Considere atividade real, operação, município/UF, regime e requisitos.
+16. Não invente lei, artigo, jurisprudência, súmula, tema, processo, solução de consulta ou fonte.
+17. Só marque benefício como APLICAVEL quando houver fundamento jurídico identificável e requisitos compatíveis.
+18. Sem fonte jurídica verificável no contexto, use POTENCIAL_VALIDAR ou NAO_IDENTIFICADO e escreva "Pesquisa jurídica externa necessária".
+19. fonteOficial deve identificar o órgão/fonte, mas não invente URL.
+20. jurisprudencia só deve conter precedente conhecido no contexto; caso contrário: "Não pesquisada nesta etapa".
+21. efeitoFinanceiro deve ser null sem base objetiva suficiente.
+22. Não misture IBS/CBS/Reforma Tributária nesta conferência.
+23. Riscos, oportunidades e plano de ação devem decorrer somente dos dados disponíveis.
+24. Nunca transforme ausência documental em zero.
+25. Quando não houver suporte, declare a necessidade de validação/pesquisa.`,
     },
   ];
 
