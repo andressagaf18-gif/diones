@@ -2225,18 +2225,17 @@ const reformaExtracaoSchema = {
       properties: {
         cnpj: { type: ["string", "null"] },
         razaoSocial: { type: ["string", "null"] },
+        nomeFantasia: { type: ["string", "null"] },
         municipio: { type: ["string", "null"] },
         uf: { type: ["string", "null"] },
         regime: { type: ["string", "null"] },
-        competencia: { type: ["string", "null"] }
+        competencia: { type: ["string", "null"] },
+        periodoInicial: { type: ["string", "null"] },
+        periodoFinal: { type: ["string", "null"] }
       },
       required: [
-        "cnpj",
-        "razaoSocial",
-        "municipio",
-        "uf",
-        "regime",
-        "competencia"
+        "cnpj","razaoSocial","nomeFantasia","municipio","uf","regime",
+        "competencia","periodoInicial","periodoFinal"
       ],
       additionalProperties: false
     },
@@ -2245,32 +2244,61 @@ const reformaExtracaoSchema = {
       type: "object",
       properties: {
         descricao: { type: ["string", "null"] },
+        setorAtividade: { type: ["string", "null"] },
+        tipoEstabelecimento: { type: ["string", "null"] },
         b2bPct: { type: ["number", "null"] },
-        b2cPct: { type: ["number", "null"] }
+        b2cPct: { type: ["number", "null"] },
+        exportacaoPct: { type: ["number", "null"] },
+        possuiFiliais: { type: ["boolean", "null"] },
+        quantidadeEstabelecimentos: { type: ["number", "null"] },
+        municipiosOperacao: { type: "array", items: { type: "string" } },
+        ufsOperacao: { type: "array", items: { type: "string" } }
       },
       required: [
-        "descricao",
-        "b2bPct",
-        "b2cPct"
+        "descricao","setorAtividade","tipoEstabelecimento","b2bPct","b2cPct",
+        "exportacaoPct","possuiFiliais","quantidadeEstabelecimentos",
+        "municipiosOperacao","ufsOperacao"
       ],
       additionalProperties: false
     },
 
-    valores: {
+    economicos: {
       type: "object",
       properties: {
-        receita: { type: ["number", "null"] },
-        compras: { type: ["number", "null"] },
-        servicosTomados: { type: ["number", "null"] },
-        creditosAtuais: { type: ["number", "null"] },
-        tributosAtuais: { type: ["number", "null"] }
+        receitaPeriodo: { type: ["number", "null"] },
+        faturamentoAnual: { type: ["number", "null"] },
+        faturamentoMensalMedio: { type: ["number", "null"] },
+        comprasPeriodo: { type: ["number", "null"] },
+        servicosTomadosPeriodo: { type: ["number", "null"] },
+        custosDespesasPeriodo: { type: ["number", "null"] },
+        custosDespesasAnuais: { type: ["number", "null"] },
+        margemLucroPct: { type: ["number", "null"] },
+        folhaMensal: { type: ["number", "null"] },
+        proLaboreMensal: { type: ["number", "null"] },
+        folha12Meses: { type: ["number", "null"] },
+        rbt12: { type: ["number", "null"] }
       },
       required: [
-        "receita",
-        "compras",
-        "servicosTomados",
-        "creditosAtuais",
-        "tributosAtuais"
+        "receitaPeriodo","faturamentoAnual","faturamentoMensalMedio",
+        "comprasPeriodo","servicosTomadosPeriodo","custosDespesasPeriodo",
+        "custosDespesasAnuais","margemLucroPct","folhaMensal","proLaboreMensal",
+        "folha12Meses","rbt12"
+      ],
+      additionalProperties: false
+    },
+
+    simples: {
+      type: "object",
+      properties: {
+        anexo: { type: ["string", "null"] },
+        faixa: { type: ["string", "null"] },
+        aliquotaEfetivaPct: { type: ["number", "null"] },
+        dasPeriodo: { type: ["number", "null"] },
+        fatorRPct: { type: ["number", "null"] },
+        fatorRAplicavel: { type: ["boolean", "null"] }
+      },
+      required: [
+        "anexo","faixa","aliquotaEfetivaPct","dasPeriodo","fatorRPct","fatorRAplicavel"
       ],
       additionalProperties: false
     },
@@ -2278,22 +2306,40 @@ const reformaExtracaoSchema = {
     tributos: {
       type: "object",
       properties: {
+        totalPeriodo: { type: ["number", "null"] },
         pis: { type: ["number", "null"] },
         cofins: { type: ["number", "null"] },
         icms: { type: ["number", "null"] },
         iss: { type: ["number", "null"] },
         ipi: { type: ["number", "null"] },
         cpp: { type: ["number", "null"] },
-        outros: { type: ["number", "null"] }
+        irpj: { type: ["number", "null"] },
+        csll: { type: ["number", "null"] },
+        outros: { type: ["number", "null"] },
+        aliquotaIssPct: { type: ["number", "null"] },
+        aliquotaIcmsPct: { type: ["number", "null"] },
+        creditosAtuais: { type: ["number", "null"] }
       },
       required: [
-        "pis",
-        "cofins",
-        "icms",
-        "iss",
-        "ipi",
-        "cpp",
-        "outros"
+        "totalPeriodo","pis","cofins","icms","iss","ipi","cpp","irpj","csll",
+        "outros","aliquotaIssPct","aliquotaIcmsPct","creditosAtuais"
+      ],
+      additionalProperties: false
+    },
+
+    tratamentos: {
+      type: "object",
+      properties: {
+        incentivoPisCofins: { type: ["string", "null"] },
+        incentivoIcms: { type: ["string", "null"] },
+        incentivoIss: { type: ["string", "null"] },
+        beneficioSetorial: { type: ["string", "null"] },
+        presuncaoHospitalarIndicadaDocumento: { type: ["boolean", "null"] },
+        observacoes: { type: "array", items: { type: "string" } }
+      },
+      required: [
+        "incentivoPisCofins","incentivoIcms","incentivoIss","beneficioSetorial",
+        "presuncaoHospitalarIndicadaDocumento","observacoes"
       ],
       additionalProperties: false
     },
@@ -2311,21 +2357,10 @@ const reformaExtracaoSchema = {
           campo: { type: "string" },
           valor: { type: "string" },
           documento: { type: "string" },
-          confianca: {
-            type: "string",
-            enum: [
-              "ALTA",
-              "MEDIA",
-              "BAIXA"
-            ]
-          }
+          paginaOuReferencia: { type: ["string", "null"] },
+          confianca: { type: "string", enum: ["ALTA","MEDIA","BAIXA"] }
         },
-        required: [
-          "campo",
-          "valor",
-          "documento",
-          "confianca"
-        ],
+        required: ["campo","valor","documento","paginaOuReferencia","confianca"],
         additionalProperties: false
       }
     },
@@ -2340,26 +2375,21 @@ const reformaExtracaoSchema = {
       items: { type: "string" }
     },
 
+    sugestoesPreenchimentoManual: {
+      type: "array",
+      items: { type: "string" }
+    },
+
     confiancaGeral: {
       type: "string",
-      enum: [
-        "ALTA",
-        "MEDIA",
-        "BAIXA"
-      ]
+      enum: ["ALTA","MEDIA","BAIXA"]
     }
   },
 
   required: [
-    "identificacao",
-    "operacao",
-    "valores",
-    "tributos",
-    "documentosReconhecidos",
-    "fontes",
-    "divergencias",
-    "dadosNaoComprovados",
-    "confiancaGeral"
+    "identificacao","operacao","economicos","simples","tributos","tratamentos",
+    "documentosReconhecidos","fontes","divergencias","dadosNaoComprovados",
+    "sugestoesPreenchimentoManual","confiancaGeral"
   ],
 
   additionalProperties: false
@@ -2436,21 +2466,27 @@ ${JSON.stringify(
 )}
 
 REGRAS OBRIGATÓRIAS:
-1. Identifique CNPJ, razão social, município, UF, regime e competência/período quando constarem nos documentos.
-2. O CNPJ identificado será usado pelo sistema para consultar os CNAEs oficiais. NÃO invente CNAE.
-3. Reconheça, quando possível: PGDAS-D, DAS, SPED/EFD, NF-e, NFS-e, apurações de ICMS/ISS/PIS/Cofins/IPI, DRE, balancete, razão, relatórios de faturamento, compras e vendas.
-4. Extraia receita, compras, serviços tomados, créditos atuais e tributos SOMENTE quando estiverem comprovados.
-5. Se houver composição de tributos, preencha PIS, Cofins, ICMS, ISS, IPI, CPP e outros separadamente.
-6. Ausência de valor NÃO significa zero. Use null.
-7. B2B/B2C só pode ser preenchido se houver comprovação documental ou derivação objetiva e segura.
-8. A descrição operacional pode ser resumida dos documentos, mas sem inventar atividade.
-9. Para cada dado relevante, informe a fonte documental e o nível de confiança.
-10. Registre divergências entre documentos.
-11. CNAE deve permanecer fora da extração da IA. O sistema fará consulta cadastral posterior pelo CNPJ.
-12. NÃO faça análise de IBS/CBS nesta etapa.
-13. NÃO invente alíquota, benefício, enquadramento, classificação fiscal, lei, artigo ou jurisprudência.
-14. Todos os campos do schema devem existir.
-15. Campo sem comprovação = null ou array vazio.
+1. Leia TODOS os arquivos em conjunto e consolide os dados por empresa/período.
+2. Identifique CNPJ, razão social, nome fantasia, município, UF, regime e períodos quando comprovados.
+3. NÃO invente CNAE. O CNPJ será usado depois pelo sistema para consultar CNAEs oficiais.
+4. Reconheça PGDAS-D, DAS, DEFIS, DRE, balancete, razão, SPED/EFD, NF-e, NFS-e, apurações, relatórios de faturamento/compras/vendas/folha e demais documentos fiscais/contábeis.
+5. Preencha a OPERAÇÃO quando houver suporte documental: descrição, setor, empresa única/múltiplos estabelecimentos, municípios/UFs, B2B/B2C e exportação.
+6. Preencha DADOS ECONÔMICOS sempre que o documento permitir: receita do período, faturamento anual/RBT12, média mensal, compras, serviços tomados, custos/despesas, margem, folha, pró-labore e folha 12 meses.
+7. Se houver PGDAS/DAS, extraia Anexo, faixa quando comprovável, alíquota efetiva, DAS e Fator R. NÃO calcule Fator R sem bases suficientes.
+8. Extraia tributos separadamente: PIS, Cofins, ICMS, ISS, IPI, CPP, IRPJ, CSLL, outros, total e créditos atuais.
+9. Se houver alíquota de ISS/ICMS documental, extraia. Não estime alíquota ausente.
+10. Identifique incentivos/benefícios SOMENTE se constarem nos documentos. Não conclua aplicabilidade jurídica nesta etapa.
+11. Margem de lucro só pode ser preenchida quando houver DRE/balancete ou dados suficientes e objetivos. Caso contrário use null.
+12. Faturamento anual pode ser preenchido por valor anual explícito ou RBT12 comprovado. Não anualize um único mês como fato documental.
+13. B2B/B2C somente com documento que permita identificação objetiva dos clientes/vendas. Caso contrário null.
+14. Zero só quando o documento demonstrar zero. Ausência de dado = null.
+15. Para CADA campo relevante preenchido, registre fonte, documento, página/referência se disponível e confiança.
+16. Registre divergências entre documentos, especialmente faturamento, regime, tributos e período.
+17. Em sugestoesPreenchimentoManual, liste os dados importantes para a simulação que não puderam ser comprovados (ex.: margem, folha, pró-labore, B2B/B2C, compras, despesas, alíquota atual).
+18. NÃO faça cálculo de IBS/CBS, recomendação de regime ou pesquisa legal nesta etapa.
+19. NÃO invente benefício, alíquota, lei, artigo, NCM, NBS, classificação fiscal ou jurisprudência.
+20. Todos os campos do schema devem existir.
+21. Campo não comprovado = null, false somente quando comprovadamente falso, ou array vazio.
 `,
   });
 
