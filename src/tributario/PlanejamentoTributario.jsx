@@ -23,7 +23,7 @@ function Mensal({label,mapa,onChange}){
 function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{minWidth:1160}}><div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4}}><span/>{MESES.map(m=><b key={m} style={{fontSize:8.5,textAlign:"center",color:C.muted}}>{ROTULOS[m]}</b>)}<b style={{fontSize:8.5,textAlign:"right",color:C.muted}}>Total</b></div>{children}</div></div>}
 
 export default function PlanejamentoTributario({token,onVoltar}){
- const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
+ const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[conferenciaIa,setConferenciaIa]=useState(null),[conferenciaDesatualizada,setConferenciaDesatualizada]=useState(false),[gerandoConferencia,setGerandoConferencia]=useState(false),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
  const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}});
  const calc=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
 
@@ -31,10 +31,12 @@ export default function PlanejamentoTributario({token,onVoltar}){
   const r=await fetch(`/api/tributario?action=${encodeURIComponent(action)}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const d=await r.json().catch(()=>null); if(!r.ok||!d?.sucesso) throw new Error(d?.error||"Falha na operação."); return d;
  }
- function setMes(path,m,v){setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)][m]=num(v);return c})}
- function setParam(path,v){setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)]=v;return c})}
+ function setMes(path,m,v){setConferenciaDesatualizada(true);setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)][m]=num(v);return c})}
+ function setParam(path,v){setConferenciaDesatualizada(true);setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)]=v;return c})}
  function mergeExtracao(ext){
   setExtracaoResumo(ext||null);
+  setConferenciaIa(null);
+  setConferenciaDesatualizada(false);
 
   if(ext?.identificacao?.cnpj) setCnpj(ext.identificacao.cnpj);
 
@@ -103,6 +105,42 @@ export default function PlanejamentoTributario({token,onVoltar}){
  async function salvar(status="EM_ANALISE"){
   try{await api("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"planejamento",estrutura:"empresa",modalidade:arquivos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:empresa?[{cnpj:digits(cnpj),razaoSocial:empresa.razaoSocial||empresa.razao_social||empresa.nome||""}]:[],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{planejamentoV2:base,crescimento,calculos:calc},status}});setOk("Planejamento salvo.");}catch(e){setErro(e.message)}
  }
+ async function gerarConferenciaIA(){
+  setGerandoConferencia(true);
+  setErro("");
+  setOk("");
+
+  try{
+    const d=await api("planejamento-conferir",{
+      method:"POST",
+      body:{
+        projetoId,
+        cliente:{
+          cnpj:digits(cnpj),
+          razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""
+        },
+        atividades:{
+          cnaesSelecionados:cnaes,
+          atividadePrincipalReal:principal,
+          descricaoOperacao:descricao
+        },
+        base,
+        extracaoOriginal:extracaoResumo,
+        responsavel,
+        origem
+      }
+    });
+
+    setConferenciaIa(d.conferencia);
+    setConferenciaDesatualizada(false);
+    setOk("Nova Conferência IA gerada com base nos dados atuais.");
+  }catch(e){
+    setErro(e?.message||"Não foi possível gerar a nova Conferência IA.");
+  }finally{
+    setGerandoConferencia(false);
+  }
+ }
+
  async function analisar(){
   if(!calc.real?.completo){setErro("Preencha a base antes de gerar a análise.");return} setAnalisando(true);setErro("");
   try{const d=await api("planejamento-analisar",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes,atividadePrincipalReal:principal,descricaoOperacao:descricao},base,calculos:calc,crescimento}});
@@ -118,8 +156,8 @@ export default function PlanejamentoTributario({token,onVoltar}){
   {erro&&<div style={{background:"#FAECE7",color:C.red,padding:10,borderRadius:9,marginBottom:10,fontSize:10}}>{erro}</div>}{ok&&<div style={{background:"#E1F5EE",color:C.green,padding:10,borderRadius:9,marginBottom:10,fontSize:10}}>{ok}</div>}
 
   {aba==="identificacao"&&<div style={{display:"grid",gap:10}}>
-   <Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}><label><b style={{fontSize:9}}>RESPONSÁVEL</b><input value={responsavel} onChange={e=>setResponsavel(e.target.value)} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>ORIGEM</b><input value={origem} onChange={e=>setOrigem(e.target.value)} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>REGIME ATUAL</b><select value={base.parametros.regimeAtual} onChange={e=>setParam(["parametros","regimeAtual"],e.target.value)} style={{...inp,marginTop:4}}><option value="">Selecione</option><option value="SIMPLES_NACIONAL">Simples Nacional</option><option value="LUCRO_PRESUMIDO">Lucro Presumido</option><option value="LUCRO_REAL">Lucro Real</option></select></label></div></Card>
-   <Card><div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:7,alignItems:"end"}}><label><b style={{fontSize:9}}>CNPJ</b><input value={cnpj} onChange={e=>setCnpj(e.target.value)} style={{...inp,marginTop:4}}/></label><Btn onClick={consultar}>Consultar CNPJ</Btn></div>{empresa&&<div style={{marginTop:10,padding:10,background:"#F7F9FC",borderRadius:10}}><strong>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</strong><div style={{fontSize:9,color:C.muted}}>{fmtCnpj(cnpj)}</div><div style={{display:"grid",gap:4,marginTop:8}}>{cnaes.map((x,i)=><label key={i} style={{fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>setPrincipal(x.codigo)}/> <b>{x.codigo}</b> · {x.descricao}</label>)}</div><textarea rows={4} value={descricao} onChange={e=>setDescricao(e.target.value)} placeholder="Descreva o que a empresa realmente faz..." style={{...inp,marginTop:9,fontFamily:BODY}}/></div>}</Card>
+   <Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}><label><b style={{fontSize:9}}>RESPONSÁVEL</b><input value={responsavel} onChange={e=>{setResponsavel(e.target.value);setConferenciaDesatualizada(true)}} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>ORIGEM</b><input value={origem} onChange={e=>{setOrigem(e.target.value);setConferenciaDesatualizada(true)}} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>REGIME ATUAL</b><select value={base.parametros.regimeAtual} onChange={e=>setParam(["parametros","regimeAtual"],e.target.value)} style={{...inp,marginTop:4}}><option value="">Selecione</option><option value="SIMPLES_NACIONAL">Simples Nacional</option><option value="LUCRO_PRESUMIDO">Lucro Presumido</option><option value="LUCRO_REAL">Lucro Real</option></select></label></div></Card>
+   <Card><div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:7,alignItems:"end"}}><label><b style={{fontSize:9}}>CNPJ</b><input value={cnpj} onChange={e=>{setCnpj(e.target.value);setConferenciaDesatualizada(true)}} style={{...inp,marginTop:4}}/></label><Btn onClick={consultar}>Consultar CNPJ</Btn></div>{empresa&&<div style={{marginTop:10,padding:10,background:"#F7F9FC",borderRadius:10}}><strong>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</strong><div style={{fontSize:9,color:C.muted}}>{fmtCnpj(cnpj)}</div><div style={{display:"grid",gap:4,marginTop:8}}>{cnaes.map((x,i)=><label key={i} style={{fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>{setPrincipal(x.codigo);setConferenciaDesatualizada(true)}}/> <b>{x.codigo}</b> · {x.descricao}</label>)}</div><textarea rows={4} value={descricao} onChange={e=>{setDescricao(e.target.value);setConferenciaDesatualizada(true)}} placeholder="Descreva o que a empresa realmente faz..." style={{...inp,marginTop:9,fontFamily:BODY}}/></div>}</Card>
   </div>}
 
   {aba==="documentos"&&<Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>IA identifica e organiza os documentos</h3><p style={{fontSize:10,color:C.muted}}>PGDAS-D, DRE, balancete, razão, ECD/ECF, SPED, folha, pró-labore, XML e apurações. A IA extrai a base e registra fonte/confiança.</p><input type="file" multiple accept=".pdf,.xlsx,.xls,.csv,.xml,.txt" onChange={e=>setArquivos(Array.from(e.target.files||[]))}/><div style={{display:"grid",gap:4,marginTop:8}}>{arquivos.map((f,i)=><div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:7,fontSize:9.5}}>{f.name} · {(f.size/1024/1024).toFixed(2)} MB</div>)}</div><div style={{marginTop:10}}><Btn disabled={extraindo} onClick={extrair}>{extraindo?"Lendo documentos...":"Extrair base com IA"}</Btn></div></Card>}
@@ -175,6 +213,67 @@ export default function PlanejamentoTributario({token,onVoltar}){
      </Card>
     }
    </>}
+
+   <Card style={{
+    borderColor:conferenciaDesatualizada?"#F0C27B":C.border,
+    background:conferenciaDesatualizada?"#FFF9EE":"#F8FAFD"
+   }}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+     <div>
+      <b style={{color:conferenciaDesatualizada?C.amber:C.navy}}>
+       {conferenciaDesatualizada?"Conferência IA desatualizada":"Conferência IA atual"}
+      </b>
+      <p style={{fontSize:10,color:C.muted,margin:"4px 0 0",lineHeight:1.5}}>
+       {conferenciaDesatualizada
+        ?"Você alterou dados depois da última leitura. Gere uma nova conferência antes de usar o comparativo como base da análise."
+        :"Se alterar faturamento, regime, folha, custos, despesas, CNAEs ou atividade, gere uma nova conferência."}
+      </p>
+     </div>
+
+     <Btn onClick={gerarConferenciaIA} disabled={gerandoConferencia}>
+      {gerandoConferencia?"Gerando nova conferência...":"Gerar nova Conferência IA"}
+     </Btn>
+    </div>
+   </Card>
+
+   {conferenciaIa&&
+    <Card>
+     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Última Conferência IA</h3>
+
+     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}}>
+      <div><small>STATUS</small><b style={{display:"block"}}>{conferenciaIa.statusBase||"-"}</b></div>
+      <div><small>CONFIANÇA</small><b style={{display:"block"}}>{conferenciaIa.confiancaGeral||"-"}</b></div>
+      <div><small>REGIME ATUAL</small><b style={{display:"block"}}>{conferenciaIa.regimeAtualConfirmado||"-"}</b></div>
+      <div><small>PODE COMPARAR?</small><b style={{display:"block",color:conferenciaIa.podeCompararRegimes?C.green:C.red}}>{conferenciaIa.podeCompararRegimes?"SIM":"NÃO"}</b></div>
+     </div>
+
+     <p style={{fontSize:10.5,lineHeight:1.6,margin:"0 0 10px"}}>
+      {conferenciaIa.resumo}
+     </p>
+
+     {Array.isArray(conferenciaIa.alteracoesDetectadas)&&conferenciaIa.alteracoesDetectadas.length>0&&
+      <div style={{marginBottom:10}}>
+       <b style={{fontSize:10}}>Alterações consideradas</b>
+       <ul>{conferenciaIa.alteracoesDetectadas.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul>
+      </div>
+     }
+
+     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+      <div>
+       <b style={{fontSize:10,color:C.green}}>Dados confirmados</b>
+       <ul>{(conferenciaIa.dadosConfirmados||[]).map((x,i)=><li key={i} style={{fontSize:9.5}}>{x}</li>)}</ul>
+      </div>
+      <div>
+       <b style={{fontSize:10,color:C.amber}}>Pontos para validar</b>
+       <ul>{(conferenciaIa.pontosValidacao||[]).map((x,i)=><li key={i} style={{fontSize:9.5}}>{x}</li>)}</ul>
+      </div>
+      <div>
+       <b style={{fontSize:10,color:C.red}}>Dados faltantes</b>
+       <ul>{(conferenciaIa.dadosFaltantes||[]).map((x,i)=><li key={i} style={{fontSize:9.5}}>{x}</li>)}</ul>
+      </div>
+     </div>
+    </Card>
+   }
 
    <Card>
     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Conferência por fonte</h3>
