@@ -16,6 +16,12 @@ import {
   TrendingUp,
   Users,
   Zap,
+  Calculator,
+  Scale,
+  FileCheck2,
+  ShieldAlert,
+  LogIn,
+  BarChart3,
 } from "lucide-react";
 
 const NAVY = "#17233D";
@@ -27,6 +33,11 @@ function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
+
+function txt(v) {
+  return String(v ?? "").trim();
+}
+
 
 function Card({ children, style = {} }) {
   return (
@@ -90,14 +101,28 @@ export default function Dashboard({
   const [carregando, setCarregando] = useState(true);
   const [origem, setOrigem] = useState("TODAS");
 
+  // Complemento isolado: não altera os dados comerciais já existentes.
+  const [tributario, setTributario] = useState({ projetos: [] });
+  const [avisoTributario, setAvisoTributario] = useState("");
+  const [sessaoExpirada, setSessaoExpirada] = useState(false);
+
   async function carregar() {
     setCarregando(true);
     setErro("");
+    setAvisoTributario("");
+    setSessaoExpirada(false);
 
     try {
       const token =
         sessionStorage.getItem("finder_admin_token") || "";
 
+      if (!token) {
+        setSessaoExpirada(true);
+        setErro("Sua sessão não está disponível. Entre novamente.");
+        return;
+      }
+
+      // DASHBOARD COMERCIAL — fluxo atual preservado.
       const r = await fetch(
         "/api/crm?action=dashboard",
         {
@@ -109,11 +134,61 @@ export default function Dashboard({
 
       const d = await r.json().catch(() => null);
 
+      if (r.status === 401 || r.status === 403) {
+        sessionStorage.removeItem("finder_admin_token");
+        sessionStorage.removeItem("finder_admin_user");
+        setSessaoExpirada(true);
+        throw new Error(
+          "Sua sessão expirou ou deixou de ser válida. Entre novamente."
+        );
+      }
+
       if (!r.ok) {
         throw new Error(d?.error || "Erro ao carregar dashboard.");
       }
 
       setDados(d?.dashboard || d?.dados || d || {});
+
+      // INTELIGÊNCIA TRIBUTÁRIA — consulta separada.
+      // Se falhar, NÃO derruba o Dashboard comercial.
+      try {
+        const rt = await fetch(
+          "/api/tributario?action=listar-projetos&arquivamento=ATIVOS",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const dt = await rt.json().catch(() => null);
+
+        if (rt.status === 401 || rt.status === 403) {
+          sessionStorage.removeItem("finder_admin_token");
+          sessionStorage.removeItem("finder_admin_user");
+          setSessaoExpirada(true);
+          throw new Error("Sessão tributária inválida.");
+        }
+
+        if (!rt.ok || !dt?.sucesso) {
+          throw new Error(
+            dt?.error ||
+              "Não foi possível carregar a Inteligência Tributária."
+          );
+        }
+
+        setTributario({
+          projetos: Array.isArray(dt.projetos)
+            ? dt.projetos
+            : [],
+        });
+      } catch (e) {
+        setAvisoTributario(
+          e?.message ||
+            "Inteligência Tributária indisponível."
+        );
+        setTributario({ projetos: [] });
+      }
     } catch (e) {
       setErro(e?.message || "Erro ao carregar dashboard.");
     } finally {
@@ -185,6 +260,62 @@ export default function Dashboard({
           origem.toLowerCase()
       );
 
+
+  const tax = useMemo(() => {
+    const projetos = tributario.projetos || [];
+
+    const tipo = (x) =>
+      txt(x.tipoProjeto).toLowerCase();
+
+    const status = (x) =>
+      txt(x.status).toUpperCase();
+
+    const reforma = projetos.filter(
+      (x) => tipo(x) === "reforma"
+    );
+
+    const planejamento = projetos.filter(
+      (x) => tipo(x) === "planejamento"
+    );
+
+    const comDiagnostico = projetos.filter(
+      (x) =>
+        num(x.versaoAtual) > 0 ||
+        ["DIAGNOSTICO_GERADO", "VALIDADO"].includes(
+          status(x)
+        )
+    );
+
+    const validados = projetos.filter(
+      (x) =>
+        status(x) === "VALIDADO" ||
+        Boolean(txt(x.validadoPorNome))
+    );
+
+    const pendentes = projetos.filter(
+      (x) =>
+        !["VALIDADO", "CONCLUIDO"].includes(
+          status(x)
+        )
+    );
+
+    return {
+      total: projetos.length,
+      reforma: reforma.length,
+      planejamento: planejamento.length,
+      comDiagnostico: comDiagnostico.length,
+      validados: validados.length,
+      pendentes: pendentes.length,
+      recentes: [...projetos]
+        .sort(
+          (a, b) =>
+            new Date(b.atualizadoEm || 0) -
+            new Date(a.atualizadoEm || 0)
+        )
+        .slice(0, 6),
+    };
+  }, [tributario]);
+
   if (carregando) {
     return (
       <main style={{ maxWidth: 1320, margin: "0 auto", padding: 24 }}>
@@ -210,9 +341,51 @@ export default function Dashboard({
             padding: 10,
             borderRadius: 9,
             marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
           }}
         >
-          {erro}
+          <span>{erro}</span>
+
+          {sessaoExpirada && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{
+                border: 0,
+                background: NAVY,
+                color: WHITE,
+                borderRadius: 8,
+                padding: "7px 10px",
+                fontSize: 9,
+                fontWeight: 800,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <LogIn size={13} />
+              Entrar novamente
+            </button>
+          )}
+        </div>
+      )}
+
+      {avisoTributario && !sessaoExpirada && (
+        <div
+          style={{
+            background: "#FFF8E7",
+            color: "#805B10",
+            padding: 9,
+            borderRadius: 9,
+            marginBottom: 12,
+            fontSize: 10,
+          }}
+        >
+          {avisoTributario}
         </div>
       )}
 
@@ -264,6 +437,152 @@ export default function Dashboard({
         <Kpi titulo="CRÍTICOS" valor={n.criticos} subtitulo="Prioridade comercial" Icon={AlertTriangle} />
         <Kpi titulo="REFORMA TRIBUTÁRIA" valor={n.reforma} subtitulo="Interesse consultivo" Icon={Zap} destaque />
       </div>
+
+      <Card
+        style={{
+          marginBottom: 14,
+          borderTop: `4px solid ${CORAL}`,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 900,
+                color: CORAL,
+              }}
+            >
+              INTELIGÊNCIA TRIBUTÁRIA
+            </div>
+
+            <h3 style={{ margin: "3px 0" }}>
+              Reforma Tributária + Planejamento
+            </h3>
+
+            <div
+              style={{
+                fontSize: 10,
+                color: MUTED,
+              }}
+            >
+              Projetos efetivamente salvos no módulo tributário.
+            </div>
+          </div>
+
+          <BarChart3 size={21} color={CORAL} />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(160px,1fr))",
+            gap: 8,
+          }}
+        >
+          <Kpi
+            titulo="PROJETOS ATIVOS"
+            valor={tax.total}
+            subtitulo="Base tributária ativa"
+            Icon={Calculator}
+          />
+
+          <Kpi
+            titulo="REFORMA IBS/CBS"
+            valor={tax.reforma}
+            subtitulo="Projetos de Reforma"
+            Icon={Zap}
+            destaque
+          />
+
+          <Kpi
+            titulo="PLANEJAMENTO"
+            valor={tax.planejamento}
+            subtitulo="Regime e eficiência"
+            Icon={Scale}
+          />
+
+          <Kpi
+            titulo="COM DIAGNÓSTICO"
+            valor={tax.comDiagnostico}
+            subtitulo="Versão gerada"
+            Icon={FileCheck2}
+          />
+
+          <Kpi
+            titulo="VALIDADOS"
+            valor={tax.validados}
+            subtitulo="Validação técnica"
+            Icon={CheckCircle2}
+          />
+
+          <Kpi
+            titulo="PENDENTES"
+            valor={tax.pendentes}
+            subtitulo="Exigem continuidade"
+            Icon={ShieldAlert}
+          />
+        </div>
+
+        {!!tax.recentes.length && (
+          <div style={{ marginTop: 14 }}>
+            <strong style={{ fontSize: 11 }}>
+              Projetos tributários recentes
+            </strong>
+
+            <div style={{ marginTop: 6 }}>
+              {tax.recentes.map((p, i) => (
+                <div
+                  key={p.id || i}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "1.5fr .7fr .8fr",
+                    gap: 8,
+                    padding: "7px 0",
+                    borderBottom:
+                      "1px solid #EEF0F4",
+                    fontSize: 9.5,
+                  }}
+                >
+                  <div>
+                    <strong>
+                      {p.clienteNome ||
+                        p.cnpj ||
+                        "Cliente não identificado"}
+                    </strong>
+
+                    <div style={{ color: MUTED }}>
+                      {p.responsavelFinder ||
+                        "Sem responsável"}
+                    </div>
+                  </div>
+
+                  <span>
+                    {txt(p.tipoProjeto).toLowerCase() ===
+                    "reforma"
+                      ? "Reforma"
+                      : "Planejamento"}
+                  </span>
+
+                  <span>
+                    {p.status || "EM_ANALISE"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
 
       <div
         style={{
