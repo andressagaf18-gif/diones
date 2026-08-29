@@ -1803,6 +1803,56 @@ const planejamentoExtracaoSchema = {
   additionalProperties: false
 };
 
+const planejamentoConferenciaSchema = {
+  type: "object",
+  properties: {
+    statusBase: {
+      type: "string",
+      enum: ["COMPLETA", "PARCIAL", "INSUFICIENTE"]
+    },
+    confiancaGeral: {
+      type: "string",
+      enum: ["ALTA", "MEDIA", "BAIXA"]
+    },
+    regimeAtualConfirmado: { type: "string" },
+    podeCompararRegimes: { type: "boolean" },
+    resumo: { type: "string" },
+    alteracoesDetectadas: {
+      type: "array",
+      items: { type: "string" }
+    },
+    dadosConfirmados: {
+      type: "array",
+      items: { type: "string" }
+    },
+    pontosValidacao: {
+      type: "array",
+      items: { type: "string" }
+    },
+    dadosFaltantes: {
+      type: "array",
+      items: { type: "string" }
+    },
+    alertasCalculo: {
+      type: "array",
+      items: { type: "string" }
+    }
+  },
+  required: [
+    "statusBase",
+    "confiancaGeral",
+    "regimeAtualConfirmado",
+    "podeCompararRegimes",
+    "resumo",
+    "alteracoesDetectadas",
+    "dadosConfirmados",
+    "pontosValidacao",
+    "dadosFaltantes",
+    "alertasCalculo"
+  ],
+  additionalProperties: false
+};
+
 const planejamentoAnaliseSchema = {
   type:"object",
   properties:{
@@ -1884,6 +1934,109 @@ REGRAS:
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_planejamento_extracao",effort:"medium"});
     return send(res,200,{sucesso:true,modelo:MODEL,extracao:result,usage});
   }catch(error){console.error("[tributario][planejamento-extrair]",error);return send(res,500,{sucesso:false,error:error?.message||"Não foi possível extrair a base do planejamento."});}
+}
+
+async function planejamentoConferir(
+  req,
+  res
+) {
+  const body =
+    req.body ||
+    {};
+
+  const content = [
+    {
+      type: "input_text",
+      text: `
+Você é o Finder Tax AI atuando como CONFERENTE de um Planejamento Tributário.
+
+IMPORTANTE:
+- NÃO trate IBS, CBS ou transição da Reforma Tributária.
+- NÃO recalcule tributos livremente.
+- NÃO invente valores.
+- Compare a extração documental original com a BASE ATUAL, que pode ter sido alterada manualmente pelo consultor.
+- Sua função é dizer se a base atual continua coerente para seguir ao comparativo Simples x Presumido x Real.
+
+CLIENTE:
+${JSON.stringify(body.cliente || {}, null, 2)}
+
+ATIVIDADES:
+${JSON.stringify(body.atividades || {}, null, 2)}
+
+EXTRAÇÃO ORIGINAL DOS DOCUMENTOS:
+${JSON.stringify(body.extracaoOriginal || {}, null, 2).slice(0, 70000)}
+
+BASE ATUAL APÓS ALTERAÇÕES:
+${JSON.stringify(body.base || {}, null, 2).slice(0, 90000)}
+
+RESPONSÁVEL:
+${String(body.responsavel || "")}
+
+ORIGEM:
+${String(body.origem || "")}
+
+REGRAS:
+1. Identifique mudanças relevantes entre a extração original e a base atual.
+2. Alteração manual não é erro por si só; deve ser registrada para rastreabilidade.
+3. Confirme o que está suportado por documento, consulta cadastral ou preenchimento manual.
+4. Aponte divergências de faturamento, regime, folha, Fator R, custos, despesas e créditos.
+5. Se faltarem custos/despesas/créditos, diga que Lucro Real pode estar distorcido.
+6. Se Simples estiver baseado apenas em alíquota observada do DAS, registre essa limitação.
+7. Se CNAE/atividade real estiverem inconsistentes, bloqueie a conclusão.
+8. "podeCompararRegimes" só pode ser true quando houver base mínima razoável para comparação.
+9. Mesmo que possa comparar, deixe claro o que ainda precisa validação profissional.
+10. O status:
+   - COMPLETA = base suficientemente documentada/conferida;
+   - PARCIAL = pode avançar com ressalvas;
+   - INSUFICIENTE = não deve servir para recomendação final.
+`,
+    },
+  ];
+
+  try {
+    const {
+      result,
+      usage,
+    } =
+      await respostaPlanejamentoIA({
+        content,
+        schema:
+          planejamentoConferenciaSchema,
+        nomeSchema:
+          "finder_planejamento_conferencia",
+        effort:
+          "medium",
+      });
+
+    return send(
+      res,
+      200,
+      {
+        sucesso: true,
+        modelo: MODEL,
+        conferencia: result,
+        usage,
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "[tributario][planejamento-conferir]",
+      error
+    );
+
+    return send(
+      res,
+      500,
+      {
+        sucesso: false,
+        error:
+          error?.message ||
+          "Não foi possível gerar a nova Conferência IA.",
+      }
+    );
+  }
 }
 
 async function planejamentoAnalisar(req,res){
@@ -2047,6 +2200,34 @@ export default async function handler(
     ) {
       if (!process.env.OPENAI_API_KEY) return send(res,500,{sucesso:false,error:"OPENAI_API_KEY não configurada."});
       return await planejamentoExtrair(req,res);
+    }
+
+    if (
+      action ===
+      "planejamento-conferir" &&
+      req.method ===
+      "POST"
+    ) {
+      if (
+        !process.env
+          .OPENAI_API_KEY
+      ) {
+        return send(
+          res,
+          500,
+          {
+            sucesso:
+              false,
+            error:
+              "OPENAI_API_KEY não configurada.",
+          }
+        );
+      }
+
+      return await planejamentoConferir(
+        req,
+        res
+      );
     }
 
     if (
