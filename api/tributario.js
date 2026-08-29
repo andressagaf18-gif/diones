@@ -156,6 +156,9 @@ async function ensureSchema() {
               atividades JSONB NOT NULL DEFAULT '{}'::jsonb,
               dados_manuais JSONB NOT NULL DEFAULT '{}'::jsonb,
               status TEXT NOT NULL DEFAULT 'EM_ANALISE',
+              arquivado BOOLEAN NOT NULL DEFAULT FALSE,
+              arquivado_em TIMESTAMPTZ,
+              arquivado_por_nome TEXT NOT NULL DEFAULT '',
               versao_atual INTEGER NOT NULL DEFAULT 0,
               criado_por_id TEXT NOT NULL DEFAULT '',
               criado_por_nome TEXT NOT NULL DEFAULT '',
@@ -165,6 +168,21 @@ async function ensureSchema() {
               criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
               atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
+        `;
+
+        await sql`
+          ALTER TABLE tax_projects
+          ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT FALSE
+        `;
+
+        await sql`
+          ALTER TABLE tax_projects
+          ADD COLUMN IF NOT EXISTS arquivado_em TIMESTAMPTZ
+        `;
+
+        await sql`
+          ALTER TABLE tax_projects
+          ADD COLUMN IF NOT EXISTS arquivado_por_nome TEXT NOT NULL DEFAULT ''
         `;
 
         await sql`
@@ -662,6 +680,13 @@ async function listarProjetos(
       80
     );
 
+  const arquivamento =
+    txt(
+      req.query?.arquivamento ||
+      "ATIVOS",
+      30
+    ).toUpperCase();
+
   const like =
     `%${busca}%`;
 
@@ -675,6 +700,9 @@ async function listarProjetos(
         cliente_nome,
         cnpj,
         status,
+        arquivado,
+        arquivado_em,
+        arquivado_por_nome,
         versao_atual,
         criado_por_nome,
         validado_por_nome,
@@ -704,6 +732,17 @@ async function listarProjetos(
           OR status =
             ${status}
         )
+        AND (
+          ${arquivamento} = 'TODOS'
+          OR (
+            ${arquivamento} = 'ARQUIVADOS'
+            AND arquivado = TRUE
+          )
+          OR (
+            ${arquivamento} = 'ATIVOS'
+            AND arquivado = FALSE
+          )
+        )
       ORDER BY
         atualizado_em DESC
       LIMIT 300
@@ -731,6 +770,12 @@ async function listarProjetos(
               row.cnpj,
             status:
               row.status,
+            arquivado:
+              Boolean(row.arquivado),
+            arquivadoEm:
+              row.arquivado_em,
+            arquivadoPorNome:
+              row.arquivado_por_nome,
             versaoAtual:
               row.versao_atual,
             criadoPorNome:
@@ -871,6 +916,12 @@ async function obterProjeto(
           {},
         status:
           row.status,
+        arquivado:
+          Boolean(row.arquivado),
+        arquivadoEm:
+          row.arquivado_em,
+        arquivadoPorNome:
+          row.arquivado_por_nome,
         versaoAtual:
           row.versao_atual,
         criadoPorNome:
@@ -931,6 +982,71 @@ async function obterProjeto(
       },
     }
   );
+}
+
+async function arquivarProjeto(req,res){
+  await ensureSchema();
+  const body=req.body||{};
+  const id=txt(body.id,200);
+  const arquivado=body.arquivado!==false;
+  const user=authUser(req);
+
+  if(!id) return send(res,400,{sucesso:false,error:"ID do projeto é obrigatório."});
+
+  const rows=await sql`SELECT id, cliente_nome FROM tax_projects WHERE id=${id} LIMIT 1`;
+  if(!rows?.[0]) return send(res,404,{sucesso:false,error:"Projeto não encontrado."});
+
+  await sql`
+    UPDATE tax_projects
+    SET
+      arquivado=${arquivado},
+      arquivado_em=${arquivado ? new Date() : null},
+      arquivado_por_nome=${arquivado ? txt(user?.nome||user?.login||"Usuário",200) : ""},
+      atualizado_em=NOW()
+    WHERE id=${id}
+  `;
+
+  await addHistory(
+    id,
+    arquivado ? "PROJETO_ARQUIVADO" : "PROJETO_REATIVADO",
+    arquivado ? "Inteligência tributária arquivada." : "Inteligência tributária reativada.",
+    {},
+    user
+  );
+
+  return send(res,200,{sucesso:true,arquivado});
+}
+
+async function excluirProjeto(req,res){
+  await ensureSchema();
+  const body=req.body||{};
+  const id=txt(body.id,200);
+  const confirmacao=txt(body.confirmacao,300);
+  const user=authUser(req);
+
+  if(!id) return send(res,400,{sucesso:false,error:"ID do projeto é obrigatório."});
+
+  const rows=await sql`SELECT id, cliente_nome, cnpj FROM tax_projects WHERE id=${id} LIMIT 1`;
+  const projeto=rows?.[0];
+  if(!projeto) return send(res,404,{sucesso:false,error:"Projeto não encontrado."});
+
+  if(confirmacao!=="EXCLUIR"){
+    return send(res,400,{sucesso:false,error:'Para excluir definitivamente, envie confirmação "EXCLUIR".'});
+  }
+
+  // Exclusão definitiva e transacional: histórico/diagnósticos pertencem ao projeto.
+  await sql`DELETE FROM tax_diagnostics WHERE projeto_id=${id}`;
+  await sql`DELETE FROM tax_history WHERE projeto_id=${id}`;
+  await sql`DELETE FROM tax_projects WHERE id=${id}`;
+
+  console.log("[tributario][excluir-projeto]",{
+    id,
+    cliente:projeto.cliente_nome,
+    cnpj:projeto.cnpj,
+    usuario:user?.nome||user?.login||"Usuário"
+  });
+
+  return send(res,200,{sucesso:true,id});
 }
 
 async function validarProjeto(
@@ -2127,6 +2243,24 @@ export default async function handler(
         req,
         res
       );
+    }
+
+    if (
+      action ===
+      "arquivar-projeto" &&
+      req.method ===
+      "POST"
+    ) {
+      return await arquivarProjeto(req,res);
+    }
+
+    if (
+      action ===
+      "excluir-projeto" &&
+      req.method ===
+      "POST"
+    ) {
+      return await excluirProjeto(req,res);
     }
 
     if (
