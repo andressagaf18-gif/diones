@@ -1,178 +1,94 @@
-// DESTINO REAL: /src/tributario/planejamento-engine.js
-// Planejamento Tributário V2 — baseado na estrutura da planilha FS®.
-// NÃO trata IBS/CBS/transição.
+// DESTINO REAL: /src/tributario/PlanejamentoTributario.jsx
+import {useMemo,useState} from "react";
+import {MESES,ROTULOS,baseVazia,num,moeda,pct,comparar,cenario} from "./planejamento-engine";
 
-export const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
-export const ROTULOS = {jan:"Jan",fev:"Fev",mar:"Mar",abr:"Abr",mai:"Mai",jun:"Jun",jul:"Jul",ago:"Ago",set:"Set",out:"Out",nov:"Nov",dez:"Dez"};
+const C={navy:"#17233D",blue:"#31589C",coral:"#FF6B4A",muted:"#5B667A",white:"#fff",bg:"#F6F8FC",border:"#E3E7EF",green:"#0F6E56",red:"#993C1D",amber:"#854F0B"};
+const BODY="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+const DISPLAY="Georgia,'Iowan Old Style','Palatino Linotype',serif";
+const inp={width:"100%",boxSizing:"border-box",border:`1px solid ${C.border}`,borderRadius:9,padding:"8px 9px",background:C.white,color:C.navy,fontFamily:BODY,fontSize:11};
+function Card({children,style={}}){return <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:15,padding:16,...style}}>{children}</div>}
+function Btn({children,onClick,secondary=false,disabled=false}){return <button type="button" onClick={onClick} disabled={disabled} style={{border:secondary?`1px solid ${C.border}`:0,background:secondary?C.white:C.blue,color:secondary?C.navy:C.white,borderRadius:9,padding:"9px 12px",fontWeight:900,cursor:disabled?"not-allowed":"pointer",opacity:disabled?.55:1}}>{children}</button>}
+const digits=v=>String(v||"").replace(/\D/g,"");
+const fmtCnpj=v=>{const d=digits(v);return d.length===14?d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,"$1.$2.$3/$4-$5"):v}
+const fileData=file=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error("Falha ao ler arquivo"));r.readAsDataURL(file)});
 
-export const num = (v) => {
-  if (v === null || v === undefined || v === "") return 0;
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-  const s = String(v).trim();
-  const n = Number(s.includes(",") ? s.replace(/\./g,"").replace(",",".").replace(/[^\d.-]/g,"") : s.replace(/[^\d.-]/g,""));
-  return Number.isFinite(n) ? n : 0;
-};
-
-export const moeda = (v) => num(v).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-export const pct = (v) => `${num(v).toFixed(2).replace(".",",")}%`;
-export const mapaMes = () => Object.fromEntries(MESES.map(m => [m,0]));
-
-export function baseVazia() {
-  return {
-    faturamento:{industria:mapaMes(),comercio:mapaMes(),servicos:mapaMes()},
-    tributos:{pis:mapaMes(),cofins:mapaMes(),icms:mapaMes(),ipi:mapaMes(),iss:mapaMes()},
-    custos:{
-      industria:{estoqueInicial:mapaMes(),insumos:mapaMes(),maoObraDireta:mapaMes(),ggf:mapaMes(),estoqueFinal:mapaMes()},
-      comercio:{estoqueInicial:mapaMes(),compras:mapaMes(),estoqueFinal:mapaMes()},
-      servicos:{servicosInicial:mapaMes(),maoObraDireta:mapaMes(),gastosDiretos:mapaMes(),gastosIndiretos:mapaMes(),servicosFinal:mapaMes()},
-    },
-    despesas:{operacionais:mapaMes(),comerciais:mapaMes(),administrativas:mapaMes(),tributarias:mapaMes(),diretoria:mapaMes(),logistica:mapaMes(),ocupacao:mapaMes(),outras:mapaMes()},
-    folha:{folha13:mapaMes(),proLabore:mapaMes(),inssFgts:mapaMes(),outros:mapaMes(),encargosPatronais:mapaMes()},
-    creditos:{pis:mapaMes(),cofins:mapaMes(),icms:mapaMes(),ipi:mapaMes()},
-    parametros:{
-      regimeAtual:"",
-      simplesAliquotaEfetiva:0,
-      simplesDas:mapaMes(),
-      presumido:{presuncaoIrpj:32,presuncaoCsll:32,pis:0.65,cofins:3,irpj:15,adicionalIrpj:10,limiteAdicionalMensal:20000,csll:9},
-      real:{pis:1.65,cofins:7.6,irpj:15,adicionalIrpj:10,limiteAdicionalMensal:20000,csll:9}
-    },
-    fontes:[],
-    divergencias:[],
-    dadosFaltantes:[]
-  };
+function Mensal({label,mapa,onChange}){
+ const total=MESES.reduce((a,m)=>a+num(mapa[m]),0);
+ return <div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #F0F2F6"}}>
+  <strong style={{fontSize:9.5}}>{label}</strong>
+  {MESES.map(m=><input key={m} type="number" step="0.01" value={mapa[m]??0} onChange={e=>onChange(m,e.target.value)} style={{...inp,padding:"6px 5px"}}/>)}
+  <strong style={{fontSize:9.5,textAlign:"right"}}>{moeda(total)}</strong>
+ </div>
 }
+function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{minWidth:1160}}><div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4}}><span/>{MESES.map(m=><b key={m} style={{fontSize:8.5,textAlign:"center",color:C.muted}}>{ROTULOS[m]}</b>)}<b style={{fontSize:8.5,textAlign:"right",color:C.muted}}>Total</b></div>{children}</div></div>}
 
-const somaMapa = (m={}) => MESES.reduce((a,x)=>a+num(m[x]),0);
-const somaMes = (...mapas) => Object.fromEntries(MESES.map(m=>[m,mapas.reduce((a,x)=>a+num(x?.[m]),0)]));
-const somaGrupo = (obj={}) => Object.values(obj).reduce((acc,m)=>somaMes(acc,m),mapaMes());
+export default function PlanejamentoTributario({token,onVoltar}){
+ const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
+ const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}});
+ const calc=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
 
-export function operacional(base){
-  const receita=somaMes(base.faturamento.industria,base.faturamento.comercio,base.faturamento.servicos);
-  const cpv=Object.fromEntries(MESES.map(m=>[m,
-    num(base.custos.industria.estoqueInicial[m])+num(base.custos.industria.insumos[m])+num(base.custos.industria.maoObraDireta[m])+num(base.custos.industria.ggf[m])-num(base.custos.industria.estoqueFinal[m])
-  ]));
-  const cmv=Object.fromEntries(MESES.map(m=>[m,
-    num(base.custos.comercio.estoqueInicial[m])+num(base.custos.comercio.compras[m])-num(base.custos.comercio.estoqueFinal[m])
-  ]));
-  const csp=Object.fromEntries(MESES.map(m=>[m,
-    num(base.custos.servicos.servicosInicial[m])+num(base.custos.servicos.maoObraDireta[m])+num(base.custos.servicos.gastosDiretos[m])+num(base.custos.servicos.gastosIndiretos[m])-num(base.custos.servicos.servicosFinal[m])
-  ]));
-  const custos=somaMes(cpv,cmv,csp);
-  const despesas=somaGrupo(base.despesas);
-  const massa=somaMes(base.folha.folha13,base.folha.proLabore,base.folha.inssFgts,base.folha.outros);
-  return {
-    receita,cpv,cmv,csp,custos,despesas,massa,
-    totalReceita:somaMapa(receita), totalCustos:somaMapa(custos), totalDespesas:somaMapa(despesas), totalMassa:somaMapa(massa)
-  };
-}
+ async function api(action,{method="GET",body=null}={}){
+  const r=await fetch(`/api/tributario?action=${encodeURIComponent(action)}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const d=await r.json().catch(()=>null); if(!r.ok||!d?.sucesso) throw new Error(d?.error||"Falha na operação."); return d;
+ }
+ function setMes(path,m,v){setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)][m]=num(v);return c})}
+ function setParam(path,v){setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)]=v;return c})}
+ function mergeExtracao(ext){setBase(a=>{const c=JSON.parse(JSON.stringify(a));const merge=(d,s)=>{if(!s||typeof s!=="object")return;Object.entries(s).forEach(([k,v])=>{if(v&&typeof v==="object"&&!Array.isArray(v)&&d[k]&&typeof d[k]==="object"&&!Array.isArray(d[k]))merge(d[k],v);else if(v!==null&&v!==undefined&&v!=="")d[k]=v})};merge(c,ext.base||{});c.fontes=[...(c.fontes||[]),...(ext.fontes||[])];c.divergencias=ext.divergencias||c.divergencias;c.dadosFaltantes=ext.dadosFaltantes||c.dadosFaltantes;return c})}
 
-export function fatorR(base){
-  const o=operacional(base);
-  const fator=o.totalReceita>0?o.totalMassa/o.totalReceita:0;
-  return {rbt12:o.totalReceita,massa:o.totalMassa,fator,percentual:fator*100,atinge28:fator>=0.28};
-}
+ async function consultar(){
+  setErro(""); const d=digits(cnpj); if(d.length!==14){setErro("Informe CNPJ válido.");return}
+  try{const r=await fetch(`/api/cnpj?cnpj=${d}`);const x=await r.json();if(!r.ok)throw new Error(x?.error||"Falha CNPJ");setEmpresa(x);
+   const pr=x.cnaePrincipal||x.cnae?.principal||null,sec=x.cnaesSecundarios||x.cnae?.secundarios||[],todos=x.todosCnaes||x.cnae?.todos||[...(pr?[pr]:[]),...(Array.isArray(sec)?sec:[])];
+   const ns=(Array.isArray(todos)?todos:[]).map(i=>({codigo:i.codigo||i.code||"",descricao:i.descricao||i.description||""})).filter(i=>i.codigo||i.descricao);setCnaes(ns);setPrincipal(pr?.codigo||pr?.code||ns[0]?.codigo||"");setOk("CNPJ e CNAEs carregados.");
+  }catch(e){setErro(e.message)}
+ }
+ async function extrair(){
+  if(!arquivos.length){setErro("Selecione documentos.");return} setExtraindo(true);setErro("");
+  try{const ups=[];for(const f of arquivos){const u=await api("upload-file",{method:"POST",body:{filename:f.name,mimeType:f.type,fileData:await fileData(f)}});ups.push({fileId:u.fileId,filename:f.name,bytes:f.size})}
+   const d=await api("planejamento-extrair",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes,atividadePrincipalReal:principal,descricaoOperacao:descricao},arquivos:ups}});
+   mergeExtracao(d.extracao);setIa(a=>({...a,extracao:d.extracao}));setAba("conferencia");setOk("IA extraiu a base. Confira antes de concluir.");
+  }catch(e){setErro(e.message)}finally{setExtraindo(false)}
+ }
+ async function salvar(status="EM_ANALISE"){
+  try{await api("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"planejamento",estrutura:"empresa",modalidade:arquivos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:empresa?[{cnpj:digits(cnpj),razaoSocial:empresa.razaoSocial||empresa.razao_social||empresa.nome||""}]:[],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{planejamentoV2:base,crescimento,calculos:calc},status}});setOk("Planejamento salvo.");}catch(e){setErro(e.message)}
+ }
+ async function analisar(){
+  if(!calc.real?.completo){setErro("Preencha a base antes de gerar a análise.");return} setAnalisando(true);setErro("");
+  try{const d=await api("planejamento-analisar",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes,atividadePrincipalReal:principal,descricaoOperacao:descricao},base,calculos:calc,crescimento}});
+   setIa(a=>({...a,analise:d.analise}));await salvar("DIAGNOSTICO_GERADO");await api("salvar-diagnostico",{method:"POST",body:{projetoId,tipoProjeto:"planejamento",diagnostico:d.analise,documentos:arquivos.map(f=>({filename:f.name,bytes:f.size})),modelo:d.modelo,usage:d.usage||null}});setAba("relatorio");setOk("Análise IA gerada e salva.");
+  }catch(e){setErro(e.message)}finally{setAnalisando(false)}
+ }
 
-function adicional(base,taxa,limite){ return Math.max(0,num(base)-num(limite))*(num(taxa)/100); }
+ const tabs=[["identificacao","1. Identificação"],["documentos","2. Documentos"],["base","3. Faturamento"],["folha","4. Folha / Fator R"],["custos","5. Custos / Despesas"],["conferencia","6. Conferência IA"],["comparativo","7. Comparativo"],["cenarios","8. Cenários"],["relatorio","9. Relatório"]];
+ return <div style={{fontFamily:BODY,color:C.navy,background:C.bg}}>
+  <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:10}}><button onClick={onVoltar} style={{border:0,background:"transparent",fontWeight:800,color:C.muted,cursor:"pointer"}}>← Voltar</button><div style={{display:"flex",gap:7}}><Btn secondary onClick={()=>salvar()}>Salvar</Btn><Btn disabled={analisando} onClick={analisar}>{analisando?"Analisando...":"Gerar análise IA"}</Btn></div></div>
+  <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:20,padding:22,marginBottom:12}}><div style={{fontSize:9,fontWeight:900,color:"#9EBBFF"}}>PLANEJAMENTO TRIBUTÁRIO · MOTOR FS V2</div><h2 style={{fontFamily:DISPLAY,fontSize:27,margin:"6px 0"}}>Regime e eficiência tributária</h2><p style={{margin:0,fontSize:10.5,color:"#D8DEEA"}}>Faturamento, custos, despesas, folha/Fator R, créditos, Simples, Presumido, Real, DRE e cenários. Sem IBS/CBS nesta versão.</p></div>
+  <div style={{display:"flex",gap:5,overflowX:"auto",marginBottom:10}}>{tabs.map(([id,l])=><button key={id} onClick={()=>setAba(id)} style={{whiteSpace:"nowrap",border:`1px solid ${aba===id?C.blue:C.border}`,background:aba===id?"#EEF3FF":"#fff",color:aba===id?C.blue:C.navy,borderRadius:999,padding:"7px 10px",fontSize:9.5,fontWeight:900,cursor:"pointer"}}>{l}</button>)}</div>
+  {erro&&<div style={{background:"#FAECE7",color:C.red,padding:10,borderRadius:9,marginBottom:10,fontSize:10}}>{erro}</div>}{ok&&<div style={{background:"#E1F5EE",color:C.green,padding:10,borderRadius:9,marginBottom:10,fontSize:10}}>{ok}</div>}
 
-export function simples(base){
-  const o=operacional(base), p=base.parametros;
-  const dasInformado=somaMapa(p.simplesDas);
+  {aba==="identificacao"&&<div style={{display:"grid",gap:10}}>
+   <Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}><label><b style={{fontSize:9}}>RESPONSÁVEL</b><input value={responsavel} onChange={e=>setResponsavel(e.target.value)} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>ORIGEM</b><input value={origem} onChange={e=>setOrigem(e.target.value)} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>REGIME ATUAL</b><select value={base.parametros.regimeAtual} onChange={e=>setParam(["parametros","regimeAtual"],e.target.value)} style={{...inp,marginTop:4}}><option value="">Selecione</option><option value="SIMPLES_NACIONAL">Simples Nacional</option><option value="LUCRO_PRESUMIDO">Lucro Presumido</option><option value="LUCRO_REAL">Lucro Real</option></select></label></div></Card>
+   <Card><div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:7,alignItems:"end"}}><label><b style={{fontSize:9}}>CNPJ</b><input value={cnpj} onChange={e=>setCnpj(e.target.value)} style={{...inp,marginTop:4}}/></label><Btn onClick={consultar}>Consultar CNPJ</Btn></div>{empresa&&<div style={{marginTop:10,padding:10,background:"#F7F9FC",borderRadius:10}}><strong>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</strong><div style={{fontSize:9,color:C.muted}}>{fmtCnpj(cnpj)}</div><div style={{display:"grid",gap:4,marginTop:8}}>{cnaes.map((x,i)=><label key={i} style={{fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>setPrincipal(x.codigo)}/> <b>{x.codigo}</b> · {x.descricao}</label>)}</div><textarea rows={4} value={descricao} onChange={e=>setDescricao(e.target.value)} placeholder="Descreva o que a empresa realmente faz..." style={{...inp,marginTop:9,fontFamily:BODY}}/></div>}</Card>
+  </div>}
 
-  // Se houver alíquota efetiva informada, ela é a referência principal.
-  // Se houver apenas DAS histórico extraído, derivamos a alíquota efetiva
-  // observada = DAS / faturamento da base.
-  const aliquotaInformada=num(p.simplesAliquotaEfetiva);
-  const aliquotaObservada=
-    o.totalReceita>0 && dasInformado>0
-      ? (dasInformado/o.totalReceita)*100
-      : 0;
+  {aba==="documentos"&&<Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>IA identifica e organiza os documentos</h3><p style={{fontSize:10,color:C.muted}}>PGDAS-D, DRE, balancete, razão, ECD/ECF, SPED, folha, pró-labore, XML e apurações. A IA extrai a base e registra fonte/confiança.</p><input type="file" multiple accept=".pdf,.xlsx,.xls,.csv,.xml,.txt" onChange={e=>setArquivos(Array.from(e.target.files||[]))}/><div style={{display:"grid",gap:4,marginTop:8}}>{arquivos.map((f,i)=><div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:7,fontSize:9.5}}>{f.name} · {(f.size/1024/1024).toFixed(2)} MB</div>)}</div><div style={{marginTop:10}}><Btn disabled={extraindo} onClick={extrair}>{extraindo?"Lendo documentos...":"Extrair base com IA"}</Btn></div></Card>}
 
-  const aliquotaBase=
-    aliquotaInformada>0
-      ? aliquotaInformada
-      : aliquotaObservada;
+  {aba==="base"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Faturamento mensal</h3><Grade>{[["Indústria","industria"],["Comércio","comercio"],["Serviços","servicos"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.faturamento[k]} onChange={(m,v)=>setMes(["faturamento",k],m,v)}/>)}</Grade></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Tributos operacionais</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.tributos[k]} onChange={(m,v)=>setMes(["tributos",k],m,v)}/>)}</Grade></Card><Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><label><b style={{fontSize:9}}>SIMPLES · ALÍQUOTA EFETIVA %</b><input type="number" value={base.parametros.simplesAliquotaEfetiva} onChange={e=>setParam(["parametros","simplesAliquotaEfetiva"],num(e.target.value))} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>PRESUNÇÃO IRPJ %</b><input type="number" value={base.parametros.presumido.presuncaoIrpj} onChange={e=>setParam(["parametros","presumido","presuncaoIrpj"],num(e.target.value))} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>PRESUNÇÃO CSLL %</b><input type="number" value={base.parametros.presumido.presuncaoCsll} onChange={e=>setParam(["parametros","presumido","presuncaoCsll"],num(e.target.value))} style={{...inp,marginTop:4}}/></label></div></Card></div>}
 
-  const mensal=Object.fromEntries(
-    MESES.map(m=>[
-      m,
-      num(o.receita[m])*(aliquotaBase/100)
-    ])
-  );
+  {aba==="folha"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Folha e Fator R</h3><Grade>{[["Folha / 13º","folha13"],["Pró-labore","proLabore"],["INSS + FGTS","inssFgts"],["Outros","outros"],["Encargos patronais","encargosPatronais"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.folha[k]} onChange={(m,v)=>setMes(["folha",k],m,v)}/>)}</Grade></Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><Card><small>RBT12</small><h3>{moeda(calc.fatorR.rbt12)}</h3></Card><Card><small>Massa salarial 12m</small><h3>{moeda(calc.fatorR.massa)}</h3></Card><Card><small>Fator R</small><h3 style={{color:calc.fatorR.atinge28?C.green:C.red}}>{pct(calc.fatorR.percentual)}</h3><div style={{fontSize:9,color:C.muted}}>Referência de 28% somente quando aplicável.</div></Card></div></div>}
 
-  const total=somaMapa(mensal);
+  {aba==="custos"&&<div style={{display:"grid",gap:10}}>{[
+   ["Indústria · CPV","industria",[["Estoque inicial","estoqueInicial"],["Insumos","insumos"],["Mão de obra direta","maoObraDireta"],["GGF","ggf"],["Estoque final","estoqueFinal"]]],
+   ["Comércio · CMV","comercio",[["Estoque inicial","estoqueInicial"],["Compras","compras"],["Estoque final","estoqueFinal"]]],
+   ["Serviços · CSP","servicos",[["Serviços em andamento inicial","servicosInicial"],["Mão de obra direta","maoObraDireta"],["Gastos diretos","gastosDiretos"],["Gastos indiretos","gastosIndiretos"],["Serviços finais","servicosFinal"]]]
+  ].map(([titulo,g,linhas])=><Card key={g}><h3 style={{fontFamily:DISPLAY,marginTop:0}}>{titulo}</h3><Grade>{linhas.map(([l,k])=><Mensal key={k} label={l} mapa={base.custos[g][k]} onChange={(m,v)=>setMes(["custos",g,k],m,v)}/>)}</Grade></Card>)}<Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Despesas</h3><Grade>{[["Operacionais","operacionais"],["Comerciais","comerciais"],["Administrativas","administrativas"],["Tributárias","tributarias"],["Diretoria","diretoria"],["Logística","logistica"],["Ocupação","ocupacao"],["Outras","outras"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.despesas[k]} onChange={(m,v)=>setMes(["despesas",k],m,v)}/>)}</Grade></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Créditos</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"]].map(([l,k])=><Mensal key={k} label={`Crédito ${l}`} mapa={base.creditos[k]} onChange={(m,v)=>setMes(["creditos",k],m,v)}/>)}</Grade></Card></div>}
 
-  return {
-    regime:"SIMPLES_NACIONAL",
-    mensal,
-    total,
-    carga:o.totalReceita?total/o.totalReceita*100:0,
-    completo:aliquotaBase>0,
-    aliquotaEfetivaUsada:aliquotaBase,
-    origemAliquota:
-      aliquotaInformada>0
-        ? "ALIQUOTA_INFORMADA"
-        : dasInformado>0
-        ? "ALIQUOTA_OBSERVADA_PELO_DAS"
-        : "SEM_BASE",
-  };
-}
+  {aba==="conferencia"&&<div style={{display:"grid",gap:9}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Conferência IA</h3>{!base.fontes.length?<p style={{fontSize:10,color:C.muted}}>Nenhum documento extraído. Você pode preencher manualmente.</p>:<div style={{display:"grid",gap:5}}>{base.fontes.map((f,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr .8fr 1fr 70px",gap:7,border:`1px solid ${C.border}`,borderRadius:8,padding:8,fontSize:9.5}}><b>{f.campo}</b><span>{String(f.valor??"")}</span><span>{f.documento||f.fonte}</span><b>{f.confianca}</b></div>)}</div>}</Card>{base.divergencias?.length>0&&<Card style={{background:"#FFF9EE"}}><b style={{color:C.amber}}>Divergências</b><ul>{base.divergencias.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card>}{base.dadosFaltantes?.length>0&&<Card style={{background:"#FFF7F7"}}><b style={{color:C.red}}>Dados faltantes</b><ul>{base.dadosFaltantes.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card>}</div>}
 
-export function presumido(base){
-  const o=operacional(base),p=base.parametros.presumido;
-  const mensal=MESES.map(m=>{
-    const r=num(o.receita[m]), bir=r*num(p.presuncaoIrpj)/100, bcs=r*num(p.presuncaoCsll)/100;
-    const pis=r*num(p.pis)/100, cof=r*num(p.cofins)/100, ir=bir*num(p.irpj)/100, ad=adicional(bir,p.adicionalIrpj,p.limiteAdicionalMensal), cs=bcs*num(p.csll)/100;
-    const iss=num(base.tributos.iss[m]),icms=num(base.tributos.icms[m]),ipi=num(base.tributos.ipi[m]),enc=num(base.folha.encargosPatronais[m]);
-    return {mes:m,pis,cofins:cof,irpj:ir,adicionalIrpj:ad,csll:cs,iss,icms,ipi,encargos:enc,total:pis+cof+ir+ad+cs+iss+icms+ipi+enc};
-  });
-  const total=mensal.reduce((a,x)=>a+x.total,0);
-  return {regime:"LUCRO_PRESUMIDO",mensal,total,carga:o.totalReceita?total/o.totalReceita*100:0,completo:num(p.presuncaoIrpj)>0&&num(p.presuncaoCsll)>0};
-}
+  {aba==="comparativo"&&<div style={{display:"grid",gap:10}}><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>{[["Simples",calc.simples],["Presumido",calc.presumido],["Real",calc.real]].map(([l,x])=><Card key={l}><small>{l.toUpperCase()}</small><h2 style={{margin:"5px 0"}}>{moeda(x.total)}</h2><div style={{fontSize:10,color:C.muted}}>Carga: {pct(x.carga)}</div>{!x.completo&&<div style={{fontSize:9,color:C.red,marginTop:5}}>Base insuficiente</div>}</Card>)}</div><Card><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}><div><small>REGIME ATUAL</small><b style={{display:"block"}}>{base.parametros.regimeAtual||"-"}</b></div><div><small>MENOR CARGA MATEMÁTICA</small><b style={{display:"block"}}>{calc.melhor?.regime||"-"}</b></div><div><small>ECONOMIA POTENCIAL</small><b style={{display:"block",color:C.green}}>{moeda(calc.economia)}</b></div><div><small>REDUÇÃO</small><b style={{display:"block",color:C.green}}>{pct(calc.economiaPct)}</b></div></div><div style={{marginTop:10,padding:9,background:"#FFF9EE",fontSize:9.5,color:C.amber,borderRadius:8}}>Menor carga matemática não é recomendação automática. A IA avaliará riscos e validações.</div></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>DRE comparativa</h3><div style={{display:"grid",gridTemplateColumns:"1.4fr repeat(3,1fr)",gap:5,fontSize:9.5}}><b>Indicador</b><b>Simples</b><b>Presumido</b><b>Real</b>{[["Receita bruta","receitaBruta"],["Tributos","tributos"],["Receita líquida","receitaLiquida"],["CPV","cpv"],["CMV","cmv"],["CSP","csp"],["Despesas","despesas"],["Lucro líquido estimado","lucroLiquido"]].flatMap(([l,k])=>[<span key={k+"l"}>{l}</span>,<span key={k+"s"}>{moeda(calc.dre.simples[k])}</span>,<span key={k+"p"}>{moeda(calc.dre.presumido[k])}</span>,<span key={k+"r"}>{moeda(calc.dre.real[k])}</span>])}</div></Card></div>}
 
-export function real(base){
-  const o=operacional(base),p=base.parametros.real;
-  const mensal=MESES.map(m=>{
-    const r=num(o.receita[m]);
-    const pis=Math.max(0,r*num(p.pis)/100-num(base.creditos.pis[m]));
-    const cof=Math.max(0,r*num(p.cofins)/100-num(base.creditos.cofins[m]));
-    const iss=num(base.tributos.iss[m]);
-    const icms=Math.max(0,num(base.tributos.icms[m])-num(base.creditos.icms[m]));
-    const ipi=Math.max(0,num(base.tributos.ipi[m])-num(base.creditos.ipi[m]));
-    const enc=num(base.folha.encargosPatronais[m]),cust=num(o.custos[m]),desp=num(o.despesas[m]);
-    const lucro=Math.max(0,r-cust-desp-pis-cof-iss-icms-ipi-enc);
-    const ir=lucro*num(p.irpj)/100,ad=adicional(lucro,p.adicionalIrpj,p.limiteAdicionalMensal),cs=lucro*num(p.csll)/100;
-    return {mes:m,pis,cofins:cof,iss,icms,ipi,encargos:enc,lucroAntesIrCs:lucro,irpj:ir,adicionalIrpj:ad,csll:cs,total:pis+cof+iss+icms+ipi+enc+ir+ad+cs};
-  });
-  const total=mensal.reduce((a,x)=>a+x.total,0);
-  return {regime:"LUCRO_REAL",mensal,total,carga:o.totalReceita?total/o.totalReceita*100:0,completo:o.totalReceita>0};
-}
+  {aba==="cenarios"&&<div style={{display:"grid",gap:9}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Cenário de crescimento</h3><div style={{display:"flex",gap:6}}>{[0,10,20,30].map(x=><Btn key={x} secondary={crescimento!==x} onClick={()=>setCrescimento(x)}>{x===0?"Atual":`+${x}%`}</Btn>)}<input type="number" value={crescimento} onChange={e=>setCrescimento(num(e.target.value))} style={{...inp,width:100}}/></div></Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><Card><b>Simples</b><h3>{moeda(calc.simples.total)}</h3></Card><Card><b>Presumido</b><h3>{moeda(calc.presumido.total)}</h3></Card><Card><b>Real</b><h3>{moeda(calc.real.total)}</h3></Card></div></div>}
 
-export function comparar(base){
-  const s=simples(base),p=presumido(base),r=real(base),fr=fatorR(base),o=operacional(base);
-  const validos=[s.completo?s:null,p.completo?p:null,r.completo?r:null].filter(Boolean).sort((a,b)=>a.total-b.total);
-  const melhor=validos[0]||null;
-  const mapa={SIMPLES:s,SIMPLES_NACIONAL:s,PRESUMIDO:p,LUCRO_PRESUMIDO:p,REAL:r,LUCRO_REAL:r};
-  const atual=mapa[String(base.parametros.regimeAtual||"").toUpperCase()]||null;
-  const economia=atual&&melhor?Math.max(0,atual.total-melhor.total):0;
-  const dre=(reg)=>({receitaBruta:o.totalReceita,tributos:reg.total,receitaLiquida:o.totalReceita-reg.total,cpv:somaMapa(o.cpv),cmv:somaMapa(o.cmv),csp:somaMapa(o.csp),despesas:o.totalDespesas,lucroLiquido:o.totalReceita-reg.total-o.totalCustos-o.totalDespesas});
-  return {simples:s,presumido:p,real:r,fatorR:fr,melhor,regimeAtual:atual,economia,economiaPct:atual?.total?economia/atual.total*100:0,dre:{simples:dre(s),presumido:dre(p),real:dre(r)}};
-}
-
-export function cenario(base,crescimento=0){
-  const c=JSON.parse(JSON.stringify(base)),f=1+num(crescimento)/100;
-
-  ["industria","comercio","servicos"].forEach(
-    g=>MESES.forEach(
-      m=>{
-        c.faturamento[g][m]=num(base.faturamento[g][m])*f;
-      }
-    )
-  );
-
-  c.parametros = {
-    ...(c.parametros || {}),
-    crescimentoCenario: num(crescimento),
-  };
-
-  return c;
+  {aba==="relatorio"&&<div style={{display:"grid",gap:9}}><Card style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff"}}><small style={{color:"#9EBBFF"}}>RESUMO EXECUTIVO</small><h2 style={{fontFamily:DISPLAY}}>{empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Planejamento Tributário"}</h2><p style={{fontSize:10.5,lineHeight:1.6,color:"#D8DEEA"}}>{ia?.analise?.resumoExecutivo||"Gere a análise IA após conferir a base."}</p></Card>{ia?.analise&&<><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Recomendação</h3><p style={{fontSize:10.5,lineHeight:1.6}}>{ia.analise.recomendacao}</p></Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><Card><b>Riscos</b><ul>{(ia.analise.riscos||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card><Card><b>Oportunidades</b><ul>{(ia.analise.oportunidades||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card><Card><b>Validações</b><ul>{(ia.analise.validacoesNecessarias||[]).map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card></div></>}</div>}
+ </div>
 }
