@@ -160,7 +160,7 @@ export default function PlanejamentoTributario({token,onVoltar}){
    const nome=empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Planejamento Tributário";
    const safe=s=>String(s??"").replace(/\s+/g," ").trim();
    const nova=()=>{doc.addPage();y=16};
-   const garante=h=8=>{if(y+h>282)nova()};
+   const garante=(h=8)=>{if(y+h>282)nova()};
    const linha=(txto,{size=9,bold=false,indent=0,gap=4}={})=>{
     const t=safe(txto); if(!t)return;
     doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);
