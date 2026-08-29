@@ -23,7 +23,7 @@ function Mensal({label,mapa,onChange}){
 function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{minWidth:1160}}><div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4}}><span/>{MESES.map(m=><b key={m} style={{fontSize:8.5,textAlign:"center",color:C.muted}}>{ROTULOS[m]}</b>)}<b style={{fontSize:8.5,textAlign:"right",color:C.muted}}>Total</b></div>{children}</div></div>}
 
 export default function PlanejamentoTributario({token,onVoltar}){
- const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
+ const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
  const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}});
  const calc=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
 
@@ -33,7 +33,58 @@ export default function PlanejamentoTributario({token,onVoltar}){
  }
  function setMes(path,m,v){setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)][m]=num(v);return c})}
  function setParam(path,v){setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)]=v;return c})}
- function mergeExtracao(ext){setBase(a=>{const c=JSON.parse(JSON.stringify(a));const merge=(d,s)=>{if(!s||typeof s!=="object")return;Object.entries(s).forEach(([k,v])=>{if(v&&typeof v==="object"&&!Array.isArray(v)&&d[k]&&typeof d[k]==="object"&&!Array.isArray(d[k]))merge(d[k],v);else if(v!==null&&v!==undefined&&v!=="")d[k]=v})};merge(c,ext.base||{});c.fontes=[...(c.fontes||[]),...(ext.fontes||[])];c.divergencias=ext.divergencias||c.divergencias;c.dadosFaltantes=ext.dadosFaltantes||c.dadosFaltantes;return c})}
+ function mergeExtracao(ext){
+  setExtracaoResumo(ext||null);
+
+  if(ext?.identificacao?.cnpj) setCnpj(ext.identificacao.cnpj);
+
+  if(ext?.identificacao?.razaoSocial){
+    setEmpresa(a=>({
+      ...(a||{}),
+      razaoSocial:ext.identificacao.razaoSocial,
+      razao_social:ext.identificacao.razaoSocial,
+      municipio:ext.identificacao.municipio||a?.municipio||"",
+      uf:ext.identificacao.uf||a?.uf||"",
+      dataAbertura:ext.identificacao.dataAbertura||a?.dataAbertura||""
+    }));
+  }
+
+  setBase(a=>{
+    const c=JSON.parse(JSON.stringify(a));
+
+    const merge=(d,s)=>{
+      if(!s||typeof s!=="object") return;
+      Object.entries(s).forEach(([k,v])=>{
+        if(v&&typeof v==="object"&&!Array.isArray(v)&&d[k]&&typeof d[k]==="object"&&!Array.isArray(d[k])){
+          merge(d[k],v);
+        }else if(v!==null&&v!==undefined&&v!==""){
+          d[k]=v;
+        }
+      });
+    };
+
+    merge(c,ext?.base||{});
+
+    if(ext?.identificacao?.regimeAtual){
+      const regime=String(ext.identificacao.regimeAtual).toUpperCase();
+      c.parametros.regimeAtual=
+        regime.includes("SIMPLES")?"SIMPLES_NACIONAL":
+        regime.includes("PRESUM")?"LUCRO_PRESUMIDO":
+        regime.includes("REAL")?"LUCRO_REAL":
+        c.parametros.regimeAtual;
+    }
+
+    if(ext?.simplesNacional?.aliquotaEfetivaObservada!==null&&ext?.simplesNacional?.aliquotaEfetivaObservada!==undefined){
+      c.parametros.simplesAliquotaEfetiva=num(ext.simplesNacional.aliquotaEfetivaObservada);
+    }
+
+    c.fontes=[...(c.fontes||[]),...(ext?.fontes||[])];
+    c.divergencias=ext?.divergencias||[];
+    c.dadosFaltantes=ext?.dadosFaltantes||[];
+
+    return c;
+  });
+}
 
  async function consultar(){
   setErro(""); const d=digits(cnpj); if(d.length!==14){setErro("Informe CNPJ válido.");return}
@@ -46,7 +97,7 @@ export default function PlanejamentoTributario({token,onVoltar}){
   if(!arquivos.length){setErro("Selecione documentos.");return} setExtraindo(true);setErro("");
   try{const ups=[];for(const f of arquivos){const u=await api("upload-file",{method:"POST",body:{filename:f.name,mimeType:f.type,fileData:await fileData(f)}});ups.push({fileId:u.fileId,filename:f.name,bytes:f.size})}
    const d=await api("planejamento-extrair",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes,atividadePrincipalReal:principal,descricaoOperacao:descricao},arquivos:ups}});
-   mergeExtracao(d.extracao);setIa(a=>({...a,extracao:d.extracao}));setAba("conferencia");setOk("IA extraiu a base. Confira antes de concluir.");
+   mergeExtracao(d.extracao);setIa(a=>({...a,extracao:d.extracao}));setAba("conferencia");setOk(`IA analisou ${arquivos.length} documento(s), preencheu os dados encontrados e registrou as fontes. Confira antes de calcular.`);
   }catch(e){setErro(e.message)}finally{setExtraindo(false)}
  }
  async function salvar(status="EM_ANALISE"){
@@ -83,7 +134,86 @@ export default function PlanejamentoTributario({token,onVoltar}){
    ["Serviços · CSP","servicos",[["Serviços em andamento inicial","servicosInicial"],["Mão de obra direta","maoObraDireta"],["Gastos diretos","gastosDiretos"],["Gastos indiretos","gastosIndiretos"],["Serviços finais","servicosFinal"]]]
   ].map(([titulo,g,linhas])=><Card key={g}><h3 style={{fontFamily:DISPLAY,marginTop:0}}>{titulo}</h3><Grade>{linhas.map(([l,k])=><Mensal key={k} label={l} mapa={base.custos[g][k]} onChange={(m,v)=>setMes(["custos",g,k],m,v)}/>)}</Grade></Card>)}<Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Despesas</h3><Grade>{[["Operacionais","operacionais"],["Comerciais","comerciais"],["Administrativas","administrativas"],["Tributárias","tributarias"],["Diretoria","diretoria"],["Logística","logistica"],["Ocupação","ocupacao"],["Outras","outras"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.despesas[k]} onChange={(m,v)=>setMes(["despesas",k],m,v)}/>)}</Grade></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Créditos</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"]].map(([l,k])=><Mensal key={k} label={`Crédito ${l}`} mapa={base.creditos[k]} onChange={(m,v)=>setMes(["creditos",k],m,v)}/>)}</Grade></Card></div>}
 
-  {aba==="conferencia"&&<div style={{display:"grid",gap:9}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Conferência IA</h3>{!base.fontes.length?<p style={{fontSize:10,color:C.muted}}>Nenhum documento extraído. Você pode preencher manualmente.</p>:<div style={{display:"grid",gap:5}}>{base.fontes.map((f,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr .8fr 1fr 70px",gap:7,border:`1px solid ${C.border}`,borderRadius:8,padding:8,fontSize:9.5}}><b>{f.campo}</b><span>{String(f.valor??"")}</span><span>{f.documento||f.fonte}</span><b>{f.confianca}</b></div>)}</div>}</Card>{base.divergencias?.length>0&&<Card style={{background:"#FFF9EE"}}><b style={{color:C.amber}}>Divergências</b><ul>{base.divergencias.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card>}{base.dadosFaltantes?.length>0&&<Card style={{background:"#FFF7F7"}}><b style={{color:C.red}}>Dados faltantes</b><ul>{base.dadosFaltantes.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul></Card>}</div>}
+  {aba==="conferencia"&&<div style={{display:"grid",gap:9}}>
+   {extracaoResumo&&<>
+    <Card>
+     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Resumo identificado automaticamente</h3>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+      <div><small>EMPRESA</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.razaoSocial||empresa?.razaoSocial||"-"}</b></div>
+      <div><small>CNPJ</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.cnpj||cnpj||"-"}</b></div>
+      <div><small>REGIME</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.regimeAtual||base.parametros.regimeAtual||"-"}</b></div>
+      <div><small>APURAÇÃO</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.regimeApuracao||"-"}</b></div>
+     </div>
+
+     <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginTop:10}}>
+      <div><small>COMPETÊNCIA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.competencia||"-"}</b></div>
+      <div><small>RPA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.rpa!=null?moeda(extracaoResumo.simplesNacional.rpa):"-"}</b></div>
+      <div><small>RBT12</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.rbt12!=null?moeda(extracaoResumo.simplesNacional.rbt12):"-"}</b></div>
+      <div><small>DAS</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.dasTotal!=null?moeda(extracaoResumo.simplesNacional.dasTotal):"-"}</b></div>
+      <div><small>ALÍQUOTA OBSERVADA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.aliquotaEfetivaObservada!=null?pct(extracaoResumo.simplesNacional.aliquotaEfetivaObservada):"-"}</b></div>
+     </div>
+
+     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:10}}>
+      <div><small>ANEXO</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.anexo||"-"}</b></div>
+      <div><small>ATIVIDADE TRIBUTADA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.atividadeTributada||"-"}</b></div>
+      <div><small>FATOR R</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.fatorR||"-"}</b></div>
+      <div><small>ISS</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.issMunicipio||"-"}</b></div>
+     </div>
+    </Card>
+
+    {Array.isArray(extracaoResumo.simplesNacional?.receitasHistoricas)&&extracaoResumo.simplesNacional.receitasHistoricas.length>0&&
+     <Card>
+      <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Histórico identificado no PGDAS</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
+       {extracaoResumo.simplesNacional.receitasHistoricas.filter(x=>x.mercado==="INTERNO").map((x,i)=>
+        <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
+         <small>{x.competencia}</small>
+         <b style={{display:"block",marginTop:3}}>{x.receita!=null?moeda(x.receita):"-"}</b>
+        </div>
+       )}
+      </div>
+     </Card>
+    }
+   </>}
+
+   <Card>
+    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Conferência por fonte</h3>
+    {!base.fontes.length?
+     <p style={{fontSize:10,color:C.muted}}>Nenhum documento extraído. Você pode preencher manualmente.</p>:
+     <div style={{display:"grid",gap:5}}>
+      {base.fontes.map((f,i)=>
+       <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr .8fr 1fr 80px",gap:7,border:`1px solid ${C.border}`,borderRadius:8,padding:8,fontSize:9.5}}>
+        <b>{f.campo}</b>
+        <span>{String(f.valor??"")}</span>
+        <span>{f.documento||f.fonte}</span>
+        <b style={{color:f.confianca==="ALTA"?C.green:f.confianca==="MEDIA"?C.amber:C.red}}>{f.confianca}</b>
+       </div>
+      )}
+     </div>
+    }
+   </Card>
+
+   {base.divergencias?.length>0&&
+    <Card style={{background:"#FFF9EE"}}>
+     <b style={{color:C.amber}}>Divergências</b>
+     <ul>{base.divergencias.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul>
+    </Card>
+   }
+
+   {base.dadosFaltantes?.length>0&&
+    <Card style={{background:"#FFF7F7"}}>
+     <b style={{color:C.red}}>Dados faltantes para concluir o planejamento</b>
+     <ul>{base.dadosFaltantes.map((x,i)=><li key={i} style={{fontSize:10}}>{x}</li>)}</ul>
+    </Card>
+   }
+
+   <Card style={{background:"#EEF3FF"}}>
+    <b style={{color:C.blue}}>Validação profissional</b>
+    <p style={{fontSize:10,lineHeight:1.5,marginBottom:0}}>
+     Documento e consulta cadastral preenchem a base automaticamente. A IA não deve inventar CNAE, folha, custos, despesas ou créditos. O comparativo deve ser interpretado somente com a base efetivamente confirmada.
+    </p>
+   </Card>
+  </div>}
 
   {aba==="comparativo"&&<div style={{display:"grid",gap:10}}><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>{[["Simples",calc.simples],["Presumido",calc.presumido],["Real",calc.real]].map(([l,x])=><Card key={l}><small>{l.toUpperCase()}</small><h2 style={{margin:"5px 0"}}>{moeda(x.total)}</h2><div style={{fontSize:10,color:C.muted}}>Carga: {pct(x.carga)}</div>{!x.completo&&<div style={{fontSize:9,color:C.red,marginTop:5}}>Base insuficiente</div>}</Card>)}</div><Card><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}><div><small>REGIME ATUAL</small><b style={{display:"block"}}>{base.parametros.regimeAtual||"-"}</b></div><div><small>MENOR CARGA MATEMÁTICA</small><b style={{display:"block"}}>{calc.melhor?.regime||"-"}</b></div><div><small>ECONOMIA POTENCIAL</small><b style={{display:"block",color:C.green}}>{moeda(calc.economia)}</b></div><div><small>REDUÇÃO</small><b style={{display:"block",color:C.green}}>{pct(calc.economiaPct)}</b></div></div><div style={{marginTop:10,padding:9,background:"#FFF9EE",fontSize:9.5,color:C.amber,borderRadius:8}}>Menor carga matemática não é recomendação automática. A IA avaliará riscos e validações.</div></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>DRE comparativa</h3><div style={{display:"grid",gridTemplateColumns:"1.4fr repeat(3,1fr)",gap:5,fontSize:9.5}}><b>Indicador</b><b>Simples</b><b>Presumido</b><b>Real</b>{[["Receita bruta","receitaBruta"],["Tributos","tributos"],["Receita líquida","receitaLiquida"],["CPV","cpv"],["CMV","cmv"],["CSP","csp"],["Despesas","despesas"],["Lucro líquido estimado","lucroLiquido"]].flatMap(([l,k])=>[<span key={k+"l"}>{l}</span>,<span key={k+"s"}>{moeda(calc.dre.simples[k])}</span>,<span key={k+"p"}>{moeda(calc.dre.presumido[k])}</span>,<span key={k+"r"}>{moeda(calc.dre.real[k])}</span>])}</div></Card></div>}
 
