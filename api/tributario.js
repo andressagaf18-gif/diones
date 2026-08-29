@@ -2211,6 +2211,395 @@ REGRAS:
 }
 
 
+
+// =========================================================
+// REFORMA TRIBUTÁRIA V2 — EXTRAÇÃO DOCUMENTAL
+// ADIÇÃO INCREMENTAL: não altera Planejamento Tributário nem rotas validadas.
+// =========================================================
+
+const reformaExtracaoSchema = {
+  type: "object",
+  properties: {
+    identificacao: {
+      type: "object",
+      properties: {
+        cnpj: { type: ["string", "null"] },
+        razaoSocial: { type: ["string", "null"] },
+        municipio: { type: ["string", "null"] },
+        uf: { type: ["string", "null"] },
+        regime: { type: ["string", "null"] },
+        competencia: { type: ["string", "null"] }
+      },
+      required: [
+        "cnpj",
+        "razaoSocial",
+        "municipio",
+        "uf",
+        "regime",
+        "competencia"
+      ],
+      additionalProperties: false
+    },
+
+    operacao: {
+      type: "object",
+      properties: {
+        descricao: { type: ["string", "null"] },
+        b2bPct: { type: ["number", "null"] },
+        b2cPct: { type: ["number", "null"] }
+      },
+      required: [
+        "descricao",
+        "b2bPct",
+        "b2cPct"
+      ],
+      additionalProperties: false
+    },
+
+    valores: {
+      type: "object",
+      properties: {
+        receita: { type: ["number", "null"] },
+        compras: { type: ["number", "null"] },
+        servicosTomados: { type: ["number", "null"] },
+        creditosAtuais: { type: ["number", "null"] },
+        tributosAtuais: { type: ["number", "null"] }
+      },
+      required: [
+        "receita",
+        "compras",
+        "servicosTomados",
+        "creditosAtuais",
+        "tributosAtuais"
+      ],
+      additionalProperties: false
+    },
+
+    tributos: {
+      type: "object",
+      properties: {
+        pis: { type: ["number", "null"] },
+        cofins: { type: ["number", "null"] },
+        icms: { type: ["number", "null"] },
+        iss: { type: ["number", "null"] },
+        ipi: { type: ["number", "null"] },
+        cpp: { type: ["number", "null"] },
+        outros: { type: ["number", "null"] }
+      },
+      required: [
+        "pis",
+        "cofins",
+        "icms",
+        "iss",
+        "ipi",
+        "cpp",
+        "outros"
+      ],
+      additionalProperties: false
+    },
+
+    documentosReconhecidos: {
+      type: "array",
+      items: { type: "string" }
+    },
+
+    fontes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          campo: { type: "string" },
+          valor: { type: "string" },
+          documento: { type: "string" },
+          confianca: {
+            type: "string",
+            enum: [
+              "ALTA",
+              "MEDIA",
+              "BAIXA"
+            ]
+          }
+        },
+        required: [
+          "campo",
+          "valor",
+          "documento",
+          "confianca"
+        ],
+        additionalProperties: false
+      }
+    },
+
+    divergencias: {
+      type: "array",
+      items: { type: "string" }
+    },
+
+    dadosNaoComprovados: {
+      type: "array",
+      items: { type: "string" }
+    },
+
+    confiancaGeral: {
+      type: "string",
+      enum: [
+        "ALTA",
+        "MEDIA",
+        "BAIXA"
+      ]
+    }
+  },
+
+  required: [
+    "identificacao",
+    "operacao",
+    "valores",
+    "tributos",
+    "documentosReconhecidos",
+    "fontes",
+    "divergencias",
+    "dadosNaoComprovados",
+    "confiancaGeral"
+  ],
+
+  additionalProperties: false
+};
+
+async function reformaExtrair(
+  req,
+  res
+) {
+  const body =
+    req.body ||
+    {};
+
+  const arquivos =
+    Array.isArray(
+      body.arquivos
+    )
+      ? body.arquivos.filter(
+          (a) =>
+            a?.fileId
+        )
+      : [];
+
+  if (
+    !arquivos.length
+  ) {
+    return send(
+      res,
+      400,
+      {
+        sucesso: false,
+        error:
+          "Envie ao menos um documento para extração da Reforma Tributária.",
+      }
+    );
+  }
+
+  const content = [];
+
+  for (
+    const arquivo of
+      arquivos
+  ) {
+    content.push({
+      type:
+        "input_file",
+      file_id:
+        arquivo.fileId,
+    });
+  }
+
+  content.push({
+    type:
+      "input_text",
+
+    text: `
+Você é o Finder Tax AI atuando SOMENTE como extrator documental do módulo Reforma Tributária.
+
+OBJETIVO:
+Ler todos os documentos anexados e extrair SOMENTE informações comprovadas nos arquivos.
+
+DOCUMENTOS:
+${JSON.stringify(
+  arquivos.map(
+    (a) => ({
+      filename:
+        a.filename,
+      bytes:
+        a.bytes,
+    })
+  ),
+  null,
+  2
+)}
+
+REGRAS OBRIGATÓRIAS:
+1. Identifique CNPJ, razão social, município, UF, regime e competência/período quando constarem nos documentos.
+2. O CNPJ identificado será usado pelo sistema para consultar os CNAEs oficiais. NÃO invente CNAE.
+3. Reconheça, quando possível: PGDAS-D, DAS, SPED/EFD, NF-e, NFS-e, apurações de ICMS/ISS/PIS/Cofins/IPI, DRE, balancete, razão, relatórios de faturamento, compras e vendas.
+4. Extraia receita, compras, serviços tomados, créditos atuais e tributos SOMENTE quando estiverem comprovados.
+5. Se houver composição de tributos, preencha PIS, Cofins, ICMS, ISS, IPI, CPP e outros separadamente.
+6. Ausência de valor NÃO significa zero. Use null.
+7. B2B/B2C só pode ser preenchido se houver comprovação documental ou derivação objetiva e segura.
+8. A descrição operacional pode ser resumida dos documentos, mas sem inventar atividade.
+9. Para cada dado relevante, informe a fonte documental e o nível de confiança.
+10. Registre divergências entre documentos.
+11. CNAE deve permanecer fora da extração da IA. O sistema fará consulta cadastral posterior pelo CNPJ.
+12. NÃO faça análise de IBS/CBS nesta etapa.
+13. NÃO invente alíquota, benefício, enquadramento, classificação fiscal, lei, artigo ou jurisprudência.
+14. Todos os campos do schema devem existir.
+15. Campo sem comprovação = null ou array vazio.
+`,
+  });
+
+  try {
+    const response =
+      await fetch(
+        `${OPENAI_URL}/responses`,
+        {
+          method:
+            "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${process.env.OPENAI_API_KEY}`,
+
+            "content-type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              model:
+                MODEL,
+
+              input: [
+                {
+                  role:
+                    "user",
+                  content,
+                },
+              ],
+
+              reasoning: {
+                effort:
+                  "medium",
+              },
+
+              text: {
+                format: {
+                  type:
+                    "json_schema",
+                  name:
+                    "finder_reforma_extracao",
+                  strict:
+                    true,
+                  schema:
+                    reformaExtracaoSchema,
+                },
+              },
+            }),
+        }
+      );
+
+    const data =
+      await response
+        .json()
+        .catch(
+          () => null
+        );
+
+    if (
+      !response.ok
+    ) {
+      console.error(
+        "[tributario][reforma-extrair]",
+        data
+      );
+
+      return send(
+        res,
+        response.status ||
+          500,
+        {
+          sucesso:
+            false,
+
+          error:
+            data?.error?.message ||
+            "Falha na interpretação documental da Reforma Tributária.",
+        }
+      );
+    }
+
+    const raw =
+      outputText(
+        data
+      );
+
+    let extracao;
+
+    try {
+      extracao =
+        JSON.parse(
+          raw
+        );
+    } catch {
+      console.error(
+        "[tributario][reforma-extrair][json]",
+        raw
+      );
+
+      return send(
+        res,
+        500,
+        {
+          sucesso:
+            false,
+
+          error:
+            "A IA respondeu, mas a extração da Reforma Tributária veio em formato inválido.",
+        }
+      );
+    }
+
+    return send(
+      res,
+      200,
+      {
+        sucesso: true,
+        modelo:
+          MODEL,
+        extracao,
+        usage:
+          data?.usage ||
+          null,
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "[tributario][reforma-extrair]",
+      error
+    );
+
+    return send(
+      res,
+      500,
+      {
+        sucesso: false,
+        error:
+          error?.message ||
+          "Não foi possível interpretar os documentos da Reforma Tributária.",
+      }
+    );
+  }
+}
+
+
 const reformaAnaliseSchema = {
   type: "object",
   properties: {
@@ -2371,6 +2760,34 @@ export default async function handler(
       "POST"
     ) {
       return await excluirProjeto(req,res);
+    }
+
+    if (
+      action ===
+      "reforma-extrair" &&
+      req.method ===
+      "POST"
+    ) {
+      if (
+        !process.env
+          .OPENAI_API_KEY
+      ) {
+        return send(
+          res,
+          500,
+          {
+            sucesso:
+              false,
+            error:
+              "OPENAI_API_KEY não configurada.",
+          }
+        );
+      }
+
+      return await reformaExtrair(
+        req,
+        res
+      );
     }
 
     if (
