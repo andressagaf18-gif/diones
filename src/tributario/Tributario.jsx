@@ -1,3 +1,4 @@
+import ReformaSimulador from "./ReformaSimulador";
 import PlanejamentoTributario from "./PlanejamentoTributario";
 import {
   useEffect,
@@ -792,204 +793,55 @@ function DadosManuais({
 
 function ReformaTributariaV2({token,onVoltar}){
  const [aba,setAba]=useState("identificacao");
- const [cnpj,setCnpj]=useState("");
- const [empresa,setEmpresa]=useState(null);
- const [cnaes,setCnaes]=useState([]);
- const [principal,setPrincipal]=useState("");
- const [responsavel,setResponsavel]=useState("");
- const [origem,setOrigem]=useState("");
- const [descricao,setDescricao]=useState("");
- const [regime,setRegime]=useState("");
- const [municipio,setMunicipio]=useState("");
- const [uf,setUf]=useState("");
- const [b2b,setB2b]=useState("");
- const [b2c,setB2c]=useState("");
- const [receita,setReceita]=useState("");
- const [compras,setCompras]=useState("");
- const [servicosTomados,setServicosTomados]=useState("");
- const [creditosAtuais,setCreditosAtuais]=useState("");
- const [tributosAtuais,setTributosAtuais]=useState("");
- const [documentos,setDocumentos]=useState([]);
- const [documentosIa,setDocumentosIa]=useState([]);
- const [extracao,setExtracao]=useState(null);
- const [analise,setAnalise]=useState(null);
- const [erro,setErro]=useState("");
- const [ok,setOk]=useState("");
- const [carregando,setCarregando]=useState(false);
- const [extraindo,setExtraindo]=useState(false);
+ const [cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState("");
+ const [responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState(""),[descricao,setDescricao]=useState(""),[regime,setRegime]=useState(""),[municipio,setMunicipio]=useState(""),[uf,setUf]=useState("");
+ const [b2b,setB2b]=useState(""),[b2c,setB2c]=useState(""),[receita,setReceita]=useState(""),[compras,setCompras]=useState(""),[servicosTomados,setServicosTomados]=useState(""),[creditosAtuais,setCreditosAtuais]=useState(""),[tributosAtuais,setTributosAtuais]=useState("");
+ const [faturamentoAnual,setFaturamentoAnual]=useState(""),[margem,setMargem]=useState(""),[folha,setFolha]=useState(""),[proLabore,setProLabore]=useState(""),[despesasDedutiveis,setDespesasDedutiveis]=useState("");
+ const [aliquotaAtual,setAliquotaAtual]=useState(""),[incentivoAtual,setIncentivoAtual]=useState("NORMAL"),[reducaoIbsCbs,setReducaoIbsCbs]=useState("0"),[exportacao,setExportacao]=useState("0"),[tratamentoEspecial,setTratamentoEspecial]=useState("");
+ const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
+ const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}});
- const tabs=[
-  ["identificacao","1. Empresa / Grupo"],["operacao","2. Operação real"],["receitas","3. Receitas"],
-  ["creditos","4. Compras / Créditos"],["atual","5. Situação atual"],["ibscbs","6. IBS / CBS"],
-  ["transicao","7. Transição"],["impacto","8. Impacto"],["relatorio","9. Relatório"]
- ];
- const n=v=>Number(String(v??"").replace(/\./g,"").replace(",", "."))||0;
+ const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["impacto","7. Impactos"],["transicao","8. Transição"],["relatorio","9. Relatório"]];
+ const n=v=>Number(String(v??"").replace(/\./g,"").replace(",","."))||0;
  const input={width:"100%",border:"1px solid #DDE3EC",borderRadius:8,padding:"9px 10px",fontSize:10,boxSizing:"border-box"};
  const card={background:"#fff",border:"1px solid #E3E7EF",borderRadius:12,padding:14};
  const digits=v=>String(v||"").replace(/\D/g,"");
- async function apiCall(action,{method="GET",body=null,query={}}={}){
-  const p=new URLSearchParams({action});Object.entries(query).forEach(([k,v])=>v!==""&&v!=null&&p.set(k,String(v)));
-  const r=await fetch(`/api/tributario?${p}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
-  const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro no módulo tributário.");return d;
- }
- async function arquivoParaDataUrl(file){
-  return await new Promise((resolve,reject)=>{
-   const reader=new FileReader();
-   reader.onload=()=>resolve(reader.result);
-   reader.onerror=()=>reject(new Error(`Não foi possível ler ${file.name}.`));
-   reader.readAsDataURL(file);
-  });
- }
- function normalizarCnaes(data){
-  const principalObj=data?.cnaePrincipal||data?.cnae?.principal||null;
-  const secund=data?.cnaesSecundarios||data?.cnae?.secundarios||[];
-  const todos=data?.todosCnaes||data?.cnae?.todos||[principalObj,...secund].filter(Boolean);
-  return (todos||[]).map((x,i)=>({
-   codigo:String(x?.codigo||x?.cnae||""),
-   descricao:x?.descricao||"",
-   principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&principalObj)
-  })).filter(x=>x.codigo||x.descricao);
- }
- async function consultarCnpj(valor=cnpj){
-  const c=digits(valor);
-  if(c.length!==14) throw new Error("CNPJ inválido para consulta cadastral.");
-  const r=await fetch(`/api/cnpj?cnpj=${c}`);
-  const d=await r.json().catch(()=>null);
-  if(!r.ok||!d?.sucesso) throw new Error(d?.error||"CNPJ não localizado.");
-  setEmpresa(d);
-  setCnpj(c);
-  setMunicipio(d.municipio||d.endereco?.municipio||"");
-  setUf(d.uf||d.endereco?.uf||"");
-  const lista=normalizarCnaes(d);
-  setCnaes(lista);
-  const p=lista.find(x=>x.principal)||lista[0];
-  setPrincipal(p?.codigo||"");
-  return {dados:d,cnaes:lista};
- }
- async function buscarCnpj(){
-  try{setErro("");await consultarCnpj(cnpj);setOk("CNPJ e CNAEs atualizados pela consulta cadastral.");}
-  catch(e){setErro(e.message)}
- }
- function aplicarExtracao(x){
-  if(!x)return;
-  setExtracao(x);
-  const c=digits(x.identificacao?.cnpj);
-  if(c) setCnpj(c);
-  if(x.identificacao?.razaoSocial) setEmpresa(at=>({...at,razaoSocial:x.identificacao.razaoSocial}));
-  if(x.identificacao?.municipio) setMunicipio(x.identificacao.municipio);
-  if(x.identificacao?.uf) setUf(x.identificacao.uf);
-  if(x.identificacao?.regime) setRegime(x.identificacao.regime);
-  if(x.operacao?.descricao) setDescricao(x.operacao.descricao);
-  if(x.operacao?.b2bPct!=null) setB2b(String(x.operacao.b2bPct));
-  if(x.operacao?.b2cPct!=null) setB2c(String(x.operacao.b2cPct));
-  if(x.valores?.receita!=null) setReceita(String(x.valores.receita));
-  if(x.valores?.compras!=null) setCompras(String(x.valores.compras));
-  if(x.valores?.servicosTomados!=null) setServicosTomados(String(x.valores.servicosTomados));
-  if(x.valores?.creditosAtuais!=null) setCreditosAtuais(String(x.valores.creditosAtuais));
-  if(x.valores?.tributosAtuais!=null) setTributosAtuais(String(x.valores.tributosAtuais));
- }
- async function interpretarDocumentos(){
-  if(!documentos.length){setErro("Selecione pelo menos um documento.");return;}
-  setExtraindo(true);setErro("");setOk("");
-  try{
-   const up=[];
-   for(const file of documentos){
-    const fileData=await arquivoParaDataUrl(file);
-    const u=await apiCall("upload-file",{method:"POST",body:{filename:file.name,mimeType:file.type||"application/octet-stream",fileData}});
-    up.push({fileId:u.fileId,filename:file.name,mimeType:file.type||"",bytes:file.size});
-   }
-   setDocumentosIa(up);
-   const d=await apiCall("reforma-extrair",{method:"POST",body:{projetoId,arquivos:up}});
-   aplicarExtracao(d.extracao);
-   const c=digits(d.extracao?.identificacao?.cnpj);
-   if(c.length===14){
-    try{
-     const cad=await consultarCnpj(c);
-     setOk(`IA identificou o CNPJ nos documentos e o sistema consultou ${cad.cnaes.length} CNAE(s) da empresa.`);
-    }catch(e){
-     setOk("IA interpretou os documentos e identificou o CNPJ, mas a consulta cadastral dos CNAEs precisa ser validada.");
-    }
-   }else{
-    setOk("IA interpretou os documentos. O CNPJ não foi encontrado com segurança; confirme manualmente.");
-   }
-   setAba("identificacao");
-  }catch(e){setErro(e.message)}finally{setExtraindo(false)}
- }
- function baseAtual(){
-  return {identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},
-   atividades:{cnaes,principal,descricaoReal:descricao},
-   operacao:{descricao,b2b:n(b2b),b2c:n(b2c)},
-   valores:{receita:n(receita),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais)},
-   extracao};
- }
- async function salvar(status="EM_ANALISE"){
-  try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:documentos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao},status}});setOk("Reforma Tributária salva.");}catch(e){setErro(e.message)}
- }
- async function analisar(){
-  setCarregando(true);setErro("");setOk("");
-  try{
-   const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});
-   setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.");
-  }catch(e){setErro(e.message)}finally{setCarregando(false)}
- }
- const field=(label,value,setter,placeholder="")=><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>{label}<input value={value} onChange={e=>setter(e.target.value)} placeholder={placeholder} style={input}/></label>;
+ const field=(label,value,setter,placeholder="",help="")=><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>{label}<input value={value} onChange={e=>setter(e.target.value)} placeholder={placeholder} style={input}/>{help&&<small style={{fontWeight:500,color:"#697386"}}>{help}</small>}</label>;
  const list=(titulo,itens)=><div style={card}><b>{titulo}</b>{itens?.length?<ul>{itens.map((x,i)=><li key={i} style={{fontSize:9.5,lineHeight:1.5}}>{x}</li>)}</ul>:<p style={{fontSize:9,color:"#697386"}}>Nenhum item confirmado.</p>}</div>;
+ async function apiCall(action,{method="GET",body=null,query={}}={}){const p=new URLSearchParams({action});Object.entries(query).forEach(([k,v])=>v!==""&&v!=null&&p.set(k,String(v)));const r=await fetch(`/api/tributario?${p}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro no módulo tributário.");return d}
+ async function arquivoParaDataUrl(file){return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error(`Não foi possível ler ${file.name}.`));reader.readAsDataURL(file)})}
+ function normalizarCnaes(data){const p=data?.cnaePrincipal||data?.cnae?.principal||null,s=data?.cnaesSecundarios||data?.cnae?.secundarios||[],todos=data?.todosCnaes||data?.cnae?.todos||[p,...s].filter(Boolean);return(todos||[]).map((x,i)=>({codigo:String(x?.codigo||x?.cnae||""),descricao:x?.descricao||"",principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&p)})).filter(x=>x.codigo||x.descricao)}
+ async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");return{dados:d,cnaes:lista}}
+ async function buscarCnpj(){try{setErro("");await consultarCnpj(cnpj);setOk("CNPJ e CNAEs atualizados pela consulta cadastral.")}catch(e){setErro(e.message)}}
+ function aplicarExtracao(x){if(!x)return;setExtracao(x);const c=digits(x.identificacao?.cnpj);if(c)setCnpj(c);if(x.identificacao?.razaoSocial)setEmpresa(at=>({...at,razaoSocial:x.identificacao.razaoSocial}));if(x.identificacao?.municipio)setMunicipio(x.identificacao.municipio);if(x.identificacao?.uf)setUf(x.identificacao.uf);if(x.identificacao?.regime)setRegime(x.identificacao.regime);if(x.operacao?.descricao)setDescricao(x.operacao.descricao);if(x.operacao?.b2bPct!=null)setB2b(String(x.operacao.b2bPct));if(x.operacao?.b2cPct!=null)setB2c(String(x.operacao.b2cPct));if(x.valores?.receita!=null)setReceita(String(x.valores.receita));if(x.valores?.compras!=null)setCompras(String(x.valores.compras));if(x.valores?.servicosTomados!=null)setServicosTomados(String(x.valores.servicosTomados));if(x.valores?.creditosAtuais!=null)setCreditosAtuais(String(x.valores.creditosAtuais));if(x.valores?.tributosAtuais!=null)setTributosAtuais(String(x.valores.tributosAtuais))}
+ async function interpretarDocumentos(){if(!documentos.length){setErro("Selecione pelo menos um documento.");return}setExtraindo(true);setErro("");setOk("");try{const up=[];for(const file of documentos){const fileData=await arquivoParaDataUrl(file);const u=await apiCall("upload-file",{method:"POST",body:{filename:file.name,mimeType:file.type||"application/octet-stream",fileData}});up.push({fileId:u.fileId,filename:file.name,mimeType:file.type||"",bytes:file.size})}setDocumentosIa(up);const d=await apiCall("reforma-extrair",{method:"POST",body:{projetoId,arquivos:up}});aplicarExtracao(d.extracao);const c=digits(d.extracao?.identificacao?.cnpj);if(c.length===14){try{const cad=await consultarCnpj(c);setOk(`IA identificou o CNPJ e o sistema consultou ${cad.cnaes.length} CNAE(s) oficiais.`)}catch{setOk("IA interpretou os documentos e identificou o CNPJ, mas a consulta cadastral precisa ser validada.")}}else setOk("IA interpretou os documentos. Confirme o CNPJ manualmente.");setAba("identificacao")}catch(e){setErro(e.message)}finally{setExtraindo(false)}}
+ function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
+ async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
+ async function salvar(status="EM_ANALISE"){try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:documentos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao,simulacao},status}});setOk("Reforma Tributária salva.")}catch(e){setErro(e.message)}}
+ const fatSim=faturamentoAnual||receita;
  return <div style={{fontFamily:"Arial, sans-serif",color:"#17233D"}}>
   <button onClick={onVoltar} style={{border:0,background:"transparent",cursor:"pointer",fontWeight:800,color:"#697386",marginBottom:10}}>← Voltar</button>
-  <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:16,padding:18,marginBottom:12}}>
-   <div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>REFORMA TRIBUTÁRIA</div><h2 style={{margin:"5px 0"}}>IBS, CBS e transição</h2>
-   <div style={{fontSize:10,color:"#D8DEEA"}}>Impactos por empresa ou grupo, créditos, B2B/B2C, precificação, transição e pontos de atenção.</div>
-  </div>
-  {erro&&<div style={{...card,borderColor:"#E7B9B9",color:"#A22",marginBottom:9}}>{erro}</div>}
-  {ok&&<div style={{...card,borderColor:"#B9DFC8",color:"#176B47",marginBottom:9}}>{ok}</div>}
+  <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:16,padding:18,marginBottom:12}}><div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA</div><h2 style={{margin:"5px 0"}}>IBS, CBS, Simples dentro/fora e impacto financeiro</h2><div style={{fontSize:10,color:"#D8DEEA"}}>Documentos + IA + CNAEs oficiais + cálculo auditável + benefícios + crescimento + memória de cálculo.</div></div>
+  {erro&&<div style={{...card,borderColor:"#E7B9B9",color:"#A22",marginBottom:9}}>{erro}</div>}{ok&&<div style={{...card,borderColor:"#B9DFC8",color:"#176B47",marginBottom:9}}>{ok}</div>}
   <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{tabs.map(([k,l])=><button key={k} onClick={()=>setAba(k)} style={{border:"1px solid #DDE3EC",borderRadius:999,padding:"7px 9px",background:aba===k?"#17233D":"#fff",color:aba===k?"#fff":"#17233D",fontSize:8.5,fontWeight:800,cursor:"pointer"}}>{l}</button>)}</div>
 
-  {aba==="identificacao"&&<div style={{display:"grid",gap:10}}>
-   <div style={card}><h3>Empresa / Grupo</h3>
-    <div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7}}>{field("CNPJ",cnpj,setCnpj,"00.000.000/0000-00")}<button onClick={buscarCnpj} style={{alignSelf:"end",padding:"9px 12px"}}>Consultar CNPJ</button></div>
-    {empresa&&<p style={{fontSize:10}}><b>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</b></p>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>{field("Responsável Finder",responsavel,setResponsavel)}{field("Origem do cliente",origem,setOrigem)}{field("Município",municipio,setMunicipio)}{field("UF",uf,setUf)}</div>
-    <label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Regime atual<select value={regime} onChange={e=>setRegime(e.target.value)} style={input}><option value="">Selecione</option><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label>
-   </div>
-   <div style={card}><h3>CNAEs da empresa</h3>{cnaes.length?cnaes.map((x,i)=><label key={`${x.codigo}_${i}`} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>setPrincipal(x.codigo)}/><span><b>{x.codigo}</b> — {x.descricao}{x.principal?" · CNAE principal cadastral":""}</span></label>):<p style={{fontSize:9,color:"#697386"}}>Os CNAEs serão carregados automaticamente após consultar o CNPJ ou após a IA identificar o CNPJ nos documentos.</p>}</div>
-  </div>}
+  {aba==="identificacao"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados da empresa</h3><div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7}}>{field("CNPJ",cnpj,setCnpj,"00.000.000/0000-00")}<button onClick={buscarCnpj} style={{alignSelf:"end",padding:"9px 12px"}}>Consultar CNPJ</button></div>{empresa&&<p style={{fontSize:10}}><b>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</b></p>}<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>{field("Responsável Finder",responsavel,setResponsavel)}{field("Origem",origem,setOrigem)}{field("Município",municipio,setMunicipio)}{field("UF",uf,setUf)}</div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Regime atual<select value={regime} onChange={e=>setRegime(e.target.value)} style={input}><option value="">Selecione</option><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label></div><div style={card}><h3>CNAEs oficiais</h3>{cnaes.length?cnaes.map((x,i)=><label key={`${x.codigo}_${i}`} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>setPrincipal(x.codigo)}/><span><b>{x.codigo}</b> — {x.descricao}{x.principal?" · principal cadastral":""}</span></label>):<p style={{fontSize:9,color:"#697386"}}>Carregados pela consulta do CNPJ, inclusive quando o CNPJ for identificado pela IA nos documentos.</p>}</div></div>}
 
-  {aba==="operacao"&&<div style={{display:"grid",gap:10}}>
-   <div style={card}><h3>Documentos para interpretação da IA</h3>
-    <input type="file" multiple onChange={e=>setDocumentos(Array.from(e.target.files||[]))}/>
-    <p style={{fontSize:9,color:"#697386"}}>{documentos.length} arquivo(s). A IA tentará identificar CNPJ, empresa, período, regime, receitas, tributos, compras/créditos e informações operacionais. Depois o sistema consulta o CNPJ para obter os CNAEs oficiais.</p>
-    <button onClick={interpretarDocumentos} disabled={extraindo||!documentos.length} style={{padding:"9px 12px",fontWeight:800}}>{extraindo?"Interpretando documentos...":"Interpretar documentos com IA"}</button>
-   </div>
-   {extracao&&<div style={card}><h3>Resumo da extração</h3>
-    <p style={{fontSize:9.5}}><b>Documentos reconhecidos:</b> {(extracao.documentosReconhecidos||[]).join(", ")||"-"}</p>
-    <p style={{fontSize:9.5}}><b>Confiança:</b> {extracao.confiancaGeral||"-"}</p>
-    {(extracao.fontes||[]).map((x,i)=><div key={i} style={{fontSize:9,padding:"5px 0",borderBottom:"1px solid #EEF0F4"}}><b>{x.campo}</b>: {x.valor} <span style={{color:"#697386"}}>({x.documento} · {x.confianca})</span></div>)}
-    {!!extracao.divergencias?.length&&<><b style={{fontSize:9}}>Divergências</b><ul>{extracao.divergencias.map((x,i)=><li key={i} style={{fontSize:9}}>{x}</li>)}</ul></>}
-   </div>}
-   <div style={card}><h3>Operação real</h3><p style={{fontSize:9.5,color:"#697386"}}>A descrição operacional pode ser pré-preenchida pela IA, mas precisa ser validada pelo responsável. CNAE isolado não define o tratamento tributário.</p>
-    <textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={6} style={{...input,resize:"vertical"}} placeholder="Produtos/serviços, clientes, fornecedores, onde presta/entrega, particularidades da operação..."/>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>{field("% B2B",b2b,setB2b,"0")}{field("% B2C",b2c,setB2c,"0")}</div>
-   </div>
-  </div>}
+  {aba==="operacao"&&<div style={card}><h3>Operação real</h3><textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={6} style={{...input,resize:"vertical"}} placeholder="O que vende/presta, clientes, fornecedores, local da operação, particularidades..."/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:8}}>{field("% B2B",b2b,setB2b)}{field("% B2C",b2c,setB2c)}{field("% exportação de serviços",exportacao,setExportacao)}</div><p style={{fontSize:9,color:"#697386"}}>CNAE é referência cadastral. O diagnóstico usa também a atividade real e a cadeia comercial.</p></div>}
 
-  {aba==="receitas"&&<div style={card}><h3>Receitas</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{field("Receita do período",receita,setReceita,"R$")}{field("% B2B",b2b,setB2b)}{field("% B2C",b2c,setB2c)}</div><p style={{fontSize:9,color:"#697386"}}>Valores extraídos permanecem editáveis para validação e correção manual.</p></div>}
+  {aba==="dados"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados econômicos para simulação</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{field("Faturamento anual",faturamentoAnual,setFaturamentoAnual,"R$")}{field("Margem de lucro real estimada %",margem,setMargem,"%")}{field("Folha mensal — empregados",folha,setFolha,"R$")}{field("Pró-labore mensal",proLabore,setProLabore,"R$")}{field("Despesas/custos anuais dedutíveis",despesasDedutiveis,setDespesasDedutiveis,"R$")}{field("Alíquota atual ISS/ICMS %",aliquotaAtual,setAliquotaAtual,"%")}</div></div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
 
-  {aba==="creditos"&&<div style={card}><h3>Compras / Créditos</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{field("Compras / insumos",compras,setCompras,"R$")}{field("Serviços tomados",servicosTomados,setServicosTomados,"R$")}{field("Créditos atuais comprovados",creditosAtuais,setCreditosAtuais,"R$")}</div><p style={{fontSize:9,color:"#697386"}}>A IA pode extrair valores documentados, mas não presume direito a crédito IBS/CBS.</p></div>}
+  {aba==="documentos"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Documentos para interpretação da IA</h3><input type="file" multiple onChange={e=>setDocumentos(Array.from(e.target.files||[]))}/><p style={{fontSize:9,color:"#697386"}}>{documentos.length} arquivo(s). A IA procura CNPJ, regime, período, receitas, compras, tributos e demais dados comprovados.</p><button onClick={interpretarDocumentos} disabled={extraindo||!documentos.length} style={{padding:"9px 12px",fontWeight:800}}>{extraindo?"Interpretando documentos...":"Interpretar documentos com IA"}</button></div>{extracao&&<div style={card}><h3>Auditoria da extração</h3><p style={{fontSize:9.5}}><b>Documentos:</b> {(extracao.documentosReconhecidos||[]).join(", ")||"-"} · <b>Confiança:</b> {extracao.confiancaGeral||"-"}</p>{(extracao.fontes||[]).map((x,i)=><div key={i} style={{fontSize:9,padding:"5px 0",borderBottom:"1px solid #EEF0F4"}}><b>{x.campo}</b>: {x.valor} <span style={{color:"#697386"}}>({x.documento} · {x.confianca})</span></div>)}{!!extracao.divergencias?.length&&<>{list("Divergências",extracao.divergencias)}</>}</div>}</div>}
 
-  {aba==="atual"&&<div style={card}><h3>Situação atual</h3>{field("Tributos atuais do período",tributosAtuais,setTributosAtuais,"ICMS/ISS/PIS/Cofins/IPI etc.")}<div style={{marginTop:10}}><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar diagnóstico da Reforma"}</button></div></div>}
+  {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",analise.dadosFaltantes)}</>}</div>}
 
-  {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}>
-   {!analise?<div style={card}>Gere o diagnóstico na etapa 5.</div>:<>
-    <div style={card}><h3>IBS / CBS</h3><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>
-    {list("Impactos identificados",analise.impactos)}{list("Créditos e pontos de validação",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Dados faltantes reais",analise.dadosFaltantes)}
-   </>}
-  </div>}
+  {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{faturamento:n(fatSim),creditoCBS:0,creditoIBS:n(creditosAtuais),reducaoCBS:n(reducaoIbsCbs),reducaoIBS:n(reducaoIbsCbs)}} onResultado={setSimulacao}/>}
 
-  {aba==="transicao"&&<div style={{display:"grid",gap:9}}><div style={card}><h3>Transição</h3><p style={{fontSize:9.5,color:"#697386"}}>A linha do tempo deve refletir a legislação vigente na data da análise. Quando houver dúvida normativa, o sistema deve mandar validar em fonte oficial.</p></div>{analise&&list("Marcos e providências",analise.transicao)}</div>}
+  {aba==="impacto"&&<div style={{display:"grid",gap:9}}>{analise?<>{list("Riscos",analise.riscos)}{list("Oportunidades",analise.oportunidades)}{list("Contratos / ERP / cadastros",analise.adequacoes)}<div style={card}><h3>Matriz de impacto</h3>{(analise.matrizImpacto||[]).map((x,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"160px 80px 1fr",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><b>{x.area}</b><b>{x.nivel}</b><span>{x.diagnostico}</span></div>)}</div></>:<div style={card}>Gere o diagnóstico técnico primeiro.</div>}</div>}
 
-  {aba==="impacto"&&<div style={{display:"grid",gap:9}}>{analise?<>{list("Riscos",analise.riscos)}{list("Oportunidades",analise.oportunidades)}{list("Contratos / ERP / cadastros",analise.adequacoes)}<div style={card}><h3>Matriz de impacto</h3>{(analise.matrizImpacto||[]).map((x,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"160px 80px 1fr",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><b>{x.area}</b><b>{x.nivel}</b><span>{x.diagnostico}</span></div>)}</div></>:<div style={card}>Gere o diagnóstico primeiro.</div>}</div>}
+  {aba==="transicao"&&<div style={{display:"grid",gap:9}}><div style={card}><h3>Transição tributária</h3><p style={{fontSize:9.5,color:"#697386"}}>O diagnóstico deve mostrar a evolução anual e separar fase de teste, transição e modelo pleno conforme a legislação vigente na data-base.</p></div>{analise&&list("Marcos e providências",analise.transicao)}</div>}
 
-  {aba==="relatorio"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><h3 style={{margin:0}}>Relatório da Reforma Tributária</h3><p style={{fontSize:9,color:"#697386"}}>Base técnica, documentos interpretados, CNAEs, impactos, transição, riscos, oportunidades e plano de ação.</p></div><button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px"}}>Salvar inteligência</button></div></div>{analise&&<><div style={card}><b>Resumo executivo</b><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p></div>{list("Plano de ação",analise.planoAcao)}{list("Fundamentação a validar",analise.fundamentacao)}</>}</div>}
+  {aba==="relatorio"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><h3 style={{margin:0}}>Relatório executivo</h3><p style={{fontSize:9,color:"#697386"}}>Empresa, CNAEs, documentos, situação atual, IBS/CBS, Simples dentro/fora, benefícios, crescimento, impactos, memória e plano de ação.</p></div><button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px"}}>Salvar inteligência</button></div></div>{simulacao&&<div style={card}><h3>Resumo financeiro</h3><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,fontSize:9}}><div><b>IBS/CBS líquido</b><br/>R$ {Number(simulacao.ibsCbs?.total||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</div><div><b>Carga efetiva</b><br/>{Number(simulacao.ibsCbs?.cargaEfetiva||0).toFixed(2)}%</div><div><b>Melhor carga Simples</b><br/>{simulacao.simples?.menorCargaMatematica||"-"}</div><div><b>Crescimento simulado</b><br/>R$ {Number(simulacao.crescimento?.projetado?.total||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>}{analise&&<><div style={card}><b>Resumo executivo</b><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p></div>{list("Plano de ação",analise.planoAcao)}{list("Base legal / fundamentação",analise.fundamentacao)}</>}</div>}
  </div>
 }
 
