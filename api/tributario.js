@@ -2210,6 +2210,116 @@ REGRAS:
   }catch(error){console.error("[tributario][planejamento-analisar]",error);return send(res,500,{sucesso:false,error:error?.message||"Não foi possível interpretar o planejamento."});}
 }
 
+
+const reformaAnaliseSchema = {
+  type: "object",
+  properties: {
+    dataBase: { type: "string" },
+    confianca: { type: "string", enum: ["ALTA","MEDIA","BAIXA"] },
+    resumo: { type: "string" },
+    impactos: { type: "array", items: { type: "string" } },
+    creditos: { type: "array", items: { type: "string" } },
+    precificacao: { type: "array", items: { type: "string" } },
+    transicao: { type: "array", items: { type: "string" } },
+    riscos: { type: "array", items: { type: "string" } },
+    oportunidades: { type: "array", items: { type: "string" } },
+    adequacoes: { type: "array", items: { type: "string" } },
+    dadosFaltantes: { type: "array", items: { type: "string" } },
+    fundamentacao: { type: "array", items: { type: "string" } },
+    planoAcao: { type: "array", items: { type: "string" } },
+    matrizImpacto: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          area: { type: "string" },
+          nivel: { type: "string", enum: ["ALTO","MEDIO","BAIXO","NAO_AVALIADO"] },
+          diagnostico: { type: "string" }
+        },
+        required: ["area","nivel","diagnostico"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["dataBase","confianca","resumo","impactos","creditos","precificacao","transicao","riscos","oportunidades","adequacoes","dadosFaltantes","fundamentacao","planoAcao","matrizImpacto"],
+  additionalProperties: false
+};
+
+async function reformaAnalisar(req,res){
+  if(!process.env.OPENAI_API_KEY){
+    return send(res,500,{sucesso:false,error:"OPENAI_API_KEY não configurada."});
+  }
+
+  const body=req.body||{};
+  const baseAtual=jsonSeguro(body.base||{});
+  const dataBase=new Date().toISOString().slice(0,10);
+
+  const prompt=`Você é o motor técnico do módulo Finder Intelligence — Reforma Tributária do Consumo brasileira.
+
+DATA-BASE DA ANÁLISE: ${dataBase}
+
+OBJETIVO:
+Produzir diagnóstico empresarial de IBS, CBS e transição, SEM inventar números, alíquotas, créditos, benefícios, leis ou jurisprudência.
+
+BASE ATUAL INFORMADA:
+${JSON.stringify(baseAtual,null,2)}
+
+DOCUMENTOS REGISTRADOS:
+${JSON.stringify(jsonSeguro(body.documentos||[]),null,2)}
+
+REGRAS OBRIGATÓRIAS:
+1. Considere CNAE apenas como indício cadastral; atividade real e operação prevalecem para diagnóstico.
+2. Diferencie B2B e B2C e explique impactos sobre crédito, repasse, preço e margem apenas qualitativamente quando faltarem dados.
+3. Não presuma direito a crédito IBS/CBS. Aponte quais aquisições precisam ser classificadas/validadas.
+4. Não invente alíquota-padrão definitiva, carga líquida ou economia.
+5. Não trate ausência de informação como zero.
+6. Não trate período futuro como pendência.
+7. Identifique impactos em precificação, margem, caixa, contratos, ERP, documentos fiscais, cadastro de itens, fornecedores e clientes.
+8. Para transição, somente afirme marcos jurídicos que você tenha segurança de que estão vigentes na data-base. Quando houver dúvida, escreva "validar na legislação vigente".
+9. Fundamentação: não invente lei, artigo, ato, nota técnica, solução de consulta, jurisprudência ou URL.
+10. Quando a fonte jurídica não estiver disponível no contexto, escreva "Pesquisa jurídica externa necessária".
+11. Não use blogs como autoridade jurídica.
+12. Dados faltantes devem conter somente informações materialmente necessárias à análise da empresa.
+13. Gere matriz para: Carga tributária, Créditos, Precificação, Margem, Caixa, Contratos, ERP/Faturamento, Cadastro de produtos/serviços, Fornecedores, Clientes B2B/B2C e Benefícios atuais.
+14. Classifique impacto ALTO/MEDIO/BAIXO somente quando a base permitir; caso contrário NAO_AVALIADO.
+15. O relatório é diagnóstico preliminar e não substitui validação profissional/legal.
+16. Não misture o comparativo Simples/Presumido/Real do módulo Planejamento Tributário; aqui o foco é Reforma Tributária do Consumo.
+`;
+
+  try{
+    const response=await fetch("https://api.openai.com/v1/responses",{
+      method:"POST",
+      headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:process.env.OPENAI_MODEL||"gpt-5-mini",
+        input:prompt,
+        text:{
+          format:{
+            type:"json_schema",
+            name:"finder_reforma_tributaria",
+            strict:true,
+            schema:reformaAnaliseSchema
+          }
+        }
+      })
+    });
+
+    const raw=await response.json();
+    if(!response.ok) throw new Error(raw?.error?.message||"Falha ao analisar Reforma Tributária.");
+
+    const outputText=
+      raw.output_text ||
+      raw.output?.flatMap(x=>x.content||[]).find(x=>x.type==="output_text")?.text ||
+      "";
+
+    const analise=JSON.parse(outputText);
+    return send(res,200,{sucesso:true,analise,usage:raw.usage||null});
+  }catch(error){
+    console.error("[tributario][reforma-analisar]",error);
+    return send(res,500,{sucesso:false,error:error?.message||"Não foi possível gerar o diagnóstico da Reforma Tributária."});
+  }
+}
+
 export default async function handler(
   req,
   res
@@ -2261,6 +2371,15 @@ export default async function handler(
       "POST"
     ) {
       return await excluirProjeto(req,res);
+    }
+
+    if (
+      action ===
+      "reforma-analisar" &&
+      req.method ===
+      "POST"
+    ) {
+      return await reformaAnalisar(req,res);
     }
 
     if (
