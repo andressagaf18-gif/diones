@@ -815,13 +815,47 @@ function ReformaTributariaV2({token,onVoltar}){
  function normalizarCnaes(data){const p=data?.cnaePrincipal||data?.cnae?.principal||null,s=data?.cnaesSecundarios||data?.cnae?.secundarios||[],todos=data?.todosCnaes||data?.cnae?.todos||[p,...s].filter(Boolean);return(todos||[]).map((x,i)=>({codigo:String(x?.codigo||x?.cnae||""),descricao:x?.descricao||"",principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&p)})).filter(x=>x.codigo||x.descricao)}
  async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");return{dados:d,cnaes:lista}}
  async function buscarCnpj(){try{setErro("");await consultarCnpj(cnpj);setOk("CNPJ e CNAEs atualizados pela consulta cadastral.")}catch(e){setErro(e.message)}}
+ const EXTENSOES_SUPORTADAS_IA=new Set([
+  "art","bat","brf","c","cls","css","csv","diff","doc","docx","dot","eml","epub","es",
+  "h","hs","htm","html","hwp","hwpx","ics","ifb","java","js","json","keynote","ksh","ltx",
+  "mail","markdown","md","mht","mhtml","mjs","msg","nws","odp","ods","odt","otp","ots",
+  "pages","patch","pdf","pl","pm","pot","potm","potx","ppa","pps","ppsm","ppsx","ppt",
+  "pptm","pptx","pwz","py","rst","rtf","scala","sh","shtml","srt","sty","svg","svgz",
+  "tex","text","txt","tsv","vcf","vtt","wiz","xla","xlb","xlc","xlm","xls","xlsx","xlt",
+  "xlw","xml","yaml","yml"
+ ]);
+
+ function extensaoArquivo(nome){
+  const partes=String(nome||"").toLowerCase().split(".");
+  return partes.length>1?partes.pop():"";
+ }
+
+ function arquivoSuportadoIA(arq){
+  return EXTENSOES_SUPORTADAS_IA.has(extensaoArquivo(arq?.name));
+ }
+
  function adicionarDocumentos(novos){
   const lista=Array.from(novos||[]);
   if(!lista.length)return;
 
+  const invalidos=lista.filter(arq=>!arquivoSuportadoIA(arq));
+  const validos=lista.filter(arquivoSuportadoIA);
+
+  if(invalidos.length){
+    const nomes=invalidos.map(a=>`${a.name} (.${extensaoArquivo(a.name)||"sem extensão"})`).join(", ");
+    setErro(
+      `Arquivo(s) não suportado(s) pela IA: ${nomes}. `+
+      `Exemplo: arquivos .REC não são aceitos. Converta para PDF, DOCX, XLSX, CSV, TXT, XML ou outro formato suportado antes de anexar.`
+    );
+  }else{
+    setErro("");
+  }
+
+  if(!validos.length)return;
+
   setDocumentos(atuais=>{
     const mapa=new Map();
-    [...atuais,...lista].forEach(arq=>{
+    [...atuais,...validos].forEach(arq=>{
       const chave=`${arq.name}__${arq.size}__${arq.lastModified}`;
       if(!mapa.has(chave))mapa.set(chave,arq);
     });
@@ -899,7 +933,19 @@ function ReformaTributariaV2({token,onVoltar}){
   ].filter(Boolean);
   if(tratamentos.length)setTratamentoEspecial(tratamentos.join(" | "));
  }
- async function interpretarDocumentos(){if(!documentos.length){setErro("Selecione pelo menos um documento.");return}setExtraindo(true);setErro("");setOk("");try{const up=[];for(const file of documentos){const fileData=await arquivoParaDataUrl(file);const u=await apiCall("upload-file",{method:"POST",body:{filename:file.name,mimeType:file.type||"application/octet-stream",fileData}});up.push({fileId:u.fileId,filename:file.name,mimeType:file.type||"",bytes:file.size})}setDocumentosIa(up);const d=await apiCall("reforma-extrair",{method:"POST",body:{projetoId,arquivos:up}});aplicarExtracao(d.extracao);const c=digits(d.extracao?.identificacao?.cnpj);if(c.length===14){try{const cad=await consultarCnpj(c);setOk(`IA identificou o CNPJ e o sistema consultou ${cad.cnaes.length} CNAE(s) oficiais.`)}catch{setOk("IA interpretou os documentos e identificou o CNPJ, mas a consulta cadastral precisa ser validada.")}}else setOk("IA interpretou os documentos. Confirme o CNPJ manualmente.");setAba("identificacao")}catch(e){setErro(e.message)}finally{setExtraindo(false)}}
+ async function interpretarDocumentos(){
+  if(!documentos.length){setErro("Selecione pelo menos um documento.");return}
+
+  const invalidos=documentos.filter(arq=>!arquivoSuportadoIA(arq));
+  if(invalidos.length){
+    setErro(
+      `Não é possível interpretar: ${invalidos.map(a=>a.name).join(", ")}. `+
+      `O formato não é suportado pela IA. Remova o arquivo ou converta para PDF, DOCX, XLSX, CSV, TXT ou XML.`
+    );
+    return;
+  }
+
+  setExtraindo(true);setErro("");setOk("");try{const up=[];for(const file of documentos){const fileData=await arquivoParaDataUrl(file);const u=await apiCall("upload-file",{method:"POST",body:{filename:file.name,mimeType:file.type||"application/octet-stream",fileData}});up.push({fileId:u.fileId,filename:file.name,mimeType:file.type||"",bytes:file.size})}setDocumentosIa(up);const d=await apiCall("reforma-extrair",{method:"POST",body:{projetoId,arquivos:up}});aplicarExtracao(d.extracao);const c=digits(d.extracao?.identificacao?.cnpj);if(c.length===14){try{const cad=await consultarCnpj(c);setOk(`IA identificou o CNPJ e o sistema consultou ${cad.cnaes.length} CNAE(s) oficiais.`)}catch{setOk("IA interpretou os documentos e identificou o CNPJ, mas a consulta cadastral precisa ser validada.")}}else setOk("IA interpretou os documentos. Confirme o CNPJ manualmente.");setAba("identificacao")}catch(e){setErro(e.message)}finally{setExtraindo(false)}}
  function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
  async function salvar(status="EM_ANALISE"){try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:documentos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao,simulacao},status}});setOk("Reforma Tributária salva.")}catch(e){setErro(e.message)}}
@@ -930,7 +976,7 @@ function ReformaTributariaV2({token,onVoltar}){
     <input
      type="file"
      multiple
-     accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json,.xml,.md,.png,.jpg,.jpeg"
+     accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json,.xml,.md,.rtf,.odt,.ods,.ppt,.pptx,.html,.yaml,.yml,.eml,.msg"
      style={{display:"none"}}
      onChange={e=>{
       adicionarDocumentos(e.target.files);
@@ -938,6 +984,10 @@ function ReformaTributariaV2({token,onVoltar}){
      }}
     />
    </label>
+
+   <div style={{marginTop:8,padding:"8px 10px",background:"#FFF8E7",border:"1px solid #F3D99B",borderRadius:8,fontSize:8.5,color:"#805B10"}}>
+    Formatos como <b>.REC</b> não são suportados pela IA. Se o documento estiver nesse formato, converta antes para PDF, DOCX, XLSX, CSV, TXT ou XML.
+   </div>
 
    {!!documentos.length&&<div style={{display:"grid",gap:6,marginTop:10}}>
     {documentos.map((arq,i)=><div key={`${arq.name}_${arq.size}_${arq.lastModified}_${i}`} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",padding:"8px 9px",border:"1px solid #E7EAF0",borderRadius:8,background:"#FBFCFE"}}>
