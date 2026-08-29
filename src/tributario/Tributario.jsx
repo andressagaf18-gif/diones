@@ -788,6 +788,124 @@ function DadosManuais({
   );
 }
 
+
+function ReformaTributariaV2({token,onVoltar}){
+ const [aba,setAba]=useState("identificacao");
+ const [cnpj,setCnpj]=useState("");
+ const [empresa,setEmpresa]=useState(null);
+ const [responsavel,setResponsavel]=useState("");
+ const [origem,setOrigem]=useState("");
+ const [descricao,setDescricao]=useState("");
+ const [regime,setRegime]=useState("");
+ const [municipio,setMunicipio]=useState("");
+ const [uf,setUf]=useState("");
+ const [b2b,setB2b]=useState("");
+ const [b2c,setB2c]=useState("");
+ const [receita,setReceita]=useState("");
+ const [compras,setCompras]=useState("");
+ const [servicosTomados,setServicosTomados]=useState("");
+ const [creditosAtuais,setCreditosAtuais]=useState("");
+ const [tributosAtuais,setTributosAtuais]=useState("");
+ const [documentos,setDocumentos]=useState([]);
+ const [analise,setAnalise]=useState(null);
+ const [erro,setErro]=useState("");
+ const [ok,setOk]=useState("");
+ const [carregando,setCarregando]=useState(false);
+ const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}});
+ const tabs=[
+  ["identificacao","1. Empresa / Grupo"],["operacao","2. Operação real"],["receitas","3. Receitas"],
+  ["creditos","4. Compras / Créditos"],["atual","5. Situação atual"],["ibscbs","6. IBS / CBS"],
+  ["transicao","7. Transição"],["impacto","8. Impacto"],["relatorio","9. Relatório"]
+ ];
+ const n=v=>Number(String(v??"").replace(/\./g,"").replace(",", "."))||0;
+ const money=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+ const input={width:"100%",border:"1px solid #DDE3EC",borderRadius:8,padding:"9px 10px",fontSize:10,boxSizing:"border-box"};
+ const card={background:"#fff",border:"1px solid #E3E7EF",borderRadius:12,padding:14};
+ async function api(action,{method="GET",body=null,query={}}={}){
+  const p=new URLSearchParams({action});Object.entries(query).forEach(([k,v])=>v!==""&&v!=null&&p.set(k,String(v)));
+  const r=await fetch(`/api/tributario?${p}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro no módulo tributário.");return d;
+ }
+ async function buscarCnpj(){
+  try{setErro("");const d=await fetch(`/api/cnpj?cnpj=${cnpj.replace(/\D/g,"")}`).then(r=>r.json());if(!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");
+   setEmpresa(d);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");
+   const rs=d.razaoSocial||d.razao_social||d.nome||"";setOk(`CNPJ localizado${rs?`: ${rs}`:""}.`);
+  }catch(e){setErro(e.message)}
+ }
+ function baseAtual(){
+  return {identificacao:{cnpj:cnpj.replace(/\D/g,""),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},
+   operacao:{descricao,b2b:n(b2b),b2c:n(b2c)},
+   valores:{receita:n(receita),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais)}};
+ }
+ async function salvar(status="EM_ANALISE"){
+  try{await api("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:documentos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:cnpj.replace(/\D/g,""),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise},status}});setOk("Reforma Tributária salva.");}catch(e){setErro(e.message)}
+ }
+ async function analisar(){
+  setCarregando(true);setErro("");setOk("");
+  try{
+   const d=await api("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),documentos:documentos.map(x=>({nome:x.name,tipo:x.type,tamanho:x.size}))}});
+   setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.");
+  }catch(e){setErro(e.message)}finally{setCarregando(false)}
+ }
+ const field=(label,value,setter,placeholder="")=><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>{label}<input value={value} onChange={e=>setter(e.target.value)} placeholder={placeholder} style={input}/></label>;
+ const list=(titulo,itens)=><div style={card}><b>{titulo}</b>{itens?.length?<ul>{itens.map((x,i)=><li key={i} style={{fontSize:9.5,lineHeight:1.5}}>{x}</li>)}</ul>:<p style={{fontSize:9,color:"#697386"}}>Nenhum item confirmado.</p>}</div>;
+ return <div style={{fontFamily:"Arial, sans-serif",color:"#17233D"}}>
+  <button onClick={onVoltar} style={{border:0,background:"transparent",cursor:"pointer",fontWeight:800,color:"#697386",marginBottom:10}}>← Voltar</button>
+  <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:16,padding:18,marginBottom:12}}>
+   <div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>REFORMA TRIBUTÁRIA</div><h2 style={{margin:"5px 0"}}>IBS, CBS e transição</h2>
+   <div style={{fontSize:10,color:"#D8DEEA"}}>Impactos por empresa ou grupo, créditos, B2B/B2C, precificação, transição e pontos de atenção.</div>
+  </div>
+  {erro&&<div style={{...card,borderColor:"#E7B9B9",color:"#A22",marginBottom:9}}>{erro}</div>}
+  {ok&&<div style={{...card,borderColor:"#B9DFC8",color:"#176B47",marginBottom:9}}>{ok}</div>}
+  <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{tabs.map(([k,l])=><button key={k} onClick={()=>setAba(k)} style={{border:"1px solid #DDE3EC",borderRadius:999,padding:"7px 9px",background:aba===k?"#17233D":"#fff",color:aba===k?"#fff":"#17233D",fontSize:8.5,fontWeight:800,cursor:"pointer"}}>{l}</button>)}</div>
+
+  {aba==="identificacao"&&<div style={{display:"grid",gap:10}}>
+   <div style={card}><h3>Empresa / Grupo</h3><div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7}}>{field("CNPJ",cnpj,setCnpj,"00.000.000/0000-00")}<button onClick={buscarCnpj} style={{alignSelf:"end",padding:"9px 12px"}}>Consultar</button></div>
+   {empresa&&<p style={{fontSize:10}}><b>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</b></p>}
+   <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>{field("Responsável Finder",responsavel,setResponsavel)}{field("Origem do cliente",origem,setOrigem)}{field("Município",municipio,setMunicipio)}{field("UF",uf,setUf)}</div>
+   <label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Regime atual<select value={regime} onChange={e=>setRegime(e.target.value)} style={input}><option value="">Selecione</option><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label></div>
+  </div>}
+
+  {aba==="operacao"&&<div style={{display:"grid",gap:10}}>
+   <div style={card}><h3>Operação real</h3><p style={{fontSize:9.5,color:"#697386"}}>Descreva o que a empresa realmente vende/presta. CNAE isolado não será usado para concluir tratamento tributário.</p>
+   <textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={6} style={{...input,resize:"vertical"}} placeholder="Produtos/serviços, clientes, fornecedores, onde presta/entrega, particularidades da operação..."/>
+   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>{field("% B2B",b2b,setB2b,"0")}{field("% B2C",b2c,setB2c,"0")}</div></div>
+   <div style={card}><h3>Documentos</h3><input type="file" multiple onChange={e=>setDocumentos(Array.from(e.target.files||[]))}/><p style={{fontSize:9,color:"#697386"}}>{documentos.length} arquivo(s) selecionado(s). Nesta primeira versão os documentos ficam registrados como evidência; valores não serão inventados a partir do nome do arquivo.</p></div>
+  </div>}
+
+  {aba==="receitas"&&<div style={card}><h3>Receitas</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{field("Receita do período",receita,setReceita,"R$")}{field("% B2B",b2b,setB2b)}{field("% B2C",b2c,setB2c)}</div><p style={{fontSize:9,color:"#697386"}}>A evolução deverá separar posteriormente receita por atividade, destino, UF/município e mercado externo quando aplicável.</p></div>}
+
+  {aba==="creditos"&&<div style={card}><h3>Compras / Créditos</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{field("Compras / insumos",compras,setCompras,"R$")}{field("Serviços tomados",servicosTomados,setServicosTomados,"R$")}{field("Créditos atuais comprovados",creditosAtuais,setCreditosAtuais,"R$")}</div><p style={{fontSize:9,color:"#697386"}}>Crédito IBS/CBS não será presumido automaticamente. A análise deve validar natureza da aquisição, uso na atividade e restrições legais.</p></div>}
+
+  {aba==="atual"&&<div style={card}><h3>Situação atual</h3>{field("Tributos atuais do período",tributosAtuais,setTributosAtuais,"ICMS/ISS/PIS/Cofins/IPI etc.")}<div style={{marginTop:10}}><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar diagnóstico da Reforma"}</button></div></div>}
+
+  {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}>
+   {!analise?<div style={card}>Gere o diagnóstico na etapa 5.</div>:<>
+    <div style={card}><h3>IBS / CBS</h3><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>
+    {list("Impactos identificados",analise.impactos)}{list("Créditos e pontos de validação",analise.creditos)}{list("Precificação e margem",analise.precificacao)}
+    {list("Dados faltantes reais",analise.dadosFaltantes)}
+   </>}
+  </div>}
+
+  {aba==="transicao"&&<div style={{display:"grid",gap:9}}>
+   <div style={card}><h3>Transição</h3><p style={{fontSize:9.5,color:"#697386"}}>A linha do tempo deve ser gerada com base legal vigente na data da análise. O sistema não deve hardcodar alíquotas futuras como fato quando dependerem de regulamentação.</p></div>
+   {analise&&list("Marcos e providências",analise.transicao)}
+  </div>}
+
+  {aba==="impacto"&&<div style={{display:"grid",gap:9}}>
+   {analise?<>
+    {list("Riscos",analise.riscos)}{list("Oportunidades",analise.oportunidades)}{list("Contratos / ERP / cadastros",analise.adequacoes)}
+    <div style={card}><h3>Matriz de impacto</h3>{(analise.matrizImpacto||[]).map((x,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"160px 80px 1fr",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><b>{x.area}</b><b>{x.nivel}</b><span>{x.diagnostico}</span></div>)}</div>
+   </>:<div style={card}>Gere o diagnóstico primeiro.</div>}
+  </div>}
+
+  {aba==="relatorio"&&<div style={{display:"grid",gap:9}}>
+   <div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><h3 style={{margin:0}}>Relatório da Reforma Tributária</h3><p style={{fontSize:9,color:"#697386"}}>Base técnica, impactos, transição, riscos, oportunidades e plano de ação.</p></div><button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px"}}>Salvar inteligência</button></div></div>
+   {analise&&<><div style={card}><b>Resumo executivo</b><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p></div>{list("Plano de ação",analise.planoAcao)}{list("Fundamentação a validar",analise.fundamentacao)}</>}
+  </div>}
+ </div>
+}
+
 export default function Tributario({
   token,
 }) {
@@ -2178,16 +2296,17 @@ export default function Tributario({
       }
     );
 
-    // Reforma Tributária permanece exatamente no fluxo V1.7.
-    // Somente Planejamento entra no motor V2.
     if (tipo === "planejamento") {
       setTela("planejamento-v2");
       return;
     }
 
-    setTela(
-      "configuracao"
-    );
+    if (tipo === "reforma") {
+      setTela("reforma-v2");
+      return;
+    }
+
+    setTela("configuracao");
   }
 
   function alterarEmpresa(
@@ -2633,6 +2752,18 @@ export default function Tributario({
       />
     );
   }
+  if (
+    tela ===
+    "reforma-v2"
+  ) {
+    return (
+      <ReformaTributariaV2
+        token={token}
+        onVoltar={() => setTela("inicio")}
+      />
+    );
+  }
+
 
   if (
     tela ===
