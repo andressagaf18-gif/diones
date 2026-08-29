@@ -1,4 +1,6 @@
+import PlanejamentoTributario from "./PlanejamentoTributario";
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -909,6 +911,36 @@ export default function Tributario({
   });
 
   const [
+    projetosSalvos,
+    setProjetosSalvos,
+  ] = useState([]);
+
+  const [
+    carregandoProjetos,
+    setCarregandoProjetos,
+  ] = useState(false);
+
+  const [
+    projetoAberto,
+    setProjetoAberto,
+  ] = useState(null);
+
+  const [
+    filtroHistorico,
+    setFiltroHistorico,
+  ] = useState({
+    busca: "",
+    tipo: "",
+    responsavel: "",
+    status: "",
+  });
+
+  const [
+    versaoDiagnostico,
+    setVersaoDiagnostico,
+  ] = useState(null);
+
+  const [
     erro,
     setErro,
   ] = useState("");
@@ -992,6 +1024,744 @@ export default function Tributario({
     );
   }
 
+  async function apiTributarioJson(
+    action,
+    {
+      method = "GET",
+      body = null,
+      query = {},
+    } = {}
+  ) {
+    const params =
+      new URLSearchParams({
+        action,
+      });
+
+    Object.entries(
+      query || {}
+    ).forEach(
+      ([chave, valor]) => {
+        if (
+          valor !== "" &&
+          valor !== null &&
+          valor !== undefined
+        ) {
+          params.set(
+            chave,
+            String(valor)
+          );
+        }
+      }
+    );
+
+    const resposta =
+      await fetch(
+        `/api/tributario?${params.toString()}`,
+        {
+          method,
+          headers: {
+            ...(body
+              ? {
+                  "content-type":
+                    "application/json",
+                }
+              : {}),
+            ...(token
+              ? {
+                  Authorization:
+                    `Bearer ${token}`,
+                }
+              : {}),
+          },
+          ...(body
+            ? {
+                body:
+                  JSON.stringify(
+                    body
+                  ),
+              }
+            : {}),
+        }
+      );
+
+    const data =
+      await resposta
+        .json()
+        .catch(
+          () => null
+        );
+
+    if (
+      !resposta.ok ||
+      !data?.sucesso
+    ) {
+      throw new Error(
+        data?.error ||
+        "Erro no módulo tributário."
+      );
+    }
+
+    return data;
+  }
+
+  function normalizarRespostaCnpj(
+    data
+  ) {
+    if (
+      !data ||
+      data.sucesso !== true
+    ) {
+      throw new Error(
+        data?.error ||
+        "A consulta do CNPJ não retornou dados válidos."
+      );
+    }
+
+    const cnaePrincipal =
+      data.cnaePrincipal ||
+      data.cnae?.principal || {
+        codigo:
+          String(
+            data.cnae?.codigo ||
+            ""
+          ),
+        descricao:
+          data.cnae?.descricao ||
+          "",
+        principal: true,
+      };
+
+    const cnaesSecundarios =
+      Array.isArray(
+        data.cnaesSecundarios
+      )
+        ? data.cnaesSecundarios
+        : Array.isArray(
+            data.cnae?.secundarios
+          )
+        ? data.cnae.secundarios
+        : [];
+
+    const todosCnaes =
+      Array.isArray(
+        data.todosCnaes
+      ) &&
+      data.todosCnaes.length
+        ? data.todosCnaes
+        : Array.isArray(
+            data.cnae?.todos
+          ) &&
+          data.cnae.todos.length
+        ? data.cnae.todos
+        : [
+            cnaePrincipal,
+            ...cnaesSecundarios,
+          ];
+
+    return {
+      cnpj:
+        data.cnpj ||
+        "",
+      razaoSocial:
+        data.razaoSocial ||
+        data.razao ||
+        data.nomeEmpresarial ||
+        data.nome ||
+        "",
+      nomeFantasia:
+        data.nomeFantasia ||
+        "",
+      situacao:
+        data.situacao ||
+        data.situacaoCadastral ||
+        "",
+      porte:
+        data.porte ||
+        "",
+      municipio:
+        data.municipio ||
+        data.endereco?.municipio ||
+        "",
+      uf:
+        data.uf ||
+        data.endereco?.uf ||
+        "",
+      endereco:
+        data.endereco ||
+        {},
+      cnaePrincipal,
+      cnaesSecundarios,
+      todosCnaes,
+      dadosBrutos:
+        data,
+    };
+  }
+
+  async function arquivoParaDataUrl(
+    arquivo
+  ) {
+    return await new Promise(
+      (
+        resolve,
+        reject
+      ) => {
+        const reader =
+          new FileReader();
+
+        reader.onload =
+          () =>
+            resolve(
+              reader.result
+            );
+
+        reader.onerror =
+          () =>
+            reject(
+              new Error(
+                `Não foi possível ler ${arquivo.name}.`
+              )
+            );
+
+        reader.readAsDataURL(
+          arquivo
+        );
+      }
+    );
+  }
+
+  function atividadePrincipalRealAtual() {
+    return (
+      atividadesSelecionadas.find(
+        (item) =>
+          chaveAtividade(
+            item
+          ) ===
+          atividadePrincipalSelecionada
+      ) ||
+      null
+    );
+  }
+
+  function payloadProjetoAtual() {
+    return {
+      id:
+        projetoId,
+
+      tipoProjeto,
+
+      estrutura,
+
+      modalidade,
+
+      responsavelFinder:
+        dadosProjeto.responsavelFinder ||
+        "",
+
+      origemCliente:
+        dadosProjeto.origemCliente ||
+        "",
+
+      contatoNome:
+        dadosProjeto.contatoNome ||
+        "",
+
+      contatoEmail:
+        dadosProjeto.contatoEmail ||
+        "",
+
+      contatoTelefone:
+        dadosProjeto.contatoTelefone ||
+        "",
+
+      observacaoOrigem:
+        dadosProjeto.observacaoOrigem ||
+        "",
+
+      empresas:
+        empresas
+          .filter(
+            (empresa) =>
+              empresa.dados
+          )
+          .map(
+            (empresa) => ({
+              cnpj:
+                empresa.dados.cnpj ||
+                empresa.cnpj ||
+                "",
+              razaoSocial:
+                empresa.dados.razaoSocial ||
+                "",
+              nomeFantasia:
+                empresa.dados.nomeFantasia ||
+                "",
+              situacao:
+                empresa.dados.situacao ||
+                "",
+              porte:
+                empresa.dados.porte ||
+                "",
+              municipio:
+                empresa.dados.municipio ||
+                "",
+              uf:
+                empresa.dados.uf ||
+                "",
+              cnaePrincipal:
+                empresa.dados.cnaePrincipal ||
+                null,
+              cnaesSecundarios:
+                empresa.dados.cnaesSecundarios ||
+                [],
+            })
+          ),
+
+      atividades: {
+        selecionadas:
+          atividadesSelecionadas,
+        principalReal:
+          atividadePrincipalRealAtual(),
+        descricaoReal:
+          descricaoAtividadeCliente.trim(),
+      },
+
+      dadosManuais,
+    };
+  }
+
+  async function salvarProjetoAtual(
+    status = "EM_ANALISE"
+  ) {
+    return await apiTributarioJson(
+      "salvar-projeto",
+      {
+        method: "POST",
+        body: {
+          ...payloadProjetoAtual(),
+          status,
+        },
+      }
+    );
+  }
+
+  async function carregarProjetosSalvos() {
+    setCarregandoProjetos(
+      true
+    );
+
+    try {
+      const data =
+        await apiTributarioJson(
+          "listar-projetos",
+          {
+            query: {
+              busca:
+                filtroHistorico.busca,
+              tipo:
+                filtroHistorico.tipo,
+              responsavel:
+                filtroHistorico.responsavel,
+              status:
+                filtroHistorico.status,
+            },
+          }
+        );
+
+      setProjetosSalvos(
+        Array.isArray(
+          data.projetos
+        )
+          ? data.projetos
+          : []
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "[tributario][historico]",
+        error
+      );
+    } finally {
+      setCarregandoProjetos(
+        false
+      );
+    }
+  }
+
+  async function abrirProjetoSalvo(
+    id
+  ) {
+    setCarregandoProjetos(
+      true
+    );
+
+    try {
+      const data =
+        await apiTributarioJson(
+          "obter-projeto",
+          {
+            query: {
+              id,
+            },
+          }
+        );
+
+      setProjetoAberto(
+        data.projeto
+      );
+
+      setTela(
+        "projeto-salvo"
+      );
+    } catch (
+      error
+    ) {
+      setErro(
+        error?.message ||
+        "Não foi possível abrir o diagnóstico."
+      );
+    } finally {
+      setCarregandoProjetos(
+        false
+      );
+    }
+  }
+
+  async function validarProjetoSalvo(
+    id
+  ) {
+    try {
+      await apiTributarioJson(
+        "validar-projeto",
+        {
+          method: "POST",
+          body: {
+            id,
+          },
+        }
+      );
+
+      await abrirProjetoSalvo(
+        id
+      );
+
+      await carregarProjetosSalvos();
+    } catch (
+      error
+    ) {
+      setErro(
+        error?.message ||
+        "Não foi possível validar o diagnóstico."
+      );
+    }
+  }
+
+  async function gerarDiagnosticoIaReal() {
+    setErro("");
+
+    if (
+      modalidade !==
+        "manual" &&
+      !arquivos.length
+    ) {
+      setErro(
+        "Selecione pelo menos um documento para a análise com IA."
+      );
+      return;
+    }
+
+    if (
+      atividadesDisponiveis.length &&
+      !atividadesSelecionadas.length
+    ) {
+      setErro(
+        "Selecione as atividades/CNAEs realmente exercidas."
+      );
+      return;
+    }
+
+    if (
+      atividadesSelecionadas.length &&
+      !atividadePrincipalSelecionada
+    ) {
+      setErro(
+        "Defina a atividade principal real."
+      );
+      return;
+    }
+
+    if (
+      !descricaoAtividadeCliente
+        .trim()
+    ) {
+      setErro(
+        "Descreva brevemente o que a empresa realmente faz."
+      );
+      return;
+    }
+
+    setGerandoDiagnostico(
+      true
+    );
+
+    setDiagnosticoOrigem(
+      ""
+    );
+
+    try {
+      await salvarProjetoAtual(
+        "PROCESSANDO_IA"
+      );
+
+      const arquivosIa =
+        [];
+
+      for (
+        let i = 0;
+        i <
+        arquivos.length;
+        i += 1
+      ) {
+        const arquivo =
+          arquivos[i];
+
+        setProgressoIa({
+          etapa:
+            "UPLOAD",
+          atual:
+            i + 1,
+          total:
+            arquivos.length,
+          mensagem:
+            `Enviando ${arquivo.name} para leitura da IA...`,
+        });
+
+        const fileData =
+          await arquivoParaDataUrl(
+            arquivo
+          );
+
+        const upload =
+          await apiTributarioJson(
+            "upload-file",
+            {
+              method: "POST",
+              body: {
+                filename:
+                  arquivo.name,
+                mimeType:
+                  arquivo.type ||
+                  "application/octet-stream",
+                fileData,
+              },
+            }
+          );
+
+        arquivosIa.push({
+          fileId:
+            upload.fileId,
+          filename:
+            arquivo.name,
+          bytes:
+            arquivo.size,
+        });
+      }
+
+      setArquivosProcessadosIa(
+        arquivosIa
+      );
+
+      setProgressoIa({
+        etapa:
+          "ANALISE",
+        atual:
+          arquivos.length,
+        total:
+          arquivos.length ||
+          1,
+        mensagem:
+          tipoProjeto ===
+          "reforma"
+            ? "Analisando Reforma Tributária: IBS, CBS, transição, créditos e impacto operacional..."
+            : "Analisando Planejamento Tributário: regime atual, eficiência e redução legal de carga...",
+      });
+
+      const payload =
+        payloadProjetoAtual();
+
+      const respostaIa =
+        await apiTributarioJson(
+          "diagnostico",
+          {
+            method: "POST",
+            body: {
+              tipoProjeto:
+                payload.tipoProjeto,
+              estrutura:
+                payload.estrutura,
+              modalidade:
+                payload.modalidade,
+
+              cliente: {
+                responsavelFinder:
+                  payload.responsavelFinder,
+                origemCliente:
+                  payload.origemCliente,
+                contatoNome:
+                  payload.contatoNome,
+                contatoEmail:
+                  payload.contatoEmail,
+                contatoTelefone:
+                  payload.contatoTelefone,
+                observacaoOrigem:
+                  payload.observacaoOrigem,
+              },
+
+              empresas:
+                payload.empresas,
+
+              atividades:
+                payload.atividades,
+
+              dadosManuais:
+                payload.dadosManuais,
+
+              arquivos:
+                arquivosIa,
+            },
+          }
+        );
+
+      const salvo =
+        await apiTributarioJson(
+          "salvar-diagnostico",
+          {
+            method: "POST",
+            body: {
+              projetoId,
+              tipoProjeto,
+              diagnostico:
+                respostaIa.diagnostico,
+              modelo:
+                respostaIa.modelo ||
+                "gpt-5.6",
+              usage:
+                respostaIa.usage ||
+                null,
+              documentos:
+                arquivosIa,
+            },
+          }
+        );
+
+      setVersaoDiagnostico(
+        salvo.versao ||
+        null
+      );
+
+      setDiagnosticoGerado(
+        respostaIa.diagnostico
+      );
+
+      setDiagnosticoOrigem(
+        "IA_REAL"
+      );
+
+      registrarHistorico(
+        "DIAGNOSTICO_IA_REAL",
+        `Diagnóstico V${
+          salvo.versao ||
+          ""
+        } gerado e salvo.`,
+        {
+          tipoProjeto,
+          documentos:
+            arquivosIa.length,
+        }
+      );
+
+      setProgressoIa({
+        etapa:
+          "CONCLUIDO",
+        atual:
+          arquivos.length,
+        total:
+          arquivos.length ||
+          1,
+        mensagem:
+          "Diagnóstico concluído e salvo no histórico.",
+      });
+
+      setAbaAnalise(
+        "diagnostico"
+      );
+
+      await carregarProjetosSalvos();
+    } catch (
+      error
+    ) {
+      console.error(
+        "[tributario][IA]",
+        error
+      );
+
+      setErro(
+        error?.message ||
+        "Não foi possível concluir a análise com IA."
+      );
+
+      setProgressoIa({
+        etapa:
+          "ERRO",
+        atual:
+          0,
+        total:
+          0,
+        mensagem:
+          error?.message ||
+          "Erro no diagnóstico.",
+      });
+    } finally {
+      setGerandoDiagnostico(
+        false
+      );
+    }
+  }
+
+  const responsaveisHistorico =
+    useMemo(
+      () =>
+        Array.from(
+          new Set(
+            projetosSalvos
+              .map(
+                (item) =>
+                  item.responsavelFinder
+              )
+              .filter(Boolean)
+          )
+        ).sort(
+          (a, b) =>
+            a.localeCompare(
+              b,
+              "pt-BR"
+            )
+        ),
+      [projetosSalvos]
+    );
+
+  useEffect(
+    () => {
+      if (
+        tela ===
+        "inicio"
+      ) {
+        carregarProjetosSalvos();
+      }
+    },
+    [tela]
+  );
+
   function numeroSeguro(
     valor
   ) {
@@ -1010,7 +1780,7 @@ export default function Tributario({
       : 0;
   }
 
-  function gerarDiagnosticoIaReal() {
+  function gerarDiagnosticoPreliminarLocal() {
     setGerandoDiagnostico(
       true
     );
@@ -1290,6 +2060,13 @@ export default function Tributario({
       }
     );
 
+    // Reforma Tributária permanece exatamente no fluxo V1.7.
+    // Somente Planejamento entra no motor V2.
+    if (tipo === "planejamento") {
+      setTela("planejamento-v2");
+      return;
+    }
+
     setTela(
       "configuracao"
     );
@@ -1313,49 +2090,57 @@ export default function Tributario({
     );
   }
 
-  async function buscarCnpj(empresa) {
+  async function buscarCnpj(
+    empresa
+  ) {
     const digits =
-      somenteDigitos(empresa.cnpj);
+      somenteDigitos(
+        empresa.cnpj
+      );
 
-    if (digits.length !== 14) {
-      alterarEmpresa(empresa.id, {
-        erro:
-          "Informe um CNPJ com 14 dígitos.",
-      });
+    if (
+      digits.length !==
+      14
+    ) {
+      alterarEmpresa(
+        empresa.id,
+        {
+          erro:
+            "Informe um CNPJ com 14 dígitos.",
+        }
+      );
       return;
     }
 
-    alterarEmpresa(empresa.id, {
-      carregando: true,
-      erro: "",
-    });
+    alterarEmpresa(
+      empresa.id,
+      {
+        carregando:
+          true,
+        erro:
+          "",
+      }
+    );
 
     try {
-      const resposta = await fetch(
-        `/api/cnpj?cnpj=${encodeURIComponent(digits)}`
-      );
-
-      const contentType =
-        resposta.headers.get("content-type") || "";
-
-      let data;
-
-      if (
-        contentType.includes("application/json")
-      ) {
-        data = await resposta.json();
-      } else {
-        const texto = await resposta.text();
-
-        throw new Error(
-          `Resposta inválida de /api/cnpj. Status ${resposta.status}. ${texto.slice(
-            0,
-            120
+      const resposta =
+        await fetch(
+          `/api/cnpj?cnpj=${encodeURIComponent(
+            digits
           )}`
         );
-      }
 
-      if (!resposta.ok || !data?.sucesso) {
+      const data =
+        await resposta
+          .json()
+          .catch(
+            () => null
+          );
+
+      if (
+        !resposta.ok ||
+        !data?.sucesso
+      ) {
         throw new Error(
           data?.error ||
           "Erro ao consultar CNPJ."
@@ -1363,29 +2148,47 @@ export default function Tributario({
       }
 
       const dados =
-        normalizarRespostaCnpj(data);
+        normalizarRespostaCnpj(
+          data
+        );
 
-      alterarEmpresa(empresa.id, {
-        cnpj: formatarCnpj(digits),
-        dados,
-        erro: "",
-      });
+      alterarEmpresa(
+        empresa.id,
+        {
+          cnpj:
+            formatarCnpj(
+              digits
+            ),
+          dados,
+          erro:
+            "",
+        }
+      );
 
       const lista =
         normalizarListaCnaes({
           dados,
         });
 
-      setAtividadesSelecionadas(lista);
+      setAtividadesSelecionadas(
+        lista
+      );
 
       const principal =
-        lista.find((item) => item.principal) ||
+        lista.find(
+          (item) =>
+            item.principal ||
+            item.tipo ===
+              "principal"
+        ) ||
         lista[0] ||
         null;
 
       setAtividadePrincipalSelecionada(
         principal
-          ? chaveAtividade(principal)
+          ? chaveAtividade(
+              principal
+            )
           : ""
       );
 
@@ -1393,31 +2196,201 @@ export default function Tributario({
         "CNPJ_CONSULTADO",
         `CNPJ ${formatarCnpj(
           digits
-        )} consultado com ${lista.length} CNAE(s).`,
+        )} consultado com ${
+          lista.length
+        } CNAE(s).`,
         {
           razaoSocial:
             dados.razaoSocial,
-          cnaePrincipal:
-            dados.cnaePrincipal,
           quantidadeCnaes:
             lista.length,
         }
       );
-    } catch (error) {
-      console.error(
-        "[tributario][cnpj]",
-        error
+    } catch (
+      error
+    ) {
+      alterarEmpresa(
+        empresa.id,
+        {
+          erro:
+            error?.message ||
+            "Erro ao consultar CNPJ.",
+        }
+      );
+    } finally {
+      alterarEmpresa(
+        empresa.id,
+        {
+          carregando:
+            false,
+        }
+      );
+    }
+  }
+
+  function normalizarListaCnaes(
+    empresa
+  ) {
+    const dados =
+      empresa?.dados ||
+      {};
+
+    const origem =
+      Array.isArray(
+        dados.todosCnaes
+      ) &&
+      dados.todosCnaes.length
+        ? dados.todosCnaes
+        : [
+            dados.cnaePrincipal,
+            ...(Array.isArray(
+              dados.cnaesSecundarios
+            )
+              ? dados.cnaesSecundarios
+              : []),
+          ];
+
+    const mapa =
+      new Map();
+
+    origem.forEach(
+      (item) => {
+        if (!item) {
+          return;
+        }
+
+        const codigo =
+          String(
+            item.codigo ||
+            item.code ||
+            item.cnae ||
+            ""
+          );
+
+        const descricao =
+          String(
+            item.descricao ||
+            item.description ||
+            item.nome ||
+            ""
+          );
+
+        const chave =
+          codigo.replace(
+            /\D/g,
+            ""
+          ) ||
+          descricao
+            .toLowerCase()
+            .trim();
+
+        if (!chave) {
+          return;
+        }
+
+        mapa.set(
+          chave,
+          {
+            ...item,
+            codigo,
+            descricao,
+            tipo:
+              item.principal
+                ? "principal"
+                : "secundaria",
+            principal:
+              Boolean(
+                item.principal
+              ),
+          }
+        );
+      }
+    );
+
+    return Array.from(
+      mapa.values()
+    );
+  }
+
+  const atividadesDisponiveis =
+    empresas
+      .flatMap(
+        (empresa) =>
+          normalizarListaCnaes(
+            empresa
+          )
       );
 
-      alterarEmpresa(empresa.id, {
-        erro:
-          error?.message ||
-          "Erro ao consultar CNPJ.",
-      });
-    } finally {
-      alterarEmpresa(empresa.id, {
-        carregando: false,
-      });
+  function chaveAtividade(
+    item
+  ) {
+    return `${item.codigo}|${item.descricao}`;
+  }
+
+  function alternarAtividade(
+    item
+  ) {
+    const chave =
+      chaveAtividade(
+        item
+      );
+
+    setAtividadesSelecionadas(
+      (atuais) => {
+        const existe =
+          atuais.some(
+            (a) =>
+              chaveAtividade(a) ===
+              chave
+          );
+
+        if (existe) {
+          return atuais.filter(
+            (a) =>
+              chaveAtividade(a) !==
+              chave
+          );
+        }
+
+        return [
+          ...atuais,
+          item,
+        ];
+      }
+    );
+  }
+
+  function preencherAtividadesPadrao() {
+    if (
+      !atividadesDisponiveis.length
+    ) {
+      return;
+    }
+
+    const principais =
+      atividadesDisponiveis.filter(
+        (item) =>
+          item.tipo ===
+          "principal"
+      );
+
+    if (
+      principais.length &&
+      !atividadePrincipalSelecionada
+    ) {
+      setAtividadePrincipalSelecionada(
+        chaveAtividade(
+          principais[0]
+        )
+      );
+    }
+
+    if (
+      !atividadesSelecionadas.length
+    ) {
+      setAtividadesSelecionadas(
+        atividadesDisponiveis
+      );
     }
   }
 
@@ -1525,6 +2498,21 @@ export default function Tributario({
     setErro("");
     setTela(
       "revisao"
+    );
+  }
+
+  if (
+    tela ===
+    "planejamento-v2"
+  ) {
+    return (
+      <PlanejamentoTributario
+        token={token}
+        onVoltar={() => {
+          setTipoProjeto("");
+          setTela("inicio");
+        }}
+      />
     );
   }
 
@@ -1780,6 +2768,992 @@ export default function Tributario({
             )
           )}
         </div>
+        <Card
+          style={{
+            marginTop:
+              16,
+          }}
+        >
+          <div
+            style={{
+              display:
+                "flex",
+              justifyContent:
+                "space-between",
+              gap:
+                12,
+              alignItems:
+                "flex-start",
+              flexWrap:
+                "wrap",
+              marginBottom:
+                12,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  color:
+                    "#31589C",
+                  fontSize:
+                    9,
+                  fontWeight:
+                    900,
+                }}
+              >
+                HISTÓRICO DOS DIAGNÓSTICOS
+              </div>
+
+              <h3
+                style={{
+                  margin:
+                    "4px 0 3px",
+                  fontFamily:
+                    DISPLAY_FONT,
+                  fontSize:
+                    20,
+                }}
+              >
+                Diagnósticos realizados
+              </h3>
+
+              <div
+                style={{
+                  color:
+                    MUTED,
+                  fontSize:
+                    10,
+                }}
+              >
+                Salvos por cliente, responsável, tipo, status e versão.
+              </div>
+            </div>
+
+            <Botao
+              secundario
+              onClick={
+                carregarProjetosSalvos
+              }
+              disabled={
+                carregandoProjetos
+              }
+            >
+              {carregandoProjetos
+                ? "Atualizando..."
+                : "Atualizar"}
+            </Botao>
+          </div>
+
+          <div
+            style={{
+              display:
+                "grid",
+              gridTemplateColumns:
+                "minmax(220px,1.4fr) repeat(3,minmax(150px,1fr)) auto",
+              gap:
+                8,
+              marginBottom:
+                12,
+            }}
+          >
+            <input
+              value={
+                filtroHistorico.busca
+              }
+              onChange={(e) =>
+                setFiltroHistorico(
+                  (
+                    atual
+                  ) => ({
+                    ...atual,
+                    busca:
+                      e.target.value,
+                  })
+                )
+              }
+              placeholder="Buscar cliente ou CNPJ..."
+              style={
+                inputStyle()
+              }
+            />
+
+            <select
+              value={
+                filtroHistorico.tipo
+              }
+              onChange={(e) =>
+                setFiltroHistorico(
+                  (
+                    atual
+                  ) => ({
+                    ...atual,
+                    tipo:
+                      e.target.value,
+                  })
+                )
+              }
+              style={
+                inputStyle()
+              }
+            >
+              <option value="">
+                Todos os tipos
+              </option>
+
+              <option value="reforma">
+                Reforma Tributária
+              </option>
+
+              <option value="planejamento">
+                Planejamento Tributário
+              </option>
+            </select>
+
+            <select
+              value={
+                filtroHistorico.responsavel
+              }
+              onChange={(e) =>
+                setFiltroHistorico(
+                  (
+                    atual
+                  ) => ({
+                    ...atual,
+                    responsavel:
+                      e.target.value,
+                  })
+                )
+              }
+              style={
+                inputStyle()
+              }
+            >
+              <option value="">
+                Todos os responsáveis
+              </option>
+
+              {responsaveisHistorico.map(
+                (
+                  nome
+                ) => (
+                  <option
+                    key={
+                      nome
+                    }
+                    value={
+                      nome
+                    }
+                  >
+                    {nome}
+                  </option>
+                )
+              )}
+            </select>
+
+            <select
+              value={
+                filtroHistorico.status
+              }
+              onChange={(e) =>
+                setFiltroHistorico(
+                  (
+                    atual
+                  ) => ({
+                    ...atual,
+                    status:
+                      e.target.value,
+                  })
+                )
+              }
+              style={
+                inputStyle()
+              }
+            >
+              <option value="">
+                Todos os status
+              </option>
+
+              <option value="EM_ANALISE">
+                Em análise
+              </option>
+
+              <option value="PROCESSANDO_IA">
+                Processando IA
+              </option>
+
+              <option value="DIAGNOSTICO_GERADO">
+                Diagnóstico gerado
+              </option>
+
+              <option value="VALIDADO">
+                Validado
+              </option>
+            </select>
+
+            <Botao
+              onClick={
+                carregarProjetosSalvos
+              }
+            >
+              Filtrar
+            </Botao>
+          </div>
+
+          {!projetosSalvos.length ? (
+            <div
+              style={{
+                border:
+                  "1px dashed #C9D1DF",
+                borderRadius:
+                  12,
+                padding:
+                  20,
+                color:
+                  MUTED,
+                fontSize:
+                  10,
+                textAlign:
+                  "center",
+              }}
+            >
+              Nenhum diagnóstico salvo com os filtros atuais.
+            </div>
+          ) : (
+            <div
+              style={{
+                display:
+                  "grid",
+                gap:
+                  8,
+              }}
+            >
+              {projetosSalvos.map(
+                (
+                  projeto
+                ) => (
+                  <button
+                    key={
+                      projeto.id
+                    }
+                    type="button"
+                    onClick={() =>
+                      abrirProjetoSalvo(
+                        projeto.id
+                      )
+                    }
+                    style={{
+                      width:
+                        "100%",
+                      border:
+                        "1px solid #E3E7EF",
+                      borderRadius:
+                        12,
+                      background:
+                        WHITE,
+                      padding:
+                        12,
+                      cursor:
+                        "pointer",
+                      textAlign:
+                        "left",
+                      display:
+                        "grid",
+                      gridTemplateColumns:
+                        "minmax(220px,2fr) minmax(170px,1fr) minmax(140px,1fr) 70px 110px",
+                      gap:
+                        10,
+                      alignItems:
+                        "center",
+                      color:
+                        NAVY,
+                    }}
+                  >
+                    <div>
+                      <strong
+                        style={{
+                          display:
+                            "block",
+                          fontSize:
+                            11.5,
+                        }}
+                      >
+                        {projeto.clienteNome ||
+                          "Cliente"}
+                      </strong>
+
+                      <div
+                        style={{
+                          color:
+                            MUTED,
+                          fontSize:
+                            9,
+                          marginTop:
+                            3,
+                        }}
+                      >
+                        {projeto.cnpj ||
+                          "CNPJ não informado"}
+                      </div>
+                    </div>
+
+                    <strong
+                      style={{
+                        fontSize:
+                          9.5,
+                      }}
+                    >
+                      {projeto.tipoProjeto ===
+                      "reforma"
+                        ? "Reforma Tributária"
+                        : "Planejamento Tributário"}
+                    </strong>
+
+                    <strong
+                      style={{
+                        fontSize:
+                          9.5,
+                      }}
+                    >
+                      {projeto.responsavelFinder ||
+                        "-"}
+                    </strong>
+
+                    <strong>
+                      V{projeto.versaoAtual ||
+                        0}
+                    </strong>
+
+                    <span
+                      style={{
+                        borderRadius:
+                          999,
+                        padding:
+                          "5px 7px",
+                        background:
+                          projeto.status ===
+                          "VALIDADO"
+                            ? "#E9F7EF"
+                            : "#EEF3FF",
+                        color:
+                          projeto.status ===
+                          "VALIDADO"
+                            ? "#176B47"
+                            : "#31589C",
+                        fontSize:
+                          8,
+                        fontWeight:
+                          900,
+                      }}
+                    >
+                      {projeto.status ||
+                        "EM_ANALISE"}
+                    </span>
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </Card>
+
+      </div>
+    );
+  }
+
+  if (
+    tela ===
+    "projeto-salvo" &&
+    projetoAberto
+  ) {
+    const ultimo =
+      projetoAberto
+        .diagnosticos?.[0] ||
+      null;
+
+    return (
+      <div
+        style={{
+          fontFamily:
+            BODY_FONT,
+          color:
+            NAVY,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setProjetoAberto(
+              null
+            );
+            setTela(
+              "inicio"
+            );
+          }}
+          style={{
+            border:
+              0,
+            background:
+              "transparent",
+            color:
+              MUTED,
+            cursor:
+              "pointer",
+            fontWeight:
+              800,
+            marginBottom:
+              12,
+          }}
+        >
+          ← Voltar aos diagnósticos
+        </button>
+
+        <div
+          style={{
+            background:
+              "linear-gradient(135deg,#0E1A33,#17233D)",
+            color:
+              WHITE,
+            borderRadius:
+              18,
+            padding:
+              20,
+            marginBottom:
+              14,
+          }}
+        >
+          <div
+            style={{
+              color:
+                "#FFB7A7",
+              fontSize:
+                9,
+              fontWeight:
+                900,
+            }}
+          >
+            {projetoAberto.tipoProjeto ===
+            "reforma"
+              ? "REFORMA TRIBUTÁRIA"
+              : "PLANEJAMENTO TRIBUTÁRIO"}
+          </div>
+
+          <h2
+            style={{
+              margin:
+                "5px 0 4px",
+              fontFamily:
+                DISPLAY_FONT,
+            }}
+          >
+            {projetoAberto.clienteNome ||
+              "Cliente"}
+          </h2>
+
+          <div
+            style={{
+              color:
+                "#D8DEEA",
+              fontSize:
+                10,
+            }}
+          >
+            {projetoAberto.cnpj ||
+              "Sem CNPJ"}{" "}
+            · Responsável:{" "}
+            <strong>
+              {projetoAberto.responsavelFinder ||
+                "-"}
+            </strong>{" "}
+            · Origem:{" "}
+            <strong>
+              {projetoAberto.origemCliente ||
+                "-"}
+            </strong>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display:
+              "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(180px,1fr))",
+            gap:
+              10,
+            marginBottom:
+              14,
+          }}
+        >
+          <Card>
+            <div
+              style={{
+                color:
+                  MUTED,
+                fontSize:
+                  9,
+                fontWeight:
+                  900,
+              }}
+            >
+              STATUS
+            </div>
+
+            <strong
+              style={{
+                display:
+                  "block",
+                marginTop:
+                  7,
+              }}
+            >
+              {projetoAberto.status}
+            </strong>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color:
+                  MUTED,
+                fontSize:
+                  9,
+                fontWeight:
+                  900,
+              }}
+            >
+              VERSÕES
+            </div>
+
+            <strong
+              style={{
+                display:
+                  "block",
+                marginTop:
+                  7,
+                fontSize:
+                  24,
+              }}
+            >
+              {projetoAberto
+                .diagnosticos
+                ?.length ||
+                0}
+            </strong>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color:
+                  MUTED,
+                fontSize:
+                  9,
+                fontWeight:
+                  900,
+              }}
+            >
+              CRIADO POR
+            </div>
+
+            <strong
+              style={{
+                display:
+                  "block",
+                marginTop:
+                  7,
+              }}
+            >
+              {projetoAberto.criadoPorNome ||
+                "-"}
+            </strong>
+          </Card>
+
+          <Card>
+            <div
+              style={{
+                color:
+                  MUTED,
+                fontSize:
+                  9,
+                fontWeight:
+                  900,
+              }}
+            >
+              VALIDADO POR
+            </div>
+
+            <strong
+              style={{
+                display:
+                  "block",
+                marginTop:
+                  7,
+              }}
+            >
+              {projetoAberto.validadoPorNome ||
+                "Pendente"}
+            </strong>
+          </Card>
+        </div>
+
+        {ultimo ? (
+          <div
+            style={{
+              display:
+                "grid",
+              gap:
+                12,
+            }}
+          >
+            <Card
+              style={{
+                borderLeft:
+                  "4px solid #31589C",
+              }}
+            >
+              <div
+                style={{
+                  color:
+                    "#31589C",
+                  fontSize:
+                    9,
+                  fontWeight:
+                    900,
+                }}
+              >
+                ÚLTIMA VERSÃO · V{ultimo.versao}
+              </div>
+
+              <h3
+                style={{
+                  margin:
+                    "6px 0 6px",
+                  fontFamily:
+                    DISPLAY_FONT,
+                }}
+              >
+                Resumo executivo
+              </h3>
+
+              <div
+                style={{
+                  color:
+                    MUTED,
+                  fontSize:
+                    10.5,
+                  lineHeight:
+                    1.65,
+                }}
+              >
+                {ultimo.diagnostico?.resumoExecutivo ||
+                  ultimo.diagnostico?.conclusao ||
+                  "Sem resumo disponível."}
+              </div>
+            </Card>
+
+            <div
+              style={{
+                display:
+                  "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(250px,1fr))",
+                gap:
+                  12,
+              }}
+            >
+              <Card>
+                <strong>
+                  Riscos
+                </strong>
+
+                <div
+                  style={{
+                    display:
+                      "grid",
+                    gap:
+                      6,
+                    marginTop:
+                      9,
+                  }}
+                >
+                  {(ultimo.diagnostico?.riscos ||
+                    []).map(
+                    (
+                      item,
+                      index
+                    ) => (
+                      <div
+                        key={
+                          index
+                        }
+                        style={{
+                          background:
+                            "#FFF4F0",
+                          borderRadius:
+                            8,
+                          padding:
+                            9,
+                          fontSize:
+                            9.5,
+                        }}
+                      >
+                        {item}
+                      </div>
+                    )
+                  )}
+                </div>
+              </Card>
+
+              <Card>
+                <strong>
+                  Oportunidades
+                </strong>
+
+                <div
+                  style={{
+                    display:
+                      "grid",
+                    gap:
+                      6,
+                    marginTop:
+                      9,
+                  }}
+                >
+                  {(ultimo.diagnostico?.oportunidades ||
+                    []).map(
+                    (
+                      item,
+                      index
+                    ) => (
+                      <div
+                        key={
+                          index
+                        }
+                        style={{
+                          background:
+                            "#EEF9F3",
+                          borderRadius:
+                            8,
+                          padding:
+                            9,
+                          fontSize:
+                            9.5,
+                        }}
+                      >
+                        {item}
+                      </div>
+                    )
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            <Card>
+              <div
+                style={{
+                  display:
+                    "flex",
+                  justifyContent:
+                    "space-between",
+                  alignItems:
+                    "center",
+                  gap:
+                    10,
+                  flexWrap:
+                    "wrap",
+                }}
+              >
+                <div>
+                  <strong>
+                    Validação
+                  </strong>
+
+                  <div
+                    style={{
+                      color:
+                        MUTED,
+                      fontSize:
+                        9.5,
+                      marginTop:
+                        3,
+                    }}
+                  >
+                    Mantém todas as versões e registra quem validou.
+                  </div>
+                </div>
+
+                {projetoAberto.status !==
+                  "VALIDADO" && (
+                  <Botao
+                    onClick={() =>
+                      validarProjetoSalvo(
+                        projetoAberto.id
+                      )
+                    }
+                  >
+                    Validar diagnóstico
+                  </Botao>
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <strong>
+                Histórico de versões
+              </strong>
+
+              <div
+                style={{
+                  display:
+                    "grid",
+                  gap:
+                    7,
+                  marginTop:
+                    10,
+                }}
+              >
+                {projetoAberto.diagnosticos.map(
+                  (
+                    diag
+                  ) => (
+                    <div
+                      key={
+                        diag.id
+                      }
+                      style={{
+                        display:
+                          "grid",
+                        gridTemplateColumns:
+                          "70px minmax(0,1fr) 170px",
+                        gap:
+                          10,
+                        border:
+                          "1px solid #E3E7EF",
+                        borderRadius:
+                          9,
+                        padding:
+                          9,
+                      }}
+                    >
+                      <strong>
+                        V{diag.versao}
+                      </strong>
+
+                      <div>
+                        {diag.modelo ||
+                          "IA"}
+                      </div>
+
+                      <div
+                        style={{
+                          color:
+                            MUTED,
+                          fontSize:
+                            9,
+                        }}
+                      >
+                        {diag.criadoEm
+                          ? new Date(
+                              diag.criadoEm
+                            ).toLocaleString(
+                              "pt-BR"
+                            )
+                          : "-"}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <strong>
+                Linha do tempo
+              </strong>
+
+              <div
+                style={{
+                  display:
+                    "grid",
+                  gap:
+                    6,
+                  marginTop:
+                    10,
+                }}
+              >
+                {(projetoAberto.historico ||
+                  []).map(
+                  (
+                    evento
+                  ) => (
+                    <div
+                      key={
+                        evento.id
+                      }
+                      style={{
+                        display:
+                          "grid",
+                        gridTemplateColumns:
+                          "150px minmax(0,1fr)",
+                        gap:
+                          10,
+                        padding:
+                          9,
+                        borderBottom:
+                          "1px solid #EEF0F4",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color:
+                            MUTED,
+                          fontSize:
+                            9,
+                        }}
+                      >
+                        {evento.criadoEm
+                          ? new Date(
+                              evento.criadoEm
+                            ).toLocaleString(
+                              "pt-BR"
+                            )
+                          : "-"}
+                      </div>
+
+                      <div>
+                        <strong
+                          style={{
+                            fontSize:
+                              9.5,
+                          }}
+                        >
+                          {evento.descricao}
+                        </strong>
+
+                        <div
+                          style={{
+                            color:
+                              MUTED,
+                            fontSize:
+                              8.5,
+                            marginTop:
+                              2,
+                          }}
+                        >
+                          {evento.usuarioNome ||
+                            "-"}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <Card>
+            Ainda não existe diagnóstico salvo neste projeto.
+          </Card>
+        )}
       </div>
     );
   }
@@ -2843,53 +4817,70 @@ export default function Tributario({
         </div>
 
         {(gerandoDiagnostico ||
-          diagnosticoOrigem === "IA_REAL" ||
-          progressoIa.etapa === "ERRO") && (
+          diagnosticoOrigem ===
+            "IA_REAL" ||
+          progressoIa.etapa ===
+            "ERRO") && (
           <Card
             style={{
-              marginBottom: 14,
+              marginBottom:
+                14,
               background:
-                diagnosticoOrigem === "IA_REAL"
+                diagnosticoOrigem ===
+                "IA_REAL"
                   ? "#EEF9F3"
-                  : progressoIa.etapa === "ERRO"
+                  : progressoIa.etapa ===
+                    "ERRO"
                   ? "#FFF4F0"
                   : "#F8FAFF",
               border:
-                diagnosticoOrigem === "IA_REAL"
+                diagnosticoOrigem ===
+                "IA_REAL"
                   ? "1px solid #BFE5D1"
-                  : progressoIa.etapa === "ERRO"
+                  : progressoIa.etapa ===
+                    "ERRO"
                   ? "1px solid #F0C6B9"
                   : "1px solid #C9D5F5",
             }}
           >
             <div
               style={{
-                fontSize: 9,
-                fontWeight: 900,
+                fontSize:
+                  9,
+                fontWeight:
+                  900,
                 color:
-                  diagnosticoOrigem === "IA_REAL"
+                  diagnosticoOrigem ===
+                  "IA_REAL"
                     ? "#176B47"
-                    : progressoIa.etapa === "ERRO"
+                    : progressoIa.etapa ===
+                      "ERRO"
                     ? "#993C1D"
                     : "#31589C",
               }}
             >
-              {diagnosticoOrigem === "IA_REAL"
-                ? "✓ ANÁLISE REALIZADA COM IA"
-                : progressoIa.etapa === "ERRO"
+              {diagnosticoOrigem ===
+              "IA_REAL"
+                ? `✓ DIAGNÓSTICO SALVO · V${versaoDiagnostico || "-"}`
+                : progressoIa.etapa ===
+                  "ERRO"
                 ? "ERRO NA ANÁLISE"
                 : "FINDER TAX AI · PROCESSANDO"}
             </div>
 
             <strong
               style={{
-                display: "block",
-                marginTop: 5,
-                fontSize: 11.5,
+                display:
+                  "block",
+                marginTop:
+                  5,
+                fontSize:
+                  11.5,
               }}
             >
-              {diagnosticoOrigem === "IA_REAL"
-                ? `GPT-5.6 analisou ${arquivosProcessadosIa.length} documento(s), o CNPJ, os CNAEs e as informações preenchidas.`
+              {diagnosticoOrigem ===
+              "IA_REAL"
+                ? `${arquivosProcessadosIa.length} documento(s) analisado(s). O diagnóstico está disponível no histórico por responsável.`
                 : progressoIa.mensagem ||
                   "Preparando análise..."}
             </strong>
@@ -3597,217 +5588,6 @@ export default function Tributario({
                     </div>
                   </Card>
                 </div>
-
-                {diagnosticoOrigem === "IA_REAL" && (
-                  <>
-                    {diagnosticoGerado.resumoExecutivo && (
-                      <Card
-                        style={{
-                          borderLeft:
-                            "4px solid #176B47",
-                        }}
-                      >
-                        <div
-                          style={{
-                            color: "#176B47",
-                            fontSize: 9,
-                            fontWeight: 900,
-                          }}
-                        >
-                          RESUMO DA IA
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            lineHeight: 1.65,
-                            marginTop: 7,
-                          }}
-                        >
-                          {diagnosticoGerado.resumoExecutivo}
-                        </div>
-                      </Card>
-                    )}
-
-                    {!!diagnosticoGerado.documentosAnalisados?.length && (
-                      <Card>
-                        <strong>
-                          Documentos analisados pela IA
-                        </strong>
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 6,
-                            marginTop: 9,
-                          }}
-                        >
-                          {diagnosticoGerado.documentosAnalisados.map(
-                            (item, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  background: "#F7F8FB",
-                                  borderRadius: 8,
-                                  padding: 9,
-                                  fontSize: 9.5,
-                                }}
-                              >
-                                {item}
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </Card>
-                    )}
-
-                    {!!diagnosticoGerado.dadosExtraidos?.length && (
-                      <Card>
-                        <strong>
-                          Dados extraídos dos documentos
-                        </strong>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "repeat(auto-fit,minmax(230px,1fr))",
-                            gap: 8,
-                            marginTop: 10,
-                          }}
-                        >
-                          {diagnosticoGerado.dadosExtraidos.map(
-                            (item, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  border:
-                                    "1px solid #E3E7EF",
-                                  borderRadius: 9,
-                                  padding: 9,
-                                }}
-                              >
-                                <strong
-                                  style={{
-                                    display: "block",
-                                    fontSize: 9.5,
-                                  }}
-                                >
-                                  {item.campo}
-                                </strong>
-                                <div
-                                  style={{
-                                    fontSize: 10.5,
-                                    marginTop: 3,
-                                  }}
-                                >
-                                  {item.valor}
-                                </div>
-                                <div
-                                  style={{
-                                    color: MUTED,
-                                    fontSize: 8,
-                                    marginTop: 4,
-                                  }}
-                                >
-                                  Fonte: {item.fonte} · Confiança: {item.confianca}
-                                </div>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </Card>
-                    )}
-
-                    {!!diagnosticoGerado.divergencias?.length && (
-                      <Card>
-                        <strong>
-                          Divergências encontradas
-                        </strong>
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 7,
-                            marginTop: 9,
-                          }}
-                        >
-                          {diagnosticoGerado.divergencias.map(
-                            (item, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  background: "#FFF8E8",
-                                  color: "#855A09",
-                                  borderRadius: 8,
-                                  padding: 9,
-                                  fontSize: 9.5,
-                                }}
-                              >
-                                {item}
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </Card>
-                    )}
-
-                    {!!diagnosticoGerado.perguntasValidacao?.length && (
-                      <Card>
-                        <strong>
-                          Perguntas para validação do consultor
-                        </strong>
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 7,
-                            marginTop: 9,
-                          }}
-                        >
-                          {diagnosticoGerado.perguntasValidacao.map(
-                            (item, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  background: "#F7F8FB",
-                                  borderRadius: 8,
-                                  padding: 9,
-                                  fontSize: 9.5,
-                                }}
-                              >
-                                {index + 1}. {item}
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </Card>
-                    )}
-
-                    {diagnosticoGerado.recomendacaoPreliminar && (
-                      <Card
-                        style={{
-                          borderLeft:
-                            `4px solid ${CORAL}`,
-                        }}
-                      >
-                        <div
-                          style={{
-                            color: CORAL,
-                            fontSize: 9,
-                            fontWeight: 900,
-                          }}
-                        >
-                          RECOMENDAÇÃO PRELIMINAR
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            lineHeight: 1.65,
-                            marginTop: 7,
-                          }}
-                        >
-                          {diagnosticoGerado.recomendacaoPreliminar}
-                        </div>
-                      </Card>
-                    )}
-                  </>
-                )}
 
                 <Card>
                   <div
