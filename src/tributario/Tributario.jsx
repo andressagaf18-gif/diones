@@ -803,7 +803,7 @@ function ReformaTributariaV2({token,onVoltar}){
  const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}});
- const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["impacto","7. Impactos"],["transicao","8. Transição"],["relatorio","9. Relatório"]];
+ const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["motor","7. Recomendação"],["impacto","8. Impactos"],["transicao","9. Transição"],["relatorio","10. Relatório"]];
  const n=v=>Number(String(v??"").replace(/\./g,"").replace(",","."))||0;
  const input={width:"100%",border:"1px solid #DDE3EC",borderRadius:8,padding:"9px 10px",fontSize:10,boxSizing:"border-box"};
  const card={background:"#fff",border:"1px solid #E3E7EF",borderRadius:12,padding:14};
@@ -950,9 +950,90 @@ function ReformaTributariaV2({token,onVoltar}){
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
  async function salvar(status="EM_ANALISE"){try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:documentos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao,simulacao},status}});setOk("Reforma Tributária salva.")}catch(e){setErro(e.message)}}
  const fatSim=faturamentoAnual||receita;
+
+ const motor=useMemo(()=>{
+  const matriz=Array.isArray(analise?.matrizImpacto)?analise.matrizImpacto:[];
+  const altos=matriz.filter(x=>String(x?.nivel||"").toUpperCase()==="ALTO").length;
+  const medios=matriz.filter(x=>String(x?.nivel||"").toUpperCase()==="MEDIO").length;
+  const naoAvaliados=matriz.filter(x=>String(x?.nivel||"").toUpperCase()==="NAO_AVALIADO").length;
+  const faltantes=Array.isArray(analise?.dadosFaltantes)?analise.dadosFaltantes.length:0;
+  const confianca=String(analise?.confianca||extracao?.confiancaGeral||"BAIXA").toUpperCase();
+
+  let risco="NÃO AVALIADO";
+  if(analise){
+   if(altos>=3)risco="ALTO";
+   else if(altos>=1||medios>=4)risco="ATENÇÃO";
+   else if(naoAvaliados>4||faltantes>4)risco="BASE INCOMPLETA";
+   else risco="CONTROLADO";
+  }
+
+  const ibsCbs=simulacao?.ibsCbs||{};
+  const simplesCalc=simulacao?.simples||{};
+  const cargaIbsCbs=n(ibsCbs?.cargaEfetiva);
+  const totalIbsCbs=n(ibsCbs?.total);
+  const tribAtual=n(tributosAtuais);
+  const basePeriodo=n(receita)||n(fatSim);
+  const cargaAtualInformada=basePeriodo>0&&tribAtual>0?(tribAtual/basePeriodo)*100:null;
+
+  let recomendacao="Base insuficiente para recomendar";
+  let explicacao="Importe os documentos, confira os dados e gere o diagnóstico antes de definir uma estratégia.";
+  let recomendado="PENDENTE";
+
+  const reg=String(regime||"").toLowerCase();
+  const menor=String(simplesCalc?.menorCargaMatematica||"").toLowerCase();
+
+  if(analise&&simulacao){
+   if(reg.includes("simples")&&simplesCalc?.fora!=null){
+    if(menor.includes("fora")){
+     recomendacao="Simples com IBS/CBS por fora — candidato à validação";
+     explicacao="O cenário matemático por fora ficou menor na simulação. Antes de aplicar, valide perfil B2B/B2C, geração de créditos, preço, margem e requisitos legais.";
+     recomendado="HIBRIDO";
+    }else if(menor.includes("dentro")){
+     recomendacao="Simples Nacional com IBS/CBS dentro — candidato à validação";
+     explicacao="O cenário matemático dentro ficou menor na simulação. A decisão final deve considerar crédito para clientes PJ, margem, cadeia de fornecedores e requisitos legais.";
+     recomendado="SIMPLES";
+    }else{
+     recomendacao="Simples Nacional — comparação ainda incompleta";
+     explicacao="Faltam parâmetros para comparar de forma confiável o IBS/CBS dentro e por fora.";
+    }
+   }else{
+    recomendacao="Estratégia IBS/CBS do regime atual — validar";
+    explicacao="O módulo da Reforma avalia consumo, créditos, cadeia B2B/B2C e transição. A troca entre Simples, Presumido e Real permanece no Planejamento Tributário.";
+    recomendado="REGIME_ATUAL";
+   }
+  }
+
+  const cobertura=[
+   {nome:"Empresa/CNPJ",ok:digits(cnpj).length===14},
+   {nome:"Operação real",ok:Boolean(descricao)},
+   {nome:"Faturamento",ok:n(fatSim)>0},
+   {nome:"Compras/créditos",ok:n(compras)>0||n(creditosAtuais)>0},
+   {nome:"B2B/B2C",ok:n(b2b)+n(b2c)>0},
+   {nome:"Documentos IA",ok:Boolean(extracao)||documentosIa.length>0},
+   {nome:"Diagnóstico IA",ok:Boolean(analise)},
+   {nome:"Simulação",ok:Boolean(simulacao)}
+  ];
+  const completos=cobertura.filter(x=>x.ok).length;
+  const coberturaPct=Math.round(completos/cobertura.length*100);
+
+  return{
+   risco,altos,medios,naoAvaliados,faltantes,confianca,
+   totalIbsCbs,cargaIbsCbs,cargaAtualInformada,
+   recomendacao,explicacao,recomendado,cobertura,coberturaPct,
+   plano:Array.isArray(analise?.planoAcao)?analise.planoAcao.slice(0,5):[],
+   riscos:Array.isArray(analise?.riscos)?analise.riscos.slice(0,5):[],
+   oportunidades:Array.isArray(analise?.oportunidades)?analise.oportunidades.slice(0,5):[]
+  };
+ },[analise,extracao,simulacao,regime,tributosAtuais,receita,fatSim,cnpj,descricao,compras,creditosAtuais,b2b,b2c,documentosIa]);
+
+ const corRisco=motor.risco==="ALTO"?"#B42318":motor.risco==="ATENÇÃO"?"#B7791F":motor.risco==="CONTROLADO"?"#176B47":"#697386";
+ const moedaMotor=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+ const pctMotor=v=>v==null?"Pendente":`${Number(v||0).toFixed(2)}%`;
+ const barraMotor=(label,valor,maximo,cor="#17233D")=><div style={{display:"grid",gridTemplateColumns:"150px 1fr 85px",gap:8,alignItems:"center",fontSize:9}}><b>{label}</b><div style={{height:10,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${maximo?Math.max(2,Math.min(100,(valor/maximo)*100)):2}%`,background:cor,borderRadius:999}}/></div><b style={{textAlign:"right"}}>{valor}</b></div>;
+
  return <div style={{fontFamily:"Arial, sans-serif",color:"#17233D"}}>
   <button onClick={onVoltar} style={{border:0,background:"transparent",cursor:"pointer",fontWeight:800,color:"#697386",marginBottom:10}}>← Voltar</button>
-  <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:16,padding:18,marginBottom:12}}><div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA</div><h2 style={{margin:"5px 0"}}>IBS, CBS, Simples dentro/fora e impacto financeiro</h2><div style={{fontSize:10,color:"#D8DEEA"}}>Documentos + IA + CNAEs oficiais + cálculo auditável + benefícios + crescimento + memória de cálculo.</div></div>
+  <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:16,padding:18,marginBottom:12}}><div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA</div><h2 style={{margin:"5px 0"}}>IBS, CBS, Simples dentro/fora e impacto financeiro</h2><div style={{fontSize:10,color:"#D8DEEA"}}>A IA lê os documentos e adapta a análise à empresa; o motor cruza operação real, CNAEs oficiais, créditos, B2B/B2C, cálculo auditável, riscos e transição.</div></div>
   {erro&&<div style={{...card,borderColor:"#E7B9B9",color:"#A22",marginBottom:9}}>{erro}</div>}{ok&&<div style={{...card,borderColor:"#B9DFC8",color:"#176B47",marginBottom:9}}>{ok}</div>}
   <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{tabs.map(([k,l])=><button key={k} onClick={()=>setAba(k)} style={{border:"1px solid #DDE3EC",borderRadius:999,padding:"7px 9px",background:aba===k?"#17233D":"#fff",color:aba===k?"#fff":"#17233D",fontSize:8.5,fontWeight:800,cursor:"pointer"}}>{l}</button>)}</div>
 
@@ -1012,6 +1093,88 @@ function ReformaTributariaV2({token,onVoltar}){
   {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",analise.dadosFaltantes)}</>}</div>}
 
   {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{faturamento:n(fatSim),tributosAtuais:n(tributosAtuais),dasAtual:n(dasPeriodo),aliquotaAtual:n(aliquotaAtual),creditoCBS:0,creditoIBS:n(creditosAtuais),reducaoCBS:n(reducaoIbsCbs),reducaoIBS:n(reducaoIbsCbs),b2b:n(b2b),b2c:n(b2c)}} onResultado={setSimulacao}/>}
+
+  {aba==="motor"&&<div style={{display:"grid",gap:10}}>
+   <div style={{...card,background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"start",flexWrap:"wrap"}}>
+     <div style={{maxWidth:760}}>
+      <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7",letterSpacing:.5}}>MOTOR FINDER · RECOMENDAÇÃO ASSISTIDA</div>
+      <h2 style={{margin:"5px 0 7px",fontSize:22}}>{motor.recomendacao}</h2>
+      <p style={{margin:0,fontSize:10,lineHeight:1.6,color:"#D8DEEA"}}>{motor.explicacao}</p>
+     </div>
+     <div style={{display:"grid",gap:5,justifyItems:"end"}}>
+      <span style={{background:`${corRisco}22`,border:`1px solid ${corRisco}`,color:motor.risco==="CONTROLADO"?"#8CE1B6":"#FFB7A7",padding:"6px 9px",borderRadius:999,fontSize:8.5,fontWeight:900}}>RISCO: {motor.risco}</span>
+      <span style={{fontSize:8.5,color:"#BFC8D8"}}>Confiança IA: <b>{motor.confianca}</b></span>
+     </div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8,marginTop:14}}>
+     <div style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.10)",borderRadius:10,padding:11}}><div style={{fontSize:8,color:"#BFC8D8",fontWeight:900}}>COBERTURA DA BASE</div><div style={{fontSize:20,fontWeight:900,marginTop:3}}>{motor.coberturaPct}%</div></div>
+     <div style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.10)",borderRadius:10,padding:11}}><div style={{fontSize:8,color:"#BFC8D8",fontWeight:900}}>TRIBUTOS ATUAIS INFORMADOS</div><div style={{fontSize:20,fontWeight:900,marginTop:3}}>{moedaMotor(n(tributosAtuais))}</div><div style={{fontSize:8,color:"#BFC8D8"}}>{motor.cargaAtualInformada==null?"Sem base comparável":`${pctMotor(motor.cargaAtualInformada)} da base informada`}</div></div>
+     <div style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.10)",borderRadius:10,padding:11}}><div style={{fontSize:8,color:"#BFC8D8",fontWeight:900}}>IBS + CBS SIMULADO</div><div style={{fontSize:20,fontWeight:900,marginTop:3,color:"#FFB7A7"}}>{simulacao?moedaMotor(motor.totalIbsCbs):"Pendente"}</div><div style={{fontSize:8,color:"#BFC8D8"}}>{simulacao?`${pctMotor(motor.cargaIbsCbs)} da base simulada`:"Execute a simulação"}</div></div>
+     <div style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.10)",borderRadius:10,padding:11}}><div style={{fontSize:8,color:"#BFC8D8",fontWeight:900}}>DADOS FALTANTES</div><div style={{fontSize:20,fontWeight:900,marginTop:3}}>{motor.faltantes}</div><div style={{fontSize:8,color:"#BFC8D8"}}>Itens materiais apontados pela IA</div></div>
+    </div>
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"1.1fr .9fr",gap:10}}>
+    <div style={card}>
+     <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+      <div><h3 style={{margin:"0 0 3px"}}>As três estratégias</h3><div style={{fontSize:8.7,color:"#697386"}}>A indicação é assistida. Nenhuma opção é aplicada automaticamente.</div></div>
+      <button onClick={analisar} disabled={carregando} style={{padding:"8px 10px",fontWeight:800}}>{carregando?"Atualizando...":"Atualizar motor com IA"}</button>
+     </div>
+
+     <div style={{display:"grid",gap:7,marginTop:10}}>
+      {[
+       ["SIMPLES","Simples Nacional","IBS/CBS conforme tratamento do Simples. Pode ser interessante em operações B2C e quando a simplicidade/apuração pesar mais que o crédito integral."],
+       ["HIBRIDO","Simples com IBS/CBS por fora","Mantém a empresa no Simples para os demais tributos e avalia IBS/CBS no regime regular, quando juridicamente permitido e economicamente vantajoso."],
+       ["REGIME_ATUAL","Regime regular / regime atual","Avalia débito e créditos de IBS/CBS no regime regular. A escolha Presumido x Real pertence ao módulo Planejamento Tributário."]
+      ].map(([id,t,d])=><div key={id} style={{border:`1px solid ${motor.recomendado===id?"#55B68B":"#E3E7EF"}`,background:motor.recomendado===id?"#F1FBF6":"#FBFCFE",borderRadius:10,padding:10}}>
+       <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{fontSize:10.5}}>{t}</b>{motor.recomendado===id&&<span style={{background:"#176B47",color:"#fff",borderRadius:999,padding:"3px 7px",fontSize:7.5,fontWeight:900}}>CANDIDATO</span>}</div>
+       <div style={{fontSize:8.7,color:"#697386",lineHeight:1.5,marginTop:3}}>{d}</div>
+      </div>)}
+     </div>
+    </div>
+
+    <div style={card}>
+     <h3 style={{margin:"0 0 3px"}}>Qualidade da análise</h3>
+     <div style={{fontSize:8.7,color:"#697386",marginBottom:10}}>A recomendação só fica forte quando a documentação e as premissas estão completas.</div>
+     <div style={{display:"grid",gap:7}}>
+      {motor.cobertura.map((x,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 8px",border:"1px solid #EEF0F4",borderRadius:8,fontSize:9}}>
+       <span>{x.nome}</span><b style={{color:x.ok?"#176B47":"#B7791F"}}>{x.ok?"OK":"PENDENTE"}</b>
+      </div>)}
+     </div>
+    </div>
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+    <div style={card}><h3 style={{marginTop:0}}>Riscos principais</h3>{motor.riscos.length?<ol style={{paddingLeft:18,margin:0}}>{motor.riscos.map((x,i)=><li key={i} style={{fontSize:9,lineHeight:1.5,marginBottom:6}}>{x}</li>)}</ol>:<p style={{fontSize:9,color:"#697386"}}>Gere o diagnóstico para mapear riscos.</p>}</div>
+    <div style={card}><h3 style={{marginTop:0}}>Oportunidades</h3>{motor.oportunidades.length?<ol style={{paddingLeft:18,margin:0}}>{motor.oportunidades.map((x,i)=><li key={i} style={{fontSize:9,lineHeight:1.5,marginBottom:6}}>{x}</li>)}</ol>:<p style={{fontSize:9,color:"#697386"}}>Gere o diagnóstico para mapear oportunidades.</p>}</div>
+    <div style={card}><h3 style={{marginTop:0}}>Próximas decisões</h3>{motor.plano.length?<ol style={{paddingLeft:18,margin:0}}>{motor.plano.map((x,i)=><li key={i} style={{fontSize:9,lineHeight:1.5,marginBottom:6}}>{x}</li>)}</ol>:<p style={{fontSize:9,color:"#697386"}}>O plano de ação aparecerá após a análise da IA.</p>}</div>
+   </div>
+
+   <div style={card}>
+    <h3 style={{margin:"0 0 4px"}}>Mapa de impacto da Reforma</h3>
+    <div style={{fontSize:8.7,color:"#697386",marginBottom:10}}>Baseado na matriz criada pela IA a partir dos documentos e dados confirmados.</div>
+    <div style={{display:"grid",gap:8}}>
+     {(analise?.matrizImpacto||[]).map((x,i)=>{
+      const nivel=String(x.nivel||"NAO_AVALIADO").toUpperCase();
+      const valor=nivel==="ALTO"?100:nivel==="MEDIO"?65:nivel==="BAIXO"?30:10;
+      const cor=nivel==="ALTO"?"#B42318":nivel==="MEDIO"?"#B7791F":nivel==="BAIXO"?"#176B47":"#98A2B3";
+      return <div key={i} style={{display:"grid",gridTemplateColumns:"180px 1fr 95px",gap:8,alignItems:"center"}}>
+       <b style={{fontSize:9}}>{x.area}</b>
+       <div style={{height:9,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${valor}%`,background:cor,borderRadius:999}}/></div>
+       <b style={{fontSize:8.5,textAlign:"right",color:cor}}>{nivel.replace("_"," ")}</b>
+      </div>
+     })}
+     {!analise?.matrizImpacto?.length&&<div style={{fontSize:9,color:"#697386",padding:10,textAlign:"center"}}>Gere o diagnóstico IBS/CBS para preencher o mapa.</div>}
+    </div>
+   </div>
+
+   <div style={{...card,borderColor:"#C9D7F1",background:"#F8FBFF"}}>
+    <b style={{fontSize:10}}>Como este motor funciona</b>
+    <p style={{fontSize:9,lineHeight:1.6,color:"#5B667A",marginBottom:0}}>A Finder não usa uma planilha fixa como fonte principal. Os documentos são interpretados pela IA, os dados são levados para os campos editáveis, o cálculo financeiro permanece determinístico e a recomendação cruza documentação, operação real, B2B/B2C, créditos, riscos, impacto e simulação. Se faltar dado, o sistema mantém a recomendação como pendente em vez de inventar.</p>
+   </div>
+  </div>}
 
   {aba==="impacto"&&<div style={{display:"grid",gap:9}}>{analise?<>{list("Riscos",analise.riscos)}{list("Oportunidades",analise.oportunidades)}{list("Contratos / ERP / cadastros",analise.adequacoes)}<div style={card}><h3>Matriz de impacto</h3>{(analise.matrizImpacto||[]).map((x,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"160px 80px 1fr",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><b>{x.area}</b><b>{x.nivel}</b><span>{x.diagnostico}</span></div>)}</div></>:<div style={card}>Gere o diagnóstico técnico primeiro.</div>}</div>}
 
