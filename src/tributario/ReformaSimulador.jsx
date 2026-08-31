@@ -1,7 +1,7 @@
 // DESTINO: /src/tributario/ReformaSimulador.jsx
 // EXCLUSIVO DO MÓDULO REFORMA. Sem dependência externa de gráficos.
 import React,{useEffect,useMemo,useState} from "react";
-import {calcularIbsCbs,compararSimplesDentroFora,projetarCrescimento,moeda,numero} from "./reforma-engine.js";
+import {calcularIbsCbs,compararSimplesDentroFora,projetarCrescimento,estimarDasResidualPorFora,moeda,numero} from "./reforma-engine.js";
 
 const box={background:"#fff",border:"1px solid #E3E7EF",borderRadius:14,padding:15};
 const inp={width:"100%",boxSizing:"border-box",padding:"9px 10px",border:"1px solid #DDE3EC",borderRadius:8,fontSize:11};
@@ -40,6 +40,11 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
  const [cres,setCres]=useState("20"),[cresCred,setCresCred]=useState("20");
  const [beneficio,setBeneficio]=useState(""),[baseLegal,setBaseLegal]=useState(""),[statusBeneficio,setStatusBeneficio]=useState("POTENCIAL_VALIDAR");
 
+ const dasResidualEstimado=useMemo(()=>estimarDasResidualPorFora({
+  dasAtual:dadosIniciais.dasAtual,
+  componentes:dadosIniciais.componentesDas||{}
+ }),[dadosIniciais.dasAtual,dadosIniciais.componentesDas]);
+
  useEffect(()=>{
   if(dadosIniciais.faturamento!=null&&dadosIniciais.faturamento!=="")setFat(String(dadosIniciais.faturamento));
   if(dadosIniciais.dasAtual)setDasDentro(String(dadosIniciais.dasAtual));
@@ -49,12 +54,21 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
   if(dadosIniciais.reducaoIBS!=null)setRedIbs(String(dadosIniciais.reducaoIBS||0));
  },[dadosIniciais]);
 
+ useEffect(()=>{
+  if(
+   (dasFora===""||dasFora==null)&&
+   dasResidualEstimado.residual!=null
+  ){
+   setDasFora(String(Number(dasResidualEstimado.residual.toFixed(2))));
+  }
+ },[dasResidualEstimado.residual]);
+
  const pars={aliquotaCBS:cbs,aliquotaIBS:ibs,reducaoCBS:redCbs,reducaoIBS:redIbs};
  const calc=useMemo(()=>calcularIbsCbs({faturamento:fat,creditoCBS:credCbs,creditoIBS:credIbs,...pars}),[fat,cbs,ibs,redCbs,redIbs,credCbs,credIbs]);
  const simples=useMemo(()=>compararSimplesDentroFora({faturamento:fat,dasDentro,dasSemIbsCbs:dasFora,cenarioRegular:{...pars,creditoCBS:credCbs,creditoIBS:credIbs}}),[fat,dasDentro,dasFora,cbs,ibs,redCbs,redIbs,credCbs,credIbs]);
  const crescimento=[0,10,20,30,50,100].map(p=>({p,...projetarCrescimento({faturamentoAtual:fat,crescimentoReceita:p,crescimentoCreditos:cresCred,creditoCBSAtual:credCbs,creditoIBSAtual:credIbs,parametros:pars})}));
  const proj=useMemo(()=>projetarCrescimento({faturamentoAtual:fat,crescimentoReceita:cres,crescimentoCreditos:cresCred,creditoCBSAtual:credCbs,creditoIBSAtual:credIbs,parametros:pars}),[fat,cres,cresCred,credCbs,credIbs,cbs,ibs,redCbs,redIbs]);
- const resultado=useMemo(()=>({parametros:{faturamento:numero(fat),aliquotaCBS:numero(cbs),aliquotaIBS:numero(ibs),reducaoCBS:numero(redCbs),reducaoIBS:numero(redIbs),creditoCBS:numero(credCbs),creditoIBS:numero(credIbs)},ibsCbs:calc,simples,crescimento:proj,beneficio:{nome:beneficio,baseLegal,status:statusBeneficio}}),[fat,cbs,ibs,redCbs,redIbs,credCbs,credIbs,calc,simples,proj,beneficio,baseLegal,statusBeneficio]);
+ const resultado=useMemo(()=>({parametros:{faturamento:numero(fat),aliquotaCBS:numero(cbs),aliquotaIBS:numero(ibs),reducaoCBS:numero(redCbs),reducaoIBS:numero(redIbs),creditoCBS:numero(credCbs),creditoIBS:numero(credIbs)},ibsCbs:calc,simples:{...simples,dasResidualEstimado},crescimento:proj,beneficio:{nome:beneficio,baseLegal,status:statusBeneficio}}),[fat,cbs,ibs,redCbs,redIbs,credCbs,credIbs,calc,simples,proj,beneficio,baseLegal,statusBeneficio,dasResidualEstimado]);
  useEffect(()=>{onResultado?.(resultado)},[resultado,onResultado]);
 
  return <div style={{display:"grid",gap:11}}>
@@ -65,7 +79,49 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
 
   <div style={box}><h3 style={{marginTop:0}}>Gráfico 1 — composição IBS/CBS</h3><BarChart items={[{label:"CBS líquida",valor:calc.liquidoCBS,cor:"#31589C"},{label:"IBS líquido",valor:calc.liquidoIBS,cor:"#FF6B4A"},{label:"Carga total",valor:calc.total,cor:"#17233D"}]}/></div>
 
-  <div style={box}><h3 style={{marginTop:0}}>Gráfico 2 — Simples dentro x por fora</h3><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><F t="DAS no cenário dentro" v={dasDentro} s={setDasDentro}/><F t="DAS sem IBS/CBS no cenário por fora" v={dasFora} s={setDasFora}/></div><BarChart items={[{label:"Dentro",valor:simples.dentro,cor:"#31589C"},{label:"Por fora",valor:simples.fora||0,cor:"#FF6B4A"}]}/><p style={{fontSize:10}}><b>Menor carga matemática:</b> {simples.menorCargaMatematica}</p></div>
+  <div style={box}>
+   <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}>
+    <div>
+     <h3 style={{margin:"0 0 4px"}}>Gráfico 2 — Simples dentro x por fora</h3>
+     <div style={{fontSize:9,color:"#697386"}}>O DAS residual por fora é estimado automaticamente pela composição documental atual e pode ser ajustado manualmente.</div>
+    </div>
+    <span style={{background:dasResidualEstimado.residual!=null?"#E9F7EF":"#FFF8E7",color:dasResidualEstimado.residual!=null?"#176B47":"#805B10",padding:"5px 8px",borderRadius:999,fontSize:8,fontWeight:900}}>
+     DAS RESIDUAL: {dasResidualEstimado.residual!=null?"CALCULADO":"PENDENTE"}
+    </span>
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:10}}>
+    <K t="DAS atual / dentro" v={moeda(simples.dentro)}/>
+    <K t="DAS residual por fora" v={dasResidualEstimado.residual==null?"Pendente":moeda(dasResidualEstimado.residual)} sub="Proxy pela composição atual"/>
+    <K t="IBS/CBS fora" v={moeda(calc.total)} sub="Débito líquido simulado"/>
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+    <F t="DAS no cenário dentro" v={dasDentro} s={setDasDentro}/>
+    <F t="DAS residual sem IBS/CBS — por fora" v={dasFora} s={setDasFora} help="Preenchido automaticamente quando a composição do DAS foi extraída. Pode ser corrigido."/>
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:10}}>
+    <K t="Total dentro" v={moeda(simples.dentro)}/>
+    <K t="Total por fora" v={simples.fora==null?"Pendente":moeda(simples.fora)}/>
+    <K t="Diferença" v={simples.diferenca==null?"Pendente":moeda(simples.diferenca)} sub={simples.diferenca==null?"":simples.diferenca>0?"Por fora maior":"Por fora menor"}/>
+    <K t="Menor carga matemática" v={simples.menorCargaMatematica==="NAO_CALCULAVEL"?"Pendente":simples.menorCargaMatematica}/>
+   </div>
+
+   <BarChart items={[
+    {label:"Simples dentro",valor:simples.dentro,cor:"#31589C"},
+    {label:"DAS residual",valor:numero(dasFora),cor:"#8A94A6"},
+    {label:"IBS/CBS fora",valor:calc.total,cor:"#FF6B4A"},
+    {label:"Total por fora",valor:simples.fora||0,cor:"#17233D"}
+   ]}/>
+
+   <div style={{marginTop:10,padding:"8px 10px",background:"#FFF8E7",border:"1px solid #F3D99B",borderRadius:8,fontSize:8.5,color:"#805B10",lineHeight:1.5}}>
+    <b>Como o DAS residual foi estimado:</b> {dasResidualEstimado.observacao}
+    {dasResidualEstimado.residual!=null&&<> Método: <b>{dasResidualEstimado.metodo}</b>. Parcelas de consumo identificadas no DAS atual: <b>{moeda(dasResidualEstimado.parcelasConsumo)}</b>.</>}
+   </div>
+
+   <p style={{fontSize:9,color:"#697386"}}>A menor carga matemática não vira recomendação automática. A escolha deve considerar B2B/B2C, créditos, preço, margem, caixa e a regulamentação vigente do Simples para o período.</p>
+  </div>
 
   <div style={box}><h3 style={{marginTop:0}}>Gráfico 3 — crescimento x IBS/CBS</h3><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}><F t="Cenário selecionado %" v={cres} s={setCres}/><F t="Crescimento dos créditos %" v={cresCred} s={setCresCred}/></div><LineChart items={crescimento.map(x=>({label:x.p===0?"Atual":`+${x.p}%`,valor:x.projetado.total}))}/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}><K t="Faturamento projetado" v={moeda(proj.faturamentoProjetado)}/><K t="IBS/CBS projetado" v={moeda(proj.projetado.total)}/><K t="Aumento" v={moeda(proj.aumentoImposto)} sub={proj.aumentoImpostoPct!=null?`${proj.aumentoImpostoPct.toFixed(2)}%`:""}/></div></div>
 
