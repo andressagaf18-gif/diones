@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { createHash } from "node:crypto";
 import { usuarioAutenticado } from "./lib/auth.js";
 
 const sql =
@@ -255,6 +256,93 @@ async function ensureSchema() {
             criado_em DESC
           )
         `;
+
+        await sql`
+          CREATE TABLE IF NOT EXISTS
+            tax_documents (
+              id BIGSERIAL PRIMARY KEY,
+              projeto_id TEXT NOT NULL DEFAULT '',
+              cnpj TEXT NOT NULL DEFAULT '',
+              tipo_projeto TEXT NOT NULL DEFAULT '',
+              categoria TEXT NOT NULL DEFAULT '',
+              filename TEXT NOT NULL DEFAULT '',
+              mime_type TEXT NOT NULL DEFAULT '',
+              bytes INTEGER NOT NULL DEFAULT 0,
+              sha256 TEXT NOT NULL DEFAULT '',
+              file_base64 TEXT NOT NULL DEFAULT '',
+              ativo BOOLEAN NOT NULL DEFAULT TRUE,
+              criado_por_id TEXT NOT NULL DEFAULT '',
+              criado_por_nome TEXT NOT NULL DEFAULT '',
+              removido_por_nome TEXT NOT NULL DEFAULT '',
+              criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              removido_em TIMESTAMPTZ
+            )
+        `;
+
+        await sql`
+          CREATE INDEX IF NOT EXISTS
+            idx_tax_documents_cnpj
+          ON tax_documents (
+            cnpj,
+            ativo,
+            criado_em DESC
+          )
+        `;
+
+        await sql`
+          CREATE INDEX IF NOT EXISTS
+            idx_tax_documents_projeto
+          ON tax_documents (
+            projeto_id,
+            ativo,
+            criado_em DESC
+          )
+        `;
+
+        await sql`
+          CREATE INDEX IF NOT EXISTS
+            idx_tax_documents_hash
+          ON tax_documents (
+            cnpj,
+            sha256
+          )
+        `;
+
+        await sql`
+          CREATE TABLE IF NOT EXISTS
+            tax_project_snapshots (
+              id BIGSERIAL PRIMARY KEY,
+              projeto_id TEXT NOT NULL,
+              versao INTEGER NOT NULL DEFAULT 1,
+              tipo_projeto TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL DEFAULT '',
+              cnpj TEXT NOT NULL DEFAULT '',
+              cliente_nome TEXT NOT NULL DEFAULT '',
+              projeto JSONB NOT NULL DEFAULT '{}'::jsonb,
+              documentos JSONB NOT NULL DEFAULT '[]'::jsonb,
+              criado_por_id TEXT NOT NULL DEFAULT '',
+              criado_por_nome TEXT NOT NULL DEFAULT '',
+              criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `;
+
+        await sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS
+            idx_tax_project_snapshots_versao
+          ON tax_project_snapshots (
+            projeto_id,
+            versao
+          )
+        `;
+
+        await sql`
+          CREATE INDEX IF NOT EXISTS
+            idx_tax_project_snapshots_projeto
+          ON tax_project_snapshots (
+            projeto_id,
+            criado_em DESC
+          )
+        `;
       })();
   }
 
@@ -295,6 +383,97 @@ async function addHistory(
       )}
     )
   `;
+}
+
+async function criarSnapshotProjeto({
+  projetoId,
+  tipoProjeto,
+  status,
+  cnpj,
+  clienteNome,
+  body,
+  user,
+}) {
+  await ensureSchema();
+
+  const cnpjLimpo = txt(cnpj, 30).replace(/\D/g, "");
+
+  const versoes = await sql`
+    SELECT COALESCE(MAX(versao), 0)::int AS max
+    FROM tax_project_snapshots
+    WHERE projeto_id = ${projetoId}
+  `;
+
+  const versao = Number(versoes?.[0]?.max || 0) + 1;
+
+  const docs = await sql`
+    SELECT
+      id,
+      projeto_id,
+      cnpj,
+      tipo_projeto,
+      categoria,
+      filename,
+      mime_type,
+      bytes,
+      sha256,
+      ativo,
+      criado_por_nome,
+      criado_em
+    FROM tax_documents
+    WHERE
+      ativo = TRUE
+      AND (
+        (${cnpjLimpo} <> '' AND cnpj = ${cnpjLimpo})
+        OR
+        projeto_id = ${projetoId}
+      )
+    ORDER BY criado_em ASC
+  `;
+
+  const documentos = docs.map((row) => ({
+    id: row.id,
+    projetoId: row.projeto_id,
+    cnpj: row.cnpj,
+    tipoProjeto: row.tipo_projeto,
+    categoria: row.categoria,
+    filename: row.filename,
+    mimeType: row.mime_type,
+    bytes: row.bytes,
+    sha256: row.sha256,
+    ativo: Boolean(row.ativo),
+    criadoPorNome: row.criado_por_nome,
+    criadoEm: row.criado_em,
+  }));
+
+  await sql`
+    INSERT INTO tax_project_snapshots (
+      projeto_id,
+      versao,
+      tipo_projeto,
+      status,
+      cnpj,
+      cliente_nome,
+      projeto,
+      documentos,
+      criado_por_id,
+      criado_por_nome
+    )
+    VALUES (
+      ${projetoId},
+      ${versao},
+      ${txt(tipoProjeto, 80)},
+      ${txt(status, 80)},
+      ${cnpjLimpo},
+      ${txt(clienteNome, 300)},
+      ${JSON.stringify(jsonSeguro(body) || {})},
+      ${JSON.stringify(documentos)},
+      ${txt(user?.sub, 200)},
+      ${txt(user?.nome || user?.login || "Usuário", 200)}
+    )
+  `;
+
+  return { versao, documentos };
 }
 
 async function salvarProjeto(
@@ -457,6 +636,31 @@ async function salvarProjeto(
         NOW()
   `;
 
+  const backup = await criarSnapshotProjeto({
+    projetoId: id,
+    tipoProjeto: body.tipoProjeto,
+    status: body.status || "EM_ANALISE",
+    cnpj,
+    clienteNome,
+    body,
+    user,
+  });
+
+  await addHistory(
+    id,
+    "BACKUP_AUTOMATICO",
+    `Backup automático V${backup.versao} salvo.`,
+    {
+      versao: backup.versao,
+      documentos: backup.documentos.map((d) => ({
+        id: d.id,
+        filename: d.filename,
+        sha256: d.sha256,
+      })),
+    },
+    user
+  );
+
   await addHistory(
     id,
     "PROJETO_SALVO",
@@ -482,6 +686,10 @@ async function salvarProjeto(
         id,
         clienteNome,
         cnpj,
+      },
+      backup: {
+        versao: backup.versao,
+        documentos: backup.documentos.length,
       },
     }
   );
@@ -875,6 +1083,54 @@ async function obterProjeto(
         criado_em DESC
     `;
 
+
+  const backups = await sql`
+    SELECT
+      id,
+      versao,
+      tipo_projeto,
+      status,
+      cnpj,
+      cliente_nome,
+      projeto,
+      documentos,
+      criado_por_nome,
+      criado_em
+    FROM tax_project_snapshots
+    WHERE projeto_id = ${id}
+    ORDER BY versao DESC
+    LIMIT 50
+  `;
+
+  const cnpjProjeto = txt(row.cnpj || "", 30).replace(/\D/g, "");
+
+  const documentosAtuais = await sql`
+    SELECT
+      id,
+      projeto_id,
+      cnpj,
+      tipo_projeto,
+      categoria,
+      filename,
+      mime_type,
+      bytes,
+      sha256,
+      ativo,
+      criado_por_nome,
+      criado_em
+    FROM tax_documents
+    WHERE
+      ativo = TRUE
+      AND (
+        projeto_id = ${id}
+        OR (
+          ${cnpjProjeto} <> ''
+          AND cnpj = ${cnpjProjeto}
+        )
+      )
+    ORDER BY criado_em DESC
+  `;
+
   return send(
     res,
     200,
@@ -960,6 +1216,36 @@ async function obterProjeto(
                 diag.criado_em,
             })
           ),
+
+        backups:
+          backups.map((b) => ({
+            id: b.id,
+            versao: b.versao,
+            tipoProjeto: b.tipo_projeto,
+            status: b.status,
+            cnpj: b.cnpj,
+            clienteNome: b.cliente_nome,
+            projeto: b.projeto || {},
+            documentos: b.documentos || [],
+            criadoPorNome: b.criado_por_nome,
+            criadoEm: b.criado_em,
+          })),
+
+        documentos:
+          documentosAtuais.map((d) => ({
+            id: d.id,
+            projetoId: d.projeto_id,
+            cnpj: d.cnpj,
+            tipoProjeto: d.tipo_projeto,
+            categoria: d.categoria,
+            filename: d.filename,
+            mimeType: d.mime_type,
+            bytes: d.bytes,
+            sha256: d.sha256,
+            ativo: Boolean(d.ativo),
+            criadoPorNome: d.criado_por_nome,
+            criadoEm: d.criado_em,
+          })),
 
         historico:
           historico.map(
@@ -1119,156 +1405,450 @@ async function validarProjeto(
   );
 }
 
-async function uploadFile(
-  req,
-  res
-) {
-  const {
-    filename,
-    mimeType,
-    fileData,
-  } =
-    req.body ||
-    {};
+async function enviarBufferOpenAI({
+  buffer,
+  filename,
+  mimeType,
+}) {
+  const form = new FormData();
 
-  if (
-    !filename ||
-    !fileData
-  ) {
-    return send(
-      res,
-      400,
-      {
-        sucesso: false,
-        error:
-          "Arquivo e nome do arquivo são obrigatórios.",
-      }
-    );
-  }
-
-  const buffer =
-    Buffer.from(
-      stripDataUrl(
-        fileData
-      ),
-      "base64"
-    );
-
-  if (
-    !buffer.length
-  ) {
-    return send(
-      res,
-      400,
-      {
-        sucesso: false,
-        error:
-          "Arquivo vazio.",
-      }
-    );
-  }
-
-  if (
-    buffer.length >
-    MAX_FILE_BYTES
-  ) {
-    return send(
-      res,
-      413,
-      {
-        sucesso: false,
-        error:
-          `${filename} ultrapassa 3 MB. Reduza ou divida o arquivo.`,
-      }
-    );
-  }
-
-  const form =
-    new FormData();
-
-  form.append(
-    "purpose",
-    "user_data"
-  );
-
-  form.append(
-    "expires_after[anchor]",
-    "created_at"
-  );
-
-  form.append(
-    "expires_after[seconds]",
-    "86400"
-  );
-
+  form.append("purpose", "user_data");
+  form.append("expires_after[anchor]", "created_at");
+  form.append("expires_after[seconds]", "86400");
   form.append(
     "file",
     new Blob(
       [buffer],
-      {
-        type:
-          mimeType ||
-          "application/octet-stream",
-      }
+      { type: mimeType || "application/octet-stream" }
     ),
     filename
   );
 
-  const response =
-    await fetch(
-      `${OPENAI_URL}/files`,
-      {
-        method: "POST",
-        headers: {
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: form,
-      }
-    );
+  const response = await fetch(
+    `${OPENAI_URL}/files`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: form,
+    }
+  );
 
-  const data =
-    await response
-      .json()
-      .catch(
-        () => null
-      );
+  const data = await response.json().catch(() => null);
 
-  if (
-    !response.ok ||
-    !data?.id
-  ) {
-    console.error(
-      "[tributario][upload]",
-      data
-    );
-
-    return send(
-      res,
-      response.status ||
-        500,
-      {
-        sucesso: false,
-        error:
-          data?.error?.message ||
-          "A OpenAI não aceitou o documento.",
-      }
+  if (!response.ok || !data?.id) {
+    console.error("[tributario][upload-openai]", data);
+    throw new Error(
+      data?.error?.message ||
+      "A OpenAI não aceitou o documento."
     );
   }
 
-  return send(
-    res,
-    200,
-    {
-      sucesso: true,
-      fileId:
-        data.id,
-      filename,
-      bytes:
-        buffer.length,
-    }
-  );
+  return data.id;
 }
+
+async function salvarDocumentoBanco({
+  projetoId,
+  cnpj,
+  tipoProjeto,
+  categoria,
+  filename,
+  mimeType,
+  buffer,
+  user,
+}) {
+  await ensureSchema();
+
+  const hash = createHash("sha256")
+    .update(buffer)
+    .digest("hex");
+
+  const cnpjLimpo = txt(cnpj, 30).replace(/\D/g, "");
+
+  const existente = await sql`
+    SELECT
+      id,
+      projeto_id,
+      cnpj,
+      tipo_projeto,
+      categoria,
+      filename,
+      mime_type,
+      bytes,
+      sha256,
+      criado_por_nome,
+      criado_em
+    FROM tax_documents
+    WHERE
+      cnpj = ${cnpjLimpo}
+      AND sha256 = ${hash}
+      AND ativo = TRUE
+    ORDER BY criado_em DESC
+    LIMIT 1
+  `;
+
+  if (existente?.[0]) {
+    return {
+      documento: {
+        id: existente[0].id,
+        projetoId: existente[0].projeto_id,
+        cnpj: existente[0].cnpj,
+        tipoProjeto: existente[0].tipo_projeto,
+        categoria: existente[0].categoria,
+        filename: existente[0].filename,
+        mimeType: existente[0].mime_type,
+        bytes: existente[0].bytes,
+        sha256: existente[0].sha256,
+        criadoPorNome: existente[0].criado_por_nome,
+        criadoEm: existente[0].criado_em,
+      },
+      duplicado: true,
+    };
+  }
+
+  const inserted = await sql`
+    INSERT INTO tax_documents (
+      projeto_id,
+      cnpj,
+      tipo_projeto,
+      categoria,
+      filename,
+      mime_type,
+      bytes,
+      sha256,
+      file_base64,
+      criado_por_id,
+      criado_por_nome
+    )
+    VALUES (
+      ${txt(projetoId, 200)},
+      ${cnpjLimpo},
+      ${txt(tipoProjeto, 80)},
+      ${txt(categoria || tipoProjeto || "tributario", 120)},
+      ${txt(filename, 500)},
+      ${txt(mimeType, 200)},
+      ${buffer.length},
+      ${hash},
+      ${buffer.toString("base64")},
+      ${txt(user?.sub, 200)},
+      ${txt(user?.nome || user?.login || "Usuário", 200)}
+    )
+    RETURNING
+      id,
+      projeto_id,
+      cnpj,
+      tipo_projeto,
+      categoria,
+      filename,
+      mime_type,
+      bytes,
+      sha256,
+      criado_por_nome,
+      criado_em
+  `;
+
+  const row = inserted?.[0];
+
+  if (projetoId) {
+    await addHistory(
+      projetoId,
+      "DOCUMENTO_ADICIONADO",
+      `Documento ${filename} adicionado ao arquivo do cliente.`,
+      {
+        documentoId: row?.id || null,
+        filename,
+        bytes: buffer.length,
+        categoria: categoria || tipoProjeto || "tributario",
+      },
+      user
+    );
+  }
+
+  return {
+    documento: {
+      id: row?.id,
+      projetoId: row?.projeto_id,
+      cnpj: row?.cnpj,
+      tipoProjeto: row?.tipo_projeto,
+      categoria: row?.categoria,
+      filename: row?.filename,
+      mimeType: row?.mime_type,
+      bytes: row?.bytes,
+      sha256: row?.sha256,
+      criadoPorNome: row?.criado_por_nome,
+      criadoEm: row?.criado_em,
+    },
+    duplicado: false,
+  };
+}
+
+async function uploadFile(req, res) {
+  const {
+    filename,
+    mimeType,
+    fileData,
+    projetoId = "",
+    cnpj = "",
+    tipoProjeto = "",
+    categoria = "",
+    persistir = true,
+  } = req.body || {};
+
+  if (!filename || !fileData) {
+    return send(res, 400, {
+      sucesso: false,
+      error: "Arquivo e nome do arquivo são obrigatórios.",
+    });
+  }
+
+  const buffer = Buffer.from(
+    stripDataUrl(fileData),
+    "base64"
+  );
+
+  if (!buffer.length) {
+    return send(res, 400, {
+      sucesso: false,
+      error: "Arquivo vazio.",
+    });
+  }
+
+  if (buffer.length > MAX_FILE_BYTES) {
+    return send(res, 413, {
+      sucesso: false,
+      error: `${filename} ultrapassa 3 MB. Reduza ou divida o arquivo.`,
+    });
+  }
+
+  let documento = null;
+  let duplicado = false;
+
+  if (persistir !== false && (txt(cnpj, 30) || txt(projetoId, 200))) {
+    const saved = await salvarDocumentoBanco({
+      projetoId,
+      cnpj,
+      tipoProjeto,
+      categoria,
+      filename,
+      mimeType,
+      buffer,
+      user: authUser(req),
+    });
+
+    documento = saved.documento;
+    duplicado = saved.duplicado;
+  }
+
+  const fileId = await enviarBufferOpenAI({
+    buffer,
+    filename,
+    mimeType,
+  });
+
+  return send(res, 200, {
+    sucesso: true,
+    fileId,
+    filename,
+    bytes: buffer.length,
+    documentoId: documento?.id || null,
+    documento,
+    duplicado,
+  });
+}
+
+async function listarDocumentos(req, res) {
+  await ensureSchema();
+
+  const projetoId = txt(req.query?.projetoId, 200);
+  const cnpj = txt(req.query?.cnpj, 30).replace(/\D/g, "");
+  const tipoProjeto = txt(req.query?.tipoProjeto, 80);
+  const incluirRemovidos =
+    txt(req.query?.incluirRemovidos, 10).toLowerCase() === "true";
+
+  if (!projetoId && !cnpj) {
+    return send(res, 400, {
+      sucesso: false,
+      error: "Informe projetoId ou CNPJ para listar documentos.",
+    });
+  }
+
+  const rows = await sql`
+    SELECT
+      id,
+      projeto_id,
+      cnpj,
+      tipo_projeto,
+      categoria,
+      filename,
+      mime_type,
+      bytes,
+      sha256,
+      ativo,
+      criado_por_nome,
+      removido_por_nome,
+      criado_em,
+      removido_em
+    FROM tax_documents
+    WHERE
+      (
+        ${cnpj} <> ''
+        AND cnpj = ${cnpj}
+        OR
+        ${cnpj} = ''
+        AND projeto_id = ${projetoId}
+      )
+      AND (
+        ${tipoProjeto} = ''
+        OR tipo_projeto = ${tipoProjeto}
+        OR tipo_projeto = ''
+      )
+      AND (
+        ${incluirRemovidos} = TRUE
+        OR ativo = TRUE
+      )
+    ORDER BY
+      ativo DESC,
+      criado_em DESC
+    LIMIT 500
+  `;
+
+  return send(res, 200, {
+    sucesso: true,
+    documentos: rows.map((row) => ({
+      id: row.id,
+      projetoId: row.projeto_id,
+      cnpj: row.cnpj,
+      tipoProjeto: row.tipo_projeto,
+      categoria: row.categoria,
+      filename: row.filename,
+      mimeType: row.mime_type,
+      bytes: row.bytes,
+      sha256: row.sha256,
+      ativo: Boolean(row.ativo),
+      criadoPorNome: row.criado_por_nome,
+      removidoPorNome: row.removido_por_nome,
+      criadoEm: row.criado_em,
+      removidoEm: row.removido_em,
+    })),
+  });
+}
+
+async function removerDocumento(req, res) {
+  await ensureSchema();
+
+  const id = Number(req.body?.id || 0);
+  const user = authUser(req);
+
+  if (!id) {
+    return send(res, 400, {
+      sucesso: false,
+      error: "ID do documento é obrigatório.",
+    });
+  }
+
+  const rows = await sql`
+    SELECT id, projeto_id, filename
+    FROM tax_documents
+    WHERE id = ${id}
+    LIMIT 1
+  `;
+
+  if (!rows?.[0]) {
+    return send(res, 404, {
+      sucesso: false,
+      error: "Documento não encontrado.",
+    });
+  }
+
+  await sql`
+    UPDATE tax_documents
+    SET
+      ativo = FALSE,
+      removido_em = NOW(),
+      removido_por_nome = ${txt(user?.nome || user?.login || "Usuário", 200)}
+    WHERE id = ${id}
+  `;
+
+  if (rows[0].projeto_id) {
+    await addHistory(
+      rows[0].projeto_id,
+      "DOCUMENTO_REMOVIDO",
+      `Documento ${rows[0].filename} removido do arquivo ativo do cliente.`,
+      { documentoId: id },
+      user
+    );
+  }
+
+  return send(res, 200, { sucesso: true, id });
+}
+
+async function prepararDocumentosIa(req, res) {
+  await ensureSchema();
+
+  const ids = Array.isArray(req.body?.documentoIds)
+    ? req.body.documentoIds
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v > 0)
+    : [];
+
+  if (!ids.length) {
+    return send(res, 400, {
+      sucesso: false,
+      error: "Selecione ao menos um documento do arquivo do cliente.",
+    });
+  }
+
+  const rows = await sql`
+    SELECT
+      id,
+      filename,
+      mime_type,
+      bytes,
+      file_base64
+    FROM tax_documents
+    WHERE
+      id = ANY(${ids})
+      AND ativo = TRUE
+    ORDER BY criado_em ASC
+  `;
+
+  if (!rows.length) {
+    return send(res, 404, {
+      sucesso: false,
+      error: "Nenhum documento ativo encontrado para análise.",
+    });
+  }
+
+  const arquivos = [];
+
+  for (const row of rows) {
+    const buffer = Buffer.from(row.file_base64 || "", "base64");
+
+    if (!buffer.length) {
+      continue;
+    }
+
+    const fileId = await enviarBufferOpenAI({
+      buffer,
+      filename: row.filename,
+      mimeType: row.mime_type,
+    });
+
+    arquivos.push({
+      documentId: row.id,
+      fileId,
+      filename: row.filename,
+      bytes: row.bytes,
+    });
+  }
+
+  return send(res, 200, {
+    sucesso: true,
+    arquivos,
+  });
+}
+
 
 const diagnosticSchema = {
   type: "object",
@@ -2472,7 +3052,7 @@ REGRAS OBRIGATÓRIAS:
 4. Reconheça PGDAS-D, DAS, DEFIS, DRE, balancete, razão, SPED/EFD, NF-e, NFS-e, apurações, relatórios de faturamento/compras/vendas/folha e demais documentos fiscais/contábeis.
 5. Preencha a OPERAÇÃO quando houver suporte documental: descrição, setor, empresa única/múltiplos estabelecimentos, municípios/UFs, B2B/B2C e exportação.
 6. Preencha DADOS ECONÔMICOS sempre que o documento permitir: receita do período, faturamento anual/RBT12, média mensal, compras, serviços tomados, custos/despesas, margem, folha, pró-labore e folha 12 meses.
-7. Se houver PGDAS/DAS, extraia Anexo, faixa quando comprovável, alíquota efetiva, DAS e Fator R. NÃO calcule Fator R sem bases suficientes.
+7. Se houver PGDAS/DAS, extraia Anexo, faixa quando comprovável, alíquota efetiva, DAS e Fator R. O campo simples.anexo SOMENTE pode ser preenchido quando o documento declarar expressamente o Anexo aplicável àquela receita/atividade (ex.: "Anexo III"). NÃO deduza Anexo por CNAE, descrição da atividade, alíquota, Fator R ou conhecimento geral. Se houver receitas enquadradas em anexos diferentes, não escolha um único Anexo: use null em simples.anexo e registre a divergência/necessidade de segregação. NÃO calcule Fator R sem bases suficientes.
 8. Extraia tributos separadamente: PIS, Cofins, ICMS, ISS, IPI, CPP, IRPJ, CSLL, outros, total e créditos atuais.
 9. Se houver alíquota de ISS/ICMS documental, extraia. Não estime alíquota ausente.
 10. Identifique incentivos/benefícios SOMENTE se constarem nos documentos. Não conclua aplicabilidade jurídica nesta etapa.
@@ -2869,6 +3449,34 @@ export default async function handler(
         req,
         res
       );
+    }
+
+    if (
+      action === "listar-documentos" &&
+      req.method === "GET"
+    ) {
+      return await listarDocumentos(req, res);
+    }
+
+    if (
+      action === "remover-documento" &&
+      req.method === "POST"
+    ) {
+      return await removerDocumento(req, res);
+    }
+
+    if (
+      action === "preparar-documentos-ia" &&
+      req.method === "POST"
+    ) {
+      if (!process.env.OPENAI_API_KEY) {
+        return send(res, 500, {
+          sucesso: false,
+          error: "OPENAI_API_KEY não configurada.",
+        });
+      }
+
+      return await prepararDocumentosIa(req, res);
     }
 
     if (
