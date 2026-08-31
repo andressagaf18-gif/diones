@@ -1,4 +1,5 @@
 import ReformaSimulador from "./ReformaSimulador";
+import { jsPDF } from "jspdf";
 import PlanejamentoTributario from "./PlanejamentoTributario";
 import {
   useEffect,
@@ -798,13 +799,24 @@ function ReformaTributariaV2({token,onVoltar}){
  const [b2b,setB2b]=useState(""),[b2c,setB2c]=useState(""),[receita,setReceita]=useState(""),[compras,setCompras]=useState(""),[servicosTomados,setServicosTomados]=useState(""),[creditosAtuais,setCreditosAtuais]=useState(""),[tributosAtuais,setTributosAtuais]=useState("");
  const [setorAtividade,setSetorAtividade]=useState(""),[tipoEstabelecimento,setTipoEstabelecimento]=useState(""),[quantidadeEstabelecimentos,setQuantidadeEstabelecimentos]=useState(""),[municipiosOperacao,setMunicipiosOperacao]=useState(""),[ufsOperacao,setUfsOperacao]=useState("");
  const [anexoSimples,setAnexoSimples]=useState(""),[aliquotaEfetivaSimples,setAliquotaEfetivaSimples]=useState(""),[dasPeriodo,setDasPeriodo]=useState(""),[fatorR,setFatorR]=useState("");
+ const [anexoFonte,setAnexoFonte]=useState(null);
+ const [gerandoPdfCliente,setGerandoPdfCliente]=useState(false);
  const [faturamentoAnual,setFaturamentoAnual]=useState(""),[margem,setMargem]=useState(""),[folha,setFolha]=useState(""),[proLabore,setProLabore]=useState(""),[despesasDedutiveis,setDespesasDedutiveis]=useState("");
  const [aliquotaAtual,setAliquotaAtual]=useState(""),[incentivoAtual,setIncentivoAtual]=useState("NORMAL"),[reducaoIbsCbs,setReducaoIbsCbs]=useState("0"),[exportacao,setExportacao]=useState("0"),[tratamentoEspecial,setTratamentoEspecial]=useState("");
  const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}});
  const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["motor","7. Recomendação"],["impacto","8. Impactos"],["transicao","9. Transição"],["relatorio","10. Relatório"]];
- const n=v=>Number(String(v??"").replace(/\./g,"").replace(",","."))||0;
+ const n=v=>{
+  if(typeof v==="number")return Number.isFinite(v)?v:0;
+  const s=String(v??"").trim();
+  if(!s)return 0;
+  const normalizado=s.includes(",")
+    ? s.replace(/\./g,"").replace(",",".")
+    : s;
+  const valor=Number(normalizado.replace(/[^\d.-]/g,""));
+  return Number.isFinite(valor)?valor:0;
+ };
  const input={width:"100%",border:"1px solid #DDE3EC",borderRadius:8,padding:"9px 10px",fontSize:10,boxSizing:"border-box"};
  const card={background:"#fff",border:"1px solid #E3E7EF",borderRadius:12,padding:14};
  const digits=v=>String(v||"").replace(/\D/g,"");
@@ -871,6 +883,21 @@ function ReformaTributariaV2({token,onVoltar}){
   setDocumentos([]);
  }
 
+ function fonteExtracao(x,campo){
+  const fontes=Array.isArray(x?.fontes)?x.fontes:[];
+  const alvo=String(campo||"").toLowerCase();
+  return fontes.find(f=>{
+   const c=String(f?.campo||"").toLowerCase();
+   return c===alvo||c.endsWith(`.${alvo}`)||c.includes(alvo);
+  })||null;
+ }
+
+ function normalizarAnexo(valor){
+  const s=String(valor||"").trim().toUpperCase();
+  const m=s.match(/(?:ANEXO\s*)?(I{1,3}|IV|V)\b/);
+  return m?`Anexo ${m[1]}`:"";
+ }
+
  function aplicarExtracao(x){
   if(!x)return;
   setExtracao(x);
@@ -915,7 +942,32 @@ function ReformaTributariaV2({token,onVoltar}){
   if(tr.aliquotaIssPct!=null)setAliquotaAtual(String(tr.aliquotaIssPct));
   else if(tr.aliquotaIcmsPct!=null)setAliquotaAtual(String(tr.aliquotaIcmsPct));
 
-  if(sm.anexo)setAnexoSimples(sm.anexo);
+  if(sm.anexo){
+   const fonteAnexo=fonteExtracao(x,"anexo");
+   const anexoNormalizado=normalizarAnexo(sm.anexo);
+   const regimeSimples=String(id.regime||regime||"").toLowerCase().includes("simples");
+   const confianca=String(fonteAnexo?.confianca||"").toUpperCase();
+   const fonteAceitavel=Boolean(fonteAnexo)&&["ALTA","MEDIA"].includes(confianca);
+
+   if(regimeSimples&&anexoNormalizado&&fonteAceitavel){
+    setAnexoSimples(anexoNormalizado);
+    setAnexoFonte(fonteAnexo);
+   }else{
+    setAnexoSimples("");
+    setAnexoFonte({
+     campo:"simples.anexo",
+     valor:String(sm.anexo||""),
+     documento:fonteAnexo?.documento||"",
+     paginaOuReferencia:fonteAnexo?.paginaOuReferencia||null,
+     confianca:fonteAnexo?.confianca||"BAIXA",
+     rejeitado:true,
+     motivo:"Anexo não aplicado automaticamente porque não houve comprovação documental suficiente."
+    });
+   }
+  }else{
+   setAnexoSimples("");
+   setAnexoFonte(null);
+  }
   if(sm.aliquotaEfetivaPct!=null)setAliquotaEfetivaSimples(String(sm.aliquotaEfetivaPct));
   if(sm.dasPeriodo!=null)setDasPeriodo(String(sm.dasPeriodo));
   if(sm.fatorRPct!=null)setFatorR(String(sm.fatorRPct));
@@ -946,7 +998,7 @@ function ReformaTributariaV2({token,onVoltar}){
   }
 
   setExtraindo(true);setErro("");setOk("");try{const up=[];for(const file of documentos){const fileData=await arquivoParaDataUrl(file);const u=await apiCall("upload-file",{method:"POST",body:{filename:file.name,mimeType:file.type||"application/octet-stream",fileData}});up.push({fileId:u.fileId,filename:file.name,mimeType:file.type||"",bytes:file.size})}setDocumentosIa(up);const d=await apiCall("reforma-extrair",{method:"POST",body:{projetoId,arquivos:up}});aplicarExtracao(d.extracao);const c=digits(d.extracao?.identificacao?.cnpj);if(c.length===14){try{const cad=await consultarCnpj(c);setOk(`IA identificou o CNPJ e o sistema consultou ${cad.cnaes.length} CNAE(s) oficiais.`)}catch{setOk("IA interpretou os documentos e identificou o CNPJ, mas a consulta cadastral precisa ser validada.")}}else setOk("IA interpretou os documentos. Confirme o CNPJ manualmente.");setAba("identificacao")}catch(e){setErro(e.message)}finally{setExtraindo(false)}}
- function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
+ function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
  async function salvar(status="EM_ANALISE"){try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:documentos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao,simulacao},status}});setOk("Reforma Tributária salva.")}catch(e){setErro(e.message)}}
  const fatSim=faturamentoAnual||receita;
@@ -1053,6 +1105,694 @@ function ReformaTributariaV2({token,onVoltar}){
  const pctMotor=v=>v==null?"Pendente":`${Number(v||0).toFixed(2)}%`;
  const barraMotor=(label,valor,maximo,cor="#17233D")=><div style={{display:"grid",gridTemplateColumns:"150px 1fr 85px",gap:8,alignItems:"center",fontSize:9}}><b>{label}</b><div style={{height:10,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${maximo?Math.max(2,Math.min(100,(valor/maximo)*100)):2}%`,background:cor,borderRadius:999}}/></div><b style={{textAlign:"right"}}>{valor}</b></div>;
 
+ async function gerarPdfCliente(){
+  setGerandoPdfCliente(true);
+  setErro("");
+
+  try{
+   const doc=new jsPDF({unit:"mm",format:"a4",compress:true});
+   const W=210,H=297,M=14,CONTENT=W-M*2;
+
+   const C={
+    navy:[23,35,61],
+    navy2:[16,27,51],
+    coral:[255,107,74],
+    blue:[49,88,156],
+    green:[23,107,71],
+    amber:[183,121,31],
+    red:[180,35,24],
+    text:[55,64,80],
+    muted:[105,115,132],
+    line:[225,230,238],
+    soft:[247,249,252],
+    softBlue:[244,247,252],
+    softCoral:[255,245,242],
+    softGreen:[241,251,246],
+    white:[255,255,255]
+   };
+
+   let y=14;
+   let paginaSecao="";
+
+   const nome=empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Cliente";
+   const cnpjPdf=digits(cnpj)||"-";
+   const atual=n(simulacao?.simples?.dentro||dasPeriodo||0);
+   const reforma=simulacao?.simples?.fora==null?null:n(simulacao.simples.fora);
+   const residual=simulacao?.simples?.dasResidualEstimado||null;
+   const ibsCbs=n(simulacao?.ibsCbs?.total||0);
+   const diferenca=reforma==null?null:reforma-atual;
+   const variacao=atual>0&&diferenca!=null?(diferenca/atual)*100:null;
+   const impactoAnual=diferenca==null?null:diferenca*12;
+   const cargaAtualBase=n(receita)||n(faturamentoAnual)||0;
+   const cargaAtualPct=cargaAtualBase>0&&atual>0?(atual/cargaAtualBase)*100:null;
+   const cargaReformaPct=cargaAtualBase>0&&reforma!=null?(reforma/cargaAtualBase)*100:null;
+
+   const money=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+   const pct=v=>v==null?"Pendente":`${Number(v).toFixed(2)}%`;
+   const clean=t=>String(t??"")
+    .replace(/[–—]/g,"-")
+    .replace(/→/g,"->")
+    .replace(/•/g,"-");
+
+   const setColor=(tipo,cor)=>{
+    const arr=Array.isArray(cor)?cor:C[cor]||C.text;
+    if(tipo==="text")doc.setTextColor(...arr);
+    if(tipo==="fill")doc.setFillColor(...arr);
+    if(tipo==="draw")doc.setDrawColor(...arr);
+   };
+
+   const footer=()=>{
+    doc.setDrawColor(...C.line);
+    doc.line(M,286,W-M,286);
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(6.8);
+    doc.setTextColor(...C.muted);
+    doc.text("Finder Intelligence | Reforma Tributaria",M,291);
+    doc.text(paginaSecao||"Relatorio executivo",W/2,291,{align:"center"});
+   };
+
+   const pageNumber=()=>{
+    const p=doc.internal.getCurrentPageInfo().pageNumber;
+    doc.setFontSize(6.8);
+    doc.setTextColor(...C.muted);
+    doc.text(`Pagina ${p}`,W-M,291,{align:"right"});
+   };
+
+   const addPage=(secao="")=>{
+    if(doc.getNumberOfPages()>0){
+     footer();
+     pageNumber();
+    }
+    doc.addPage();
+    y=17;
+    paginaSecao=secao;
+   };
+
+   const firstPage=()=>{
+    y=14;
+    paginaSecao="Resumo executivo";
+   };
+
+   const need=h=>{
+    if(y+h>281)addPage(paginaSecao);
+   };
+
+   const sectionTitle=(titulo,subtitulo="")=>{
+    need(subtitulo?18:12);
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(13.5);
+    doc.setTextColor(...C.navy);
+    doc.text(clean(titulo),M,y);
+    y+=6;
+    if(subtitulo){
+     doc.setFont("helvetica","normal");
+     doc.setFontSize(7.8);
+     doc.setTextColor(...C.muted);
+     const ls=doc.splitTextToSize(clean(subtitulo),CONTENT);
+     doc.text(ls,M,y);
+     y+=ls.length*3.5+3;
+    }else{
+     y+=2;
+    }
+   };
+
+   const smallLabel=(t,x=M,yy=y,cor=C.muted)=>{
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...cor);
+    doc.text(clean(t).toUpperCase(),x,yy);
+   };
+
+   const paragraph=(t,size=8.6,cor=C.text,maxWidth=CONTENT)=>{
+    if(!t)return;
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...cor);
+    const lines=doc.splitTextToSize(clean(t),maxWidth);
+    need(lines.length*4+3);
+    doc.text(lines,M,y);
+    y+=lines.length*4+3;
+   };
+
+   const card=(x,yy,w,h,{fill=C.white,draw=C.line,r=3}={})=>{
+    doc.setFillColor(...fill);
+    doc.setDrawColor(...draw);
+    doc.roundedRect(x,yy,w,h,r,r,"FD");
+   };
+
+   const kpiCard=(x,yy,w,h,label,value,{
+    valueColor=C.navy,
+    fill=C.soft,
+    sub=""
+   }={})=>{
+    card(x,yy,w,h,{fill,draw:C.line});
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(6.2);
+    doc.setTextColor(...C.muted);
+    doc.text(clean(label).toUpperCase(),x+4,yy+5.5);
+    doc.setFontSize(11.5);
+    doc.setTextColor(...valueColor);
+    const valueLines=doc.splitTextToSize(clean(value),w-8);
+    doc.text(valueLines,x+4,yy+13);
+    if(sub){
+     doc.setFont("helvetica","normal");
+     doc.setFontSize(6.2);
+     doc.setTextColor(...C.muted);
+     const s=doc.splitTextToSize(clean(sub),w-8);
+     doc.text(s,x+4,yy+h-3.5);
+    }
+   };
+
+   const pill=(x,yy,text,{
+    fill=C.soft,
+    color=C.navy,
+    border=C.line
+   }={})=>{
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(6.8);
+    const tw=doc.getTextWidth(clean(text))+8;
+    doc.setFillColor(...fill);
+    doc.setDrawColor(...border);
+    doc.roundedRect(x,yy,tw,7,3.5,3.5,"FD");
+    doc.setTextColor(...color);
+    doc.text(clean(text),x+4,yy+4.8);
+    return tw;
+   };
+
+   const horizontalBars=({
+    title,
+    subtitle="",
+    items=[],
+    valueFormatter=money,
+    height=0
+   })=>{
+    const h=height||Math.max(32,20+items.length*11);
+    need(h+14);
+    sectionTitle(title,subtitle);
+    card(M,y,CONTENT,h,{fill:C.white,draw:C.line});
+    const max=Math.max(...items.map(i=>Number(i.value)||0),1);
+    const labelW=35;
+    const valueW=32;
+    const barX=M+labelW+4;
+    const barW=CONTENT-labelW-valueW-13;
+    let yy=y+8;
+    items.forEach(item=>{
+     const v=Math.max(0,Number(item.value)||0);
+     doc.setFont("helvetica","bold");
+     doc.setFontSize(7.3);
+     doc.setTextColor(...C.navy);
+     doc.text(clean(item.label),M+4,yy+3.7);
+     doc.setFillColor(238,241,245);
+     doc.roundedRect(barX,yy,barW,6,2,2,"F");
+     doc.setFillColor(...(item.color||C.blue));
+     doc.roundedRect(barX,yy,Math.max(v>0?1:0,barW*(v/max)),6,2,2,"F");
+     doc.setFont("helvetica","bold");
+     doc.setFontSize(7.3);
+     doc.setTextColor(...C.navy);
+     doc.text(clean(valueFormatter(v)),W-M-4,yy+3.7,{align:"right"});
+     yy+=10.5;
+    });
+    y+=h+7;
+   };
+
+   const stackedBar=({
+    title,
+    subtitle="",
+    segments=[],
+    total=100,
+    suffix="%",
+    legend=true
+   })=>{
+    need(42);
+    sectionTitle(title,subtitle);
+    card(M,y,CONTENT,31,{fill:C.white,draw:C.line});
+    const bx=M+5,by=y+7,bw=CONTENT-10,bh=9;
+    doc.setFillColor(...C.soft);
+    doc.roundedRect(bx,by,bw,bh,3,3,"F");
+    let cursor=bx;
+    segments.forEach((s,i)=>{
+     const val=Math.max(0,Number(s.value)||0);
+     const ww=total>0?bw*(val/total):0;
+     if(ww>0){
+      doc.setFillColor(...(s.color||C.blue));
+      if(i===0||i===segments.length-1)doc.roundedRect(cursor,by,Math.max(ww,0.6),bh,2,2,"F");
+      else doc.rect(cursor,by,Math.max(ww,0.6),bh,"F");
+     }
+     cursor+=ww;
+    });
+    if(legend){
+     let lx=bx;
+     segments.forEach(s=>{
+      doc.setFillColor(...(s.color||C.blue));
+      doc.roundedRect(lx,y+21,3.5,3.5,1,1,"F");
+      doc.setFont("helvetica","normal");
+      doc.setFontSize(6.7);
+      doc.setTextColor(...C.text);
+      const txt=`${clean(s.label)} ${Number(s.value||0).toFixed(1)}${suffix}`;
+      doc.text(txt,lx+5,y+24);
+      lx+=doc.getTextWidth(txt)+13;
+     });
+    }
+    y+=38;
+   };
+
+   const bulletList=(titulo,arr,accent=C.coral)=>{
+    if(!arr?.length)return;
+    sectionTitle(titulo);
+    arr.forEach(item=>{
+     const lines=doc.splitTextToSize(clean(item),CONTENT-11);
+     need(lines.length*3.8+4);
+     doc.setFillColor(...accent);
+     doc.circle(M+2,y-1.2,1.25,"F");
+     doc.setFont("helvetica","normal");
+     doc.setFontSize(8.1);
+     doc.setTextColor(...C.text);
+     doc.text(lines,M+7,y);
+     y+=lines.length*3.8+2.5;
+    });
+    y+=2;
+   };
+
+   const table=(headers,rows,widths)=>{
+    const rowH=7;
+    need(rowH*(rows.length+1)+5);
+    let x=M;
+    doc.setFillColor(...C.navy);
+    doc.rect(M,y,CONTENT,rowH,"F");
+    headers.forEach((h,i)=>{
+     doc.setFont("helvetica","bold");
+     doc.setFontSize(6.5);
+     doc.setTextColor(...C.white);
+     doc.text(clean(h),x+2,y+4.6);
+     x+=widths[i];
+    });
+    y+=rowH;
+    rows.forEach((row,ri)=>{
+     x=M;
+     if(ri%2===0){
+      doc.setFillColor(...C.soft);
+      doc.rect(M,y,CONTENT,rowH,"F");
+     }
+     row.forEach((cell,i)=>{
+      doc.setFont("helvetica",i===0?"bold":"normal");
+      doc.setFontSize(6.7);
+      doc.setTextColor(...C.text);
+      doc.text(clean(cell),x+2,y+4.6);
+      x+=widths[i];
+     });
+     y+=rowH;
+    });
+    y+=5;
+   };
+
+   const taxItems=(()=>{
+    const tr=extracao?.tributos||{};
+    return [
+     ["PIS",n(tr.pis),C.blue],
+     ["COFINS",n(tr.cofins),[74,106,169]],
+     ["ISS",n(tr.iss),C.coral],
+     ["ICMS",n(tr.icms),[221,126,91]],
+     ["CPP",n(tr.cpp),C.green],
+     ["IRPJ",n(tr.irpj),[92,112,138]],
+     ["CSLL",n(tr.csll),[120,136,158]],
+     ["IPI",n(tr.ipi),C.amber],
+     ["Outros",n(tr.outros),[148,157,171]]
+    ].filter(i=>i[1]>0);
+   })();
+
+   const transitionItems=transicaoModelo||[];
+
+   // =======================
+   // PAGINA 1 - CAPA + RESUMO
+   // =======================
+   firstPage();
+
+   doc.setFillColor(...C.navy2);
+   doc.rect(0,0,W,68,"F");
+   doc.setFillColor(...C.coral);
+   doc.rect(0,0,5,68,"F");
+
+   doc.setFont("helvetica","bold");
+   doc.setFontSize(7.5);
+   doc.setTextColor(255,183,167);
+   doc.text("FINDER INTELLIGENCE | REFORMA TRIBUTARIA",M,14);
+
+   doc.setFontSize(21);
+   doc.setTextColor(...C.white);
+   doc.text("Diagnostico executivo",M,28);
+
+   doc.setFontSize(15.5);
+   const nomeLines=doc.splitTextToSize(clean(nome),150);
+   doc.text(nomeLines,M,39);
+
+   doc.setFont("helvetica","normal");
+   doc.setFontSize(7.8);
+   doc.setTextColor(216,222,234);
+   const meta=`CNPJ ${cnpjPdf} | ${clean(regime||"Regime nao informado")} | ${clean(municipio||"-")}/${clean(uf||"-")}`;
+   doc.text(meta,M,57);
+
+   const badgeText=motor.risco==="ALTO"?"RISCO ALTO":motor.risco==="ATENÇÃO"?"ATENCAO":motor.risco==="CONTROLADO"?"CONTROLADO":"BASE EM VALIDACAO";
+   const badgeColor=motor.risco==="ALTO"?C.red:motor.risco==="ATENÇÃO"?C.amber:motor.risco==="CONTROLADO"?C.green:C.muted;
+   pill(155,13,badgeText,{fill:[255,255,255],color:badgeColor,border:[255,255,255]});
+
+   y=79;
+
+   sectionTitle("O numero que o cliente precisa entender","Comparacao pratica da carga mensal usada no diagnostico.");
+
+   kpiCard(M,y,42,23,"Hoje",money(atual),{valueColor:C.blue,fill:C.softBlue,sub:pct(cargaAtualPct)+" da base"});
+   kpiCard(M+45,y,42,23,"Reforma",reforma==null?"Pendente":money(reforma),{valueColor:C.coral,fill:C.softCoral,sub:cargaReformaPct==null?"":pct(cargaReformaPct)+" da base"});
+   kpiCard(M+90,y,42,23,"Diferenca",diferenca==null?"Pendente":money(diferenca),{valueColor:diferenca>0?C.red:C.green,sub:variacao==null?"":pct(variacao)});
+   kpiCard(M+135,y,47,23,"Impacto anual",impactoAnual==null?"Pendente":money(impactoAnual),{valueColor:diferenca>0?C.red:C.green});
+   y+=30;
+
+   horizontalBars({
+    title:"Grafico 1 - Hoje x Reforma",
+    subtitle:"A barra Reforma representa o cenario por fora: DAS residual validado + IBS/CBS simulado.",
+    items:[
+     {label:"Hoje",value:atual,color:C.blue},
+     {label:"Reforma",value:reforma||0,color:C.coral}
+    ]
+   });
+
+   if(diferenca!=null){
+    const status=diferenca>0?"AUMENTO ESTIMADO":"REDUCAO ESTIMADA";
+    card(M,y,CONTENT,16,{fill:diferenca>0?[253,236,236]:[233,247,239],draw:diferenca>0?[243,199,196]:[183,223,201]});
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(7);
+    doc.setTextColor(...(diferenca>0?C.red:C.green));
+    doc.text(status,M+5,y+5.5);
+    doc.setFontSize(13.5);
+    doc.text(`${pct(Math.abs(variacao||0))} | ${money(Math.abs(diferenca))}/mes | ${money(Math.abs(impactoAnual||0))}/ano`,M+5,y+12);
+    y+=23;
+   }
+
+   sectionTitle("Conclusao executiva");
+   card(M,y,CONTENT,28,{fill:C.soft,draw:C.line});
+   doc.setFont("helvetica","bold");
+   doc.setFontSize(10.5);
+   doc.setTextColor(...C.navy);
+   const recLines=doc.splitTextToSize(clean(motor.recomendacao||"Analise em andamento"),CONTENT-10);
+   doc.text(recLines,M+5,y+7);
+   doc.setFont("helvetica","normal");
+   doc.setFontSize(7.7);
+   doc.setTextColor(...C.text);
+   const expLines=doc.splitTextToSize(clean(motor.explicacao||""),CONTENT-10);
+   doc.text(expLines,M+5,y+15);
+   y+=34;
+
+   // =======================
+   // PAGINA 2 - COMO CHEGAMOS NO NUMERO
+   // =======================
+   addPage("Como chegamos ao numero");
+   sectionTitle("Como chegamos ao cenario da Reforma","Memoria objetiva para o cliente e memoria auditavel para o responsavel.");
+
+   const dasResidual=residual?.residual;
+   kpiCard(M,y,42,22,"DAS atual",money(atual),{valueColor:C.blue});
+   kpiCard(M+45,y,42,22,"DAS residual",dasResidual==null?"Pendente":money(dasResidual),{valueColor:C.navy});
+   kpiCard(M+90,y,42,22,"IBS + CBS",money(ibsCbs),{valueColor:C.coral});
+   kpiCard(M+135,y,47,22,"Total Reforma",reforma==null?"Pendente":money(reforma),{valueColor:C.coral,fill:C.softCoral});
+   y+=29;
+
+   horizontalBars({
+    title:"Grafico 2 - Composicao do cenario por fora",
+    subtitle:"O total por fora soma apenas os componentes que foram validados para esta simulacao.",
+    items:[
+     {label:"DAS residual",value:dasResidual||0,color:C.navy},
+     {label:"IBS/CBS",value:ibsCbs,color:C.coral},
+     {label:"Total",value:reforma||0,color:C.blue}
+    ]
+   });
+
+   sectionTitle("Base de calculo do DAS residual");
+   if(residual){
+    table(
+     ["Componente","Valor","Tratamento"],
+     [
+      ["DAS atual",money(residual.dasAtual),"Base"],
+      ["PIS",money(residual.componentes?.pis),"Retirado"],
+      ["COFINS",money(residual.componentes?.cofins),"Retirado"],
+      ["ICMS",money(residual.componentes?.icms),"Retirado"],
+      ["ISS",money(residual.componentes?.iss),"Retirado"],
+      ["CPP",money(residual.componentes?.cpp),"Mantido"],
+      ["IRPJ",money(residual.componentes?.irpj),"Mantido"],
+      ["CSLL",money(residual.componentes?.csll),"Mantido"],
+      ["IPI",money(residual.componentes?.ipi),"Mantido"],
+      ["Outros",money(residual.componentes?.outros),"Mantido"]
+     ],
+     [70,58,54]
+    );
+
+    card(M,y,CONTENT,25,{fill:residual.composicaoConfere?C.softGreen:[255,248,231],draw:residual.composicaoConfere?[183,223,201]:[243,217,155]});
+    smallLabel("Validacao da composicao",M+5,y+6,residual.composicaoConfere?C.green:C.amber);
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...C.navy);
+    doc.text(residual.composicaoConfere?"CONFERE":"NAO CONFERE - CENARIO PENDENTE",M+5,y+12);
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(7.3);
+    doc.setTextColor(...C.text);
+    const formula=residual.formula||"Formula pendente: a composicao documental precisa ser validada.";
+    const fl=doc.splitTextToSize(clean(`Formula: ${formula}`),CONTENT-10);
+    doc.text(fl,M+5,y+18);
+    y+=31;
+   }else{
+    paragraph("A composicao documental do DAS ainda nao foi suficiente para formar a memoria de calculo.");
+   }
+
+   if(taxItems.length){
+    horizontalBars({
+     title:"Grafico 3 - Composicao tributaria encontrada",
+     subtitle:"Valores extraidos dos documentos usados na analise.",
+     items:taxItems.map(([label,value,color])=>({label,value,color}))
+    });
+   }
+
+   // =======================
+   // PAGINA 3 - PERFIL, CREDITOS E IMPACTOS
+   // =======================
+   addPage("Perfil e impactos");
+   sectionTitle("Perfil da operacao","A Reforma nao deve ser analisada apenas pela aliquota. Perfil de cliente, credito e cadeia comercial alteram o impacto.");
+
+   stackedBar({
+    title:"Grafico 4 - Perfil B2B x B2C",
+    subtitle:"Percentuais confirmados/extraidos na base utilizada.",
+    segments:[
+     {label:"B2B",value:n(b2b),color:C.navy},
+     {label:"B2C",value:n(b2c),color:C.coral}
+    ],
+    total:Math.max(n(b2b)+n(b2c),100)
+   });
+
+   kpiCard(M,y,42,22,"B2B",`${n(b2b).toFixed(1)}%`,{valueColor:C.navy});
+   kpiCard(M+45,y,42,22,"B2C",`${n(b2c).toFixed(1)}%`,{valueColor:C.coral});
+   kpiCard(M+90,y,42,22,"Creditos atuais",money(n(creditosAtuais)),{valueColor:C.green});
+   kpiCard(M+135,y,47,22,"Cobertura da base",`${motor.coberturaPct}%`,{valueColor:motor.coberturaPct>=75?C.green:C.amber});
+   y+=29;
+
+   if(analise?.matrizImpacto?.length){
+    const impactoItems=analise.matrizImpacto.map(x=>{
+     const nivel=String(x.nivel||"NAO_AVALIADO").toUpperCase();
+     const value=nivel==="ALTO"?100:nivel==="MEDIO"?65:nivel==="BAIXO"?30:10;
+     const color=nivel==="ALTO"?C.red:nivel==="MEDIO"?C.amber:nivel==="BAIXO"?C.green:C.muted;
+     return{label:clean(x.area),value,color,nivel};
+    });
+
+    sectionTitle("Grafico 5 - Mapa de impacto empresarial","Escala visual: alto 100, medio 65, baixo 30 e nao avaliado 10.");
+    need(Math.max(35,15+impactoItems.length*9));
+    card(M,y,CONTENT,Math.max(30,10+impactoItems.length*9),{fill:C.white,draw:C.line});
+    const max=100;
+    let yy=y+7;
+    impactoItems.forEach(i=>{
+     doc.setFont("helvetica","bold");
+     doc.setFontSize(6.8);
+     doc.setTextColor(...C.navy);
+     const lab=doc.splitTextToSize(i.label,47);
+     doc.text(lab,M+4,yy+3);
+     doc.setFillColor(238,241,245);
+     doc.roundedRect(M+55,yy,95,5.5,2,2,"F");
+     doc.setFillColor(...i.color);
+     doc.roundedRect(M+55,yy,95*(i.value/max),5.5,2,2,"F");
+     doc.setTextColor(...i.color);
+     doc.text(i.nivel.replace("_"," "),W-M-4,yy+3.5,{align:"right"});
+     yy+=8.5;
+    });
+    y+=Math.max(35,15+impactoItems.length*9);
+   }
+
+   bulletList("Principais riscos",(analise?.riscos||[]).slice(0,6),C.red);
+   bulletList("Principais oportunidades",(analise?.oportunidades||[]).slice(0,6),C.green);
+
+   // =======================
+   // PAGINA 4 - TRANSICAO
+   // =======================
+   addPage("Transicao 2026-2033");
+   sectionTitle("Transicao tributaria 2026-2033","O cliente visualiza quando a mudanca acontece e quais decisoes precisam ser tomadas em cada fase.");
+
+   doc.setFillColor(...C.navy2);
+   doc.roundedRect(M,y,CONTENT,26,3,3,"F");
+   doc.setFont("helvetica","bold");
+   doc.setFontSize(15);
+   doc.setTextColor(...C.white);
+   doc.text("A Reforma entra em etapas - nao de uma vez",M+6,y+10);
+   doc.setFont("helvetica","normal");
+   doc.setFontSize(7.8);
+   doc.setTextColor(216,222,234);
+   doc.text("Planejamento de preco, contratos, sistema e creditos deve acompanhar cada degrau.",M+6,y+18);
+   y+=34;
+
+   transitionItems.forEach((item,i)=>{
+    need(19);
+    const novo=item.ano==="2027"||item.ano==="2028"?1:Number(item.ibs||0);
+    const antigo=item.ano==="2027"||item.ano==="2028"?99:Number(item.antigos||0);
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...C.navy);
+    doc.text(item.ano,M,y+4);
+    doc.setFontSize(7);
+    doc.setTextColor(...C.muted);
+    doc.text(clean(item.fase),M+16,y+4);
+    const bx=M+52,bw=90,by=y;
+    doc.setFillColor(...C.line);
+    doc.roundedRect(bx,by,bw,7,2,2,"F");
+    if(antigo>0){
+     doc.setFillColor(205,212,224);
+     doc.roundedRect(bx,by,bw*(antigo/100),7,2,2,"F");
+    }
+    if(novo>0){
+     doc.setFillColor(...(item.ano==="2033"?C.green:C.blue));
+     doc.roundedRect(bx+bw*(antigo/100),by,Math.max(0.8,bw*(novo/100)),7,2,2,"F");
+    }
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(6.8);
+    doc.setTextColor(...C.text);
+    const dl=doc.splitTextToSize(clean(item.descricao),45);
+    doc.text(dl,W-M-45,y+3);
+    y+=Math.max(15,dl.length*3.5+5);
+   });
+
+   sectionTitle("O que precisa acontecer na pratica");
+   const fases=[
+    ["2026","Validar cadastros, documentos, campos fiscais, B2B/B2C, creditos e preparar a estrategia para 2027."],
+    ["2027-2028","Recalcular precos/contratos, acompanhar CBS e IBS inicial e revisar o Simples dentro x por fora quando aplicavel."],
+    ["2029-2032","Revalidar a carga em cada degrau de substituicao de ICMS/ISS pelo IBS."],
+    ["2033","Operar no modelo pleno e revisar definitivamente precificacao, contratos, cadastro e cadeia de creditos."]
+   ];
+   table(["Fase","Providencia prioritaria"],fases,[34,148]);
+
+   // =======================
+   // PAGINA 5 - PLANO DE ACAO
+   // =======================
+   addPage("Plano de acao");
+   sectionTitle("Plano de acao recomendado","Transforma o diagnostico em providencias objetivas para a empresa.");
+
+   if(analise?.planoAcao?.length){
+    analise.planoAcao.slice(0,10).forEach((item,i)=>{
+     const lines=doc.splitTextToSize(clean(item),CONTENT-21);
+     need(Math.max(15,lines.length*4+8));
+     doc.setFillColor(...C.navy);
+     doc.circle(M+5,y+5,4,"F");
+     doc.setFont("helvetica","bold");
+     doc.setFontSize(8);
+     doc.setTextColor(...C.white);
+     doc.text(String(i+1),M+5,y+6.8,{align:"center"});
+     doc.setFont("helvetica","normal");
+     doc.setFontSize(8.2);
+     doc.setTextColor(...C.text);
+     doc.text(lines,M+14,y+3.5);
+     y+=Math.max(14,lines.length*4+6);
+    });
+   }else{
+    paragraph("O plano de acao ainda nao foi gerado pela IA.");
+   }
+
+   sectionTitle("Dados que ainda precisam ser confirmados");
+   const faltantes=analise?.dadosFaltantes||extracao?.dadosNaoComprovados||[];
+   if(faltantes.length)bulletList("Pendencias documentais",faltantes.slice(0,12),C.amber);
+   else paragraph("A analise nao registrou pendencias materiais adicionais.");
+
+   sectionTitle("Enquadramento no Simples");
+   card(M,y,CONTENT,28,{fill:anexoSimples?C.softGreen:[255,248,231],draw:anexoSimples?[183,223,201]:[243,217,155]});
+   smallLabel("Anexo utilizado na analise",M+5,y+6,anexoSimples?C.green:C.amber);
+   doc.setFont("helvetica","bold");
+   doc.setFontSize(12);
+   doc.setTextColor(...C.navy);
+   doc.text(clean(anexoSimples||"NAO CONFIRMADO"),M+5,y+14);
+   doc.setFont("helvetica","normal");
+   doc.setFontSize(7.2);
+   doc.setTextColor(...C.text);
+   const fonteAnexoTxt=anexoFonte?.confirmadoManual
+    ?"Confirmado manualmente pelo responsavel."
+    :anexoFonte&&!anexoFonte.rejeitado
+     ?`Fonte: ${anexoFonte.documento||"documento"}${anexoFonte.paginaOuReferencia?` | ${anexoFonte.paginaOuReferencia}`:""} | confianca ${anexoFonte.confianca||"-"}.`
+     :"Sem comprovacao documental suficiente. Nao utilizar como premissa definitiva.";
+   const fal=doc.splitTextToSize(clean(fonteAnexoTxt),CONTENT-10);
+   doc.text(fal,M+5,y+21);
+   y+=35;
+
+   // =======================
+   // PAGINA 6 - FUNDAMENTACAO / RASTREABILIDADE
+   // =======================
+   addPage("Fundamentacao");
+   sectionTitle("Fundamentacao e rastreabilidade","O relatorio deve deixar claro o que veio de documento, o que foi calculado e o que ainda depende de validacao.");
+
+   if(analise?.fundamentacao?.length){
+    bulletList("Base legal / fundamentacao",(analise.fundamentacao||[]).slice(0,14),C.blue);
+   }else{
+    paragraph("A analise ainda nao possui fundamentacao registrada.");
+   }
+
+   sectionTitle("Documentos e qualidade da base");
+   const coberturaRows=(motor.cobertura||[]).map(x=>[
+    clean(x.nome),
+    x.ok?"OK":"PENDENTE"
+   ]);
+   if(coberturaRows.length)table(["Item","Status"],coberturaRows,[125,57]);
+
+   const docsReconhecidos=extracao?.documentosReconhecidos||[];
+   if(docsReconhecidos.length){
+    bulletList("Documentos reconhecidos pela IA",docsReconhecidos.slice(0,15),C.blue);
+   }
+
+   sectionTitle("Premissas e ressalvas");
+   bulletList("Premissas principais",[
+    "O cenario Reforma apresentado no comparativo corresponde ao cenario por fora: DAS residual validado + IBS/CBS calculado.",
+    "O DAS residual e uma estimativa gerencial quando construida a partir da composicao documental atual; a apuracao oficial futura prevalece.",
+    "Aliquotas, reducoes, beneficios, regimes especificos e regras do Simples devem ser validados com a legislacao vigente na data da decisao.",
+    "A recomendacao depende da documentacao disponibilizada; campos pendentes reduzem a confianca e podem alterar o resultado.",
+    "A comparacao Simples x Lucro Presumido x Lucro Real pertence ao Planejamento Tributario e nao deve ser confundida com este diagnostico da Reforma."
+   ],C.amber);
+
+   // Final footers/numbers
+   footer();
+   pageNumber();
+
+   const total=doc.getNumberOfPages();
+   for(let i=1;i<=total;i++){
+    doc.setPage(i);
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.muted);
+    doc.text(`${i}/${total}`,W-M,291,{align:"right"});
+   }
+
+   const slug=clean(nome)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-zA-Z0-9]+/g,"-")
+    .replace(/^-|-$/g,"")
+    .slice(0,60)||"cliente";
+
+   doc.save(`Finder-Reforma-Tributaria-${slug}.pdf`);
+   setOk("PDF completo do cliente gerado com graficos.");
+  }catch(e){
+   console.error("[reforma][pdf]",e);
+   setErro(e?.message||"Nao foi possivel gerar o PDF.");
+  }finally{
+   setGerandoPdfCliente(false);
+  }
+ }
+
+
  return <div style={{fontFamily:"Arial, sans-serif",color:"#17233D"}}>
   <button onClick={onVoltar} style={{border:0,background:"transparent",cursor:"pointer",fontWeight:800,color:"#697386",marginBottom:10}}>← Voltar</button>
   <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:16,padding:18,marginBottom:12}}><div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA</div><h2 style={{margin:"5px 0"}}>IBS, CBS, Simples dentro/fora e impacto financeiro</h2><div style={{fontSize:10,color:"#D8DEEA"}}>A IA lê os documentos e adapta a análise à empresa; o motor cruza operação real, CNAEs oficiais, créditos, B2B/B2C, cálculo auditável, riscos e transição.</div></div>
@@ -1063,7 +1803,32 @@ function ReformaTributariaV2({token,onVoltar}){
 
   {aba==="operacao"&&<div style={card}><h3>Operação real</h3><textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={5} style={{...input,resize:"vertical"}} placeholder="O que vende/presta, clientes, fornecedores, local da operação, particularidades..."/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:8}}>{field("Setor da atividade",setorAtividade,setSetorAtividade)}{field("Tipo de estabelecimento",tipoEstabelecimento,setTipoEstabelecimento,"Empresa única / múltiplos estabelecimentos")}{field("Quantidade de estabelecimentos",quantidadeEstabelecimentos,setQuantidadeEstabelecimentos)}{field("Municípios de operação",municipiosOperacao,setMunicipiosOperacao)}{field("UFs de operação",ufsOperacao,setUfsOperacao)}{field("% B2B",b2b,setB2b)}{field("% B2C",b2c,setB2c)}{field("% exportação",exportacao,setExportacao)}</div><p style={{fontSize:9,color:"#697386"}}>A IA preenche apenas o que conseguir comprovar. CNAE continua vindo da consulta oficial do CNPJ.</p></div>}
 
-  {aba==="dados"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados econômicos para simulação</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{field("Receita do período",receita,setReceita,"R$")}{field("Faturamento anual / RBT12",faturamentoAnual,setFaturamentoAnual,"R$")}{field("Compras do período",compras,setCompras,"R$")}{field("Serviços tomados",servicosTomados,setServicosTomados,"R$")}{field("Margem de lucro real estimada %",margem,setMargem,"%")}{field("Folha mensal — empregados",folha,setFolha,"R$")}{field("Pró-labore mensal",proLabore,setProLabore,"R$")}{field("Despesas/custos anuais dedutíveis",despesasDedutiveis,setDespesasDedutiveis,"R$")}{field("Tributos atuais do período",tributosAtuais,setTributosAtuais,"R$")}{field("Créditos atuais",creditosAtuais,setCreditosAtuais,"R$")}{field("Alíquota atual ISS/ICMS %",aliquotaAtual,setAliquotaAtual,"%")}</div></div><div style={card}><h3>Simples Nacional — dados encontrados</h3><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>{field("Anexo",anexoSimples,setAnexoSimples)}{field("Alíquota efetiva %",aliquotaEfetivaSimples,setAliquotaEfetivaSimples,"%")}{field("DAS do período",dasPeriodo,setDasPeriodo,"R$")}{field("Fator R %",fatorR,setFatorR,"%")}</div></div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
+  {aba==="dados"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados econômicos para simulação</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{field("Receita do período",receita,setReceita,"R$")}{field("Faturamento anual / RBT12",faturamentoAnual,setFaturamentoAnual,"R$")}{field("Compras do período",compras,setCompras,"R$")}{field("Serviços tomados",servicosTomados,setServicosTomados,"R$")}{field("Margem de lucro real estimada %",margem,setMargem,"%")}{field("Folha mensal — empregados",folha,setFolha,"R$")}{field("Pró-labore mensal",proLabore,setProLabore,"R$")}{field("Despesas/custos anuais dedutíveis",despesasDedutiveis,setDespesasDedutiveis,"R$")}{field("Tributos atuais do período",tributosAtuais,setTributosAtuais,"R$")}{field("Créditos atuais",creditosAtuais,setCreditosAtuais,"R$")}{field("Alíquota atual ISS/ICMS %",aliquotaAtual,setAliquotaAtual,"%")}</div></div><div style={card}>
+ <h3>Simples Nacional — dados encontrados</h3>
+ <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
+  <label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>
+   Anexo confirmado
+   <select value={anexoSimples} onChange={e=>{setAnexoSimples(e.target.value);setAnexoFonte(at=>at?{...at,confirmadoManual:true}:({campo:"simples.anexo",confianca:"MANUAL",confirmadoManual:true}))}} style={input}>
+    <option value="">Confirmar / não identificado</option>
+    <option value="Anexo I">Anexo I</option>
+    <option value="Anexo II">Anexo II</option>
+    <option value="Anexo III">Anexo III</option>
+    <option value="Anexo IV">Anexo IV</option>
+    <option value="Anexo V">Anexo V</option>
+   </select>
+   <small style={{fontWeight:500,color:anexoFonte?.rejeitado?"#B42318":"#697386"}}>
+    {anexoFonte?.confirmadoManual
+     ?"Confirmado manualmente pelo responsável."
+     :anexoFonte&&!anexoFonte.rejeitado
+      ?`Fonte: ${anexoFonte.documento||"documento"}${anexoFonte.paginaOuReferencia?` · ${anexoFonte.paginaOuReferencia}`:""} · confiança ${anexoFonte.confianca||"-"}`
+      :anexoFonte?.motivo||"A IA só pode preencher se o Anexo estiver expresso no documento."}
+   </small>
+  </label>
+  {field("Alíquota efetiva %",aliquotaEfetivaSimples,setAliquotaEfetivaSimples,"%")}
+  {field("DAS do período",dasPeriodo,setDasPeriodo,"R$")}
+  {field("Fator R %",fatorR,setFatorR,"%")}
+ </div>
+</div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
 
   {aba==="documentos"&&<div style={{display:"grid",gap:10}}><div style={card}>
    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}>
@@ -1284,6 +2049,7 @@ function ReformaTributariaV2({token,onVoltar}){
      <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
       <span style={{background:`${corRisco}33`,border:`1px solid ${corRisco}`,borderRadius:999,padding:"6px 9px",fontSize:8,fontWeight:900}}>RISCO {motor.risco}</span>
       <button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px",borderRadius:8,fontWeight:900}}>Salvar inteligência</button>
+      <button onClick={gerarPdfCliente} disabled={gerandoPdfCliente} style={{padding:"9px 12px",borderRadius:8,fontWeight:900,background:"#FF6B4A",color:"#fff",border:0,cursor:"pointer"}}>{gerandoPdfCliente?"Gerando PDF...":"Gerar PDF do cliente"}</button>
      </div>
     </div>
 
@@ -1314,6 +2080,30 @@ function ReformaTributariaV2({token,onVoltar}){
       {motor.cobertura.map((x,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:8.8,padding:"6px 7px",borderBottom:"1px solid #EEF0F4"}}><span>{x.nome}</span><b style={{color:x.ok?"#176B47":"#B7791F"}}>{x.ok?"OK":"PENDENTE"}</b></div>)}
      </div>
     </div>
+   </div>
+
+   <div style={{...card,borderTop:"4px solid #FF6B4A"}}>
+    <div style={{fontSize:8,fontWeight:900,color:"#FF6B4A"}}>COMPARATIVO QUE O CLIENTE ENTENDE</div>
+    <h3 style={{margin:"4px 0"}}>Quanto paga agora x quanto pagaria no cenário da Reforma</h3>
+    {simulacao?(()=>{
+     const atual=n(comparativoRelatorio.dentro);
+     const reform=comparativoRelatorio.fora==null?null:n(comparativoRelatorio.fora);
+     const diff=reform==null?null:reform-atual;
+     const pct=atual>0&&diff!=null?(diff/atual)*100:null;
+     const max=Math.max(atual,reform||0,1);
+     return <div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,margin:"10px 0"}}>
+       <div style={{padding:14,borderRadius:12,background:"#F4F7FC"}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>HOJE</div><div style={{fontSize:24,fontWeight:900,color:"#31589C"}}>{moedaMotor(atual)}</div></div>
+       <div style={{padding:14,borderRadius:12,background:"#FFF5F2"}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>REFORMA</div><div style={{fontSize:24,fontWeight:900,color:"#FF6B4A"}}>{reform==null?"Pendente":moedaMotor(reform)}</div></div>
+      </div>
+      {[["Hoje",atual,"#31589C"],["Reforma",reform||0,"#FF6B4A"]].map(([label,v,cor],i)=><div key={i} style={{display:"grid",gridTemplateColumns:"80px 1fr 120px",gap:8,alignItems:"center",fontSize:9,marginTop:8}}><b>{label}</b><div style={{height:22,background:"#EEF1F5",borderRadius:7,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(2,(n(v)/max)*100)}%`,background:cor,borderRadius:7}}/></div><b style={{textAlign:"right"}}>{moedaMotor(v)}</b></div>)}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:12}}>
+       <div style={{padding:10,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>DIFERENÇA MENSAL</div><div style={{fontSize:17,fontWeight:900,color:diff>0?"#B42318":"#176B47"}}>{diff==null?"Pendente":moedaMotor(diff)}</div></div>
+       <div style={{padding:10,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>VARIAÇÃO</div><div style={{fontSize:17,fontWeight:900}}>{pct==null?"Pendente":`${pct.toFixed(2)}%`}</div></div>
+       <div style={{padding:10,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>IMPACTO ANUAL</div><div style={{fontSize:17,fontWeight:900}}>{diff==null?"Pendente":moedaMotor(diff*12)}</div></div>
+      </div>
+     </div>
+    })():<div style={{padding:18,textAlign:"center",fontSize:9,color:"#697386"}}>Execute a simulação para gerar o comparativo.</div>}
    </div>
 
    <div style={card}>
