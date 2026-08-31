@@ -831,14 +831,22 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
  async function carregarArquivoCliente(cnpjForcado=cnpj){
   const c=digits(cnpjForcado);
-  if(c.length!==14){
+
+  if(c.length!==14&&!projetoId){
    setDocumentosBanco([]);
    return [];
   }
+
   setCarregandoDocumentos(true);
+
   try{
-   const d=await apiCall("listar-documentos",{query:{cnpj:c}});
+   const query={};
+   if(c.length===14)query.cnpj=c;
+   if(projetoId)query.projetoId=projetoId;
+
+   const d=await apiCall("listar-documentos",{query});
    const docs=Array.isArray(d.documentos)?d.documentos.filter(x=>x.ativo!==false):[];
+
    setDocumentosBanco(docs);
    setDocumentosSelecionados(atual=>{
     const prox={...atual};
@@ -847,6 +855,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     });
     return prox;
    });
+
    return docs;
   }catch(e){
    setErro(e?.message||"Não foi possível carregar o arquivo documental do cliente.");
@@ -906,7 +915,25 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  useEffect(()=>{
   if(!projetoInicial?.id)return;
 
-  const p=projetoInicial;
+  const backupMaisRecente=
+   Array.isArray(projetoInicial.backups)&&projetoInicial.backups.length
+    ?projetoInicial.backups[0]?.projeto||{}
+    :{};
+
+  const p={
+   ...backupMaisRecente,
+   ...projetoInicial,
+   empresas:Array.isArray(projetoInicial.empresas)&&projetoInicial.empresas.length
+    ?projetoInicial.empresas
+    :(backupMaisRecente.empresas||[]),
+   atividades:Object.keys(projetoInicial.atividades||{}).length
+    ?projetoInicial.atividades
+    :(backupMaisRecente.atividades||{}),
+   dadosManuais:Object.keys(projetoInicial.dadosManuais||{}).length
+    ?projetoInicial.dadosManuais
+    :(backupMaisRecente.dadosManuais||{})
+  };
+
   const manuais=p.dadosManuais||{};
   const salvo=manuais.reformaV2||{};
   const id=salvo.identificacao||{};
@@ -973,14 +1000,14 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   setSimulacao(manuais.simulacao||salvo.simulacao||null);
   setAnaliseDesatualizada(Boolean(manuais.analiseDesatualizada));
 
-  if(Array.isArray(p.documentos)&&p.documentos.length){
-   setDocumentosBanco(p.documentos);
-   setDocumentosSelecionados(Object.fromEntries(p.documentos.map(d=>[d.id,true])));
-  }else if(c.length===14){
-   setTimeout(()=>carregarArquivoCliente(c),0);
+  if(Array.isArray(projetoInicial.documentos)&&projetoInicial.documentos.length){
+   setDocumentosBanco(projetoInicial.documentos);
+   setDocumentosSelecionados(Object.fromEntries(projetoInicial.documentos.map(d=>[d.id,true])));
   }
 
-  setOk(`Reforma reaberta mantendo o projeto ${p.id}. ${Array.isArray(p.backups)?p.backups.length:0} backup(s) disponível(is).`);
+  setTimeout(()=>carregarArquivoCliente(c),0);
+
+  setOk(`Reforma reaberta mantendo o projeto ${p.id}. ${Array.isArray(projetoInicial.backups)?projetoInicial.backups.length:0} backup(s) disponível(is).`);
  },[projetoInicial?.id]);
 
  async function buscarCnpj(){
@@ -3501,10 +3528,18 @@ export default function Tributario({
 
       const manuais = p.dadosManuais || {};
 
-      if (p.tipoProjeto === "planejamento" && manuais.planejamentoV2) {
+      const tipoNormalizado = String(p.tipoProjeto || "").toLowerCase();
+      const parecePlanejamento =
+        Boolean(manuais.planejamentoV2) ||
+        tipoNormalizado.includes("planej");
+      const pareceReforma =
+        Boolean(manuais.reformaV2) ||
+        tipoNormalizado.includes("reforma");
+
+      if (parecePlanejamento) {
         setProjetoInicialModulo(p);
         setTela("planejamento-v2");
-      } else if (p.tipoProjeto === "reforma" && manuais.reformaV2) {
+      } else if (pareceReforma) {
         setProjetoInicialModulo(p);
         setTela("reforma-v2");
       } else {
