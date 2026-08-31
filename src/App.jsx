@@ -1528,6 +1528,7 @@ function SimuladorReformaPublico({
   const [anexoSimples,setAnexoSimples]=useState("");
   const [fs12,setFs12]=useState("");
   const [aliquotaLocalAtual,setAliquotaLocalAtual]=useState("");
+  const [aliquotaLocalConfirmada,setAliquotaLocalConfirmada]=useState(false);
   const [custosDespesasDedutiveis,setCustosDespesasDedutiveis]=useState("");
 
   const [cenarioAliquota,setCenarioAliquota]=useState("2026");
@@ -1613,6 +1614,99 @@ function SimuladorReformaPublico({
     };
   }
 
+  function sugerirTributacaoLocal(){
+    const municipio=String(empresaCadastral?.endereco?.municipio||"").toLowerCase();
+    const uf=String(empresaCadastral?.endereco?.uf||"").toUpperCase();
+    const atividadeTexto=`${atividadeSelecionada||""} ${descricaoAtividadeReal||""}`.toLowerCase();
+
+    if(natureza==="Serviço"){
+      if(municipio.includes("curitiba")){
+        let aliquota=5;
+        let fundamento="Curitiba/PR — LC Municipal 40/2001, art. 4º, IV: 5% para as demais atividades.";
+        let observacao="Alíquota sugerida pelo município e tipo geral de serviço. Deve ser confirmada antes do cálculo.";
+
+        if(/transporte coletivo|arrendamento mercantil|leasing|destinat[aá]ri[oa].*exterior|escola|ensino fundamental|educa[cç][aã]o pr[eé]-escolar|ensino m[eé]dio|ensino superior|call center|assist[eê]ncia t[eé]cnica remota|espet[aá]culo teatral|circo|festival|congresso|feira|show|concerto|recital/.test(atividadeTexto)){
+          aliquota=2;
+          fundamento="Curitiba/PR — LC Municipal 40/2001, art. 4º, I: 2% para os serviços ali relacionados.";
+        }else if(/limpeza|conserva[cç][aã]o|vigil[aâ]ncia|corretagem.*seguro|intermedia[cç][aã]o.*seguro|representa[cç][aã]o comercial|composi[cç][aã]o gr[aá]fica|recauchutagem/.test(atividadeTexto)){
+          aliquota=2.5;
+          fundamento="Curitiba/PR — LC Municipal 40/2001, art. 4º, II: 2,5% para os serviços ali relacionados.";
+        }else if(/hospital|sanat[oó]rio|manic[oô]mio|casa de sa[uú]de|pronto[- ]socorro|plano de sa[uú]de|cooperativa de servi[cç]os|cart[oó]rio|notarial|registro p[uú]blico/.test(atividadeTexto)){
+          aliquota=4;
+          fundamento="Curitiba/PR — LC Municipal 40/2001, art. 4º, III: 4% para os serviços ali relacionados.";
+        }
+
+        const profissional=/contabil|contador|t[eé]cnico em contabilidade|advoga|m[eé]dic|engenhe|arquitet|dentist|psic[oó]log|fisioterap|administrador/.test(atividadeTexto);
+
+        if(profissional){
+          observacao+=" Atenção: a LC 40/2001 também prevê tributação fixa anual para sociedades profissionais que cumpram os requisitos; confirme o enquadramento antes de usar percentual sobre faturamento.";
+        }
+
+        return{
+          tipo:"ISS",
+          aliquotaSugerida:aliquota,
+          usarComoEfetiva:true,
+          fonte:fundamento,
+          observacao,
+        };
+      }
+
+      return{
+        tipo:"ISS",
+        aliquotaSugerida:null,
+        usarComoEfetiva:true,
+        fonte:"ISS depende da legislação do município competente e do item da lista de serviços.",
+        observacao:"O CNPJ informa município e CNAE, mas não determina sozinho a alíquota do ISS. Confirme a legislação municipal.",
+      };
+    }
+
+    if((natureza==="Comércio"||natureza==="Indústria")&&uf==="PR"){
+      return{
+        tipo:"ICMS",
+        aliquotaSugerida:19.5,
+        usarComoEfetiva:false,
+        fonte:"Paraná — Lei Estadual 11.580/1996, art. 14, VIII, com redação da Lei 21.850/2023: 19,5% para as operações internas com os demais bens e mercadorias.",
+        observacao:"19,5% é alíquota nominal interna padrão. Não deve ser tratada automaticamente como carga efetiva: NCM, benefício, redução de base, ST, monofasia, destino e créditos de ICMS podem alterar o valor.",
+      };
+    }
+
+    return{
+      tipo:natureza==="Serviço"?"ISS":"ICMS/IPI",
+      aliquotaSugerida:null,
+      usarComoEfetiva:false,
+      fonte:"A alíquota depende da operação, localização, produto/serviço e legislação aplicável.",
+      observacao:"Preencha a alíquota efetiva somente após confirmar a regra aplicável.",
+    };
+  }
+
+  const sugestaoTributoLocal=useMemo(
+    ()=>sugerirTributacaoLocal(),
+    [
+      natureza,
+      atividadeSelecionada,
+      descricaoAtividadeReal,
+      empresaCadastral?.endereco?.municipio,
+      empresaCadastral?.endereco?.uf
+    ]
+  );
+
+  useEffect(()=>{
+    setAliquotaLocalConfirmada(false);
+
+    if(sugestaoTributoLocal?.aliquotaSugerida!=null){
+      setAliquotaLocalAtual(
+        String(sugestaoTributoLocal.aliquotaSugerida).replace(".",",")
+      );
+    }else{
+      setAliquotaLocalAtual("");
+    }
+  },[
+    natureza,
+    atividadeSelecionada,
+    empresaCadastral?.endereco?.municipio,
+    empresaCadastral?.endereco?.uf
+  ]);
+
   function calcularPresumidoEstimado(){
     if(!fat||!natureza)return null;
 
@@ -1620,30 +1714,53 @@ function SimuladorReformaPublico({
     const presIrpj=servico?32:8;
     const presCsll=servico?32:12;
 
-    // Equivalência mensal de uma apuração trimestral simplificada.
+    // Equivalência mensal de apuração trimestral.
     const receitaTri=fat*3;
     const baseIrpjTri=receitaTri*presIrpj/100;
-    const irpjTri=baseIrpjTri*0.15+Math.max(0,baseIrpjTri-60000)*0.10;
+    const irpjNormalTri=baseIrpjTri*0.15;
+    const adicionalIrpjTri=Math.max(0,baseIrpjTri-60000)*0.10;
+    const irpjTri=irpjNormalTri+adicionalIrpjTri;
+
     const baseCsllTri=receitaTri*presCsll/100;
     const csllTri=baseCsllTri*0.09;
-    const pisCofinsMes=fat*0.0365;
-    const tributoLocalMes=fat*n(aliquotaLocalAtual)/100;
-    const valor=irpjTri/3+csllTri/3+pisCofinsMes+tributoLocalMes;
+
+    const pisMes=fat*0.0065;
+    const cofinsMes=fat*0.03;
+
+    const aliquotaLocalUsada=
+      aliquotaLocalConfirmada?n(aliquotaLocalAtual):0;
+    const tributoLocalMes=fat*aliquotaLocalUsada/100;
+
+    const valor=
+      irpjTri/3+
+      csllTri/3+
+      pisMes+
+      cofinsMes+
+      tributoLocalMes;
 
     return{
       regime:"Lucro Presumido",
       valor,
+      baseIrpjTrimestral:baseIrpjTri,
+      irpjNormalMensalEquivalente:irpjNormalTri/3,
+      adicionalIrpjMensalEquivalente:adicionalIrpjTri/3,
       irpjMensalEquivalente:irpjTri/3,
+      baseCsllTrimestral:baseCsllTri,
       csllMensalEquivalente:csllTri/3,
-      pisCofinsMensal:pisCofinsMes,
+      pisMensal:pisMes,
+      cofinsMensal:cofinsMes,
+      pisCofinsMensal:pisMes+cofinsMes,
+      tributoLocalTipo:sugestaoTributoLocal?.tipo||"",
       tributoLocalMensal:tributoLocalMes,
       presuncaoIrpjPct:presIrpj,
       presuncaoCsllPct:presCsll,
-      aliquotaLocalPct:n(aliquotaLocalAtual),
-      fonte:"IRPJ: Lei 9.249/1995 e orientação da Receita; CSLL: Lei 7.689/1988/Receita. PIS/Cofins cumulativos usados como referência geral de 0,65% + 3%, sujeitos a exceções.",
-      observacao:n(aliquotaLocalAtual)
-        ?"Inclui a alíquota local informada pelo usuário."
-        :"Não inclui ISS/ICMS/IPI porque nenhuma alíquota local foi informada."
+      aliquotaLocalPct:aliquotaLocalUsada,
+      aliquotaLocalConfirmada,
+      sugestaoTributoLocal,
+      fonte:"IRPJ: Lei 9.249/1995 e Receita Federal. CSLL: Receita Federal/Lei 7.689/1988. PIS/Cofins no regime cumulativo: referência geral de 0,65% e 3%, sujeita a regimes específicos e exceções.",
+      observacao:aliquotaLocalConfirmada
+        ?`Inclui ${sugestaoTributoLocal?.tipo||"tributo local"} pela alíquota confirmada de ${aliquotaLocalUsada}%.`
+        :`Não inclui ${sugestaoTributoLocal?.tipo||"tributo local"} no total até a alíquota ser confirmada.`
     };
   }
 
@@ -1653,29 +1770,53 @@ function SimuladorReformaPublico({
     const dedutiveis=Math.min(fat,Math.max(0,n(custosDespesasDedutiveis)));
     const lucroEstimado=Math.max(0,fat-dedutiveis);
 
-    // Simplificação mensal do IRPJ/CSLL sobre o lucro estimado.
-    const irpj=lucroEstimado*0.15+Math.max(0,lucroEstimado-20000)*0.10;
+    const irpjNormal=lucroEstimado*0.15;
+    const adicionalIrpj=Math.max(0,lucroEstimado-20000)*0.10;
+    const irpj=irpjNormal+adicionalIrpj;
     const csll=lucroEstimado*0.09;
 
-    // PIS/Cofins: usa débito cheio como teto preliminar; créditos atuais
-    // informados nas despesas reduzem a estimativa quando disponíveis.
-    const debitoPisCofins=fat*0.0925;
-    const creditoPisCofins=Math.min(debitoPisCofins,creditoAtual||0);
-    const pisCofinsLiquido=Math.max(0,debitoPisCofins-creditoPisCofins);
-    const tributoLocalMes=fat*n(aliquotaLocalAtual)/100;
+    const debitoPis=fat*0.0165;
+    const debitoCofins=fat*0.076;
+    const debitoPisCofins=debitoPis+debitoCofins;
+
+    const creditoPisCofins=
+      Math.min(debitoPisCofins,creditoAtual||0);
+
+    const proporcaoPis=0.0165/0.0925;
+    const creditoPis=creditoPisCofins*proporcaoPis;
+    const creditoCofins=creditoPisCofins-creditoPis;
+
+    const pisLiquido=Math.max(0,debitoPis-creditoPis);
+    const cofinsLiquido=Math.max(0,debitoCofins-creditoCofins);
+    const pisCofinsLiquido=pisLiquido+cofinsLiquido;
+
+    const aliquotaLocalUsada=
+      aliquotaLocalConfirmada?n(aliquotaLocalAtual):0;
+    const tributoLocalMes=fat*aliquotaLocalUsada/100;
 
     return{
       regime:"Lucro Real",
       valor:irpj+csll+pisCofinsLiquido+tributoLocalMes,
       lucroEstimado,
       custosDespesasDedutiveis:dedutiveis,
+      irpjNormal,
+      adicionalIrpj,
       irpj,
       csll,
+      debitoPis,
+      debitoCofins,
+      creditoPis,
+      creditoCofins,
+      pisLiquido,
+      cofinsLiquido,
       pisCofinsLiquido,
+      tributoLocalTipo:sugestaoTributoLocal?.tipo||"",
       tributoLocalMensal:tributoLocalMes,
-      aliquotaLocalPct:n(aliquotaLocalAtual),
-      fonte:"IRPJ: 15% sobre o lucro + adicional de 10% sobre a parcela que excede R$ 20 mil/mês; CSLL: 9% para pessoas jurídicas em geral. PIS/Cofins não cumulativos usados como referência de débito de 1,65% + 7,6%, abatendo apenas créditos informados.",
-      observacao:"Estimativa gerencial. A base real depende do resultado contábil ajustado, despesas dedutíveis, adições, exclusões, compensações e créditos efetivamente admitidos."
+      aliquotaLocalPct:aliquotaLocalUsada,
+      aliquotaLocalConfirmada,
+      sugestaoTributoLocal,
+      fonte:"IRPJ: Receita Federal — 15% sobre o lucro e adicional de 10% sobre a parcela que excede R$ 20 mil por mês. CSLL: 9% para pessoas jurídicas em geral. PIS/Cofins não cumulativos: referência geral de 1,65% e 7,6%, com créditos sujeitos à legislação.",
+      observacao:"Estimativa gerencial. Lucro Real exige resultado contábil ajustado, adições, exclusões, compensações e validação dos créditos e despesas dedutíveis."
     };
   }
 
@@ -1702,8 +1843,8 @@ function SimuladorReformaPublico({
     return null;
   },[
     naoSeiImpostoAtual,regime,natureza,faturamento,rbt12,
-    anexoSimples,fs12,aliquotaLocalAtual,custosDespesasDedutiveis,
-    creditoAtual
+    anexoSimples,fs12,aliquotaLocalAtual,aliquotaLocalConfirmada,
+    custosDespesasDedutiveis,creditoAtual,sugestaoTributoLocal
   ]);
 
   const atual=naoSeiImpostoAtual
@@ -1949,6 +2090,8 @@ function SimuladorReformaPublico({
       anexoSimples:anexoSimples||null,
       fs12:n(fs12)||null,
       aliquotaLocalAtualPct:n(aliquotaLocalAtual)||null,
+      aliquotaLocalConfirmada,
+      sugestaoTributoLocal,
       custosDespesasDedutiveis:n(custosDespesasDedutiveis)||null,
       tributosForaIbsCbsMensal:fora,
       cenarioAliquota,
@@ -1994,7 +2137,8 @@ function SimuladorReformaPublico({
     etapa,cnpj,empresaCadastral,atividadesReais,atividadeSelecionada,
     descricaoAtividadeReal,regime,natureza,faturamento,impostoAtual,
     naoSeiImpostoAtual,rbt12,anexoSimples,fs12,aliquotaLocalAtual,
-    custosDespesasDedutiveis,tributosFora,cenarioAliquota,cbs,ibs,
+    aliquotaLocalConfirmada,custosDespesasDedutiveis,tributosFora,
+    cenarioAliquota,cbs,ibs,
     reducaoCbs,reducaoIbs,crescimento,despesas
   ]);
 
@@ -2667,14 +2811,60 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           <div style={{...muted,marginTop:4}}>
             O motor usa presunção de IRPJ/CSLL por natureza da atividade e calcula PIS/Cofins cumulativos. Informe também a tributação local para aproximar a carga total.
           </div>
+          <div style={{marginTop:8,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:10,padding:9}}>
+            <div style={{fontSize:7,fontWeight:900,color:"#805B10"}}>
+              {sugestaoTributoLocal.tipo} — ALÍQUOTA SUGERIDA
+            </div>
+            <div style={{fontSize:16,fontWeight:900,color:NAVY,marginTop:2}}>
+              {sugestaoTributoLocal.aliquotaSugerida==null
+                ?"Precisa confirmar"
+                :percentualSimulador(sugestaoTributoLocal.aliquotaSugerida)}
+            </div>
+            <div style={{...muted,fontSize:7.5,marginTop:4}}>
+              {sugestaoTributoLocal.fonte}
+            </div>
+            <div style={{...muted,fontSize:7.5,marginTop:4}}>
+              {sugestaoTributoLocal.observacao}
+            </div>
+          </div>
+
           <label style={{...labelStyle,marginTop:7}}>
-            {natureza==="Serviço"?"ISS atual %":"ICMS/IPI efetivo estimado %"}
-            <input value={aliquotaLocalAtual} onChange={e=>setAliquotaLocalAtual(e.target.value)} style={input} placeholder="Ex.: 5"/>
+            {sugestaoTributoLocal.tipo} % a usar no cálculo
+            <input
+              value={aliquotaLocalAtual}
+              onChange={e=>{
+                setAliquotaLocalAtual(e.target.value);
+                setAliquotaLocalConfirmada(false);
+              }}
+              style={input}
+              placeholder="Confirme ou edite"
+            />
           </label>
+
+          <label style={{display:"flex",gap:7,alignItems:"flex-start",fontSize:8,lineHeight:1.4,marginTop:7}}>
+            <input
+              type="checkbox"
+              checked={aliquotaLocalConfirmada}
+              onChange={e=>setAliquotaLocalConfirmada(e.target.checked)}
+            />
+            Confirmo que esta alíquota representa a tributação local aplicável à operação analisada.
+          </label>
+
           {estimativaAtual&&<div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:10,padding:9}}>
             <div style={{fontSize:7,fontWeight:900,color:"#31589C"}}>CARGA ESTIMADA ATUAL</div>
             <div style={{fontSize:18,fontWeight:900,color:NAVY,marginTop:2}}>{moedaSimulador(estimativaAtual.valor)}</div>
-            <div style={{...muted,fontSize:7.5}}>
+
+            <div style={{display:"grid",gap:4,marginTop:7,fontSize:7.7}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>IRPJ</span><b>{moedaSimulador(estimativaAtual.irpjMensalEquivalente)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>• IRPJ 15%</span><b>{moedaSimulador(estimativaAtual.irpjNormalMensalEquivalente)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>• Adicional IRPJ 10%</span><b>{moedaSimulador(estimativaAtual.adicionalIrpjMensalEquivalente)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>CSLL</span><b>{moedaSimulador(estimativaAtual.csllMensalEquivalente)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>PIS 0,65%</span><b>{moedaSimulador(estimativaAtual.pisMensal)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>COFINS 3%</span><b>{moedaSimulador(estimativaAtual.cofinsMensal)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>{estimativaAtual.tributoLocalTipo||"Tributo local"}</span><b>{aliquotaLocalConfirmada?moedaSimulador(estimativaAtual.tributoLocalMensal):"Não confirmado"}</b></div>
+            </div>
+
+            <div style={{...muted,fontSize:7.5,marginTop:6}}>
               Presunção IRPJ {estimativaAtual.presuncaoIrpjPct}% · CSLL {estimativaAtual.presuncaoCsllPct}%.
             </div>
           </div>}
@@ -2685,15 +2875,57 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           <label style={{...labelStyle,marginTop:7}}>Custos e despesas dedutíveis mensais
             <input value={custosDespesasDedutiveis} onChange={e=>setCustosDespesasDedutiveis(e.target.value)} style={input} placeholder="Ex.: 60000"/>
           </label>
+          <div style={{marginTop:8,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:10,padding:9}}>
+            <div style={{fontSize:7,fontWeight:900,color:"#805B10"}}>
+              {sugestaoTributoLocal.tipo} — ALÍQUOTA SUGERIDA
+            </div>
+            <div style={{fontSize:16,fontWeight:900,color:NAVY,marginTop:2}}>
+              {sugestaoTributoLocal.aliquotaSugerida==null
+                ?"Precisa confirmar"
+                :percentualSimulador(sugestaoTributoLocal.aliquotaSugerida)}
+            </div>
+            <div style={{...muted,fontSize:7.5,marginTop:4}}>
+              {sugestaoTributoLocal.fonte}
+            </div>
+            <div style={{...muted,fontSize:7.5,marginTop:4}}>
+              {sugestaoTributoLocal.observacao}
+            </div>
+          </div>
+
           <label style={{...labelStyle,marginTop:7}}>
-            {natureza==="Serviço"?"ISS atual %":"ICMS/IPI efetivo estimado %"}
-            <input value={aliquotaLocalAtual} onChange={e=>setAliquotaLocalAtual(e.target.value)} style={input} placeholder="Ex.: 5"/>
+            {sugestaoTributoLocal.tipo} % a usar no cálculo
+            <input
+              value={aliquotaLocalAtual}
+              onChange={e=>{
+                setAliquotaLocalAtual(e.target.value);
+                setAliquotaLocalConfirmada(false);
+              }}
+              style={input}
+              placeholder="Confirme ou edite"
+            />
           </label>
+
+          <label style={{display:"flex",gap:7,alignItems:"flex-start",fontSize:8,lineHeight:1.4,marginTop:7}}>
+            <input
+              type="checkbox"
+              checked={aliquotaLocalConfirmada}
+              onChange={e=>setAliquotaLocalConfirmada(e.target.checked)}
+            />
+            Confirmo que esta alíquota representa a tributação local aplicável à operação analisada.
+          </label>
+
           {estimativaAtual&&<div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:10,padding:9}}>
             <div style={{fontSize:7,fontWeight:900,color:"#31589C"}}>CARGA ESTIMADA ATUAL</div>
             <div style={{fontSize:18,fontWeight:900,color:NAVY,marginTop:2}}>{moedaSimulador(estimativaAtual.valor)}</div>
-            <div style={{...muted,fontSize:7.5}}>
-              Lucro estimado {moedaSimulador(estimativaAtual.lucroEstimado)} · IRPJ {moedaSimulador(estimativaAtual.irpj)} · CSLL {moedaSimulador(estimativaAtual.csll)}.
+
+            <div style={{display:"grid",gap:4,marginTop:7,fontSize:7.7}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>Lucro estimado</span><b>{moedaSimulador(estimativaAtual.lucroEstimado)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>IRPJ 15%</span><b>{moedaSimulador(estimativaAtual.irpjNormal)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>Adicional IRPJ 10%</span><b>{moedaSimulador(estimativaAtual.adicionalIrpj)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>CSLL 9%</span><b>{moedaSimulador(estimativaAtual.csll)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>PIS líquido</span><b>{moedaSimulador(estimativaAtual.pisLiquido)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>COFINS líquido</span><b>{moedaSimulador(estimativaAtual.cofinsLiquido)}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>{estimativaAtual.tributoLocalTipo||"Tributo local"}</span><b>{aliquotaLocalConfirmada?moedaSimulador(estimativaAtual.tributoLocalMensal):"Não confirmado"}</b></div>
             </div>
           </div>}
         </div>}
@@ -2794,7 +3026,12 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         disabled={
           !regime||!natureza||!fat||iva<=0||
           (naoSeiImpostoAtual&&regime==="Simples Nacional"&&!anexoSimples)||
-          (naoSeiImpostoAtual&&regime==="Lucro Real"&&!n(custosDespesasDedutiveis))
+          (naoSeiImpostoAtual&&regime==="Lucro Real"&&!n(custosDespesasDedutiveis))||
+          (
+            naoSeiImpostoAtual&&
+            (regime==="Lucro Presumido"||regime==="Lucro Real")&&
+            !aliquotaLocalConfirmada
+          )
         }
         onClick={()=>setEtapa("creditos")}
       >
