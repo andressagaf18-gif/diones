@@ -1505,6 +1505,7 @@ function SimuladorReformaPublico({
   onVoltar,
   onAprofundar,
   onSnapshot,
+  onPersistirResultado,
 }) {
   const [etapa,setEtapa]=useState("empresa");
 
@@ -1541,6 +1542,9 @@ function SimuladorReformaPublico({
   const [relatorioIa,setRelatorioIa]=useState(null);
   const [gerandoRelatorioIa,setGerandoRelatorioIa]=useState(false);
   const [erroRelatorioIa,setErroRelatorioIa]=useState("");
+  const [persistenciaRelatorio,setPersistenciaRelatorio]=useState("idle");
+  const [diagnosticoIdPersistido,setDiagnosticoIdPersistido]=useState("");
+  const persistenciaRelatorioRef=useRef(false);
 
   const categorias=[
     ["mercadorias","Mercadorias / matéria-prima"],
@@ -3255,6 +3259,27 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           </button>
         </div>}
 
+        {persistenciaRelatorio==="saving"&&<div style={{
+          marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",
+          borderRadius:9,padding:8,fontSize:8,color:"#31589C"
+        }}>
+          Salvando diagnóstico no CRM e no painel administrativo...
+        </div>}
+
+        {persistenciaRelatorio==="saved"&&<div style={{
+          marginTop:8,background:"#EEF8F3",border:"1px solid #CDE8DA",
+          borderRadius:9,padding:8,fontSize:8,color:"#176B47"
+        }}>
+          Relatório salvo no sistema{diagnosticoIdPersistido?` · ID ${diagnosticoIdPersistido}`:""}.
+        </div>}
+
+        {persistenciaRelatorio==="error"&&<div style={{
+          marginTop:8,background:"#FFF3F0",border:"1px solid #F0C4BC",
+          borderRadius:9,padding:8,fontSize:8,color:"#B42318"
+        }}>
+          O relatório foi gerado, mas não conseguimos gravar no painel.
+        </div>}
+
         {relatorioIa&&<>
           <p style={{fontSize:8.5,lineHeight:1.55,color:NAVY}}>
             {relatorioIa.leituraExecutiva}
@@ -4775,6 +4800,270 @@ function DiagnosticoPrototipo() {
         erro
       );
     }
+  }
+
+
+  function montarRelatoriosSegmentadosReforma({
+    tipo="diagnostico_reforma",
+    snapshot=null,
+    relatorioIa=null,
+    resultadoFonteLocal=null,
+  }={}){
+    const origem=resultadoFonteLocal||{};
+    const geral=origem?.diagnosticoGeral||{};
+    const lista=(valor)=>{
+      if(!valor)return [];
+      if(Array.isArray(valor))return valor.filter(Boolean);
+      return [valor].filter(Boolean);
+    };
+
+    const leitura=
+      relatorioIa?.leituraExecutiva||
+      geral?.resumoExecutivo||
+      origem?.resultadoCompleto?.leituraExecutiva||
+      "Análise tributária concluída com base nas informações disponíveis.";
+
+    const riscos=[
+      ...lista(relatorioIa?.riscosPrioritarios),
+      ...lista(geral?.alertaEstrategico),
+      ...lista(origem?.resultadoCompleto?.riscosPrioritarios),
+    ].filter(Boolean);
+
+    const recomendacoes=[
+      ...lista(relatorioIa?.recomendacoes),
+      ...lista(geral?.oportunidades),
+      ...lista(origem?.resultadoCompleto?.recomendacoes),
+    ].filter(Boolean);
+
+    const proximos=[
+      ...lista(relatorioIa?.proximosPassos),
+      ...lista(geral?.proximosPassos),
+      ...lista(origem?.resultadoCompleto?.proximosPassos),
+    ].filter(Boolean);
+
+    return{
+      tipo,
+      geradoEm:new Date().toISOString(),
+
+      cliente:{
+        titulo:tipo==="simulador_reforma"
+          ?"Simulação da Reforma Tributária — Relatório do Cliente"
+          :"Diagnóstico da Reforma Tributária — Relatório do Cliente",
+        leituraExecutiva:leitura,
+        resultadoSimulacao:snapshot?.resultado||null,
+        empresa:snapshot?.empresa||null,
+        premissas:snapshot?.configuracao||null,
+        riscos:riscos.slice(0,6),
+        recomendacoes:recomendacoes.slice(0,6),
+        proximosPassos:proximos.slice(0,6),
+      },
+
+      equipe:{
+        titulo:tipo==="simulador_reforma"
+          ?"Simulação da Reforma Tributária — Relatório da Equipe"
+          :"Diagnóstico da Reforma Tributária — Relatório da Equipe",
+        atividadeReal:snapshot?.empresa?.descricaoAtividadeReal||"",
+        cnaePreponderante:snapshot?.empresa?.atividadeSelecionada||"",
+        memoriaCalculo:snapshot?.memoria||null,
+        estimativaCargaAtual:snapshot?.configuracao?.estimativaCargaAtual||null,
+        premissas:snapshot?.configuracao||null,
+        pendencias:[
+          ...(snapshot?.configuracao?.naoSeiImpostoAtual
+            ?["Confirmar carga tributária vigente pelos documentos fiscais/apurações."]
+            :[]),
+          ...lista(origem?.lacunasDiagnostico),
+          ...lista(origem?.resultadoCompleto?.informacoesFaltantes),
+        ].filter(Boolean),
+        recomendacoes:recomendacoes.slice(0,10),
+        proximosPassos:proximos.slice(0,10),
+      },
+
+      administracao:{
+        titulo:tipo==="simulador_reforma"
+          ?"Simulação da Reforma Tributária — Relatório da Administração"
+          :"Diagnóstico da Reforma Tributária — Relatório da Administração",
+        leituraExecutiva:leitura,
+        empresa:snapshot?.empresa||null,
+        simulacao:snapshot?.resultado||null,
+        memoriaCalculo:snapshot?.memoria||null,
+        configuracao:snapshot?.configuracao||null,
+        creditos:snapshot?.creditos||null,
+        baseLegalPremissas:snapshot?.configuracao?.fonteAliquota||null,
+        riscos,
+        recomendacoes,
+        proximosPassos:proximos,
+        visaoConsultor:lista(origem?.visaoConsultor),
+        visaoComercial:lista(origem?.visaoComercial),
+        oportunidadesConsultoria:lista(origem?.oportunidadesConsultoria),
+        plano90Dias:origem?.plano90Dias||origem?.resultadoCompleto?.plano90Dias||null,
+      },
+    };
+  }
+
+  async function persistirResultadoSimuladorReforma({
+    snapshot,
+    relatorioIa,
+  }={}){
+    if(!snapshot)throw new Error("Snapshot do simulador não informado.");
+
+    const empresaSim=snapshot.empresa||{};
+    const configuracao=snapshot.configuracao||{};
+    const relatoriosSegmentados=montarRelatoriosSegmentadosReforma({
+      tipo:"simulador_reforma",
+      snapshot,
+      relatorioIa,
+    });
+
+    const payload={
+      crm:{
+        leadId,
+        sessionId:
+          sessionIdLead||
+          sessionStorage.getItem("finder_diagnostico_session_id")||
+          "",
+      },
+      responsavel:{
+        nome,
+        cargo,
+        telefone,
+        email,
+        consentimentoEmail,
+      },
+      empresa:{
+        razao:empresaSim.razaoSocial||empresaSim.nomeFantasia||"Empresa",
+        razaoSocial:empresaSim.razaoSocial||empresaSim.nomeFantasia||"Empresa",
+        nomeFantasia:empresaSim.nomeFantasia||"",
+        cnpj:empresaSim.cnpj||"",
+        cnae:empresaSim.atividadeSelecionada||"",
+        cnaePrincipal:
+          Array.isArray(empresaSim.atividadesReais)
+            ?empresaSim.atividadesReais.find(x=>x.principal)||null
+            :null,
+        cnaesSecundarios:
+          Array.isArray(empresaSim.atividadesReais)
+            ?empresaSim.atividadesReais.filter(x=>!x.principal)
+            :[],
+        atividadesSelecionadas:[empresaSim.atividadeSelecionada].filter(Boolean),
+        atividadePredominante:empresaSim.atividadeSelecionada||null,
+        categoria:"Simulador Reforma",
+        segmento:`Reforma Tributária / ${configuracao.natureza||""}`,
+        porte:empresaSim.porte||"",
+        endereco:{
+          municipio:empresaSim.municipio||"",
+          uf:empresaSim.uf||"",
+        },
+      },
+      perfil:{
+        estruturaNegocio:"simulador_reforma",
+        faturamento:configuracao.faturamentoMensal||0,
+        regime:configuracao.regime||"",
+        observacao:"Simulação pública da Reforma Tributária.",
+        descricaoNegocio:empresaSim.descricaoAtividadeReal||"",
+        reformaTributaria:{ativo:true,origem:"Simulador Reforma"},
+        simuladorReforma:snapshot,
+        areasSelecionadas:["Fiscal / Tributário","Reforma Tributária"],
+      },
+      resultado:{
+        contextoEstrutura:{
+          estruturaNegocio:"simulador_reforma",
+          reformaTributaria:{ativo:true,origem:"Simulador Reforma"},
+          simuladorReforma:snapshot,
+        },
+        tipoDiagnostico:"simulador_reforma",
+        scoreGeral:50,
+        nivelGeral:"Simulação",
+        areas:[{
+          area:"Fiscal / Tributário",
+          score:50,
+          nivel:"Análise tributária",
+          resumo:relatorioIa?.leituraExecutiva||"",
+          riscos:relatorioIa?.riscosPrioritarios||[],
+          recomendacoes:relatorioIa?.recomendacoes||[],
+        }],
+        diagnosticoGeral:{
+          resumoExecutivo:relatorioIa?.leituraExecutiva||"",
+          principaisDores:relatorioIa?.riscosPrioritarios||[],
+          prioridadesImediatas:relatorioIa?.prioridades||[],
+          oportunidades:relatorioIa?.recomendacoes||[],
+          proximosPassos:relatorioIa?.proximosPassos||[],
+          alertaEstrategico:(relatorioIa?.riscosPrioritarios||[])[0]||"",
+        },
+        inteligenciaTributaria:{
+          disponivel:true,
+          origem:"simulador_reforma",
+          regime:configuracao.regime||"",
+          segmento:configuracao.natureza||"",
+          categoria:"Simulador Reforma",
+          confiabilidade:configuracao.naoSeiImpostoAtual
+            ?"Preliminar"
+            :"Maior — carga atual informada",
+          reforma:{
+            status:"Simulado",
+            faturamentoMensal:configuracao.faturamentoMensal||0,
+            atual:snapshot?.resultado?.atual??null,
+            reforma:snapshot?.resultado?.reforma??null,
+            diferenca:snapshot?.resultado?.diferenca??null,
+            variacaoPct:snapshot?.resultado?.variacaoPct??null,
+            memoria:snapshot?.memoria||null,
+            premissas:configuracao,
+          },
+        },
+        relatoriosSegmentados,
+        resultadoCompleto:{
+          leituraExecutiva:relatorioIa?.leituraExecutiva||"",
+          riscosPrioritarios:relatorioIa?.riscosPrioritarios||[],
+          prioridades:relatorioIa?.prioridades||[],
+          recomendacoes:relatorioIa?.recomendacoes||[],
+          proximosPassos:relatorioIa?.proximosPassos||[],
+          visaoAdministracao:relatoriosSegmentados.administracao,
+        },
+      },
+    };
+
+    const resposta=await fetch("/api/enviar-relatorio",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify(payload),
+    });
+
+    const data=await resposta.json().catch(()=>null);
+
+    if(!resposta.ok){
+      throw new Error(data?.error||"Falha ao salvar o simulador no sistema.");
+    }
+
+    const idSalvo=
+      data?.id||
+      data?.diagnosticoId||
+      data?.banco?.id||
+      data?.diagnostico?.id||
+      data?.registro?.id||
+      data?.registroSalvo?.id||
+      data?.resultado?.id||
+      "";
+
+    await atualizarLeadCRM({
+      statusDiagnostico:"CONCLUIDO",
+      etapaAtual:"RESULTADO_SIMULADOR_REFORMA",
+      progressoPercentual:100,
+      nome:nome||"",
+      email:email||"",
+      telefone:telefone||"",
+      cnpj:empresaSim.cnpj||"",
+      razaoSocial:empresaSim.razaoSocial||empresaSim.nomeFantasia||"Empresa",
+      diagnosticoId:idSalvo?String(idSalvo):"",
+      estruturaNegocio:"simulador_reforma",
+      contextoCliente:{
+        estruturaNegocio:"simulador_reforma",
+        reformaTributaria:{ativo:true,origem:"Simulador Reforma"},
+        simuladorReforma:snapshot,
+      },
+    });
+
+    return{
+      sucesso:true,
+      diagnosticoId:idSalvo?String(idSalvo):"",
+    };
   }
 
   async function classificarLeadCRM({
@@ -7283,6 +7572,38 @@ function DiagnosticoPrototipo() {
         // Inteligência tributária — cliente + administração
         inteligenciaTributaria,
 
+        // Relatórios segmentados do Diagnóstico da Reforma.
+        relatoriosSegmentados:
+          trilhaReformaAtiva
+            ? montarRelatoriosSegmentadosReforma({
+                tipo:"diagnostico_reforma",
+                snapshot:{
+                  empresa:{
+                    cnpj:empresaPrincipal?.cnpjDigits||"",
+                    razaoSocial:empresaPrincipal?.razao||"",
+                    nomeFantasia:empresaPrincipal?.nomeFantasia||"",
+                    porte:empresaPrincipal?.porte||"",
+                    atividadeSelecionada:
+                      atividadePredominante?.descricao||
+                      atividadePredominante?.label||
+                      empresaPrincipal?.cnae||
+                      "",
+                    descricaoAtividadeReal:descricaoNegocio||"",
+                  },
+                  configuracao:{
+                    regime:regime||"",
+                    faturamentoMensal:
+                      faturamento?.valor||
+                      faturamento?.min||
+                      faturamento?.label||
+                      "",
+                  },
+                  simuladorReforma:simuladorReformaDados||null,
+                },
+                resultadoFonteLocal:resultadoFonte,
+              })
+            : null,
+
         // Rastreabilidade
         respostas:
           respostasDetalhadas,
@@ -9554,6 +9875,7 @@ function DiagnosticoPrototipo() {
                 telefone={telefone}
                 onVoltar={()=>setStep("estrutura")}
                 onSnapshot={setSimuladorReformaDados}
+                onPersistirResultado={persistirResultadoSimuladorReforma}
                 onAprofundar={(dados)=>{
                   setSimuladorReformaDados(dados);
                   setEstruturaNegocio("reforma_tributaria");
