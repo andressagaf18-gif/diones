@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
   CalendarCheck, RotateCcw, Megaphone, Scale, Calculator, Wallet,
@@ -1849,6 +1849,36 @@ function SimuladorReformaPublico({
     crescimento,despesas
   ]);
 
+  function textoIaSeguroSimulador(valor){
+    if(valor==null)return "";
+    if(typeof valor==="string")return valor;
+    if(typeof valor==="number"||typeof valor==="boolean")return String(valor);
+    if(typeof valor==="object"){
+      return String(
+        valor.texto||
+        valor.descricao||
+        valor.resumo||
+        valor.titulo||
+        valor.label||
+        ""
+      );
+    }
+    return "";
+  }
+
+  function listaIaSeguraSimulador(valor){
+    if(!valor)return [];
+
+    if(Array.isArray(valor)){
+      return valor
+        .map(item=>textoIaSeguroSimulador(item))
+        .filter(Boolean);
+    }
+
+    const unico=textoIaSeguroSimulador(valor);
+    return unico?[unico]:[];
+  }
+
   async function gerarRelatorioIa(){
     if(gerandoRelatorioIa)return;
 
@@ -1985,14 +2015,14 @@ function SimuladorReformaPublico({
 
       setRelatorioIa({
         leituraExecutiva:
-          textoIaSeguro(d.leituraExecutiva)||
+          textoIaSeguroSimulador(d.leituraExecutiva)||
           "A simulação foi concluída. A interpretação definitiva depende da validação dos dados e da legislação aplicável.",
-        riscosPrioritarios:listaIaSegura(d.riscosPrioritarios),
-        prioridades:listaIaSegura(d.prioridades),
-        recomendacoes:listaIaSegura(d.recomendacoes),
-        proximosPassos:listaIaSegura(d.proximosPassos),
-        pontosFortes:listaIaSegura(d.pontosFortes),
-        impactos:listaIaSegura(d.impactos),
+        riscosPrioritarios:listaIaSeguraSimulador(d.riscosPrioritarios),
+        prioridades:listaIaSeguraSimulador(d.prioridades),
+        recomendacoes:listaIaSeguraSimulador(d.recomendacoes),
+        proximosPassos:listaIaSeguraSimulador(d.proximosPassos),
+        pontosFortes:listaIaSeguraSimulador(d.pontosFortes),
+        impactos:listaIaSeguraSimulador(d.impactos),
       });
     }catch(e){
       console.error("[simulador-reforma][relatorio-ia]",e);
