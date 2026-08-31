@@ -25,6 +25,76 @@ export function calcularIbsCbs(p={}){
   aliquotaCBSEfetiva:ac*100,aliquotaIBSEfetiva:ai*100};
 }
 
+export function estimarDasResidualPorFora(p={}){
+ const dasAtual=Math.max(0,numero(p.dasAtual));
+ const componentes=p.componentes||{};
+ const valores={
+  pis:Math.max(0,numero(componentes.pis)),
+  cofins:Math.max(0,numero(componentes.cofins)),
+  icms:Math.max(0,numero(componentes.icms)),
+  iss:Math.max(0,numero(componentes.iss)),
+  ipi:Math.max(0,numero(componentes.ipi)),
+  cpp:Math.max(0,numero(componentes.cpp)),
+  irpj:Math.max(0,numero(componentes.irpj)),
+  csll:Math.max(0,numero(componentes.csll)),
+  outros:Math.max(0,numero(componentes.outros))
+ };
+
+ // Proxy gerencial: retira da composição atual os tributos sobre consumo
+ // que serão substituídos pela CBS/IBS no modelo pleno.
+ // Não representa a futura tabela oficial do Simples.
+ const parcelasConsumo=
+  valores.pis+
+  valores.cofins+
+  valores.icms+
+  valores.iss;
+
+ const somaComponentes=Object.values(valores).reduce((a,b)=>a+b,0);
+
+ let residual=null;
+ let metodo="PENDENTE";
+ let confianca="BAIXA";
+
+ if(dasAtual>0&&parcelasConsumo>0){
+  residual=Math.max(0,dasAtual-parcelasConsumo);
+  metodo="DAS_ATUAL_MENOS_PIS_COFINS_ICMS_ISS";
+  confianca="MEDIA";
+ }else{
+  const parcelasMantidas=
+   valores.cpp+
+   valores.irpj+
+   valores.csll+
+   valores.outros+
+   valores.ipi;
+
+  if(parcelasMantidas>0){
+   residual=parcelasMantidas;
+   metodo="SOMA_COMPONENTES_RESIDUAIS_DOCUMENTAIS";
+   confianca="MEDIA";
+  }
+ }
+
+ const diferencaComposicao=
+  dasAtual>0&&somaComponentes>0
+   ? dasAtual-somaComponentes
+   : null;
+
+ return{
+  dasAtual,
+  residual,
+  parcelasConsumo,
+  componentes:valores,
+  somaComponentes,
+  diferencaComposicao,
+  metodo,
+  confianca,
+  observacao:
+   residual==null
+    ?"Não foi possível estimar o DAS residual com os documentos disponíveis."
+    :"Estimativa gerencial baseada na composição documental atual. A guia futura deve ser recalculada com a tabela/partilha do Simples vigente no período."
+ };
+}
+
 export function compararSimplesDentroFora(p={}){
  const fat=Math.max(0,numero(p.faturamento));
  const dentro=Math.max(0,numero(p.dasDentro));
