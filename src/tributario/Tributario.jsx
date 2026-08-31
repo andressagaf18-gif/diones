@@ -817,8 +817,8 @@ function ReformaTributariaV2({token,onVoltar}){
   const valor=Number(normalizado.replace(/[^\d.-]/g,""));
   return Number.isFinite(valor)?valor:0;
  };
- const input={width:"100%",border:"1px solid #DDE3EC",borderRadius:8,padding:"9px 10px",fontSize:10,boxSizing:"border-box"};
- const card={background:"#fff",border:"1px solid #E3E7EF",borderRadius:12,padding:14};
+ const input={width:"100%",border:"1px solid #D9E0EA",borderRadius:12,padding:"11px 12px",fontSize:10.5,boxSizing:"border-box",background:"#FCFDFE",color:"#17233D",outline:"none",transition:"border-color .18s, box-shadow .18s"};
+ const card={background:"#fff",border:"1px solid #E5EAF1",borderRadius:18,padding:18,boxShadow:"0 8px 26px rgba(23,35,61,.045)"};
  const digits=v=>String(v||"").replace(/\D/g,"");
  const field=(label,value,setter,placeholder="",help="")=><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>{label}<input value={value} onChange={e=>setter(e.target.value)} placeholder={placeholder} style={input}/>{help&&<small style={{fontWeight:500,color:"#697386"}}>{help}</small>}</label>;
  const list=(titulo,itens)=><div style={card}><b>{titulo}</b>{itens?.length?<ul>{itens.map((x,i)=><li key={i} style={{fontSize:9.5,lineHeight:1.5}}>{x}</li>)}</ul>:<p style={{fontSize:9,color:"#697386"}}>Nenhum item confirmado.</p>}</div>;
@@ -1793,11 +1793,134 @@ function ReformaTributariaV2({token,onVoltar}){
  }
 
 
- return <div style={{fontFamily:"Arial, sans-serif",color:"#17233D"}}>
-  <button onClick={onVoltar} style={{border:0,background:"transparent",cursor:"pointer",fontWeight:800,color:"#697386",marginBottom:10}}>← Voltar</button>
-  <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:16,padding:18,marginBottom:12}}><div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA</div><h2 style={{margin:"5px 0"}}>IBS, CBS, Simples dentro/fora e impacto financeiro</h2><div style={{fontSize:10,color:"#D8DEEA"}}>A IA lê os documentos e adapta a análise à empresa; o motor cruza operação real, CNAEs oficiais, créditos, B2B/B2C, cálculo auditável, riscos e transição.</div></div>
-  {erro&&<div style={{...card,borderColor:"#E7B9B9",color:"#A22",marginBottom:9}}>{erro}</div>}{ok&&<div style={{...card,borderColor:"#B9DFC8",color:"#176B47",marginBottom:9}}>{ok}</div>}
-  <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{tabs.map(([k,l])=><button key={k} onClick={()=>setAba(k)} style={{border:"1px solid #DDE3EC",borderRadius:999,padding:"7px 9px",background:aba===k?"#17233D":"#fff",color:aba===k?"#fff":"#17233D",fontSize:8.5,fontWeight:800,cursor:"pointer"}}>{l}</button>)}</div>
+ return <div className="finder-reforma-v28" style={{fontFamily:"Arial, sans-serif",color:"#17233D",background:"#F5F7FB",minHeight:"100vh",padding:"18px"}}>
+  <style>{`
+    .finder-reforma-v28 *{box-sizing:border-box}
+    .finder-reforma-v28 input:focus,
+    .finder-reforma-v28 select:focus,
+    .finder-reforma-v28 textarea:focus{
+      border-color:#7D92B8!important;
+      box-shadow:0 0 0 3px rgba(49,88,156,.10);
+    }
+    .fr-shell{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px;align-items:start}
+    .fr-sidebar{position:sticky;top:14px}
+    .fr-step:hover{background:#F7F9FC!important}
+    .fr-step-active{background:#17233D!important;color:#fff!important;border-color:#17233D!important}
+    .fr-main{min-width:0}
+    .fr-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+    .fr-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,.8fr);gap:16px}
+    @media(max-width:1050px){
+      .fr-shell{grid-template-columns:1fr}
+      .fr-sidebar{position:static}
+      .fr-sidebar-nav{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+      .fr-hero{grid-template-columns:1fr}
+    }
+    @media(max-width:720px){
+      .finder-reforma-v28{padding:10px!important}
+      .fr-sidebar-nav{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .fr-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+  `}</style>
+
+  <div style={{maxWidth:1500,margin:"0 auto"}}>
+   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:10}}>
+    <button onClick={onVoltar} style={{border:"1px solid #E1E6EE",background:"#fff",borderRadius:10,padding:"8px 11px",cursor:"pointer",fontWeight:850,color:"#526078"}}>← Voltar para Inteligência Tributária</button>
+    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+     <span style={{background:"#EAF7F0",color:"#176B47",border:"1px solid #CBE8D8",borderRadius:999,padding:"6px 9px",fontSize:8,fontWeight:900}}>● MOTOR DOCUMENTAL</span>
+     <span style={{background:"#EEF3FF",color:"#31589C",border:"1px solid #D8E2F4",borderRadius:999,padding:"6px 9px",fontSize:8,fontWeight:900}}>IA + CÁLCULO AUDITÁVEL</span>
+    </div>
+   </div>
+
+   <div className="fr-hero" style={{background:"linear-gradient(135deg,#0E1A33 0%,#17233D 56%,#253D68 100%)",color:"#fff",borderRadius:22,padding:22,marginBottom:12,boxShadow:"0 18px 45px rgba(23,35,61,.16)"}}>
+    <div>
+     <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7",letterSpacing:.65}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA</div>
+     <h1 style={{margin:"7px 0 5px",fontSize:28,lineHeight:1.08}}>Da documentação à decisão tributária</h1>
+     <div style={{fontSize:10,color:"#D8DEEA",lineHeight:1.65,maxWidth:760}}>A IA interpreta os arquivos do cliente, cruza CNPJ, operação real, CNAEs, dados econômicos, créditos e perfil B2B/B2C. O motor calcula os cenários e transforma o resultado em recomendação, transição e laudo executivo.</div>
+     <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:13}}>
+      <span style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.13)",borderRadius:9,padding:"7px 9px",fontSize:8.5}}>1. Documentos</span>
+      <span style={{color:"#AEB8C9",alignSelf:"center"}}>→</span>
+      <span style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.13)",borderRadius:9,padding:"7px 9px",fontSize:8.5}}>2. IA interpreta</span>
+      <span style={{color:"#AEB8C9",alignSelf:"center"}}>→</span>
+      <span style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.13)",borderRadius:9,padding:"7px 9px",fontSize:8.5}}>3. Motor calcula</span>
+      <span style={{color:"#AEB8C9",alignSelf:"center"}}>→</span>
+      <span style={{background:"#FF6B4A",border:"1px solid #FF6B4A",borderRadius:9,padding:"7px 9px",fontSize:8.5,fontWeight:900}}>4. Recomendação</span>
+     </div>
+    </div>
+
+    <div style={{background:"rgba(255,255,255,.075)",border:"1px solid rgba(255,255,255,.12)",borderRadius:16,padding:15}}>
+     <div style={{fontSize:8,fontWeight:900,color:"#C9D3E3"}}>CLIENTE EM ANÁLISE</div>
+     <div style={{fontSize:16,fontWeight:900,marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Empresa ainda não identificada"}</div>
+     <div style={{fontSize:8.5,color:"#C9D3E3",marginTop:3}}>{digits(cnpj)||"CNPJ pendente"} · {regime||"Regime pendente"}</div>
+     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:12}}>
+      <div style={{background:"rgba(255,255,255,.07)",borderRadius:10,padding:9}}><div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>COBERTURA</div><div style={{fontSize:18,fontWeight:900,marginTop:2}}>{motor.coberturaPct}%</div></div>
+      <div style={{background:"rgba(255,255,255,.07)",borderRadius:10,padding:9}}><div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>DOCUMENTOS IA</div><div style={{fontSize:18,fontWeight:900,marginTop:2}}>{documentosIa.length}</div></div>
+      <div style={{background:"rgba(255,255,255,.07)",borderRadius:10,padding:9}}><div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>RISCO</div><div style={{fontSize:13,fontWeight:900,marginTop:4,color:motor.risco==="ALTO"?"#FF9986":motor.risco==="CONTROLADO"?"#8BE0B5":"#FFD38A"}}>{motor.risco}</div></div>
+      <div style={{background:"rgba(255,255,255,.07)",borderRadius:10,padding:9}}><div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>CONFIANÇA</div><div style={{fontSize:13,fontWeight:900,marginTop:4}}>{motor.confianca}</div></div>
+     </div>
+    </div>
+   </div>
+
+   {erro&&<div style={{...card,borderColor:"#F0C4BC",background:"#FFF8F6",color:"#A23D2A",marginBottom:9,boxShadow:"none"}}><b style={{fontSize:9}}>Atenção</b><div style={{marginTop:3,fontSize:9}}>{erro}</div></div>}
+   {ok&&<div style={{...card,borderColor:"#B9DFC8",background:"#F5FCF8",color:"#176B47",marginBottom:9,boxShadow:"none"}}><b style={{fontSize:9}}>Atualizado</b><div style={{marginTop:3,fontSize:9}}>{ok}</div></div>}
+
+   <div className="fr-kpis" style={{marginBottom:12}}>
+    {[
+     ["Faturamento / base",n(fatSim)?moedaMotor(n(fatSim)):"Pendente","#31589C"],
+     ["DAS atual",n(dasPeriodo)?moedaMotor(n(dasPeriodo)):"Pendente","#17233D"],
+     ["IBS + CBS simulado",simulacao?moedaMotor(n(simulacao?.ibsCbs?.total)):"Pendente","#FF6B4A"],
+     ["Total cenário Reforma",simulacao?.simples?.fora!=null?moedaMotor(n(simulacao.simples.fora)):"Pendente",simulacao?.simples?.fora!=null&&n(simulacao.simples.fora)>n(dasPeriodo)?"#B42318":"#176B47"]
+    ].map(([label,value,color])=><div key={label} style={{background:"#fff",border:"1px solid #E5EAF1",borderRadius:14,padding:13,boxShadow:"0 6px 18px rgba(23,35,61,.035)"}}>
+     <div style={{fontSize:7.5,fontWeight:900,color:"#697386",textTransform:"uppercase"}}>{label}</div>
+     <div style={{fontSize:17,fontWeight:950,color,marginTop:4}}>{value}</div>
+    </div>)}
+   </div>
+
+   <div className="fr-shell">
+    <aside className="fr-sidebar">
+     <div style={{background:"#fff",border:"1px solid #E5EAF1",borderRadius:18,padding:10,boxShadow:"0 8px 25px rgba(23,35,61,.045)"}}>
+      <div style={{padding:"7px 8px 9px"}}>
+       <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>FLUXO DO DIAGNÓSTICO</div>
+       <div style={{fontSize:9.5,fontWeight:800,marginTop:3}}>Do cadastro ao laudo</div>
+      </div>
+      <div className="fr-sidebar-nav" style={{display:"grid",gap:4}}>
+       {tabs.map(([k,l],idx)=>{
+        const ativo=aba===k;
+        const etapaConcluida=
+         (k==="identificacao"&&digits(cnpj).length===14)||
+         (k==="operacao"&&Boolean(descricao))||
+         (k==="dados"&&n(fatSim)>0)||
+         (k==="documentos"&&Boolean(extracao))||
+         (k==="ibscbs"&&Boolean(analise))||
+         (k==="simulacao"&&Boolean(simulacao))||
+         (k==="motor"&&Boolean(analise&&simulacao))||
+         (k==="impacto"&&Boolean(analise?.matrizImpacto?.length))||
+         (k==="transicao"&&Boolean(analise))||
+         (k==="relatorio"&&Boolean(analise&&simulacao));
+        return <button className={`fr-step ${ativo?"fr-step-active":""}`} key={k} onClick={()=>setAba(k)} style={{width:"100%",border:"1px solid #EDF0F4",background:"#fff",color:"#17233D",borderRadius:10,padding:"9px 9px",display:"grid",gridTemplateColumns:"24px 1fr auto",gap:7,alignItems:"center",textAlign:"left",cursor:"pointer",transition:"all .16s"}}>
+         <span style={{width:23,height:23,borderRadius:7,display:"grid",placeItems:"center",background:ativo?"rgba(255,255,255,.12)":etapaConcluida?"#EAF7F0":"#F2F4F7",color:ativo?"#fff":etapaConcluida?"#176B47":"#697386",fontSize:8,fontWeight:900}}>{idx+1}</span>
+         <span style={{fontSize:8.5,fontWeight:850,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.replace(/^\d+\.\s*/,"")}</span>
+         <span style={{fontSize:8,color:ativo?"#DDE5F2":etapaConcluida?"#176B47":"#B0B7C3"}}>{etapaConcluida?"✓":"•"}</span>
+        </button>
+       })}
+      </div>
+
+      <div style={{borderTop:"1px solid #EEF0F4",marginTop:10,padding:"11px 7px 4px"}}>
+       <div style={{fontSize:7.5,fontWeight:900,color:"#697386"}}>QUALIDADE DA BASE</div>
+       <div style={{height:7,background:"#EEF1F5",borderRadius:999,overflow:"hidden",marginTop:7}}><div style={{height:"100%",width:`${Math.min(100,motor.coberturaPct)}%`,background:motor.coberturaPct>=75?"#176B47":motor.coberturaPct>=50?"#B7791F":"#FF6B4A",borderRadius:999}}/></div>
+       <div style={{display:"flex",justifyContent:"space-between",fontSize:8,marginTop:5,color:"#697386"}}><span>Cobertura</span><b>{motor.coberturaPct}%</b></div>
+       <div style={{fontSize:8,color:"#697386",lineHeight:1.5,marginTop:8}}>Quanto mais documentos e premissas confirmadas, mais forte fica a recomendação.</div>
+      </div>
+     </div>
+    </aside>
+
+    <main className="fr-main">
+     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:9,padding:"0 3px"}}>
+      <div>
+       <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>ETAPA ATUAL</div>
+       <div style={{fontSize:15,fontWeight:950,marginTop:2}}>{tabs.find(([k])=>k===aba)?.[1]?.replace(/^\d+\.\s*/,"")}</div>
+      </div>
+      <div style={{fontSize:8,color:"#697386"}}>Os cálculos permanecem editáveis e auditáveis.</div>
+     </div>
 
   {aba==="identificacao"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados da empresa</h3><div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7}}>{field("CNPJ",cnpj,setCnpj,"00.000.000/0000-00")}<button onClick={buscarCnpj} style={{alignSelf:"end",padding:"9px 12px"}}>Consultar CNPJ</button></div>{empresa&&<p style={{fontSize:10}}><b>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</b></p>}<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>{field("Responsável Finder",responsavel,setResponsavel)}{field("Origem",origem,setOrigem)}{field("Município",municipio,setMunicipio)}{field("UF",uf,setUf)}</div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Regime atual<select value={regime} onChange={e=>setRegime(e.target.value)} style={input}><option value="">Selecione</option><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label></div><div style={card}><h3>CNAEs oficiais</h3>{cnaes.length?cnaes.map((x,i)=><label key={`${x.codigo}_${i}`} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>setPrincipal(x.codigo)}/><span><b>{x.codigo}</b> — {x.descricao}{x.principal?" · principal cadastral":""}</span></label>):<p style={{fontSize:9,color:"#697386"}}>Carregados pela consulta do CNPJ, inclusive quando o CNPJ for identificado pela IA nos documentos.</p>}</div></div>}
 
@@ -2199,6 +2322,9 @@ function ReformaTributariaV2({token,onVoltar}){
     </div>
    </div>
   </div>}
+    </main>
+   </div>
+  </div>
  </div>
 }
 
