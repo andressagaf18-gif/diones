@@ -23,13 +23,13 @@ function Mensal({label,mapa,onChange}){
 }
 function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{minWidth:1160}}><div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4}}><span/>{MESES.map(m=><b key={m} style={{fontSize:8.5,textAlign:"center",color:C.muted}}>{ROTULOS[m]}</b>)}<b style={{fontSize:8.5,textAlign:"right",color:C.muted}}>Total</b></div>{children}</div></div>}
 
-export default function PlanejamentoTributario({token,onVoltar}){
+export default function PlanejamentoTributario({token,onVoltar,projetoInicial=null}){
  const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[conferenciaIa,setConferenciaIa]=useState(null),[conferenciaDesatualizada,setConferenciaDesatualizada]=useState(false),[gerandoConferencia,setGerandoConferencia]=useState(false),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
  const [gerandoPdf,setGerandoPdf]=useState(false);
  const [documentosBanco,setDocumentosBanco]=useState([]);
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
  const [salvandoDocumentos,setSalvandoDocumentos]=useState(false);
- const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}});
+ const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}})());
  const calc=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
 
  async function api(action,{method="GET",body=null}={}){
@@ -183,12 +183,109 @@ export default function PlanejamentoTributario({token,onVoltar}){
   });
 }
 
+ function pendenciaPlanejamentoResolvida(texto,{cnpjAtual=cnpj,cnaesAtuais=cnaes,empresaAtual=empresa}={}){
+  const s=String(texto||"").toLowerCase();
+
+  if(digits(cnpjAtual).length===14 && /(cnpj|cadastro da empresa|identifica[cç][aã]o cadastral)/i.test(s)) return true;
+  if(Array.isArray(cnaesAtuais)&&cnaesAtuais.length>0 && /(cnae|atividade econ[oô]mica|atividade principal)/i.test(s)) return true;
+  if(empresaAtual && /(raz[aã]o social|nome empresarial|munic[ií]pio|situa[cç][aã]o cadastral)/i.test(s)) return true;
+
+  return false;
+ }
+
+ function reconciliarConferenciaCadastral(conf,contexto={}){
+  if(!conf)return conf;
+
+  return{
+   ...conf,
+   dadosFaltantes:Array.isArray(conf.dadosFaltantes)
+    ?conf.dadosFaltantes.filter(x=>!pendenciaPlanejamentoResolvida(x,contexto))
+    :[]
+  };
+ }
+
+ useEffect(()=>{
+  if(!projetoInicial?.id)return;
+
+  const p=projetoInicial;
+  const manuais=p.dadosManuais||{};
+  const salvo=manuais.planejamentoV2||{};
+  const emp=Array.isArray(p.empresas)&&p.empresas.length?p.empresas[0]:null;
+  const at=p.atividades||{};
+
+  if(emp){
+   setCnpj(digits(emp.cnpj||p.cnpj||""));
+   setEmpresa(emp);
+  }else if(p.cnpj){
+   setCnpj(digits(p.cnpj));
+  }
+
+  if(Array.isArray(at.selecionadas))setCnaes(at.selecionadas);
+  if(at.principalReal)setPrincipal(at.principalReal);
+  if(at.descricaoReal)setDescricao(at.descricaoReal);
+
+  if(salvo&&typeof salvo==="object"&&Object.keys(salvo).length){
+   setBase(salvo);
+  }
+
+  if(manuais.crescimento!=null)setCrescimento(num(manuais.crescimento));
+  if(manuais.extracaoResumo)setExtracaoResumo(manuais.extracaoResumo);
+  if(manuais.conferenciaIa)setConferenciaIa(manuais.conferenciaIa);
+  if(manuais.ia)setIa(manuais.ia);
+  if(manuais.conferenciaDesatualizada!=null)setConferenciaDesatualizada(Boolean(manuais.conferenciaDesatualizada));
+
+  setResponsavel(p.responsavelFinder||"");
+  setOrigem(p.origemCliente||"");
+
+  if(Array.isArray(p.documentos)&&p.documentos.length){
+   setDocumentosBanco(p.documentos);
+   setDocumentosSelecionados(Object.fromEntries(p.documentos.map(d=>[d.id,true])));
+  }else if(digits(emp?.cnpj||p.cnpj||"").length===14){
+   setTimeout(()=>carregarDocumentosBanco(emp?.cnpj||p.cnpj),0);
+  }
+
+  setOk(`Planejamento reaberto mantendo o projeto ${p.id}. ${Array.isArray(p.backups)?p.backups.length:0} backup(s) disponível(is).`);
+ },[projetoInicial?.id]);
+
  async function consultar(){
-  setErro(""); const d=digits(cnpj); if(d.length!==14){setErro("Informe CNPJ válido.");return}
-  try{const r=await fetch(`/api/cnpj?cnpj=${d}`);const x=await r.json();if(!r.ok)throw new Error(x?.error||"Falha CNPJ");setEmpresa(x);
-   const pr=x.cnaePrincipal||x.cnae?.principal||null,sec=x.cnaesSecundarios||x.cnae?.secundarios||[],todos=x.todosCnaes||x.cnae?.todos||[...(pr?[pr]:[]),...(Array.isArray(sec)?sec:[])];
-   const ns=(Array.isArray(todos)?todos:[]).map(i=>({codigo:i.codigo||i.code||"",descricao:i.descricao||i.description||""})).filter(i=>i.codigo||i.descricao);setCnaes(ns);setPrincipal(pr?.codigo||pr?.code||ns[0]?.codigo||"");await carregarDocumentosBanco(d);setOk("CNPJ, CNAEs e arquivo documental do cliente carregados.");
-  }catch(e){setErro(e.message)}
+  setErro("");
+  const d=digits(cnpj);
+  if(d.length!==14){setErro("Informe CNPJ válido.");return}
+
+  try{
+   const r=await fetch(`/api/cnpj?cnpj=${d}`);
+   const x=await r.json();
+   if(!r.ok)throw new Error(x?.error||"Falha CNPJ");
+
+   setEmpresa(x);
+
+   const pr=x.cnaePrincipal||x.cnae?.principal||null;
+   const sec=x.cnaesSecundarios||x.cnae?.secundarios||[];
+   const todos=x.todosCnaes||x.cnae?.todos||[...(pr?[pr]:[]),...(Array.isArray(sec)?sec:[])];
+
+   const ns=(Array.isArray(todos)?todos:[])
+    .map(i=>({codigo:i.codigo||i.code||"",descricao:i.descricao||i.description||""}))
+    .filter(i=>i.codigo||i.descricao);
+
+   const principalNovo=pr?.codigo||pr?.code||ns[0]?.codigo||"";
+
+   setCnaes(ns);
+   setPrincipal(principalNovo);
+
+   setConferenciaIa(atual=>reconciliarConferenciaCadastral(atual,{
+    cnpjAtual:d,
+    cnaesAtuais:ns,
+    empresaAtual:x
+   }));
+
+   if(conferenciaIa)setConferenciaDesatualizada(true);
+
+   await carregarDocumentosBanco(d);
+
+   setOk("CNPJ e CNAEs atualizados. Pendências cadastrais já resolvidas foram removidas; a Conferência IA anterior, se existir, foi marcada para revalidação.");
+  }catch(e){
+   setErro(e.message);
+  }
  }
  async function extrair(){
   const cnpjLimpo=digits(cnpj);
@@ -301,7 +398,53 @@ export default function PlanejamentoTributario({token,onVoltar}){
   }
  }
  async function salvar(status="EM_ANALISE"){
-  try{await api("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"planejamento",estrutura:"empresa",modalidade:(arquivos.length||documentosBanco.length)?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:empresa?[{cnpj:digits(cnpj),razaoSocial:empresa.razaoSocial||empresa.razao_social||empresa.nome||""}]:[],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{planejamentoV2:base,crescimento,calculos:calc},status}});setOk("Planejamento salvo.");}catch(e){setErro(e.message)}
+  try{
+   const resultado=await api("salvar-projeto",{
+    method:"POST",
+    body:{
+     id:projetoId,
+     tipoProjeto:"planejamento",
+     estrutura:"empresa",
+     modalidade:(arquivos.length||documentosBanco.length)?"hibrido":"manual",
+     responsavelFinder:responsavel,
+     origemCliente:origem,
+     empresas:empresa?[{
+      cnpj:digits(cnpj),
+      razaoSocial:empresa.razaoSocial||empresa.razao_social||empresa.nome||"",
+      nomeFantasia:empresa.nomeFantasia||empresa.nome_fantasia||"",
+      municipio:empresa.municipio||"",
+      uf:empresa.uf||""
+     }]:[],
+     atividades:{
+      selecionadas:cnaes,
+      principalReal:principal,
+      descricaoReal:descricao
+     },
+     dadosManuais:{
+      planejamentoV2:base,
+      crescimento,
+      calculos:calc,
+      extracaoResumo,
+      conferenciaIa,
+      conferenciaDesatualizada,
+      ia,
+      documentosSnapshot:documentosBanco.map(d=>({
+       id:d.id,
+       filename:d.filename,
+       sha256:d.sha256,
+       bytes:d.bytes,
+       tipoProjeto:d.tipoProjeto,
+       criadoEm:d.criadoEm
+      }))
+     },
+     status
+    }
+   });
+
+   setOk(`Planejamento salvo. Backup automático V${resultado?.backup?.versao||"-"} criado com ${resultado?.backup?.documentos??documentosBanco.length} documento(s).`);
+  }catch(e){
+   setErro(e.message);
+  }
  }
  async function gerarConferenciaIA(){
   setGerandoConferencia(true);
@@ -329,7 +472,8 @@ export default function PlanejamentoTributario({token,onVoltar}){
       }
     });
 
-    setConferenciaIa(d.conferencia);
+    const reconciliada=reconciliarConferenciaCadastral(d.conferencia);
+    setConferenciaIa(reconciliada);
     setConferenciaDesatualizada(false);
     setOk("Nova Conferência IA gerada com base nos dados atuais.");
   }catch(e){
