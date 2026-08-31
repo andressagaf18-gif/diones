@@ -1026,6 +1026,28 @@ function ReformaTributariaV2({token,onVoltar}){
   };
  },[analise,extracao,simulacao,regime,tributosAtuais,receita,fatSim,cnpj,descricao,compras,creditosAtuais,b2b,b2c,documentosIa]);
 
+ const transicaoModelo=useMemo(()=>[
+  {ano:"2026",ibs:0,antigos:100,fase:"Teste",descricao:"CBS 0,9% e IBS 0,1% em fase de teste/compensação, observadas as regras aplicáveis."},
+  {ano:"2027",ibs:0.1,antigos:100,fase:"CBS entra",descricao:"CBS passa a substituir PIS/Cofins; IBS permanece em 0,1 p.p.; IPI é reduzido a zero nas hipóteses gerais, ressalvadas exceções."},
+  {ano:"2028",ibs:0.1,antigos:100,fase:"Preparação",descricao:"CBS em vigor e IBS ainda em transição inicial."},
+  {ano:"2029",ibs:10,antigos:90,fase:"10% IBS",descricao:"10% da transição ICMS/ISS para IBS e 90% dos tributos antigos."},
+  {ano:"2030",ibs:20,antigos:80,fase:"20% IBS",descricao:"20% IBS e 80% ICMS/ISS."},
+  {ano:"2031",ibs:30,antigos:70,fase:"30% IBS",descricao:"30% IBS e 70% ICMS/ISS."},
+  {ano:"2032",ibs:40,antigos:60,fase:"40% IBS",descricao:"40% IBS e 60% ICMS/ISS."},
+  {ano:"2033",ibs:100,antigos:0,fase:"Modelo pleno",descricao:"Vigência integral do novo modelo e extinção de ICMS/ISS."}
+ ],[]);
+
+ const comparativoRelatorio=useMemo(()=>{
+  const dentro=n(simulacao?.simples?.dentro);
+  const fora=simulacao?.simples?.fora==null?null:n(simulacao?.simples?.fora);
+  const residual=simulacao?.simples?.dasResidualEstimado?.residual;
+  const ibscbs=n(simulacao?.ibsCbs?.total);
+  const diff=fora==null?null:fora-dentro;
+  const pctDiff=dentro>0&&diff!=null?(diff/dentro)*100:null;
+  const cargaAtual=n(tributosAtuais);
+  return{dentro,fora,residual,ibscbs,diff,pctDiff,cargaAtual};
+ },[simulacao,tributosAtuais]);
+
  const corRisco=motor.risco==="ALTO"?"#B42318":motor.risco==="ATENÇÃO"?"#B7791F":motor.risco==="CONTROLADO"?"#176B47":"#697386";
  const moedaMotor=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
  const pctMotor=v=>v==null?"Pendente":`${Number(v||0).toFixed(2)}%`;
@@ -1092,7 +1114,7 @@ function ReformaTributariaV2({token,onVoltar}){
 
   {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",analise.dadosFaltantes)}</>}</div>}
 
-  {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{faturamento:n(fatSim),tributosAtuais:n(tributosAtuais),dasAtual:n(dasPeriodo),aliquotaAtual:n(aliquotaAtual),creditoCBS:0,creditoIBS:n(creditosAtuais),reducaoCBS:n(reducaoIbsCbs),reducaoIBS:n(reducaoIbsCbs),b2b:n(b2b),b2c:n(b2c)}} onResultado={setSimulacao}/>}
+  {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{faturamento:n(fatSim),tributosAtuais:n(tributosAtuais),dasAtual:n(dasPeriodo),aliquotaAtual:n(aliquotaAtual),creditoCBS:0,creditoIBS:n(creditosAtuais),reducaoCBS:n(reducaoIbsCbs),reducaoIBS:n(reducaoIbsCbs),b2b:n(b2b),b2c:n(b2c),componentesDas:{pis:n(extracao?.tributos?.pis),cofins:n(extracao?.tributos?.cofins),icms:n(extracao?.tributos?.icms),iss:n(extracao?.tributos?.iss),ipi:n(extracao?.tributos?.ipi),cpp:n(extracao?.tributos?.cpp),irpj:n(extracao?.tributos?.irpj),csll:n(extracao?.tributos?.csll),outros:n(extracao?.tributos?.outros)}}} onResultado={setSimulacao}/>}
 
   {aba==="motor"&&<div style={{display:"grid",gap:10}}>
    <div style={{...card,background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0}}>
@@ -1178,9 +1200,215 @@ function ReformaTributariaV2({token,onVoltar}){
 
   {aba==="impacto"&&<div style={{display:"grid",gap:9}}>{analise?<>{list("Riscos",analise.riscos)}{list("Oportunidades",analise.oportunidades)}{list("Contratos / ERP / cadastros",analise.adequacoes)}<div style={card}><h3>Matriz de impacto</h3>{(analise.matrizImpacto||[]).map((x,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"160px 80px 1fr",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><b>{x.area}</b><b>{x.nivel}</b><span>{x.diagnostico}</span></div>)}</div></>:<div style={card}>Gere o diagnóstico técnico primeiro.</div>}</div>}
 
-  {aba==="transicao"&&<div style={{display:"grid",gap:9}}><div style={card}><h3>Transição tributária</h3><p style={{fontSize:9.5,color:"#697386"}}>O diagnóstico deve mostrar a evolução anual e separar fase de teste, transição e modelo pleno conforme a legislação vigente na data-base.</p></div>{analise&&list("Marcos e providências",analise.transicao)}</div>}
+  {aba==="transicao"&&<div style={{display:"grid",gap:10}}>
+   <div style={{...card,background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0}}>
+    <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7"}}>TRANSIÇÃO 2026 → 2033</div>
+    <h2 style={{margin:"5px 0 5px",fontSize:22}}>Como a Reforma entra na operação ao longo do tempo</h2>
+    <p style={{fontSize:9.5,color:"#D8DEEA",lineHeight:1.6,margin:0}}>A transição não acontece de uma vez. A leitura abaixo separa fase de teste, entrada da CBS, substituição progressiva de ICMS/ISS pelo IBS e modelo pleno.</p>
+   </div>
 
-  {aba==="relatorio"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><h3 style={{margin:0}}>Relatório executivo</h3><p style={{fontSize:9,color:"#697386"}}>Empresa, CNAEs, documentos, situação atual, IBS/CBS, Simples dentro/fora, benefícios, crescimento, impactos, memória e plano de ação.</p></div><button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px"}}>Salvar inteligência</button></div></div>{simulacao&&<div style={card}><h3>Resumo financeiro</h3><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,fontSize:9}}><div><b>IBS/CBS líquido</b><br/>R$ {Number(simulacao.ibsCbs?.total||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</div><div><b>Carga efetiva</b><br/>{Number(simulacao.ibsCbs?.cargaEfetiva||0).toFixed(2)}%</div><div><b>Melhor carga Simples</b><br/>{simulacao.simples?.menorCargaMatematica||"-"}</div><div><b>Crescimento simulado</b><br/>R$ {Number(simulacao.crescimento?.projetado?.total||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>}{analise&&<><div style={card}><b>Resumo executivo</b><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p></div>{list("Plano de ação",analise.planoAcao)}{list("Base legal / fundamentação",analise.fundamentacao)}</>}</div>}
+   <div style={card}>
+    <h3 style={{margin:"0 0 4px"}}>Gráfico — substituição progressiva de ICMS/ISS pelo IBS</h3>
+    <div style={{fontSize:8.7,color:"#697386",marginBottom:12}}>Percentuais de transição divulgados oficialmente para 2029–2033. 2027/2028 são mostrados como fase inicial do IBS a 0,1 p.p., não como percentual de substituição.</div>
+
+    <div style={{display:"grid",gap:10}}>
+     {transicaoModelo.map((x,i)=>{
+      const pctNovo=x.ano==="2027"||x.ano==="2028"?1:x.ibs;
+      const pctAnt=x.ano==="2027"||x.ano==="2028"?99:x.antigos;
+      return <div key={x.ano} style={{display:"grid",gridTemplateColumns:"55px 110px 1fr",gap:10,alignItems:"center"}}>
+       <b style={{fontSize:10}}>{x.ano}</b>
+       <span style={{fontSize:8.5,fontWeight:800,color:x.ano==="2033"?"#176B47":"#5B667A"}}>{x.fase}</span>
+       <div>
+        <div style={{height:16,display:"flex",borderRadius:999,overflow:"hidden",background:"#EEF1F5"}}>
+         <div style={{width:`${Math.max(0,pctAnt)}%`,background:"#D8DEEA"}}/>
+         <div style={{width:`${Math.max(1,pctNovo)}%`,background:x.ano==="2033"?"#176B47":"#31589C"}}/>
+        </div>
+        <div style={{fontSize:8,color:"#697386",marginTop:3}}>{x.descricao}</div>
+       </div>
+      </div>
+     })}
+    </div>
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:9}}>
+    <div style={card}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>2026</div><div style={{fontSize:17,fontWeight:900,marginTop:3}}>Ano teste</div><p style={{fontSize:8.5,color:"#697386",lineHeight:1.5}}>CBS 0,9% + IBS 0,1%, observadas compensação/dispensa conforme regras vigentes.</p></div>
+    <div style={card}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>2027–2028</div><div style={{fontSize:17,fontWeight:900,marginTop:3}}>CBS + IBS inicial</div><p style={{fontSize:8.5,color:"#697386",lineHeight:1.5}}>PIS/Cofins são extintos; CBS entra em vigor e IBS permanece em fase inicial.</p></div>
+    <div style={card}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>2029–2032</div><div style={{fontSize:17,fontWeight:900,marginTop:3}}>Substituição gradual</div><p style={{fontSize:8.5,color:"#697386",lineHeight:1.5}}>IBS cresce progressivamente enquanto ICMS e ISS são reduzidos.</p></div>
+    <div style={{...card,borderColor:"#A9DFC5",background:"#F3FBF7"}}><div style={{fontSize:8,fontWeight:900,color:"#176B47"}}>2033</div><div style={{fontSize:17,fontWeight:900,marginTop:3,color:"#176B47"}}>Modelo pleno</div><p style={{fontSize:8.5,color:"#4A6B5B",lineHeight:1.5}}>Novo modelo integral e extinção de ICMS/ISS.</p></div>
+   </div>
+
+   <div style={card}>
+    <h3 style={{margin:"0 0 8px"}}>Impacto financeiro — cenário atual x modelo simulado</h3>
+    {simulacao?<div style={{display:"grid",gap:9}}>
+     {[
+      ["DAS / carga atual usada na comparação",comparativoRelatorio.dentro,"#31589C"],
+      ["DAS residual estimado por fora",comparativoRelatorio.residual||0,"#8A94A6"],
+      ["IBS + CBS simulado",comparativoRelatorio.ibscbs,"#FF6B4A"],
+      ["Total Simples por fora",comparativoRelatorio.fora||0,"#17233D"]
+     ].map(([label,v,cor],i)=>{
+      const max=Math.max(comparativoRelatorio.dentro,comparativoRelatorio.fora||0,comparativoRelatorio.ibscbs,1);
+      return <div key={i} style={{display:"grid",gridTemplateColumns:"210px 1fr 120px",gap:8,alignItems:"center",fontSize:9}}>
+       <b>{label}</b>
+       <div style={{height:13,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(2,(n(v)/max)*100)}%`,background:cor,borderRadius:999}}/></div>
+       <b style={{textAlign:"right"}}>{moedaMotor(v)}</b>
+      </div>
+     })}
+    </div>:<div style={{padding:18,textAlign:"center",fontSize:9,color:"#697386"}}>Execute a simulação para projetar o impacto financeiro.</div>}
+   </div>
+
+   <div style={card}>
+    <h3 style={{margin:"0 0 4px"}}>Providências por fase</h3>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9,marginTop:10}}>
+     <div style={{border:"1px solid #E3E7EF",borderRadius:10,padding:10}}><b style={{fontSize:10}}>Agora / 2026</b><ul style={{paddingLeft:16,fontSize:8.8,lineHeight:1.6}}><li>Validar documentos e cadastros fiscais.</li><li>Revisar ERP/NFS-e/NF-e e campos IBS/CBS.</li><li>Medir B2B/B2C, créditos e margem.</li><li>Definir estratégia do Simples para 2027 quando aplicável.</li></ul></div>
+     <div style={{border:"1px solid #E3E7EF",borderRadius:10,padding:10}}><b style={{fontSize:10}}>2027–2028</b><ul style={{paddingLeft:16,fontSize:8.8,lineHeight:1.6}}><li>Acompanhar CBS e IBS inicial.</li><li>Recalcular preços e contratos.</li><li>Controlar créditos e documentos dos fornecedores.</li><li>Comparar Simples dentro x por fora periodicamente.</li></ul></div>
+     <div style={{border:"1px solid #E3E7EF",borderRadius:10,padding:10}}><b style={{fontSize:10}}>2029–2033</b><ul style={{paddingLeft:16,fontSize:8.8,lineHeight:1.6}}><li>Recalcular a carga a cada degrau da transição.</li><li>Acompanhar redução ICMS/ISS e crescimento IBS.</li><li>Atualizar preço, margem e contratos.</li><li>Revalidar benefícios e regimes específicos.</li></ul></div>
+    </div>
+   </div>
+
+   {analise&&list("Marcos e providências identificados pela IA",analise.transicao)}
+
+   <div style={{...card,background:"#F8FBFF",borderColor:"#C9D7F1"}}>
+    <b style={{fontSize:9.5}}>Base de atualização</b>
+    <p style={{fontSize:8.6,lineHeight:1.55,color:"#5B667A",marginBottom:0}}>A linha do tempo considera o cronograma oficial vigente na data desta versão. Alíquotas de referência, reduções setoriais, regras do Simples e atos regulamentares devem continuar sendo validados antes de uma recomendação definitiva.</p>
+   </div>
+  </div>}
+
+  {aba==="relatorio"&&<div style={{display:"grid",gap:10}}>
+   <div style={{...card,background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0,padding:20}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"start",flexWrap:"wrap"}}>
+     <div>
+      <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · LAUDO GERENCIAL DA REFORMA TRIBUTÁRIA</div>
+      <h2 style={{margin:"5px 0 3px",fontSize:24}}>{empresa?.razaoSocial||empresa?.razao_social||"Cliente"}</h2>
+      <div style={{fontSize:9,color:"#D8DEEA"}}>CNPJ {digits(cnpj)||"-"} · {regime||"Regime não informado"} · {municipio||"-"}/{uf||"-"}</div>
+     </div>
+     <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
+      <span style={{background:`${corRisco}33`,border:`1px solid ${corRisco}`,borderRadius:999,padding:"6px 9px",fontSize:8,fontWeight:900}}>RISCO {motor.risco}</span>
+      <button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px",borderRadius:8,fontWeight:900}}>Salvar inteligência</button>
+     </div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:8,marginTop:15}}>
+     {[
+      ["Cobertura da análise",`${motor.coberturaPct}%`],
+      ["DAS atual",moedaMotor(comparativoRelatorio.dentro)],
+      ["DAS residual por fora",comparativoRelatorio.residual==null?"Pendente":moedaMotor(comparativoRelatorio.residual)],
+      ["IBS + CBS",simulacao?moedaMotor(comparativoRelatorio.ibscbs):"Pendente"],
+      ["Total por fora",comparativoRelatorio.fora==null?"Pendente":moedaMotor(comparativoRelatorio.fora)]
+     ].map(([a,b],i)=><div key={i} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.10)",borderRadius:10,padding:10}}>
+      <div style={{fontSize:7.5,color:"#BFC8D8",fontWeight:900,textTransform:"uppercase"}}>{a}</div><div style={{fontSize:15,fontWeight:900,marginTop:4}}>{b}</div>
+     </div>)}
+    </div>
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"1.2fr .8fr",gap:10}}>
+    <div style={card}>
+     <div style={{fontSize:8,fontWeight:900,color:"#FF6B4A"}}>CONCLUSÃO EXECUTIVA</div>
+     <h2 style={{fontSize:18,margin:"5px 0"}}>{motor.recomendacao}</h2>
+     <p style={{fontSize:9.5,lineHeight:1.65,color:"#4B5565"}}>{motor.explicacao}</p>
+     {analise?.resumo&&<div style={{marginTop:10,padding:"10px 11px",background:"#F7F9FC",borderRadius:9,fontSize:9.2,lineHeight:1.65}}>{analise.resumo}</div>}
+    </div>
+
+    <div style={card}>
+     <h3 style={{margin:"0 0 8px"}}>Qualidade da base</h3>
+     <div style={{display:"grid",gap:6}}>
+      {motor.cobertura.map((x,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:8.8,padding:"6px 7px",borderBottom:"1px solid #EEF0F4"}}><span>{x.nome}</span><b style={{color:x.ok?"#176B47":"#B7791F"}}>{x.ok?"OK":"PENDENTE"}</b></div>)}
+     </div>
+    </div>
+   </div>
+
+   <div style={card}>
+    <h3 style={{margin:"0 0 4px"}}>Gráfico — cenário atual x Simples por fora</h3>
+    <div style={{fontSize:8.7,color:"#697386",marginBottom:11}}>O cenário por fora soma o DAS residual estimado à apuração regular simulada de IBS/CBS.</div>
+    {simulacao?<div style={{display:"grid",gap:10}}>
+     {[
+      ["DAS atual / dentro",comparativoRelatorio.dentro,"#31589C"],
+      ["DAS residual por fora",comparativoRelatorio.residual||0,"#8A94A6"],
+      ["IBS/CBS por fora",comparativoRelatorio.ibscbs,"#FF6B4A"],
+      ["Total por fora",comparativoRelatorio.fora||0,"#17233D"]
+     ].map(([label,v,cor],i)=>{
+      const max=Math.max(comparativoRelatorio.dentro,comparativoRelatorio.fora||0,comparativoRelatorio.ibscbs,1);
+      return <div key={i} style={{display:"grid",gridTemplateColumns:"190px 1fr 115px",gap:8,alignItems:"center",fontSize:9}}>
+       <b>{label}</b><div style={{height:14,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(2,(n(v)/max)*100)}%`,background:cor,borderRadius:999}}/></div><b style={{textAlign:"right"}}>{moedaMotor(v)}</b>
+      </div>
+     })}
+     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:5}}>
+      <div style={{padding:10,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>DIFERENÇA</div><div style={{fontSize:17,fontWeight:900,color:comparativoRelatorio.diff>0?"#B42318":"#176B47"}}>{comparativoRelatorio.diff==null?"Pendente":moedaMotor(comparativoRelatorio.diff)}</div></div>
+      <div style={{padding:10,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>VARIAÇÃO</div><div style={{fontSize:17,fontWeight:900}}>{comparativoRelatorio.pctDiff==null?"Pendente":`${comparativoRelatorio.pctDiff.toFixed(2)}%`}</div></div>
+      <div style={{padding:10,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>MENOR CARGA MATEMÁTICA</div><div style={{fontSize:17,fontWeight:900}}>{simulacao.simples?.menorCargaMatematica==="NAO_CALCULAVEL"?"Pendente":simulacao.simples?.menorCargaMatematica||"-"}</div></div>
+     </div>
+    </div>:<div style={{padding:18,textAlign:"center",fontSize:9,color:"#697386"}}>Execute a simulação para preencher este comparativo.</div>}
+   </div>
+
+   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+    <div style={card}>
+     <h3 style={{margin:"0 0 8px"}}>Composição tributária encontrada</h3>
+     {(()=>{
+      const tr=extracao?.tributos||{};
+      const itens=[
+       ["PIS",n(tr.pis)],["COFINS",n(tr.cofins)],["ISS",n(tr.iss)],["ICMS",n(tr.icms)],
+       ["CPP",n(tr.cpp)],["IRPJ",n(tr.irpj)],["CSLL",n(tr.csll)],["IPI",n(tr.ipi)],["Outros",n(tr.outros)]
+      ].filter(x=>x[1]>0);
+      const max=Math.max(...itens.map(x=>x[1]),1);
+      return itens.length?<div style={{display:"grid",gap:7}}>{itens.map(([nome,v],i)=><div key={i} style={{display:"grid",gridTemplateColumns:"75px 1fr 105px",gap:7,alignItems:"center",fontSize:8.8}}><b>{nome}</b><div style={{height:10,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${v/max*100}%`,background:"#31589C"}}/></div><b style={{textAlign:"right"}}>{moedaMotor(v)}</b></div>)}</div>:<div style={{fontSize:9,color:"#697386"}}>A composição detalhada não foi encontrada nos documentos.</div>
+     })()}
+    </div>
+
+    <div style={card}>
+     <h3 style={{margin:"0 0 8px"}}>Perfil comercial e crédito</h3>
+     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+      <div style={{padding:12,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>B2B</div><div style={{fontSize:20,fontWeight:900}}>{n(b2b).toFixed(1)}%</div><div style={{height:8,background:"#E7EBF2",borderRadius:999,overflow:"hidden",marginTop:6}}><div style={{width:`${Math.min(100,n(b2b))}%`,height:"100%",background:"#17233D"}}/></div></div>
+      <div style={{padding:12,background:"#F7F9FC",borderRadius:9}}><div style={{fontSize:8,fontWeight:900,color:"#697386"}}>B2C</div><div style={{fontSize:20,fontWeight:900}}>{n(b2c).toFixed(1)}%</div><div style={{height:8,background:"#E7EBF2",borderRadius:999,overflow:"hidden",marginTop:6}}><div style={{width:`${Math.min(100,n(b2c))}%`,height:"100%",background:"#FF6B4A"}}/></div></div>
+     </div>
+     <p style={{fontSize:8.7,color:"#697386",lineHeight:1.55}}>O peso B2B/B2C deve entrar na decisão porque crédito para clientes PJ, capacidade de repasse e sensibilidade de preço podem mudar a melhor estratégia.</p>
+    </div>
+   </div>
+
+   <div style={card}>
+    <h3 style={{margin:"0 0 8px"}}>Gráfico — trajetória da transição</h3>
+    <div style={{display:"grid",gap:8}}>
+     {transicaoModelo.map((x,i)=>{
+      const novo=x.ano==="2027"||x.ano==="2028"?1:x.ibs;
+      const antigo=x.ano==="2027"||x.ano==="2028"?99:x.antigos;
+      return <div key={i} style={{display:"grid",gridTemplateColumns:"55px 1fr 100px",gap:8,alignItems:"center",fontSize:8.8}}>
+       <b>{x.ano}</b>
+       <div style={{height:12,display:"flex",borderRadius:999,overflow:"hidden",background:"#EEF1F5"}}><div style={{width:`${antigo}%`,background:"#D8DEEA"}}/><div style={{width:`${Math.max(1,novo)}%`,background:x.ano==="2033"?"#176B47":"#31589C"}}/></div>
+       <span style={{textAlign:"right",fontWeight:800}}>{x.fase}</span>
+      </div>
+     })}
+    </div>
+   </div>
+
+   {analise&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+    <div style={card}><h3 style={{marginTop:0}}>Riscos</h3><ol style={{paddingLeft:17,margin:0}}>{(analise.riscos||[]).slice(0,7).map((x,i)=><li key={i} style={{fontSize:8.8,lineHeight:1.55,marginBottom:5}}>{x}</li>)}</ol></div>
+    <div style={card}><h3 style={{marginTop:0}}>Oportunidades</h3><ol style={{paddingLeft:17,margin:0}}>{(analise.oportunidades||[]).slice(0,7).map((x,i)=><li key={i} style={{fontSize:8.8,lineHeight:1.55,marginBottom:5}}>{x}</li>)}</ol></div>
+    <div style={card}><h3 style={{marginTop:0}}>Plano de ação</h3><ol style={{paddingLeft:17,margin:0}}>{(analise.planoAcao||[]).slice(0,8).map((x,i)=><li key={i} style={{fontSize:8.8,lineHeight:1.55,marginBottom:5}}>{x}</li>)}</ol></div>
+   </div>}
+
+   {analise?.matrizImpacto?.length>0&&<div style={card}>
+    <h3 style={{margin:"0 0 8px"}}>Mapa de impacto empresarial</h3>
+    <div style={{display:"grid",gap:7}}>
+     {analise.matrizImpacto.map((x,i)=>{
+      const nivel=String(x.nivel||"NAO_AVALIADO").toUpperCase();
+      const valor=nivel==="ALTO"?100:nivel==="MEDIO"?65:nivel==="BAIXO"?30:10;
+      const cor=nivel==="ALTO"?"#B42318":nivel==="MEDIO"?"#B7791F":nivel==="BAIXO"?"#176B47":"#98A2B3";
+      return <div key={i} style={{display:"grid",gridTemplateColumns:"180px 1fr 90px",gap:8,alignItems:"center",fontSize:8.8}}><b>{x.area}</b><div style={{height:10,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:`${valor}%`,background:cor}}/></div><b style={{color:cor,textAlign:"right"}}>{nivel.replace("_"," ")}</b></div>
+     })}
+    </div>
+   </div>}
+
+   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+    {analise&&<div style={card}><h3 style={{marginTop:0}}>Base legal / fundamentação</h3><ol style={{paddingLeft:17,margin:0}}>{(analise.fundamentacao||[]).map((x,i)=><li key={i} style={{fontSize:8.7,lineHeight:1.55,marginBottom:5}}>{x}</li>)}</ol></div>}
+    <div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B"}}>
+     <h3 style={{marginTop:0,color:"#805B10"}}>Premissas e ressalvas</h3>
+     <ul style={{paddingLeft:17,fontSize:8.7,lineHeight:1.6,color:"#6E551C"}}>
+      <li>O DAS residual por fora é uma estimativa gerencial baseada na composição documental atual quando disponível.</li>
+      <li>Alíquotas, reduções, benefícios e regimes específicos devem ser validados com a legislação vigente na data da decisão.</li>
+      <li>A recomendação considera a base disponível; documentos faltantes reduzem a confiança.</li>
+      <li>A comparação Presumido x Real x Simples continua pertencendo ao Planejamento Tributário.</li>
+     </ul>
+    </div>
+   </div>
+  </div>}
  </div>
 }
 
