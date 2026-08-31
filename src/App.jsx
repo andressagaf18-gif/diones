@@ -665,13 +665,41 @@ function montarInteligenciaTributaria({
   };
 }
 
-// Modelo de maturidade: Sim = 5, Parcialmente = 3, Não = 0 (invertido para perguntas de risco).
-function pesoResposta(q, r) {
-  if (!r) return 0;
-  if (q.invert) { if (r === "sim") return 0; if (r === "nao") return 5; return 3; }
-  if (r === "sim") return 5; if (r === "nao") return 0; return 3;
+// Modelo de maturidade:
+// Sim = 5 | Parcialmente = 3 | Não = 0 | Não sei = 1 | N/A = fora do cálculo.
+// "Não sei" reduz a maturidade porque representa ausência de visibilidade.
+// "N/A" é apenas classificatório: não entra no numerador nem no denominador.
+function respostaNaoAplicavel(r) {
+  return ["nao_aplicavel", "n/a", "na"].includes(
+    String(r || "").trim().toLowerCase()
+  );
 }
+
+function respostaNaoSei(r) {
+  return ["nao_sei", "não_sei", "nao sei", "não sei"].includes(
+    String(r || "").trim().toLowerCase()
+  );
+}
+
+function pesoResposta(q, r) {
+  if (!r || respostaNaoAplicavel(r)) return null;
+  if (respostaNaoSei(r)) return 1;
+
+  if (q.invert) {
+    if (r === "sim") return 0;
+    if (r === "nao") return 5;
+    return 3;
+  }
+
+  if (r === "sim") return 5;
+  if (r === "nao") return 0;
+  return 3;
+}
+
 function tierDe(score) {
+  if (score === null || score === undefined || !Number.isFinite(Number(score))) {
+    return { label: "N/A", color: "#667085", bg: "#F2F4F7" };
+  }
   if (score >= 95) return { label: "Excelente", color: "#0F6E56", bg: "#E1F5EE" };
   if (score >= 80) return { label: "Muito bom", color: "#185FA5", bg: "#E6F1FB" };
   if (score >= 60) return { label: "Atenção", color: "#854F0B", bg: "#FAEEDA" };
@@ -3590,7 +3618,9 @@ function DiagnosticoPrototipo() {
           })),
         })),
       })),
-      scoreGeral: scoreDe(todasPerguntas),
+      scoreGeral: scoreDe(todasPerguntas) ?? 0,
+      qualidadeRespostas,
+      lacunasConhecimento,
     };
 
     relatorioEnviadoRef.current =
@@ -4969,6 +4999,16 @@ function DiagnosticoPrototipo() {
 
         resposta,
 
+        respostaClassificacao:
+          respostaNaoAplicavel(resposta)
+            ? "NAO_APLICAVEL"
+            : respostaNaoSei(resposta)
+            ? "LACUNA_CONHECIMENTO"
+            : "AVALIAVEL",
+
+        entraNoScore:
+          !respostaNaoAplicavel(resposta),
+
         importancia,
 
         peso:
@@ -5112,12 +5152,18 @@ function DiagnosticoPrototipo() {
         visaoGrupo:
           resultadoFonte?.visaoGrupo || null,
 
-        lacunasDiagnostico:
-          Array.isArray(
-            resultadoFonte?.lacunasDiagnostico
-          )
-            ? resultadoFonte.lacunasDiagnostico
-            : [],
+        lacunasDiagnostico: [
+          ...(
+            Array.isArray(resultadoFonte?.lacunasDiagnostico)
+              ? resultadoFonte.lacunasDiagnostico
+              : []
+          ),
+          ...lacunasConhecimento,
+        ],
+
+        lacunasConhecimento,
+
+        qualidadeRespostas,
 
         oportunidadesConsultoria:
           Array.isArray(
@@ -5144,12 +5190,19 @@ function DiagnosticoPrototipo() {
             ? resultadoFonte.kpisRecomendados
             : [],
 
-        perguntasAprofundamento:
-          Array.isArray(
-            resultadoFonte?.perguntasAprofundamento
-          )
-            ? resultadoFonte.perguntasAprofundamento
-            : [],
+        perguntasAprofundamento: [
+          ...(
+            Array.isArray(resultadoFonte?.perguntasAprofundamento)
+              ? resultadoFonte.perguntasAprofundamento
+              : []
+          ),
+          ...lacunasConhecimento.map((item) => ({
+            pergunta: item.pergunta,
+            motivo: item.motivo,
+            informacaoValidar: item.impacto,
+            origem: "RESPOSTA_NAO_SEI",
+          })),
+        ],
 
         visaoConsultor:
           resultadoFonte?.visaoConsultor || null,
@@ -5672,35 +5725,52 @@ function DiagnosticoPrototipo() {
   }
 
   function scoreDe(perguntas) {
-    if (!perguntas.length) return 0;
+    if (!perguntas.length) return null;
 
-    const total = perguntas.reduce((acc, q) => {
+    const perguntasValidas = perguntas.filter(
+      (q) => !respostaNaoAplicavel(respostas[q.id])
+    );
+
+    if (!perguntasValidas.length) return null;
+
+    const total = perguntasValidas.reduce((acc, q) => {
       const importancia = Math.max(1, Math.min(3, Number(q.importancia) || 1));
-      return acc + (pesoResposta(q, respostas[q.id]) * importancia);
+      const peso = pesoResposta(q, respostas[q.id]);
+      return acc + ((peso ?? 0) * importancia);
     }, 0);
 
-    const maximo = perguntas.reduce((acc, q) => {
+    const maximo = perguntasValidas.reduce((acc, q) => {
       const importancia = Math.max(1, Math.min(3, Number(q.importancia) || 1));
       return acc + (5 * importancia);
     }, 0);
 
-    return maximo ? Math.round((total / maximo) * 100) : 0;
+    return maximo ? Math.round((total / maximo) * 100) : null;
   }
 
-  const score = scoreDe(todasPerguntas);
-  const tierGeral = tierDe(score);
+  const scoreCalculado = scoreDe(todasPerguntas);
+  const score = scoreCalculado ?? 0;
+  const tierGeral = tierDe(scoreCalculado);
 
   const areasComScore = gruposSelecionados.map((g) => ({
     ...g, score: scoreDe(g.subtemas.flatMap((s) => s.perguntas)),
   }));
-  const areaMaisFraca = areasComScore.length
-    ? [...areasComScore].sort((a, b) => a.score - b.score)[0]
+
+  const areasComScoreValido = areasComScore.filter(
+    (a) => Number.isFinite(Number(a.score))
+  );
+
+  const areaMaisFraca = areasComScoreValido.length
+    ? [...areasComScoreValido].sort((a, b) => a.score - b.score)[0]
     : null;
 
   const subScoresAll = gruposSelecionados.flatMap((g) =>
     g.subtemas.map((s) => ({ area: g.label, tema: s.tema, dica: s.dica, score: scoreDe(s.perguntas) }))
   );
-  const subOrdenados = [...subScoresAll].sort((a, b) => a.score - b.score);
+  const subOrdenados = [...subScoresAll].sort((a, b) => {
+    const av = Number.isFinite(Number(a.score)) ? Number(a.score) : Infinity;
+    const bv = Number.isFinite(Number(b.score)) ? Number(b.score) : Infinity;
+    return av - bv;
+  });
 
   const perguntasComPeso = todasPerguntas.map((q) => ({
     ...q, peso: pesoResposta(q, respostas[q.id]), riscoTexto: riscoDe(
@@ -5709,14 +5779,56 @@ function DiagnosticoPrototipo() {
       categoriaPrincipal
     ),
   }));
+
+  const lacunasConhecimento = gruposSelecionados.flatMap((g) =>
+    g.subtemas.flatMap((s) =>
+      s.perguntas
+        .filter((q) => respostaNaoSei(respostas[q.id]))
+        .map((q) => ({
+          tema: `${g.label} · ${s.tema}`,
+          pergunta: textoDe(q, segmentoPredominante, categoriaPrincipal),
+          motivo:
+            q.motivo ||
+            "A pergunta busca verificar se a empresa possui conhecimento, controle ou evidência suficiente sobre este tema.",
+          impacto:
+            riscoDe(q, segmentoPredominante, categoriaPrincipal) ||
+            "A falta dessa informação pode reduzir a qualidade das decisões e impedir uma avaliação segura do tema.",
+          perguntasSugeridas: [
+            `Levantar e validar: ${textoDe(q, segmentoPredominante, categoriaPrincipal)}`,
+          ],
+          origem: "RESPOSTA_NAO_SEI",
+        }))
+    )
+  );
+
+  const totalRespostas = todasPerguntas.length;
+  const quantidadeNaoAplicavel = todasPerguntas.filter(
+    (q) => respostaNaoAplicavel(respostas[q.id])
+  ).length;
+  const quantidadeNaoSei = todasPerguntas.filter(
+    (q) => respostaNaoSei(respostas[q.id])
+  ).length;
+  const quantidadeAvaliavel = Math.max(0, totalRespostas - quantidadeNaoAplicavel);
+  const qualidadeRespostas = {
+    totalPerguntas: totalRespostas,
+    perguntasAvaliaveis: quantidadeAvaliavel,
+    naoAplicaveis: quantidadeNaoAplicavel,
+    naoSei: quantidadeNaoSei,
+    coberturaConhecimento:
+      quantidadeAvaliavel > 0
+        ? Math.round(
+            ((quantidadeAvaliavel - quantidadeNaoSei) / quantidadeAvaliavel) * 100
+          )
+        : 100,
+  };
   const pontosAtencao = [...perguntasComPeso]
-    .filter((q) => q.peso < 5)
+    .filter((q) => q.peso !== null && q.peso < 5)
     .sort((a, b) => a.peso - b.peso)
     .slice(0, 6)
     .map((q) => q.riscoTexto);
 
   const riscosNaAreaMaisFraca = areaMaisFraca
-    ? perguntasComPeso.filter((q) => q.peso < 5 && gruposSelecionados
+    ? perguntasComPeso.filter((q) => q.peso !== null && q.peso < 5 && gruposSelecionados
         .find((g) => g.id === areaMaisFraca.id).subtemas
         .some((s) => s.perguntas.some((p) => p.id === q.id))).length
     : 0;
@@ -7963,7 +8075,7 @@ function DiagnosticoPrototipo() {
                       lineHeight: 1.45,
                     }}
                   >
-                    O diagnóstico avaliará somente as frentes selecionadas. Cada pergunta deve poder ser respondida com Sim, Parcial ou Não.
+                    O diagnóstico avaliará somente as frentes selecionadas. Responda com Sim, Parcial, Não, N/A ou Não sei. N/A não entra no score; Não sei sinaliza uma lacuna de conhecimento que será explicada no relatório.
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -8243,11 +8355,25 @@ function DiagnosticoPrototipo() {
                               {sub.perguntas.map((q) => (
                                 <div key={q.id}>
                                   <p style={{ fontSize: 12.5, color: NAVY, margin: "0 0 6px", lineHeight: 1.4 }}>{textoDe(q, segmentoPredominante, categoriaPrincipal)}</p>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    {[["sim", "Sim"], ["parcialmente", "Parcial"], ["nao", "Não"]].map(([val, lbl]) => (
-                                      <button key={val} onClick={() => responder(q.id, val)} style={{
-                                        ...miniChipStyle(respostas[q.id] === val), flex: 1,
-                                      }}>{lbl}</button>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    {[
+                                      ["sim", "Sim"],
+                                      ["parcialmente", "Parcial"],
+                                      ["nao", "Não"],
+                                      ["nao_aplicavel", "N/A"],
+                                      ["nao_sei", "Não sei"],
+                                    ].map(([val, lbl]) => (
+                                      <button
+                                        key={val}
+                                        onClick={() => responder(q.id, val)}
+                                        style={{
+                                          ...miniChipStyle(respostas[q.id] === val),
+                                          flex: "1 1 90px",
+                                          minWidth: 72,
+                                        }}
+                                      >
+                                        {lbl}
+                                      </button>
                                     ))}
                                   </div>
                                 </div>
