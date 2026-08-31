@@ -1509,152 +1509,168 @@ function SimuladorReformaPublico({
   const [etapa, setEtapa] = useState("inicio");
   const [regime, setRegime] = useState("Lucro Presumido");
   const [atividade, setAtividade] = useState("Serviço");
-  const [faturamento, setFaturamento] = useState("125000");
-  const [aliquotaConsumoAtual, setAliquotaConsumoAtual] = useState("8.65");
-  const [aliquotaForaConsumo, setAliquotaForaConsumo] = useState("7.68");
-  const [cbs, setCbs] = useState("9.30");
-  const [ibs, setIbs] = useState("18.70");
-  const [crescimento, setCrescimento] = useState("0");
+  const [faturamento, setFaturamento] = useState("");
+  const [impostoAtualMensal, setImpostoAtualMensal] = useState("");
+  const [tributosForaConsumo, setTributosForaConsumo] = useState("");
+  const [fonteCargaAtual, setFonteCargaAtual] = useState("informado");
+  const [presetReforma, setPresetReforma] = useState("referencia");
+  const [cbs, setCbs] = useState("9,3");
+  const [ibs, setIbs] = useState("18,7");
+  const [reducaoCbs, setReducaoCbs] = useState("0");
+  const [reducaoIbs, setReducaoIbs] = useState("0");
+  const [crescimento, setCrescimento] = useState("20");
+  const [b2b, setB2b] = useState("50");
 
   const categoriasBase = [
-    ["materia_prima", "Matéria-prima / Mercadorias", 0.20],
-    ["energia", "Energia elétrica", 0.04],
-    ["aluguel", "Aluguel", 0.05],
-    ["ti", "Serviços de TI", 0.03],
-    ["limpeza", "Serviços de limpeza", 0.02],
-    ["escritorio", "Material de escritório", 0.015],
-    ["internet", "Telefonia / Internet", 0.02],
-    ["manutencao", "Manutenção de equipamentos", 0.02],
-    ["consultorias", "Consultorias", 0.03],
-    ["frete", "Frete / Transporte", 0.05],
-    ["outras", "Outras despesas potencialmente creditáveis", 0.06],
+    ["materia_prima", "Matéria-prima / mercadorias"],
+    ["energia", "Energia elétrica"],
+    ["aluguel", "Aluguel"],
+    ["ti", "Serviços de TI"],
+    ["limpeza", "Serviços de limpeza"],
+    ["escritorio", "Material de escritório"],
+    ["internet", "Telefonia / internet"],
+    ["manutencao", "Manutenção de equipamentos"],
+    ["consultorias", "Consultorias"],
+    ["frete", "Frete / transporte"],
+    ["outras", "Outras despesas"],
   ];
 
   const [despesas, setDespesas] = useState(() =>
     Object.fromEntries(
-      categoriasBase.map(([id, label, pct]) => [
+      categoriasBase.map(([id, label]) => [
         id,
         {
           id,
           label,
-          valor: String(Math.round(125000 * pct)),
-          creditoAtualPct: "0",
-          elegivelNovo: true,
+          valor: "",
+          creditoAtual: "",
+          novoCreditoPermitido: true,
+          percentualCreditoNovo: "",
         },
       ])
     )
   );
 
-  const faturamentoNum = numeroSimulador(faturamento);
-  const cbsNum = numeroSimulador(cbs);
-  const ibsNum = numeroSimulador(ibs);
-  const iva = cbsNum + ibsNum;
-  const aliquotaAtual = numeroSimulador(aliquotaConsumoAtual);
-  const foraConsumo = numeroSimulador(aliquotaForaConsumo);
-  const crescimentoNum = numeroSimulador(crescimento);
+  const fat = numeroSimulador(faturamento);
+  const atualInformado = numeroSimulador(impostoAtualMensal);
+  const fora = numeroSimulador(tributosForaConsumo);
+  const cbsPct = numeroSimulador(cbs);
+  const ibsPct = numeroSimulador(ibs);
+  const redCbs = Math.min(100, Math.max(0, numeroSimulador(reducaoCbs)));
+  const redIbs = Math.min(100, Math.max(0, numeroSimulador(reducaoIbs)));
+  const cbsEfetiva = cbsPct * (1 - redCbs / 100);
+  const ibsEfetiva = ibsPct * (1 - redIbs / 100);
+  const ivaEfetivo = cbsEfetiva + ibsEfetiva;
+  const crescimentoPct = numeroSimulador(crescimento);
+  const b2bPct = Math.min(100, Math.max(0, numeroSimulador(b2b)));
+
+  const aliquotaEstimativaAtual =
+    fat > 0 ? estimarAliquota(regime, atividade, fat * 12) : null;
+
+  const impostoAtualEstimado =
+    aliquotaEstimativaAtual == null ? 0 : fat * aliquotaEstimativaAtual / 100;
+
+  const totalAtual =
+    fonteCargaAtual === "estimado" ? impostoAtualEstimado : atualInformado;
 
   const linhasCredito = Object.values(despesas);
-  const despesasTotal = linhasCredito.reduce((a, x) => a + numeroSimulador(x.valor), 0);
-  const creditoAtual = linhasCredito.reduce(
-    (a, x) => a + numeroSimulador(x.valor) * numeroSimulador(x.creditoAtualPct) / 100,
-    0
-  );
-  const creditoNovo = linhasCredito.reduce(
-    (a, x) => a + (x.elegivelNovo ? numeroSimulador(x.valor) * iva / 100 : 0),
+
+  const despesasTotal = linhasCredito.reduce(
+    (acc, item) => acc + numeroSimulador(item.valor),
     0
   );
 
-  const tributoConsumoAtualBruto = faturamentoNum * aliquotaAtual / 100;
-  const tributoAtualLiquido = Math.max(0, tributoConsumoAtualBruto - creditoAtual);
-  const outrosTributos = faturamentoNum * foraConsumo / 100;
-  const totalAtual = tributoAtualLiquido + outrosTributos;
+  const creditoAtualTotal = linhasCredito.reduce(
+    (acc, item) => acc + numeroSimulador(item.creditoAtual),
+    0
+  );
 
-  const tributoReformaBruto = faturamentoNum * iva / 100;
-  const tributoReformaLiquido = Math.max(0, tributoReformaBruto - creditoNovo);
-  const totalReforma = tributoReformaLiquido + outrosTributos;
+  const creditoNovoTotal = linhasCredito.reduce((acc, item) => {
+    if (!item.novoCreditoPermitido) return acc;
+    const base = numeroSimulador(item.valor);
+    const pctInformado = numeroSimulador(item.percentualCreditoNovo);
+    const pctUsado = pctInformado > 0 ? pctInformado : ivaEfetivo;
+    return acc + base * pctUsado / 100;
+  }, 0);
 
-  const diferenca = totalReforma - totalAtual;
-  const variacao = totalAtual > 0 ? (diferenca / totalAtual) * 100 : null;
-  const cargaAtual = faturamentoNum > 0 ? (totalAtual / faturamentoNum) * 100 : 0;
-  const cargaReforma = faturamentoNum > 0 ? (totalReforma / faturamentoNum) * 100 : 0;
+  const debitoCbs = fat * cbsEfetiva / 100;
+  const debitoIbs = fat * ibsEfetiva / 100;
+  const debitoNovo = debitoCbs + debitoIbs;
+  const ibsCbsLiquido = Math.max(0, debitoNovo - creditoNovoTotal);
 
-  const faturamentoProjetado = faturamentoNum * (1 + crescimentoNum / 100);
-  const totalAtualProjetado = totalAtual * (1 + crescimentoNum / 100);
-  const totalReformaProjetado = totalReforma * (1 + crescimentoNum / 100);
+  const totalReforma =
+    fat > 0 && ivaEfetivo > 0
+      ? fora + ibsCbsLiquido
+      : null;
 
-  const regimesComparacao = ["Simples Nacional", "Lucro Presumido", "Lucro Real"].map((r) => {
-    const aliquota = estimarAliquota(r, atividade, faturamentoNum * 12);
-    return {
-      regime: r,
-      aliquota,
-      mensal: aliquota == null ? null : faturamentoNum * aliquota / 100,
-    };
-  });
+  const diferenca =
+    totalReforma == null || totalAtual <= 0
+      ? null
+      : totalReforma - totalAtual;
 
-  const transicao = [
-    { ano: "2026", legado: 100, novo: 0, nota: "Fase de teste / validação operacional." },
-    { ano: "2027–2028", legado: null, novo: null, nota: "Fase específica de implantação. Validar regras vigentes." },
-    { ano: "2029", legado: 90, novo: 10, nota: "Transição gradual ICMS/ISS → IBS." },
-    { ano: "2030", legado: 80, novo: 20, nota: "Transição gradual." },
-    { ano: "2031", legado: 70, novo: 30, nota: "Transição gradual." },
-    { ano: "2032", legado: 60, novo: 40, nota: "Transição gradual." },
-    { ano: "2033", legado: 0, novo: 100, nota: "Modelo novo integral." },
-  ];
+  const variacao =
+    diferenca == null || totalAtual <= 0
+      ? null
+      : (diferenca / totalAtual) * 100;
 
-  const snapshot = {
-    versao: "SIMULADOR_REFORMA_PUBLICO_V1",
-    etapa,
-    participante: { nome, email, telefone },
-    configuracao: {
-      regime,
-      atividade,
-      faturamentoMensal: faturamentoNum,
-      aliquotaConsumoAtualPct: aliquotaAtual,
-      aliquotaForaConsumoPct: foraConsumo,
-      cbsPct: cbsNum,
-      ibsPct: ibsNum,
-      ivaPct: iva,
-      crescimentoPct: crescimentoNum,
-    },
-    creditos: {
-      despesasMensais: despesasTotal,
-      creditoAtual,
-      creditoNovo,
-      adicionalMensal: creditoNovo - creditoAtual,
-      linhas: linhasCredito,
-    },
-    resultado: {
-      tributoAtualLiquido,
-      outrosTributos,
-      totalAtual,
-      tributoReformaLiquido,
-      totalReforma,
-      diferenca,
-      variacaoPct: variacao,
-      cargaAtualPct: cargaAtual,
-      cargaReformaPct: cargaReforma,
-      faturamentoProjetado,
-      totalAtualProjetado,
-      totalReformaProjetado,
-    },
-    regimesComparacao,
-    transicao,
-  };
+  const cargaAtual =
+    fat > 0 && totalAtual > 0
+      ? totalAtual / fat * 100
+      : null;
 
-  useEffect(() => {
-    onSnapshot?.(snapshot);
-  }, [
-    etapa,
-    regime,
-    atividade,
-    faturamento,
-    aliquotaConsumoAtual,
-    aliquotaForaConsumo,
-    cbs,
-    ibs,
-    crescimento,
-    despesas,
-  ]);
+  const cargaReforma =
+    fat > 0 && totalReforma != null
+      ? totalReforma / fat * 100
+      : null;
+
+  const faturamentoProjetado =
+    fat * (1 + crescimentoPct / 100);
+
+  const creditoNovoProjetado =
+    creditoNovoTotal * (1 + crescimentoPct / 100);
+
+  const totalAtualProjetado =
+    totalAtual * (1 + crescimentoPct / 100);
+
+  const totalReformaProjetado =
+    totalReforma == null
+      ? null
+      : (
+          fora * (1 + crescimentoPct / 100) +
+          Math.max(
+            0,
+            faturamentoProjetado * ivaEfetivo / 100 -
+            creditoNovoProjetado
+          )
+        );
+
+  const economiaCredito = creditoNovoTotal - creditoAtualTotal;
+
+  const prontidao = [
+    fat > 0,
+    totalAtual > 0,
+    ivaEfetivo > 0,
+    linhasCredito.some((x) => numeroSimulador(x.valor) > 0),
+  ].filter(Boolean).length;
+
+  function aplicarPreset(valor) {
+    setPresetReforma(valor);
+
+    if (valor === "teste2026") {
+      setCbs("0,9");
+      setIbs("0,1");
+      setReducaoCbs("0");
+      setReducaoIbs("0");
+      return;
+    }
+
+    if (valor === "referencia") {
+      setCbs("9,3");
+      setIbs("18,7");
+      setReducaoCbs("0");
+      setReducaoIbs("0");
+    }
+  }
 
   function alterarDespesa(id, patch) {
     setDespesas((atual) => ({
@@ -1666,351 +1682,781 @@ function SimuladorReformaPublico({
     }));
   }
 
-  function carregarPerfilDespesas() {
-    const multiplicadores = {
-      "Serviço": [0.03,0.02,0.08,0.05,0.03,0.02,0.02,0.02,0.05,0.02,0.06],
-      "Comércio": [0.28,0.03,0.05,0.03,0.02,0.015,0.02,0.02,0.025,0.06,0.05],
-      "Indústria": [0.30,0.05,0.04,0.025,0.015,0.015,0.015,0.04,0.02,0.06,0.04],
-    }[atividade] || [0.1,0.03,0.05,0.03,0.02,0.015,0.02,0.02,0.03,0.04,0.05];
+  function sugerirDespesas() {
+    if (!fat) return;
+
+    const perfis = {
+      "Serviço": [0.02,0.015,0.06,0.04,0.02,0.01,0.015,0.01,0.04,0.01,0.04],
+      "Comércio": [0.28,0.02,0.04,0.02,0.015,0.01,0.015,0.015,0.02,0.05,0.04],
+      "Indústria": [0.30,0.04,0.03,0.02,0.015,0.01,0.015,0.03,0.015,0.05,0.035],
+    };
+
+    const perfil = perfis[atividade] || perfis["Serviço"];
 
     setDespesas((atual) => {
       const proximo = { ...atual };
-      categoriasBase.forEach(([id, label], i) => {
+
+      categoriasBase.forEach(([id, label], index) => {
         proximo[id] = {
           ...proximo[id],
+          id,
           label,
-          valor: String(Math.round(faturamentoNum * multiplicadores[i])),
+          valor: String(Math.round(fat * perfil[index])),
         };
       });
+
       return proximo;
     });
   }
 
+  const snapshot = {
+    versao: "SIMULADOR_REFORMA_PUBLICO_V2",
+    etapa,
+    participante: { nome, email, telefone },
+    configuracao: {
+      regime,
+      atividade,
+      faturamentoMensal: fat,
+      fonteCargaAtual,
+      impostoAtualMensal: totalAtual,
+      impostoAtualInformado: atualInformado,
+      impostoAtualEstimado,
+      aliquotaAtualEstimadaPct: aliquotaEstimativaAtual,
+      tributosForaConsumoMensal: fora,
+      presetReforma,
+      cbsPct,
+      ibsPct,
+      reducaoCbsPct: redCbs,
+      reducaoIbsPct: redIbs,
+      cbsEfetivaPct: cbsEfetiva,
+      ibsEfetivaPct: ibsEfetiva,
+      ivaEfetivoPct: ivaEfetivo,
+      crescimentoPct,
+      b2bPct,
+    },
+    creditos: {
+      despesasMensais: despesasTotal,
+      creditoAtual: creditoAtualTotal,
+      creditoNovo: creditoNovoTotal,
+      adicionalMensal: economiaCredito,
+      linhas: linhasCredito,
+    },
+    memoriaCalculo: {
+      atual: {
+        origem:
+          fonteCargaAtual === "estimado"
+            ? "Estimativa gerencial do regime/atividade/faixa"
+            : "Valor mensal informado pelo cliente",
+        total: totalAtual,
+      },
+      reforma: {
+        faturamento: fat,
+        debitoCbs,
+        debitoIbs,
+        debitoIbsCbs: debitoNovo,
+        creditoIbsCbs: creditoNovoTotal,
+        ibsCbsLiquido,
+        tributosForaConsumo: fora,
+        total: totalReforma,
+      },
+    },
+    resultado: {
+      totalAtual,
+      totalReforma,
+      diferenca,
+      variacaoPct: variacao,
+      cargaAtualPct: cargaAtual,
+      cargaReformaPct: cargaReforma,
+      faturamentoProjetado,
+      totalAtualProjetado,
+      totalReformaProjetado,
+    },
+  };
+
+  useEffect(() => {
+    onSnapshot?.(snapshot);
+  }, [
+    etapa,
+    regime,
+    atividade,
+    faturamento,
+    impostoAtualMensal,
+    tributosForaConsumo,
+    fonteCargaAtual,
+    presetReforma,
+    cbs,
+    ibs,
+    reducaoCbs,
+    reducaoIbs,
+    crescimento,
+    b2b,
+    despesas,
+  ]);
+
   const input = {
     width: "100%",
     boxSizing: "border-box",
-    border: "1px solid #DDE3EC",
-    borderRadius: 10,
-    padding: "10px 11px",
+    border: "1px solid #D8DFEA",
+    borderRadius: 12,
+    padding: "12px 12px",
     fontFamily: BODY_FONT,
-    fontSize: 11.5,
+    fontSize: 14,
     color: NAVY,
     background: "#fff",
+    outline: "none",
   };
 
   const card = {
     background: "#fff",
-    border: "1px solid #E1E6EE",
-    borderRadius: 14,
+    border: "1px solid #E0E5ED",
+    borderRadius: 16,
     padding: 14,
+    boxShadow: "0 3px 10px rgba(23,35,61,.04)",
   };
 
-  const miniKpi = (titulo, valor, cor=NAVY, subtitulo="") => (
-    <div style={{...card, padding:12}}>
-      <div style={{fontSize:8,fontWeight:900,color:MUTED,textTransform:"uppercase"}}>{titulo}</div>
-      <div style={{fontSize:19,fontWeight:900,color:cor,marginTop:3}}>{valor}</div>
-      {subtitulo && <div style={{fontSize:8,color:MUTED,marginTop:3}}>{subtitulo}</div>}
+  const callout = {
+    background: "#F7F9FC",
+    border: "1px solid #E4E8EF",
+    borderRadius: 13,
+    padding: 11,
+  };
+
+  const small = {
+    fontSize: 9.5,
+    color: MUTED,
+    lineHeight: 1.5,
+  };
+
+  const miniKpi = (titulo, valor, cor = NAVY, subtitulo = "") => (
+    <div className="reforma-kpi" style={{...card,padding:12,minWidth:0}}>
+      <div style={{fontSize:8,fontWeight:900,color:MUTED,textTransform:"uppercase",letterSpacing:.3}}>
+        {titulo}
+      </div>
+      <div style={{
+        fontSize:18,
+        lineHeight:1.15,
+        fontWeight:900,
+        color:cor,
+        marginTop:5,
+        overflowWrap:"anywhere"
+      }}>
+        {valor}
+      </div>
+      {subtitulo && <div style={{...small,marginTop:4,fontSize:8}}>{subtitulo}</div>}
     </div>
   );
 
   const barra = (label, value, max, cor) => (
-    <div style={{display:"grid",gridTemplateColumns:"115px 1fr 105px",gap:8,alignItems:"center",fontSize:9}}>
-      <b>{label}</b>
-      <div style={{height:12,background:"#EEF1F5",borderRadius:999,overflow:"hidden"}}>
+    <div className="reforma-barra" style={{display:"grid",gap:5}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:9}}>
+        <b>{label}</b>
+        <b>{moedaSimulador(value)}</b>
+      </div>
+      <div style={{height:12,background:"#EDF0F5",borderRadius:999,overflow:"hidden"}}>
         <div style={{
           height:"100%",
           width:`${max>0?Math.max(value>0?2:0,Math.min(100,value/max*100)):0}%`,
           background:cor,
+          transition:"width .25s ease",
         }}/>
       </div>
-      <b style={{textAlign:"right"}}>{moedaSimulador(value)}</b>
     </div>
   );
 
+  const cabecalho = (titulo, subtitulo, badge = "") => (
+    <div>
+      {badge && <div style={{fontSize:8,fontWeight:900,color:CORAL,letterSpacing:.5}}>{badge}</div>}
+      <h3 style={{fontFamily:DISPLAY_FONT,fontSize:20,lineHeight:1.12,margin:"4px 0 5px",color:NAVY}}>
+        {titulo}
+      </h3>
+      {subtitulo && <p style={{...small,margin:0}}>{subtitulo}</p>}
+    </div>
+  );
+
+  const abas = [
+    ["configurar","1. Base"],
+    ["creditos","2. Créditos"],
+    ["comparar","3. Comparar"],
+    ["transicao","4. Crescimento"],
+    ["resultado","5. Resultado"],
+  ];
+
   if (etapa === "inicio") {
     return (
-      <div style={{display:"grid",gap:14}}>
-        <button type="button" onClick={onVoltar} style={{border:0,background:"transparent",textAlign:"left",color:MUTED,fontWeight:800,cursor:"pointer",padding:0}}>
+      <div className="reforma-sim-publico" style={{display:"grid",gap:12}}>
+        <style>{`
+          .reforma-sim-publico * { box-sizing:border-box; }
+          .reforma-sim-publico .reforma-grid-2,
+          .reforma-sim-publico .reforma-grid-3,
+          .reforma-sim-publico .reforma-grid-4 {
+            display:grid;
+            gap:8px;
+            grid-template-columns:1fr;
+          }
+          .reforma-sim-publico .reforma-steps {
+            display:grid;
+            grid-template-columns:1fr;
+            gap:8px;
+          }
+          @media (min-width:520px) {
+            .reforma-sim-publico .reforma-grid-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            .reforma-sim-publico .reforma-grid-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+            .reforma-sim-publico .reforma-grid-4 { grid-template-columns:repeat(4,minmax(0,1fr)); }
+            .reforma-sim-publico .reforma-steps { grid-template-columns:repeat(3,minmax(0,1fr)); }
+          }
+        `}</style>
+
+        <button
+          type="button"
+          onClick={onVoltar}
+          style={{border:0,background:"transparent",textAlign:"left",color:MUTED,fontWeight:800,cursor:"pointer",padding:0}}
+        >
           ← Voltar
         </button>
 
         <div style={{
-          background:"linear-gradient(135deg,#0E1A33,#17233D)",
+          background:"linear-gradient(145deg,#101C35,#17233D)",
           color:"#fff",
           borderRadius:18,
-          padding:20,
+          padding:18,
         }}>
-          <div style={{fontSize:9,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · SIMULADOR REFORMA</div>
-          <h2 style={{fontFamily:DISPLAY_FONT,fontSize:25,margin:"6px 0"}}>Simulador da Reforma Tributária</h2>
-          <p style={{fontSize:10.5,color:"#D8DEEA",lineHeight:1.6,margin:0}}>
-            Configure a empresa, simule créditos, compare o cenário atual com IBS/CBS e visualize a transição até 2033.
+          <div style={{fontSize:8,fontWeight:900,color:"#FFB7A7",letterSpacing:.5}}>
+            FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA
+          </div>
+          <h2 style={{fontFamily:DISPLAY_FONT,fontSize:24,lineHeight:1.1,margin:"6px 0"}}>
+            Simule o impacto antes de decidir
+          </h2>
+          <p style={{fontSize:10,color:"#D8DEEA",lineHeight:1.55,margin:0}}>
+            Informe a realidade atual, mapeie despesas que podem gerar créditos e compare com um cenário editável de IBS/CBS.
           </p>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
+        <div className="reforma-steps">
           {[
-            ["1","Configure","Regime, atividade, faturamento e premissas editáveis."],
-            ["2","Compare","Carga atual, créditos, IBS/CBS e diferença mensal."],
-            ["3","Conclua","Resultado executivo, regimes e transição 2026–2033."],
-          ].map(([n,t,d])=><div key={n} style={card}>
-            <div style={{width:28,height:28,borderRadius:9,background:"#EEF3FF",display:"grid",placeItems:"center",fontWeight:900,color:"#31589C"}}>{n}</div>
-            <b style={{display:"block",marginTop:8,fontSize:11}}>{t}</b>
-            <div style={{fontSize:9,color:MUTED,lineHeight:1.5,marginTop:4}}>{d}</div>
-          </div>)}
+            ["1","Base atual","Quanto fatura e quanto paga hoje."],
+            ["2","Créditos","Quais despesas entram na cadeia de créditos."],
+            ["3","Impacto","Quanto muda em reais, percentual e crescimento."],
+          ].map(([n,t,d])=>(
+            <div key={n} style={card}>
+              <div style={{width:27,height:27,borderRadius:9,background:"#EEF3FF",display:"grid",placeItems:"center",fontWeight:900,color:"#31589C"}}>
+                {n}
+              </div>
+              <b style={{display:"block",marginTop:7,fontSize:10.5}}>{t}</b>
+              <div style={{...small,fontSize:8.5,marginTop:3}}>{d}</div>
+            </div>
+          ))}
         </div>
 
-        <div style={{...card,background:"#FFF9EE",borderColor:"#F2D79C",fontSize:9.5,color:"#805B10",lineHeight:1.55}}>
-          <b>Estimativa gerencial.</b> As alíquotas e premissas são editáveis. O resultado não substitui apuração fiscal nem validação profissional.
+        <div style={{...callout,background:"#FFF8EC",borderColor:"#F3D99B",color:"#805B10"}}>
+          <b style={{fontSize:9}}>Importante:</b>
+          <div style={{fontSize:8.7,lineHeight:1.5,marginTop:2}}>
+            O simulador é gerencial. Não presume que toda despesa gera crédito nem que uma alíquota de referência seja a alíquota legal definitiva da empresa.
+          </div>
         </div>
 
         <PrimaryButton onClick={()=>setEtapa("configurar")}>
-          Começar minha simulação <ArrowRight size={16}/>
+          Iniciar simulação <ArrowRight size={16}/>
         </PrimaryButton>
       </div>
     );
   }
 
-  const abas = [
-    ["configurar","⚙ Configurar"],
-    ["creditos","Créditos"],
-    ["comparar","Comparar"],
-    ["transicao","Transição"],
-    ["resultado","Resultado"],
-  ];
-
   return (
-    <div style={{display:"grid",gap:10}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <button type="button" onClick={etapa==="configurar"?onVoltar:()=>setEtapa("configurar")} style={{border:0,background:"transparent",color:MUTED,fontWeight:800,cursor:"pointer",padding:0}}>
-          ← {etapa==="configurar"?"Voltar":"Configuração"}
+    <div className="reforma-sim-publico" style={{display:"grid",gap:10,minWidth:0}}>
+      <style>{`
+        .reforma-sim-publico * { box-sizing:border-box; }
+        .reforma-sim-publico { width:100%; min-width:0; }
+        .reforma-sim-publico .reforma-grid-2,
+        .reforma-sim-publico .reforma-grid-3,
+        .reforma-sim-publico .reforma-grid-4 {
+          display:grid;
+          grid-template-columns:1fr;
+          gap:8px;
+          min-width:0;
+        }
+        .reforma-sim-publico .reforma-kpi { min-width:0; overflow:hidden; }
+        .reforma-sim-publico .reforma-tabs {
+          display:flex;
+          gap:5px;
+          overflow-x:auto;
+          scrollbar-width:none;
+          padding-bottom:2px;
+        }
+        .reforma-sim-publico .reforma-tabs::-webkit-scrollbar { display:none; }
+        .reforma-sim-publico .reforma-credit-row {
+          display:grid;
+          grid-template-columns:1fr;
+          gap:7px;
+          padding:10px 0;
+          border-bottom:1px solid #EEF0F4;
+        }
+        .reforma-sim-publico .reforma-credit-meta {
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:6px;
+        }
+        @media (min-width:520px) {
+          .reforma-sim-publico .reforma-grid-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+          .reforma-sim-publico .reforma-grid-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+          .reforma-sim-publico .reforma-grid-4 { grid-template-columns:repeat(4,minmax(0,1fr)); }
+          .reforma-sim-publico .reforma-credit-row {
+            grid-template-columns:1.2fr .8fr .8fr;
+            align-items:center;
+          }
+        }
+      `}</style>
+
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+        <button
+          type="button"
+          onClick={etapa==="configurar"?onVoltar:()=>setEtapa("configurar")}
+          style={{border:0,background:"transparent",color:MUTED,fontWeight:800,cursor:"pointer",padding:0,fontSize:11}}
+        >
+          ← {etapa==="configurar"?"Voltar":"Base"}
         </button>
-        <span style={{fontSize:8.5,color:MUTED}}>Simulação editável · valores mensais</span>
+
+        <span style={{
+          background:prontidao===4?"#E8F6EE":"#FFF5DF",
+          color:prontidao===4?"#176B47":"#805B10",
+          padding:"5px 8px",
+          borderRadius:999,
+          fontSize:7.5,
+          fontWeight:900,
+        }}>
+          BASE {prontidao}/4
+        </span>
       </div>
 
-      <div style={{display:"flex",gap:5,overflowX:"auto"}}>
-        {abas.map(([id,label])=><button key={id} type="button" onClick={()=>setEtapa(id)} style={{
-          whiteSpace:"nowrap",border:"1px solid #DDE3EC",borderRadius:999,padding:"7px 9px",
-          background:etapa===id?NAVY:"#fff",color:etapa===id?"#fff":NAVY,fontSize:8.5,fontWeight:900,cursor:"pointer"
-        }}>{label}</button>)}
+      <div className="reforma-tabs">
+        {abas.map(([id,label])=>(
+          <button
+            key={id}
+            type="button"
+            onClick={()=>setEtapa(id)}
+            style={{
+              flex:"0 0 auto",
+              border:"1px solid #DDE3EC",
+              borderRadius:999,
+              padding:"7px 9px",
+              background:etapa===id?NAVY:"#fff",
+              color:etapa===id?"#fff":NAVY,
+              fontSize:8,
+              fontWeight:900,
+              cursor:"pointer",
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {etapa==="configurar"&&<>
         <div style={card}>
-          <div style={{fontSize:8,fontWeight:900,color:CORAL}}>COMECE AQUI</div>
-          <h3 style={{fontFamily:DISPLAY_FONT,fontSize:20,margin:"4px 0"}}>Configurar simulação</h3>
-          <p style={{fontSize:9,color:MUTED,lineHeight:1.5}}>Tudo nas outras abas é calculado a partir destas premissas. Você pode alterar qualquer campo.</p>
+          {cabecalho(
+            "Base atual da empresa",
+            "Primeiro informe o que acontece hoje. O comparativo só é confiável se esta base estiver correta.",
+            "PASSO 1"
+          )}
 
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
-            <label style={labelStyle}>Regime tributário atual
+          <div className="reforma-grid-2" style={{marginTop:12}}>
+            <label style={labelStyle}>
+              Regime atual
               <select value={regime} onChange={e=>setRegime(e.target.value)} style={input}>
                 {["Simples Nacional","Lucro Presumido","Lucro Real"].map(x=><option key={x}>{x}</option>)}
               </select>
             </label>
-            <label style={labelStyle}>Atividade
+
+            <label style={labelStyle}>
+              Atividade predominante
               <select value={atividade} onChange={e=>setAtividade(e.target.value)} style={input}>
                 {["Serviço","Comércio","Indústria"].map(x=><option key={x}>{x}</option>)}
               </select>
             </label>
-            <label style={labelStyle}>Faturamento mensal
-              <input value={faturamento} onChange={e=>setFaturamento(e.target.value)} style={input} placeholder="R$"/>
-            </label>
-            <label style={labelStyle}>Crescimento para cenário %
-              <input value={crescimento} onChange={e=>setCrescimento(e.target.value)} style={input} placeholder="%"/>
-            </label>
           </div>
 
-          <button type="button" onClick={carregarPerfilDespesas} style={{...chipStyle(false),marginTop:10}}>
-            Sugerir despesas pelo perfil da atividade
-          </button>
+          <label style={{...labelStyle,marginTop:9}}>
+            Faturamento mensal
+            <input value={faturamento} onChange={e=>setFaturamento(e.target.value)} style={input} placeholder="Ex.: 125000"/>
+          </label>
+
+          <div style={{...callout,marginTop:10}}>
+            <div style={{fontSize:8,fontWeight:900,color:MUTED}}>COMO INFORMAR A CARGA ATUAL?</div>
+            <div style={{display:"grid",gap:6,marginTop:7}}>
+              <button
+                type="button"
+                onClick={()=>setFonteCargaAtual("informado")}
+                style={{...chipStyle(fonteCargaAtual==="informado"),textAlign:"left"}}
+              >
+                Tenho o valor real pago no mês
+              </button>
+              <button
+                type="button"
+                onClick={()=>setFonteCargaAtual("estimado")}
+                style={{...chipStyle(fonteCargaAtual==="estimado"),textAlign:"left"}}
+              >
+                Quero uma estimativa rápida pelo regime
+              </button>
+            </div>
+          </div>
+
+          {fonteCargaAtual==="informado"?(
+            <label style={{...labelStyle,marginTop:9}}>
+              Total de tributos pagos no mês
+              <input value={impostoAtualMensal} onChange={e=>setImpostoAtualMensal(e.target.value)} style={input} placeholder="Ex.: 23092,50"/>
+              <span style={{...small,fontSize:8}}>Use o total real do período que você quer comparar.</span>
+            </label>
+          ):(
+            <div style={{...callout,marginTop:9,background:"#EEF5FF",borderColor:"#CADAF2"}}>
+              <div style={{fontSize:8,fontWeight:900,color:"#31589C"}}>ESTIMATIVA GERENCIAL</div>
+              <div style={{fontSize:19,fontWeight:900,marginTop:4}}>{moedaSimulador(impostoAtualEstimado)}</div>
+              <div style={{...small,fontSize:8,marginTop:3}}>
+                Referência simplificada: {aliquotaEstimativaAtual==null?"sem base":percentualSimulador(aliquotaEstimativaAtual)}. Não substitui a apuração real.
+              </div>
+            </div>
+          )}
+
+          <label style={{...labelStyle,marginTop:9}}>
+            Tributos mensais que continuarão fora do IBS/CBS
+            <input value={tributosForaConsumo} onChange={e=>setTributosForaConsumo(e.target.value)} style={input} placeholder="Ex.: IRPJ + CSLL + CPP que permanecerem no cenário"/>
+            <span style={{...small,fontSize:8}}>
+              Este valor é somado ao IBS/CBS líquido no cenário Reforma. Informe somente o que realmente permanecer fora do novo tributo.
+            </span>
+          </label>
         </div>
 
         <div style={card}>
-          <h3 style={{fontFamily:DISPLAY_FONT,marginTop:0}}>Premissas tributárias editáveis</h3>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:9}}>
-            <label style={labelStyle}>Carga atual sobre consumo %
-              <input value={aliquotaConsumoAtual} onChange={e=>setAliquotaConsumoAtual(e.target.value)} style={input}/>
-            </label>
-            <label style={labelStyle}>Tributos fora do consumo %
-              <input value={aliquotaForaConsumo} onChange={e=>setAliquotaForaConsumo(e.target.value)} style={input}/>
-            </label>
+          {cabecalho(
+            "Premissas do cenário IBS/CBS",
+            "Escolha uma referência para simular ou ajuste manualmente. As reduções só devem ser usadas quando houver fundamento aplicável.",
+            "PASSO 2"
+          )}
+
+          <div style={{display:"grid",gap:6,marginTop:10}}>
+            <button type="button" onClick={()=>aplicarPreset("teste2026")} style={{...chipStyle(presetReforma==="teste2026"),textAlign:"left"}}>
+              Teste 2026 · CBS 0,9% + IBS 0,1%
+            </button>
+            <button type="button" onClick={()=>aplicarPreset("referencia")} style={{...chipStyle(presetReforma==="referencia"),textAlign:"left"}}>
+              Cenário de referência editável · 28,0%
+            </button>
+            <button type="button" onClick={()=>setPresetReforma("personalizado")} style={{...chipStyle(presetReforma==="personalizado"),textAlign:"left"}}>
+              Personalizado
+            </button>
+          </div>
+
+          <div className="reforma-grid-2" style={{marginTop:10}}>
             <label style={labelStyle}>CBS %
-              <input value={cbs} onChange={e=>setCbs(e.target.value)} style={input}/>
+              <input value={cbs} onChange={e=>{setCbs(e.target.value);setPresetReforma("personalizado")}} style={input}/>
             </label>
             <label style={labelStyle}>IBS %
-              <input value={ibs} onChange={e=>setIbs(e.target.value)} style={input}/>
+              <input value={ibs} onChange={e=>{setIbs(e.target.value);setPresetReforma("personalizado")}} style={input}/>
+            </label>
+            <label style={labelStyle}>Redução CBS %
+              <input value={reducaoCbs} onChange={e=>setReducaoCbs(e.target.value)} style={input}/>
+            </label>
+            <label style={labelStyle}>Redução IBS %
+              <input value={reducaoIbs} onChange={e=>setReducaoIbs(e.target.value)} style={input}/>
             </label>
           </div>
-          <div style={{marginTop:10,padding:9,background:"#F7F9FC",borderRadius:9,fontSize:8.7,color:MUTED,lineHeight:1.5}}>
-            Total IVA usado: <b>{percentualSimulador(iva)}</b>. A premissa é editável porque a alíquota padrão final e tratamentos específicos dependem da legislação e do enquadramento aplicável.
+
+          <div style={{...callout,marginTop:10,display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:9,fontWeight:800}}>IVA efetivo usado</span>
+            <strong style={{fontSize:18}}>{percentualSimulador(ivaEfetivo)}</strong>
           </div>
         </div>
 
-        <PrimaryButton disabled={!faturamentoNum} onClick={()=>setEtapa("creditos")}>
-          Prosseguir para créditos <ArrowRight size={16}/>
+        <PrimaryButton
+          disabled={!fat || totalAtual<=0 || ivaEfetivo<=0}
+          onClick={()=>setEtapa("creditos")}
+        >
+          Mapear créditos <ArrowRight size={16}/>
         </PrimaryButton>
       </>}
 
       {etapa==="creditos"&&<>
         <div style={card}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"start",flexWrap:"wrap"}}>
-            <div>
-              <h3 style={{fontFamily:DISPLAY_FONT,margin:"0 0 4px"}}>Simulador de créditos</h3>
-              <div style={{fontSize:8.7,color:MUTED}}>Edite os valores mensais e a taxa de crédito atual. O crédito novo usa a premissa CBS + IBS informada.</div>
-            </div>
-            <span style={{fontSize:8,fontWeight:900,background:"#EEF3FF",color:"#31589C",borderRadius:999,padding:"5px 8px"}}>{atividade.toUpperCase()}</span>
+          {cabecalho(
+            "Mapa de despesas e créditos",
+            "Informe as despesas mensais reais. Marque como potencialmente creditável apenas o que deverá ser validado para o novo regime.",
+            "PASSO 3"
+          )}
+
+          <div style={{display:"flex",justifyContent:"space-between",gap:7,alignItems:"center",marginTop:10,flexWrap:"wrap"}}>
+            <span style={{...small,fontSize:8}}>Atividade: <b>{atividade}</b></span>
+            <button
+              type="button"
+              onClick={sugerirDespesas}
+              disabled={!fat}
+              style={{...chipStyle(false),fontSize:8}}
+            >
+              Preencher exemplo pelo perfil
+            </button>
           </div>
 
-          <div style={{display:"grid",gap:6,marginTop:12}}>
-            {linhasCredito.map(x=><div key={x.id} style={{
-              display:"grid",gridTemplateColumns:"1.4fr .8fr .7fr .65fr",gap:7,alignItems:"center",
-              borderBottom:"1px solid #EEF0F4",padding:"6px 0",fontSize:8.8
-            }}>
-              <b>{x.label}</b>
-              <input value={x.valor} onChange={e=>alterarDespesa(x.id,{valor:e.target.value})} style={{...input,padding:"7px 8px"}}/>
-              <input value={x.creditoAtualPct} onChange={e=>alterarDespesa(x.id,{creditoAtualPct:e.target.value})} style={{...input,padding:"7px 8px"}} title="% crédito atual"/>
-              <label style={{display:"flex",gap:5,alignItems:"center",fontSize:8}}>
-                <input type="checkbox" checked={x.elegivelNovo} onChange={e=>alterarDespesa(x.id,{elegivelNovo:e.target.checked})}/>
-                Crédito novo
-              </label>
-            </div>)}
+          <div style={{display:"grid",gap:0,marginTop:6}}>
+            {linhasCredito.map((item)=>(
+              <div key={item.id} className="reforma-credit-row">
+                <div>
+                  <b style={{fontSize:9.2}}>{item.label}</b>
+                  <div style={{...small,fontSize:7.7}}>Valor mensal</div>
+                </div>
+
+                <input
+                  value={item.valor}
+                  onChange={e=>alterarDespesa(item.id,{valor:e.target.value})}
+                  style={{...input,padding:"9px 9px"}}
+                  placeholder="R$"
+                />
+
+                <div className="reforma-credit-meta">
+                  <label style={{fontSize:7.5,fontWeight:800,color:MUTED}}>
+                    Crédito atual R$
+                    <input
+                      value={item.creditoAtual}
+                      onChange={e=>alterarDespesa(item.id,{creditoAtual:e.target.value})}
+                      style={{...input,padding:"8px",marginTop:3}}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label style={{fontSize:7.5,fontWeight:800,color:MUTED}}>
+                    Crédito novo %
+                    <input
+                      value={item.percentualCreditoNovo}
+                      onChange={e=>alterarDespesa(item.id,{percentualCreditoNovo:e.target.value})}
+                      style={{...input,padding:"8px",marginTop:3}}
+                      placeholder={ivaEfetivo?String(ivaEfetivo.toFixed(2)):""}
+                      disabled={!item.novoCreditoPermitido}
+                    />
+                  </label>
+                </div>
+
+                <label style={{display:"flex",gap:6,alignItems:"center",fontSize:8.2,fontWeight:700}}>
+                  <input
+                    type="checkbox"
+                    checked={item.novoCreditoPermitido}
+                    onChange={e=>alterarDespesa(item.id,{novoCreditoPermitido:e.target.checked})}
+                  />
+                  Considerar como potencial crédito IBS/CBS
+                </label>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-          {miniKpi("Despesas cadastradas",moedaSimulador(despesasTotal))}
-          {miniKpi("Crédito atual",moedaSimulador(creditoAtual),"#31589C")}
-          {miniKpi("Crédito novo",moedaSimulador(creditoNovo),"#176B47")}
-          {miniKpi("Crédito adicional / mês",moedaSimulador(creditoNovo-creditoAtual),creditoNovo>=creditoAtual?"#176B47":"#B42318")}
+        <div className="reforma-grid-2">
+          {miniKpi("Despesas mapeadas",moedaSimulador(despesasTotal))}
+          {miniKpi("Créditos atuais",moedaSimulador(creditoAtualTotal),"#31589C")}
+          {miniKpi("Créditos novos estimados",moedaSimulador(creditoNovoTotal),"#176B47")}
+          {miniKpi("Diferença de créditos",moedaSimulador(economiaCredito),economiaCredito>=0?"#176B47":"#B42318")}
+        </div>
+
+        <div style={{...callout,background:"#FFF8EC",borderColor:"#F3D99B",color:"#805B10"}}>
+          <b style={{fontSize:8.7}}>Atenção:</b>
+          <div style={{fontSize:8.2,lineHeight:1.5,marginTop:2}}>
+            O simulador não afirma automaticamente que uma despesa gera crédito. A elegibilidade precisa ser validada conforme a operação e a legislação aplicável.
+          </div>
         </div>
 
         <PrimaryButton onClick={()=>setEtapa("comparar")}>
-          Comparar cenários <ArrowRight size={16}/>
+          Calcular impacto <ArrowRight size={16}/>
         </PrimaryButton>
       </>}
 
       {etapa==="comparar"&&<>
         <div style={card}>
-          <h3 style={{fontFamily:DISPLAY_FONT,margin:"0 0 4px"}}>Antes × Depois</h3>
-          <div style={{fontSize:8.7,color:MUTED,marginBottom:12}}>Comparação gerencial mensal com as premissas informadas.</div>
+          {cabecalho(
+            "Atual × cenário Reforma",
+            "O cenário novo soma os tributos que permanecem fora do IBS/CBS ao IBS/CBS líquido após os créditos informados.",
+            "PASSO 4"
+          )}
 
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
-            <div style={{...card,background:"#F7F9FC"}}>
-              <div style={{fontSize:8,fontWeight:900,color:MUTED}}>SISTEMA ATUAL</div>
-              <h2 style={{fontSize:22,margin:"5px 0"}}>{moedaSimulador(totalAtual)}</h2>
-              <div style={{fontSize:8.7,color:MUTED}}>Carga efetiva estimada: {percentualSimulador(cargaAtual)}</div>
-            </div>
-            <div style={{...card,background:totalReforma>totalAtual?"#FFF5F2":"#F1FBF6",borderColor:totalReforma>totalAtual?"#F2C4B8":"#B9DFC8"}}>
-              <div style={{fontSize:8,fontWeight:900,color:MUTED}}>CENÁRIO REFORMA</div>
-              <h2 style={{fontSize:22,margin:"5px 0",color:totalReforma>totalAtual?"#B42318":"#176B47"}}>{moedaSimulador(totalReforma)}</h2>
-              <div style={{fontSize:8.7,color:MUTED}}>Carga efetiva estimada: {percentualSimulador(cargaReforma)}</div>
-            </div>
+          <div className="reforma-grid-2" style={{marginTop:12}}>
+            {miniKpi(
+              "Total atual",
+              totalAtual>0?moedaSimulador(totalAtual):"Pendente",
+              NAVY,
+              fonteCargaAtual==="estimado"?"estimativa gerencial":"valor informado"
+            )}
+            {miniKpi(
+              "Total cenário Reforma",
+              totalReforma==null?"Pendente":moedaSimulador(totalReforma),
+              totalReforma!=null&&totalReforma>totalAtual?"#B42318":"#176B47",
+              "fora do consumo + IBS/CBS líquido"
+            )}
           </div>
 
-          <div style={{display:"grid",gap:8,marginTop:14}}>
-            {barra("Atual",totalAtual,Math.max(totalAtual,totalReforma,1),"#31589C")}
-            {barra("Reforma",totalReforma,Math.max(totalAtual,totalReforma,1),totalReforma>totalAtual?"#FF6B4A":"#176B47")}
+          <div style={{display:"grid",gap:10,marginTop:14}}>
+            {barra("Atual",totalAtual,Math.max(totalAtual,totalReforma||0,1),"#31589C")}
+            {barra("Reforma",totalReforma||0,Math.max(totalAtual,totalReforma||0,1),totalReforma!=null&&totalReforma>totalAtual?"#FF6B4A":"#176B47")}
           </div>
 
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:12}}>
-            {miniKpi("Diferença / mês",moedaSimulador(diferenca),diferenca>0?"#B42318":"#176B47")}
-            {miniKpi("Variação",variacao==null?"-":percentualSimulador(variacao),diferenca>0?"#B42318":"#176B47")}
-            {miniKpi("Crédito adicional",moedaSimulador(creditoNovo-creditoAtual),"#176B47")}
+          <div className="reforma-grid-3" style={{marginTop:12}}>
+            {miniKpi("Diferença / mês",diferenca==null?"Pendente":moedaSimulador(diferenca),diferenca!=null&&diferenca>0?"#B42318":"#176B47")}
+            {miniKpi("Variação",variacao==null?"Pendente":percentualSimulador(variacao),variacao!=null&&variacao>0?"#B42318":"#176B47")}
+            {miniKpi("Perfil B2B",percentualSimulador(b2bPct),"#31589C","indicador comercial")}
           </div>
         </div>
 
         <div style={card}>
-          <h3 style={{fontFamily:DISPLAY_FONT,margin:"0 0 4px"}}>Comparar regimes</h3>
-          <div style={{fontSize:8.5,color:MUTED,marginBottom:10}}>Estimativa simplificada para orientação inicial. O Planejamento Tributário completo faz o cálculo técnico.</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-            {regimesComparacao.map(x=><div key={x.regime} style={{...card,padding:11,borderTop:`4px solid ${x.regime===regime?CORAL:"#31589C"}`}}>
-              <b style={{fontSize:9}}>{x.regime}</b>
-              <div style={{fontSize:17,fontWeight:900,marginTop:5}}>{x.mensal==null?"Pendente":moedaSimulador(x.mensal)}</div>
-              <div style={{fontSize:8,color:MUTED,marginTop:3}}>{x.aliquota==null?"Sem base":`Alíquota gerencial ${percentualSimulador(x.aliquota)}`}</div>
-            </div>)}
+          {cabecalho(
+            "Memória do cálculo",
+            "Sempre mostramos de onde o resultado saiu para evitar números sem rastreabilidade."
+          )}
+
+          <div style={{display:"grid",gap:7,marginTop:10,fontSize:8.8}}>
+            {[
+              ["Faturamento mensal",moedaSimulador(fat)],
+              ["CBS efetiva",percentualSimulador(cbsEfetiva)],
+              ["IBS efetivo",percentualSimulador(ibsEfetiva)],
+              ["Débito CBS",moedaSimulador(debitoCbs)],
+              ["Débito IBS",moedaSimulador(debitoIbs)],
+              ["(-) Créditos IBS/CBS",moedaSimulador(creditoNovoTotal)],
+              ["IBS/CBS líquido",moedaSimulador(ibsCbsLiquido)],
+              ["(+) Tributos fora do IBS/CBS",moedaSimulador(fora)],
+              ["Total cenário Reforma",totalReforma==null?"Pendente":moedaSimulador(totalReforma)],
+            ].map(([l,v])=>(
+              <div key={l} style={{display:"flex",justifyContent:"space-between",gap:10,borderBottom:"1px solid #EEF0F4",paddingBottom:6}}>
+                <span style={{color:MUTED}}>{l}</span>
+                <b style={{textAlign:"right"}}>{v}</b>
+              </div>
+            ))}
           </div>
         </div>
 
         <PrimaryButton onClick={()=>setEtapa("transicao")}>
-          Ver transição 2026–2033 <ArrowRight size={16}/>
+          Projetar crescimento <ArrowRight size={16}/>
         </PrimaryButton>
       </>}
 
       {etapa==="transicao"&&<>
         <div style={card}>
-          <h3 style={{fontFamily:DISPLAY_FONT,margin:"0 0 4px"}}>Transição 2026–2033</h3>
-          <div style={{fontSize:8.7,color:MUTED,marginBottom:12}}>A linha do tempo separa a fase de teste/implantação da substituição gradual. Regras específicas devem ser validadas na data da análise.</div>
+          {cabecalho(
+            "Crescimento e sensibilidade",
+            "Veja como o impacto muda quando a receita cresce. Créditos são projetados proporcionalmente apenas como referência.",
+            "PASSO 5"
+          )}
 
-          <div style={{display:"grid",gap:8}}>
-            {transicao.map(x=><div key={x.ano} style={{display:"grid",gridTemplateColumns:"75px 1fr 1.2fr",gap:8,alignItems:"center",padding:"9px 0",borderBottom:"1px solid #EEF0F4"}}>
-              <b>{x.ano}</b>
-              {x.legado==null?<div style={{fontSize:8.5,color:MUTED}}>Fase específica</div>:<div>
-                <div style={{height:9,background:"#EEF1F5",borderRadius:999,overflow:"hidden",display:"flex"}}>
-                  <div style={{width:`${x.legado}%`,background:"#31589C"}}/>
-                  <div style={{width:`${x.novo}%`,background:CORAL}}/>
-                </div>
-                <div style={{fontSize:7.5,color:MUTED,marginTop:3}}>Legado {x.legado}% · Novo {x.novo}%</div>
-              </div>}
-              <div style={{fontSize:8.3,color:MUTED}}>{x.nota}</div>
-            </div>)}
+          <label style={{...labelStyle,marginTop:10}}>
+            Crescimento da receita %
+            <input value={crescimento} onChange={e=>setCrescimento(e.target.value)} style={input}/>
+          </label>
+
+          <label style={{...labelStyle,marginTop:9}}>
+            Percentual aproximado de clientes B2B %
+            <input value={b2b} onChange={e=>setB2b(e.target.value)} style={input}/>
+            <span style={{...small,fontSize:8}}>
+              Não altera o imposto diretamente neste simulador. É usado como sinal comercial para o diagnóstico completo.
+            </span>
+          </label>
+
+          <div className="reforma-grid-3" style={{marginTop:12}}>
+            {miniKpi("Faturamento projetado",moedaSimulador(faturamentoProjetado))}
+            {miniKpi("Atual projetado",moedaSimulador(totalAtualProjetado),"#31589C")}
+            {miniKpi("Reforma projetada",totalReformaProjetado==null?"Pendente":moedaSimulador(totalReformaProjetado),totalReformaProjetado!=null&&totalReformaProjetado>totalAtualProjetado?"#B42318":"#176B47")}
+          </div>
+
+          <div style={{marginTop:13}}>
+            {barra(
+              "Atual projetado",
+              totalAtualProjetado,
+              Math.max(totalAtualProjetado,totalReformaProjetado||0,1),
+              "#31589C"
+            )}
+            <div style={{height:9}}/>
+            {barra(
+              "Reforma projetada",
+              totalReformaProjetado||0,
+              Math.max(totalAtualProjetado,totalReformaProjetado||0,1),
+              totalReformaProjetado!=null&&totalReformaProjetado>totalAtualProjetado?"#FF6B4A":"#176B47"
+            )}
           </div>
         </div>
 
-        <div style={card}>
-          <h3 style={{fontFamily:DISPLAY_FONT,margin:"0 0 4px"}}>Cenário de crescimento</h3>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:10}}>
-            {miniKpi("Faturamento projetado",moedaSimulador(faturamentoProjetado))}
-            {miniKpi("Atual projetado",moedaSimulador(totalAtualProjetado),"#31589C")}
-            {miniKpi("Reforma projetada",moedaSimulador(totalReformaProjetado),totalReformaProjetado>totalAtualProjetado?"#B42318":"#176B47")}
+        <div style={{...callout,background:"#EEF5FF",borderColor:"#CADAF2"}}>
+          <b style={{fontSize:8.7,color:"#31589C"}}>Transição 2026–2033</b>
+          <div style={{fontSize:8.2,lineHeight:1.55,marginTop:4,color:MUTED}}>
+            O diagnóstico completo da Reforma trabalha a transição ano a ano. No simulador público, evitamos misturar automaticamente regimes, créditos e cronogramas sem base suficiente.
           </div>
         </div>
 
         <PrimaryButton onClick={()=>setEtapa("resultado")}>
-          Concluir simulação <ArrowRight size={16}/>
+          Ver resultado executivo <ArrowRight size={16}/>
         </PrimaryButton>
       </>}
 
       {etapa==="resultado"&&<>
-        <div style={{background:"linear-gradient(135deg,#0E1A33,#17233D)",color:"#fff",borderRadius:18,padding:18}}>
-          <div style={{fontSize:8,fontWeight:900,color:"#FFB7A7"}}>RESULTADO DA SIMULAÇÃO</div>
-          <h2 style={{fontFamily:DISPLAY_FONT,fontSize:23,margin:"5px 0"}}>{diferenca>0?"Atenção ao impacto da Reforma":"Há potencial de redução no cenário informado"}</h2>
-          <p style={{fontSize:9.5,color:"#D8DEEA",lineHeight:1.6,margin:0}}>
-            Com as premissas informadas, a carga estimada passa de <b>{moedaSimulador(totalAtual)}</b> para <b>{moedaSimulador(totalReforma)}</b> por mês.
+        <div style={{
+          background:"linear-gradient(145deg,#101C35,#17233D)",
+          color:"#fff",
+          borderRadius:18,
+          padding:17
+        }}>
+          <div style={{fontSize:8,fontWeight:900,color:"#FFB7A7"}}>RESULTADO GERENCIAL</div>
+          <h2 style={{fontFamily:DISPLAY_FONT,fontSize:22,lineHeight:1.12,margin:"6px 0"}}>
+            {diferenca==null
+              ?"Complete a base para concluir"
+              :diferenca>0
+              ?"A Reforma pode pressionar sua carga neste cenário"
+              :"O cenário informado indica potencial de redução"}
+          </h2>
+          <p style={{fontSize:9,color:"#D8DEEA",lineHeight:1.55,margin:0}}>
+            {diferenca==null
+              ?"Ainda faltam dados para comparar o cenário atual com o novo."
+              :<>A comparação mensal vai de <b>{moedaSimulador(totalAtual)}</b> para <b>{moedaSimulador(totalReforma)}</b>.</>}
           </p>
 
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginTop:12}}>
+          <div className="reforma-grid-2" style={{marginTop:12}}>
             {[
-              ["Carga atual",percentualSimulador(cargaAtual)],
-              ["Carga Reforma",percentualSimulador(cargaReforma)],
-              ["Diferença",moedaSimulador(diferenca)],
-              ["Créditos novos",moedaSimulador(creditoNovo)],
-            ].map(([t,v])=><div key={t} style={{background:"rgba(255,255,255,.08)",borderRadius:10,padding:9}}>
-              <div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>{t.toUpperCase()}</div>
-              <div style={{fontSize:15,fontWeight:900,marginTop:3}}>{v}</div>
-            </div>)}
+              ["Carga atual",cargaAtual==null?"Pendente":percentualSimulador(cargaAtual)],
+              ["Carga Reforma",cargaReforma==null?"Pendente":percentualSimulador(cargaReforma)],
+              ["Diferença mensal",diferenca==null?"Pendente":moedaSimulador(diferenca)],
+              ["Diferença anual",diferenca==null?"Pendente":moedaSimulador(diferenca*12)],
+            ].map(([t,v])=>(
+              <div key={t} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.08)",borderRadius:11,padding:10,minWidth:0}}>
+                <div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>{t.toUpperCase()}</div>
+                <div style={{fontSize:15,fontWeight:900,marginTop:4,overflowWrap:"anywhere"}}>{v}</div>
+              </div>
+            ))}
           </div>
         </div>
 
         <div style={card}>
-          <h3 style={{fontFamily:DISPLAY_FONT,margin:"0 0 5px"}}>O que mais influencia seu resultado</h3>
-          <ul style={{fontSize:9.2,lineHeight:1.6,color:NAVY,paddingLeft:18}}>
-            <li>Volume e natureza das despesas que efetivamente geram créditos.</li>
-            <li>Perfil B2B/B2C e capacidade de repassar preço.</li>
-            <li>Regime tributário, tratamentos específicos e benefícios aplicáveis.</li>
-            <li>Qualidade dos cadastros fiscais, notas, ERP e contratos.</li>
-            <li>Alíquotas utilizadas como premissa e regras vigentes no período analisado.</li>
-          </ul>
+          {cabecalho(
+            "O que está dirigindo o resultado",
+            "O número final sozinho não basta. Estes são os fatores que precisam ser validados no diagnóstico técnico."
+          )}
+
+          <div style={{display:"grid",gap:7,marginTop:10}}>
+            {[
+              ["Carga atual", fonteCargaAtual==="estimado" ? "Está usando uma estimativa gerencial. Para decisão, substitua pelo valor real apurado." : "Está usando o total mensal informado."],
+              ["Créditos", `${moedaSimulador(creditoNovoTotal)} foram considerados como potenciais créditos no cenário novo.`],
+              ["Tributos fora do IBS/CBS", `${moedaSimulador(fora)} foram mantidos fora do novo tributo.`],
+              ["Perfil comercial", `${percentualSimulador(b2bPct)} da carteira foi informado como B2B; isso pode mudar a análise de preço e competitividade.`],
+            ].map(([t,d])=>(
+              <div key={t} style={{...callout,padding:10}}>
+                <b style={{fontSize:8.7}}>{t}</b>
+                <div style={{...small,fontSize:8.1,marginTop:2}}>{d}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div style={{...card,background:"#FFF9EE",borderColor:"#F2D79C",fontSize:8.8,color:"#805B10",lineHeight:1.55}}>
-          O resultado é uma simulação pedagógica/gerencial. Para uma decisão tributária, faça o Diagnóstico da Reforma com os dados reais, documentos e validação técnica.
+        <div style={{...callout,background:"#FFF8EC",borderColor:"#F3D99B",color:"#805B10"}}>
+          <b style={{fontSize:8.7}}>Resultado preliminar.</b>
+          <div style={{fontSize:8.2,lineHeight:1.5,marginTop:2}}>
+            Para recomendar Simples dentro/fora, benefício setorial, regime tributário ou tratamento de créditos, o diagnóstico completo precisa cruzar CNPJ, CNAEs, documentos e operação real.
+          </div>
         </div>
 
         <PrimaryButton onClick={()=>onAprofundar?.(snapshot)}>
           Fazer Diagnóstico completo da Reforma <ArrowRight size={16}/>
         </PrimaryButton>
 
-        <button type="button" onClick={()=>setEtapa("configurar")} style={{...chipStyle(false),width:"100%"}}>
-          Ajustar simulação
+        <button
+          type="button"
+          onClick={()=>setEtapa("configurar")}
+          style={{...chipStyle(false),width:"100%",minHeight:42}}
+        >
+          Ajustar premissas
         </button>
       </>}
     </div>
