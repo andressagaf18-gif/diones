@@ -799,6 +799,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [b2b,setB2b]=useState(""),[b2c,setB2c]=useState(""),[receita,setReceita]=useState(""),[compras,setCompras]=useState(""),[servicosTomados,setServicosTomados]=useState(""),[creditosAtuais,setCreditosAtuais]=useState(""),[tributosAtuais,setTributosAtuais]=useState("");
  const [setorAtividade,setSetorAtividade]=useState(""),[tipoEstabelecimento,setTipoEstabelecimento]=useState(""),[quantidadeEstabelecimentos,setQuantidadeEstabelecimentos]=useState(""),[municipiosOperacao,setMunicipiosOperacao]=useState(""),[ufsOperacao,setUfsOperacao]=useState("");
  const [anexoSimples,setAnexoSimples]=useState(""),[aliquotaEfetivaSimples,setAliquotaEfetivaSimples]=useState(""),[dasPeriodo,setDasPeriodo]=useState(""),[fatorR,setFatorR]=useState("");
+ const [dasPeriodoFonte,setDasPeriodoFonte]=useState(null);
  const [anexoFonte,setAnexoFonte]=useState(null);
  const [gerandoPdfCliente,setGerandoPdfCliente]=useState(false);
  const [faturamentoAnual,setFaturamentoAnual]=useState(""),[margem,setMargem]=useState(""),[folha,setFolha]=useState(""),[proLabore,setProLabore]=useState(""),[despesasDedutiveis,setDespesasDedutiveis]=useState("");
@@ -820,6 +821,75 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     : s;
   const valor=Number(normalizado.replace(/[^\d.-]/g,""));
   return Number.isFinite(valor)?valor:0;
+ };
+ const componentesDasTotal=(fonte=extracao)=>{
+  const t=fonte?.tributos||{};
+  return [
+   t.pis,t.cofins,t.icms,t.iss,t.ipi,t.cpp,t.irpj,t.csll,t.outros
+  ].reduce((a,v)=>a+n(v),0);
+ };
+
+ const corrigirDasLegado=(valorBruto,{fonteExtracao=extracao,baseReceita=receita||faturamentoAnual}={})=>{
+  const bruto=n(valorBruto);
+  if(!bruto)return{valor:0,corrigido:false,motivo:"SEM_VALOR"};
+
+  const componentes=componentesDasTotal(fonteExtracao);
+  const base=n(baseReceita);
+
+  // Principal proteção: versões antigas transformaram 14.283,35 em 1.428.335,00.
+  // Se o valor dividido por 100 fecha com a soma documental dos componentes,
+  // usamos a composição documental como referência.
+  if(componentes>0){
+   const candidatos=[
+    {valor:bruto,fator:1},
+    {valor:bruto/100,fator:100},
+    {valor:bruto/1000,fator:1000}
+   ];
+
+   const melhor=candidatos
+    .map(c=>({...c,desvio:Math.abs(c.valor-componentes)/Math.max(componentes,1)}))
+    .sort((a,b)=>a.desvio-b.desvio)[0];
+
+   if(melhor&&melhor.desvio<=0.01){
+    return{
+     valor:componentes,
+     corrigido:melhor.fator!==1,
+     motivo:melhor.fator!==1?`CORRECAO_LEGADO_X${melhor.fator}`:"COMPOSICAO_DOCUMENTAL",
+     bruto,
+     componentes,
+     fator:melhor.fator
+    };
+   }
+  }
+
+  // Segunda proteção: DAS mensal maior que a própria base informada costuma indicar
+  // erro de escala. Só corrige se /100 volta para uma faixa plausível.
+  if(base>0&&bruto>base&&bruto/100<=base){
+   return{
+    valor:bruto/100,
+    corrigido:true,
+    motivo:"CORRECAO_ESCALA_BASE_X100",
+    bruto,
+    componentes,
+    fator:100
+   };
+  }
+
+  return{
+   valor:bruto,
+   corrigido:false,
+   motivo:"VALOR_ORIGINAL",
+   bruto,
+   componentes,
+   fator:1
+  };
+ };
+
+ const aplicarDasPeriodoSeguro=(valorBruto,opcoes={})=>{
+  const r=corrigirDasLegado(valorBruto,opcoes);
+  setDasPeriodo(r.valor?String(r.valor):"");
+  setDasPeriodoFonte(r);
+  return r;
  };
  const input={width:"100%",border:"1px solid #D9E0EA",borderRadius:12,padding:"11px 12px",fontSize:10.5,boxSizing:"border-box",background:"#FCFDFE",color:"#17233D",outline:"none",transition:"border-color .18s, box-shadow .18s"};
  const card={background:"#fff",border:"1px solid #E5EAF1",borderRadius:18,padding:18,boxShadow:"0 8px 26px rgba(23,35,61,.045)"};
@@ -988,8 +1058,18 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   setAnexoSimples(sm.anexo||"");
   setAnexoFonte(sm.anexoFonte||null);
   setAliquotaEfetivaSimples(sm.aliquotaEfetivaPct!=null?String(sm.aliquotaEfetivaPct):"");
-  setDasPeriodo(sm.dasPeriodo!=null?String(sm.dasPeriodo):"");
+  if(sm.dasPeriodo!=null){
+   const extracaoSalva=manuais.extracao||salvo.extracao||null;
+   aplicarDasPeriodoSeguro(sm.dasPeriodo,{
+    fonteExtracao:extracaoSalva,
+    baseReceita:val.receita||val.faturamentoAnual
+   });
+  }else{
+   setDasPeriodo("");
+   setDasPeriodoFonte(null);
+  }
   setFatorR(sm.fatorRPct!=null?String(sm.fatorRPct):"");
+  if(sm.dasPeriodoFonte&&!sm.dasPeriodoFonte.corrigido)setDasPeriodoFonte(at=>at||sm.dasPeriodoFonte);
 
   setIncentivoAtual(tr.incentivoAtual||"NORMAL");
   setReducaoIbsCbs(tr.reducaoIbsCbsPct!=null?String(tr.reducaoIbsCbsPct):"");
@@ -1174,7 +1254,12 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    setAnexoFonte(null);
   }
   if(sm.aliquotaEfetivaPct!=null)setAliquotaEfetivaSimples(String(sm.aliquotaEfetivaPct));
-  if(sm.dasPeriodo!=null)setDasPeriodo(String(sm.dasPeriodo));
+  if(sm.dasPeriodo!=null){
+   aplicarDasPeriodoSeguro(sm.dasPeriodo,{
+    fonteExtracao:x,
+    baseReceita:ec.receitaPeriodo||ec.faturamentoAnual||receita||faturamentoAnual
+   });
+  }
   if(sm.fatorRPct!=null)setFatorR(String(sm.fatorRPct));
 
   if(tt.incentivoPisCofins)setIncentivoAtual("PIS_COFINS");
@@ -1290,7 +1375,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    setExtraindo(false);
   }
  }
- function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
+ function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),dasPeriodoFonte,fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(reconciliarAnaliseCadastral(d.analise));setAnaliseDesatualizada(false);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
  async function salvar(status="EM_ANALISE"){
   try{
@@ -2266,6 +2351,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div style={{fontSize:8,fontWeight:900,color:"#C9D3E3"}}>CLIENTE EM ANÁLISE</div>
      <div style={{fontSize:16,fontWeight:900,marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Empresa ainda não identificada"}</div>
      <div style={{fontSize:8.5,color:"#C9D3E3",marginTop:3}}>{digits(cnpj)||"CNPJ pendente"} · {regime||"Regime pendente"}</div>
+     <div style={{fontSize:7.5,color:"#BFC8D8",marginTop:5}}>Base do DAS atual: {dasPeriodoFonte?.motivo==="MANUAL"?"informação manual":dasPeriodoFonte?.componentes>0?"composição documental do PGDAS/DAS":"valor documental extraído"}.</div>
      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:12}}>
       <div style={{background:"rgba(255,255,255,.07)",borderRadius:10,padding:9}}><div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>COBERTURA</div><div style={{fontSize:18,fontWeight:900,marginTop:2}}>{motor.coberturaPct}%</div></div>
       <div style={{background:"rgba(255,255,255,.07)",borderRadius:10,padding:9}}><div style={{fontSize:7,color:"#BFC8D8",fontWeight:900}}>DOCUMENTOS IA</div><div style={{fontSize:18,fontWeight:900,marginTop:2}}>{documentosIa.length}</div></div>
@@ -2277,6 +2363,11 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
    {erro&&<div style={{...card,borderColor:"#F0C4BC",background:"#FFF8F6",color:"#A23D2A",marginBottom:9,boxShadow:"none"}}><b style={{fontSize:9}}>Atenção</b><div style={{marginTop:3,fontSize:9}}>{erro}</div></div>}
    {ok&&<div style={{...card,borderColor:"#B9DFC8",background:"#F5FCF8",color:"#176B47",marginBottom:9,boxShadow:"none"}}><b style={{fontSize:9}}>Atualizado</b><div style={{marginTop:3,fontSize:9}}>{ok}</div></div>}
+
+   {dasPeriodoFonte?.corrigido&&<div style={{background:"#FFF8E7",border:"1px solid #F3D99B",borderRadius:12,padding:"9px 11px",marginBottom:10,color:"#805B10",fontSize:8.8,lineHeight:1.5}}>
+    <b>DAS atual corrigido automaticamente:</b> o valor salvo anteriormente estava em escala incorreta. Valor antigo {moedaMotor(dasPeriodoFonte.bruto)} → base documental utilizada {moedaMotor(dasPeriodoFonte.valor)}.
+    {dasPeriodoFonte.componentes>0&&<> A soma dos componentes do DAS encontrada nos documentos é {moedaMotor(dasPeriodoFonte.componentes)}.</>}
+   </div>}
 
    <div className="fr-kpis" style={{marginBottom:12}}>
     {[
@@ -2363,7 +2454,17 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    </small>
   </label>
   {field("Alíquota efetiva %",aliquotaEfetivaSimples,setAliquotaEfetivaSimples,"%")}
-  {field("DAS do período",dasPeriodo,setDasPeriodo,"R$")}
+  <label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>
+   DAS do período
+   <input value={dasPeriodo} onChange={e=>{setDasPeriodo(e.target.value);setDasPeriodoFonte({valor:n(e.target.value),corrigido:false,motivo:"MANUAL"})}} placeholder="R$" style={input}/>
+   <small style={{fontWeight:500,color:dasPeriodoFonte?.corrigido?"#B7791F":"#697386"}}>
+    {dasPeriodoFonte?.corrigido
+     ?`Valor corrigido automaticamente de ${moedaMotor(dasPeriodoFonte.bruto)} para ${moedaMotor(dasPeriodoFonte.valor)} (${dasPeriodoFonte.motivo}).`
+     :dasPeriodoFonte?.componentes
+      ?`Composição documental encontrada: ${moedaMotor(dasPeriodoFonte.componentes)}.`
+      :"Fonte: PGDAS/DAS documental ou confirmação manual."}
+   </small>
+  </label>
   {field("Fator R %",fatorR,setFatorR,"%")}
  </div>
 </div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
