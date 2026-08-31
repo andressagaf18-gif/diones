@@ -1692,11 +1692,15 @@ async function listarDocumentos(req, res) {
     FROM tax_documents
     WHERE
       (
-        ${cnpj} <> ''
-        AND cnpj = ${cnpj}
+        (
+          ${cnpj} <> ''
+          AND cnpj = ${cnpj}
+        )
         OR
-        ${cnpj} = ''
-        AND projeto_id = ${projetoId}
+        (
+          ${projetoId} <> ''
+          AND projeto_id = ${projetoId}
+        )
       )
       AND (
         ${tipoProjeto} = ''
