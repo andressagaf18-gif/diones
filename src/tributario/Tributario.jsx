@@ -792,7 +792,7 @@ function DadosManuais({
 
 
 
-function ReformaTributariaV2({token,onVoltar}){
+function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [aba,setAba]=useState("identificacao");
  const [cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState("");
  const [responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState(""),[descricao,setDescricao]=useState(""),[regime,setRegime]=useState(""),[municipio,setMunicipio]=useState(""),[uf,setUf]=useState("");
@@ -807,8 +807,9 @@ function ReformaTributariaV2({token,onVoltar}){
  const [documentosBanco,setDocumentosBanco]=useState([]);
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
  const [carregandoDocumentos,setCarregandoDocumentos]=useState(false);
+ const [analiseDesatualizada,setAnaliseDesatualizada]=useState(false);
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
- const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}});
+ const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}})());
  const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["motor","7. Recomendação"],["impacto","8. Impactos"],["transicao","9. Transição"],["relatorio","10. Relatório"]];
  const n=v=>{
   if(typeof v==="number")return Number.isFinite(v)?v:0;
@@ -874,7 +875,136 @@ function ReformaTributariaV2({token,onVoltar}){
  },[cnpj]);
  function normalizarCnaes(data){const p=data?.cnaePrincipal||data?.cnae?.principal||null,s=data?.cnaesSecundarios||data?.cnae?.secundarios||[],todos=data?.todosCnaes||data?.cnae?.todos||[p,...s].filter(Boolean);return(todos||[]).map((x,i)=>({codigo:String(x?.codigo||x?.cnae||""),descricao:x?.descricao||"",principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&p)})).filter(x=>x.codigo||x.descricao)}
  async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");return{dados:d,cnaes:lista}}
- async function buscarCnpj(){try{setErro("");await consultarCnpj(cnpj);await carregarArquivoCliente(cnpj);setOk("CNPJ, CNAEs e arquivo documental do cliente atualizados.")}catch(e){setErro(e.message)}}
+ function pendenciaReformaResolvida(texto,{
+  cnpjAtual=cnpj,
+  cnaesAtuais=cnaes,
+  municipioAtual=municipio,
+  ufAtual=uf,
+  regimeAtual=regime
+ }={}){
+  const s=String(texto||"").toLowerCase();
+
+  if(digits(cnpjAtual).length===14 && /(cnpj|identifica[cç][aã]o cadastral|cadastro da empresa)/i.test(s)) return true;
+  if(Array.isArray(cnaesAtuais)&&cnaesAtuais.length>0 && /(cnae|atividade econ[oô]mica|atividade principal)/i.test(s)) return true;
+  if(municipioAtual && /(munic[ií]pio|cidade|localiza[cç][aã]o)/i.test(s)) return true;
+  if(ufAtual && /(\buf\b|estado)/i.test(s)) return true;
+  if(regimeAtual && /(regime tribut[aá]rio|simples nacional|lucro presumido|lucro real)/i.test(s)) return true;
+
+  return false;
+ }
+
+ function reconciliarAnaliseCadastral(a,contexto={}){
+  if(!a)return a;
+  return{
+   ...a,
+   dadosFaltantes:Array.isArray(a.dadosFaltantes)
+    ?a.dadosFaltantes.filter(x=>!pendenciaReformaResolvida(x,contexto))
+    :[]
+  };
+ }
+
+ useEffect(()=>{
+  if(!projetoInicial?.id)return;
+
+  const p=projetoInicial;
+  const manuais=p.dadosManuais||{};
+  const salvo=manuais.reformaV2||{};
+  const id=salvo.identificacao||{};
+  const at=salvo.atividades||p.atividades||{};
+  const op=salvo.operacao||{};
+  const val=salvo.valores||{};
+  const sm=salvo.simples||{};
+  const tr=salvo.tratamentos||{};
+  const emp=Array.isArray(p.empresas)&&p.empresas.length?p.empresas[0]:null;
+
+  const c=digits(id.cnpj||emp?.cnpj||p.cnpj||"");
+  if(c)setCnpj(c);
+
+  if(emp||id.razaoSocial){
+   setEmpresa({
+    ...(emp||{}),
+    razaoSocial:id.razaoSocial||emp?.razaoSocial||p.clienteNome||""
+   });
+  }
+
+  setMunicipio(id.municipio||emp?.municipio||"");
+  setUf(id.uf||emp?.uf||"");
+  setRegime(id.regime||"");
+  setResponsavel(id.responsavel||p.responsavelFinder||"");
+  setOrigem(id.origem||p.origemCliente||"");
+
+  if(Array.isArray(at.cnaes||at.selecionadas))setCnaes(at.cnaes||at.selecionadas);
+  setPrincipal(at.principal||at.principalReal||"");
+  setDescricao(at.descricaoReal||op.descricao||"");
+
+  setSetorAtividade(op.setorAtividade||"");
+  setTipoEstabelecimento(op.tipoEstabelecimento||"");
+  setQuantidadeEstabelecimentos(op.quantidadeEstabelecimentos!=null?String(op.quantidadeEstabelecimentos):"");
+  setMunicipiosOperacao(op.municipiosOperacao||"");
+  setUfsOperacao(op.ufsOperacao||"");
+  setB2b(op.b2b!=null?String(op.b2b):"");
+  setB2c(op.b2c!=null?String(op.b2c):"");
+  setExportacao(op.exportacaoPct!=null?String(op.exportacaoPct):"");
+
+  setReceita(val.receita!=null?String(val.receita):"");
+  setFaturamentoAnual(val.faturamentoAnual!=null?String(val.faturamentoAnual):"");
+  setCompras(val.compras!=null?String(val.compras):"");
+  setServicosTomados(val.servicosTomados!=null?String(val.servicosTomados):"");
+  setCreditosAtuais(val.creditosAtuais!=null?String(val.creditosAtuais):"");
+  setTributosAtuais(val.tributosAtuais!=null?String(val.tributosAtuais):"");
+  setMargem(val.margemRealPct!=null?String(val.margemRealPct):"");
+  setFolha(val.folhaMensal!=null?String(val.folhaMensal):"");
+  setProLabore(val.proLaboreMensal!=null?String(val.proLaboreMensal):"");
+  setDespesasDedutiveis(val.despesasDedutiveisAnuais!=null?String(val.despesasDedutiveisAnuais):"");
+  setAliquotaAtual(val.aliquotaAtualIssIcmsPct!=null?String(val.aliquotaAtualIssIcmsPct):"");
+
+  setAnexoSimples(sm.anexo||"");
+  setAnexoFonte(sm.anexoFonte||null);
+  setAliquotaEfetivaSimples(sm.aliquotaEfetivaPct!=null?String(sm.aliquotaEfetivaPct):"");
+  setDasPeriodo(sm.dasPeriodo!=null?String(sm.dasPeriodo):"");
+  setFatorR(sm.fatorRPct!=null?String(sm.fatorRPct):"");
+
+  setIncentivoAtual(tr.incentivoAtual||"NORMAL");
+  setReducaoIbsCbs(tr.reducaoIbsCbsPct!=null?String(tr.reducaoIbsCbsPct):"");
+  setTratamentoEspecial(tr.tratamentoEspecial||"");
+
+  setExtracao(manuais.extracao||salvo.extracao||null);
+  setAnalise(manuais.analise||null);
+  setSimulacao(manuais.simulacao||salvo.simulacao||null);
+  setAnaliseDesatualizada(Boolean(manuais.analiseDesatualizada));
+
+  if(Array.isArray(p.documentos)&&p.documentos.length){
+   setDocumentosBanco(p.documentos);
+   setDocumentosSelecionados(Object.fromEntries(p.documentos.map(d=>[d.id,true])));
+  }else if(c.length===14){
+   setTimeout(()=>carregarArquivoCliente(c),0);
+  }
+
+  setOk(`Reforma reaberta mantendo o projeto ${p.id}. ${Array.isArray(p.backups)?p.backups.length:0} backup(s) disponível(is).`);
+ },[projetoInicial?.id]);
+
+ async function buscarCnpj(){
+  try{
+   setErro("");
+   const cad=await consultarCnpj(cnpj);
+
+   setAnalise(atual=>reconciliarAnaliseCadastral(atual,{
+    cnpjAtual:digits(cnpj),
+    cnaesAtuais:cad.cnaes,
+    municipioAtual:cad.dados?.municipio||municipio,
+    ufAtual:cad.dados?.uf||uf,
+    regimeAtual:regime
+   }));
+
+   if(analise)setAnaliseDesatualizada(true);
+
+   await carregarArquivoCliente(cnpj);
+
+   setOk("CNPJ e CNAEs atualizados. Pendências cadastrais já resolvidas foram removidas; o diagnóstico anterior, se existir, foi marcado para atualização.");
+  }catch(e){
+   setErro(e.message);
+  }
+ }
  const EXTENSOES_SUPORTADAS_IA=new Set([
   "art","bat","brf","c","cls","css","csv","diff","doc","docx","dot","eml","epub","es",
   "h","hs","htm","html","hwp","hwpx","ics","ifb","java","js","json","keynote","ksh","ltx",
@@ -1134,16 +1264,69 @@ function ReformaTributariaV2({token,onVoltar}){
   }
  }
  function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
- async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
- async function salvar(status="EM_ANALISE"){try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:(documentos.length||documentosBanco.length)?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao,simulacao},status}});setOk("Reforma Tributária salva.")}catch(e){setErro(e.message)}}
+ async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(reconciliarAnaliseCadastral(d.analise));setAnaliseDesatualizada(false);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
+ async function salvar(status="EM_ANALISE"){
+  try{
+   const resultado=await apiCall("salvar-projeto",{
+    method:"POST",
+    body:{
+     id:projetoId,
+     tipoProjeto:"reforma",
+     estrutura:"empresa",
+     modalidade:(documentos.length||documentosBanco.length)?"hibrido":"manual",
+     responsavelFinder:responsavel,
+     origemCliente:origem,
+     empresas:[{
+      cnpj:digits(cnpj),
+      razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",
+      nomeFantasia:empresa?.nomeFantasia||empresa?.nome_fantasia||"",
+      municipio,
+      uf
+     }],
+     atividades:{
+      selecionadas:cnaes,
+      principalReal:principal,
+      descricaoReal:descricao
+     },
+     dadosManuais:{
+      reformaV2:baseAtual(),
+      analise,
+      extracao,
+      simulacao,
+      analiseDesatualizada,
+      documentosSnapshot:documentosBanco.map(d=>({
+       id:d.id,
+       filename:d.filename,
+       sha256:d.sha256,
+       bytes:d.bytes,
+       tipoProjeto:d.tipoProjeto,
+       criadoEm:d.criadoEm
+      }))
+     },
+     status
+    }
+   });
+
+   setOk(`Reforma Tributária salva. Backup automático V${resultado?.backup?.versao||"-"} criado com ${resultado?.backup?.documentos??documentosBanco.length} documento(s).`);
+  }catch(e){
+   setErro(e.message);
+  }
+ }
  const fatSim=faturamentoAnual||receita;
+
+ const dadosFaltantesAtuais=useMemo(
+  ()=>Array.isArray(analise?.dadosFaltantes)
+   ?analise.dadosFaltantes.filter(x=>!pendenciaReformaResolvida(x))
+   :[],
+  [analise,cnpj,cnaes,municipio,uf,regime]
+ );
 
  const motor=useMemo(()=>{
   const matriz=Array.isArray(analise?.matrizImpacto)?analise.matrizImpacto:[];
   const altos=matriz.filter(x=>String(x?.nivel||"").toUpperCase()==="ALTO").length;
   const medios=matriz.filter(x=>String(x?.nivel||"").toUpperCase()==="MEDIO").length;
   const naoAvaliados=matriz.filter(x=>String(x?.nivel||"").toUpperCase()==="NAO_AVALIADO").length;
-  const faltantes=Array.isArray(analise?.dadosFaltantes)?analise.dadosFaltantes.length:0;
+  const faltantes=dadosFaltantesAtuais.length;
   const confianca=String(analise?.confianca||extracao?.confiancaGeral||"BAIXA").toUpperCase();
 
   let risco="NÃO AVALIADO";
@@ -1211,7 +1394,7 @@ function ReformaTributariaV2({token,onVoltar}){
    riscos:Array.isArray(analise?.riscos)?analise.riscos.slice(0,5):[],
    oportunidades:Array.isArray(analise?.oportunidades)?analise.oportunidades.slice(0,5):[]
   };
- },[analise,extracao,simulacao,regime,tributosAtuais,receita,fatSim,cnpj,descricao,compras,creditosAtuais,b2b,b2c,documentosIa]);
+ },[analise,extracao,simulacao,regime,tributosAtuais,receita,fatSim,cnpj,descricao,compras,creditosAtuais,b2b,b2c,documentosIa,dadosFaltantesAtuais]);
 
  const transicaoModelo=useMemo(()=>[
   {ano:"2026",ibs:0,antigos:100,fase:"Teste",descricao:"CBS 0,9% e IBS 0,1% em fase de teste/compensação, observadas as regras aplicáveis."},
@@ -1243,7 +1426,7 @@ function ReformaTributariaV2({token,onVoltar}){
    {id:"operacao",label:"Operação real descrita",ok:Boolean(descricao)},
    {id:"base",label:"Base financeira disponível",ok:n(fatSim)>0},
    {id:"documentos",label:"Documentação interpretada",ok:Boolean(extracao)},
-   {id:"diagnostico",label:"Diagnóstico técnico gerado",ok:Boolean(analise)},
+   {id:"diagnostico",label:"Diagnóstico técnico atualizado",ok:Boolean(analise)&&!analiseDesatualizada},
    {id:"simulacao",label:"Simulação financeira executada",ok:Boolean(simulacao)},
    {id:"composicao",label:"Base do cenário por fora validada",ok:!simplesAtual||Boolean(residual?.composicaoConfere)},
    {id:"anexo",label:"Anexo do Simples confirmado",ok:!simplesAtual||Boolean(anexoSimples)}
@@ -1260,7 +1443,7 @@ function ReformaTributariaV2({token,onVoltar}){
    status:conclusivo?"CONCLUSIVO":percentual>=75?"PRELIMINAR AVANÇADO":"PRELIMINAR",
    faltantes:checks.filter(x=>!x.ok)
   };
- },[regime,cnpj,descricao,fatSim,extracao,analise,simulacao,anexoSimples,motor.confianca]);
+ },[regime,cnpj,descricao,fatSim,extracao,analise,simulacao,anexoSimples,motor.confianca,analiseDesatualizada]);
 
  const recomendacoes30_60_90=useMemo(()=>{
   const plano=Array.isArray(analise?.planoAcao)?analise.planoAcao:[];
@@ -2237,7 +2420,7 @@ function ReformaTributariaV2({token,onVoltar}){
    </div>}
   </div>}
 
-  {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",analise.dadosFaltantes)}</>}</div>}
+  {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}>{analiseDesatualizada&&<div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B",color:"#805B10"}}><b>Diagnóstico desatualizado</b><div style={{fontSize:8.8,marginTop:3}}>CNPJ, CNAEs ou dados cadastrais foram atualizados depois da última análise. Pendências cadastrais já resolvidas foram removidas, mas gere novamente o diagnóstico para atualizar riscos e recomendação.</div></div>}<div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",dadosFaltantesAtuais)}</>}</div>}
 
   {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{faturamento:n(fatSim),tributosAtuais:n(tributosAtuais),dasAtual:n(dasPeriodo),aliquotaAtual:n(aliquotaAtual),creditoCBS:0,creditoIBS:n(creditosAtuais),reducaoCBS:n(reducaoIbsCbs),reducaoIBS:n(reducaoIbsCbs),b2b:n(b2b),b2c:n(b2c),componentesDas:{pis:n(extracao?.tributos?.pis),cofins:n(extracao?.tributos?.cofins),icms:n(extracao?.tributos?.icms),iss:n(extracao?.tributos?.iss),ipi:n(extracao?.tributos?.ipi),cpp:n(extracao?.tributos?.cpp),irpj:n(extracao?.tributos?.irpj),csll:n(extracao?.tributos?.csll),outros:n(extracao?.tributos?.outros)}}} onResultado={setSimulacao}/>}
 
@@ -2731,6 +2914,11 @@ export default function Tributario({
   const [
     projetoAberto,
     setProjetoAberto,
+  ] = useState(null);
+
+  const [
+    projetoInicialModulo,
+    setProjetoInicialModulo,
   ] = useState(null);
 
   const [
@@ -3312,10 +3500,15 @@ export default function Tributario({
       setDescricaoAtividadeCliente(at.descricaoReal || "");
 
       const manuais = p.dadosManuais || {};
-      if (manuais.planejamentoV2 && p.tipoProjeto === "planejamento") {
-        // O Planejamento V2 salva sua própria base e será reaberto mantendo o mesmo projetoId.
+
+      if (p.tipoProjeto === "planejamento" && manuais.planejamentoV2) {
+        setProjetoInicialModulo(p);
         setTela("planejamento-v2");
+      } else if (p.tipoProjeto === "reforma" && manuais.reformaV2) {
+        setProjetoInicialModulo(p);
+        setTela("reforma-v2");
       } else {
+        setProjetoInicialModulo(null);
         setDadosManuais((atual) => ({
           ...atual,
           ...manuais,
@@ -4435,7 +4628,9 @@ export default function Tributario({
     return (
       <PlanejamentoTributario
         token={token}
+        projetoInicial={projetoInicialModulo}
         onVoltar={() => {
+          setProjetoInicialModulo(null);
           setTipoProjeto("");
           setTela("inicio");
         }}
@@ -4449,7 +4644,11 @@ export default function Tributario({
     return (
       <ReformaTributariaV2
         token={token}
-        onVoltar={() => setTela("inicio")}
+        projetoInicial={projetoInicialModulo}
+        onVoltar={() => {
+          setProjetoInicialModulo(null);
+          setTela("inicio");
+        }}
       />
     );
   }
