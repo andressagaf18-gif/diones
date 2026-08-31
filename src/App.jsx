@@ -1506,24 +1506,32 @@ function SimuladorReformaPublico({
   onAprofundar,
   onSnapshot,
 }) {
-  const [etapa,setEtapa]=useState("dados");
+  const [etapa,setEtapa]=useState("empresa");
+
   const [cnpj,setCnpj]=useState("");
   const [consultandoCnpj,setConsultandoCnpj]=useState(false);
   const [erroCnpj,setErroCnpj]=useState("");
   const [empresaCadastral,setEmpresaCadastral]=useState(null);
   const [atividadesReais,setAtividadesReais]=useState([]);
   const [atividadeSelecionada,setAtividadeSelecionada]=useState("");
-  const [regime,setRegime]=useState("Lucro Presumido");
-  const [atividade,setAtividade]=useState("Serviço");
+
+  const [regime,setRegime]=useState("");
+  const [natureza,setNatureza]=useState("");
   const [faturamento,setFaturamento]=useState("");
   const [impostoAtual,setImpostoAtual]=useState("");
+  const [naoSeiImpostoAtual,setNaoSeiImpostoAtual]=useState(false);
   const [tributosFora,setTributosFora]=useState("");
-  const [cbs,setCbs]=useState("9,3");
-  const [ibs,setIbs]=useState("18,7");
+
+  const [cenarioAliquota,setCenarioAliquota]=useState("2026");
+  const [cbs,setCbs]=useState("0,9");
+  const [ibs,setIbs]=useState("0,1");
   const [reducaoCbs,setReducaoCbs]=useState("0");
   const [reducaoIbs,setReducaoIbs]=useState("0");
   const [crescimento,setCrescimento]=useState("20");
-  const [usarEstimativa,setUsarEstimativa]=useState(false);
+
+  const [relatorioIa,setRelatorioIa]=useState(null);
+  const [gerandoRelatorioIa,setGerandoRelatorioIa]=useState(false);
+  const [erroRelatorioIa,setErroRelatorioIa]=useState("");
 
   const categorias=[
     ["mercadorias","Mercadorias / matéria-prima"],
@@ -1543,20 +1551,16 @@ function SimuladorReformaPublico({
 
   const n=numeroSimulador;
   const fat=n(faturamento);
+  const atual=naoSeiImpostoAtual?null:n(impostoAtual);
+  const fora=n(tributosFora);
+
   const cbsNom=n(cbs);
   const ibsNom=n(ibs);
-  const cbsEfetiva=cbsNom*(1-Math.min(100,n(reducaoCbs))/100);
-  const ibsEfetiva=ibsNom*(1-Math.min(100,n(reducaoIbs))/100);
+  const redCbs=Math.min(100,Math.max(0,n(reducaoCbs)));
+  const redIbs=Math.min(100,Math.max(0,n(reducaoIbs)));
+  const cbsEfetiva=cbsNom*(1-redCbs/100);
+  const ibsEfetiva=ibsNom*(1-redIbs/100);
   const iva=cbsEfetiva+ibsEfetiva;
-
-  const aliquotaAtualEstimada=
-    fat>0?estimarAliquota(regime,atividade,fat*12):null;
-
-  const impostoAtualEstimado=
-    aliquotaAtualEstimada==null?0:fat*aliquotaAtualEstimada/100;
-
-  const atual=usarEstimativa?impostoAtualEstimado:n(impostoAtual);
-  const fora=n(tributosFora);
 
   const linhas=Object.values(despesas);
   const despesasTotal=linhas.reduce((a,x)=>a+n(x.valor),0);
@@ -1571,45 +1575,243 @@ function SimuladorReformaPublico({
   const ibsCbsLiquido=Math.max(0,debitoNovo-creditoNovo);
   const reforma=fat>0&&iva>0?fora+ibsCbsLiquido:null;
 
-  const diferenca=reforma==null||atual<=0?null:reforma-atual;
-  const variacao=diferenca==null||atual<=0?null:(diferenca/atual)*100;
-  const cargaAtual=fat>0&&atual>0?atual/fat*100:null;
-  const cargaReforma=fat>0&&reforma!=null?reforma/fat*100:null;
+  const diferenca=
+    atual==null||atual<=0||reforma==null
+      ?null
+      :reforma-atual;
+
+  const variacao=
+    diferenca==null||atual<=0
+      ?null
+      :(diferenca/atual)*100;
+
+  const cargaAtual=
+    atual!=null&&atual>0&&fat>0
+      ?atual/fat*100
+      :null;
+
+  const cargaReforma=
+    reforma!=null&&fat>0
+      ?reforma/fat*100
+      :null;
 
   const crescimentoPct=n(crescimento);
   const fatProjetado=fat*(1+crescimentoPct/100);
-  const atualProjetado=atual*(1+crescimentoPct/100);
-  const creditoNovoProjetado=creditoNovo*(1+crescimentoPct/100);
-  const reformaProjetada=reforma==null?null:
-    fora*(1+crescimentoPct/100)+
-    Math.max(0,fatProjetado*iva/100-creditoNovoProjetado);
+  const atualProjetado=
+    atual==null?null:atual*(1+crescimentoPct/100);
+  const creditoNovoProjetado=
+    creditoNovo*(1+crescimentoPct/100);
+  const reformaProjetada=
+    reforma==null
+      ?null
+      :fora*(1+crescimentoPct/100)+
+       Math.max(
+         0,
+         fatProjetado*iva/100-creditoNovoProjetado
+       );
+
+  function aplicarCenario(valor){
+    setCenarioAliquota(valor);
+
+    if(valor==="2026"){
+      setCbs("0,9");
+      setIbs("0,1");
+      setReducaoCbs("0");
+      setReducaoIbs("0");
+      return;
+    }
+
+    if(valor==="referencia"){
+      // Cenário gerencial editável — NÃO é apresentado como alíquota oficial definitiva.
+      setCbs("9,3");
+      setIbs("18,7");
+      setReducaoCbs("0");
+      setReducaoIbs("0");
+      return;
+    }
+  }
+
+  function classificarNaturezaPorCnae(descricao=""){
+    const s=String(descricao).toLowerCase();
+
+    if(/indústr|fabric|manuf|produção|industrial/.test(s))return "Indústria";
+    if(/comércio|varej|atacad|loja|mercad/.test(s))return "Comércio";
+    return "Serviço";
+  }
+
+  async function consultarCnpjSimulador(){
+    const limpo=String(cnpj||"").replace(/\D/g,"");
+
+    if(limpo.length!==14){
+      setErroCnpj("Informe um CNPJ com 14 dígitos.");
+      return;
+    }
+
+    setConsultandoCnpj(true);
+    setErroCnpj("");
+
+    try{
+      const r=await fetch(`/api/cnpj?cnpj=${encodeURIComponent(limpo)}`);
+      const contentType=r.headers.get("content-type")||"";
+      let data;
+
+      if(contentType.includes("application/json")){
+        data=await r.json();
+      }else{
+        const body=await r.text();
+        throw new Error(`Consulta de CNPJ retornou formato inválido (${r.status}). ${body.slice(0,80)}`);
+      }
+
+      if(!r.ok||!data?.sucesso){
+        throw new Error(data?.error||"Não foi possível consultar o CNPJ.");
+      }
+
+      const principal=
+        data.cnaePrincipal||
+        data.cnae?.principal||{
+          codigo:String(data.cnae?.codigo||""),
+          descricao:data.cnae?.descricao||"",
+          principal:true,
+          classificacao:data.classificacao||null,
+        };
+
+      const secundarios=
+        Array.isArray(data.cnaesSecundarios)
+          ?data.cnaesSecundarios
+          :Array.isArray(data.cnae?.secundarios)
+            ?data.cnae.secundarios
+            :[];
+
+      const todosBrutos=
+        Array.isArray(data.todosCnaes)&&data.todosCnaes.length
+          ?data.todosCnaes
+          :Array.isArray(data.cnae?.todos)&&data.cnae.todos.length
+            ?data.cnae.todos
+            :[principal,...secundarios];
+
+      const mapa=new Map();
+
+      todosBrutos.forEach((item)=>{
+        if(!item)return;
+
+        const codigo=String(item.codigo||"");
+        const descricao=String(item.descricao||"");
+        const chave=codigo.replace(/\D/g,"")||descricao.toLowerCase().trim();
+
+        if(!chave)return;
+
+        if(!mapa.has(chave)){
+          mapa.set(chave,{
+            codigo,
+            descricao,
+            principal:Boolean(item.principal)||
+              codigo.replace(/\D/g,"")===String(principal?.codigo||"").replace(/\D/g,""),
+          });
+        }
+      });
+
+      const lista=Array.from(mapa.values()).sort((a,b)=>
+        Number(b.principal)-Number(a.principal)
+      );
+
+      const empresa={
+        ...data.empresa,
+        cnpj: data.empresa?.cnpj||limpo,
+        razaoSocial:data.empresa?.razaoSocial||"",
+        nomeFantasia:data.empresa?.nomeFantasia||"",
+        porte:data.empresa?.porte||"",
+        endereco:data.endereco||{},
+        classificacao:data.classificacao||null,
+      };
+
+      setEmpresaCadastral(empresa);
+      setAtividadesReais(lista);
+
+      const p=lista.find(x=>x.principal)||lista[0]||null;
+
+      if(p){
+        const selecionada=`${p.codigo}${p.codigo?" — ":""}${p.descricao}`;
+        setAtividadeSelecionada(selecionada);
+        setNatureza(classificarNaturezaPorCnae(p.descricao));
+      }
+    }catch(e){
+      setEmpresaCadastral(null);
+      setAtividadesReais([]);
+      setAtividadeSelecionada("");
+      setNatureza("");
+      setErroCnpj(e?.message||"Erro ao consultar o CNPJ.");
+    }finally{
+      setConsultandoCnpj(false);
+    }
+  }
+
+  function selecionarAtividade(item){
+    const valor=`${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
+    setAtividadeSelecionada(valor);
+    setNatureza(classificarNaturezaPorCnae(item.descricao));
+  }
+
+  function alterarDespesa(id,patch){
+    setDespesas(a=>({...a,[id]:{...a[id],...patch}}));
+  }
+
+  const fonteAliquota=useMemo(()=>{
+    if(cenarioAliquota==="2026"){
+      return{
+        titulo:"Fase de teste 2026",
+        texto:"CBS 0,9% e IBS 0,1%. São as alíquotas de teste previstas para 2026, com regras de compensação/dispensa conforme a legislação.",
+        oficial:true,
+        referencia:"Receita Federal — Reforma Tributária do Consumo / Orientações 2026",
+      };
+    }
+
+    if(cenarioAliquota==="referencia"){
+      return{
+        titulo:"Cenário gerencial de referência",
+        texto:"CBS 9,3% + IBS 18,7% = 28%. Esta combinação é uma hipótese editável do simulador e NÃO é apresentada como a alíquota legal definitiva da empresa.",
+        oficial:false,
+        referencia:"Premissa gerencial editável — validar alíquota e tratamento aplicáveis na data da análise.",
+      };
+    }
+
+    return{
+      titulo:"Cenário personalizado",
+      texto:"As alíquotas foram digitadas pelo usuário. O sistema não presume origem legal automática.",
+      oficial:false,
+      referencia:"Informação manual.",
+    };
+  },[cenarioAliquota,cbs,ibs]);
 
   const snapshot={
-    versao:"SIMULADOR_REFORMA_PUBLICO_V3",
+    versao:"SIMULADOR_REFORMA_PUBLICO_V5",
     etapa,
     participante:{nome,email,telefone},
     empresa:{
-      cnpj:cnpj.replace(/\D/g,""),
-      razaoSocial:empresaCadastral?.razao_social||empresaCadastral?.razaoSocial||empresaCadastral?.nome||"",
-      nomeFantasia:empresaCadastral?.nome_fantasia||empresaCadastral?.nomeFantasia||"",
-      municipio:empresaCadastral?.municipio||"",
-      uf:empresaCadastral?.uf||"",
+      cnpj:String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,""),
+      razaoSocial:empresaCadastral?.razaoSocial||"",
+      nomeFantasia:empresaCadastral?.nomeFantasia||"",
+      porte:empresaCadastral?.porte||"",
+      municipio:empresaCadastral?.endereco?.municipio||"",
+      uf:empresaCadastral?.endereco?.uf||"",
       atividadeSelecionada,
       atividadesReais,
     },
     configuracao:{
-      regime,atividade,
+      regime,
+      natureza,
       faturamentoMensal:fat,
-      usarEstimativa,
       impostoAtualMensal:atual,
-      aliquotaAtualEstimadaPct:aliquotaAtualEstimada,
+      naoSeiImpostoAtual,
       tributosForaIbsCbsMensal:fora,
-      cbsPct:cbsNom,ibsPct:ibsNom,
-      reducaoCbsPct:n(reducaoCbs),
-      reducaoIbsPct:n(reducaoIbs),
+      cenarioAliquota,
+      cbsPct:cbsNom,
+      ibsPct:ibsNom,
+      reducaoCbsPct:redCbs,
+      reducaoIbsPct:redIbs,
       cbsEfetivaPct:cbsEfetiva,
       ibsEfetivaPct:ibsEfetiva,
       ivaEfetivoPct:iva,
+      fonteAliquota,
       crescimentoPct,
     },
     creditos:{
@@ -1641,229 +1843,645 @@ function SimuladorReformaPublico({
   };
 
   useEffect(()=>{onSnapshot?.(snapshot)},[
-    etapa,cnpj,empresaCadastral,atividadeSelecionada,atividadesReais,
-    regime,atividade,faturamento,impostoAtual,tributosFora,cbs,ibs,
-    reducaoCbs,reducaoIbs,crescimento,usarEstimativa,despesas
+    etapa,cnpj,empresaCadastral,atividadesReais,atividadeSelecionada,
+    regime,natureza,faturamento,impostoAtual,naoSeiImpostoAtual,
+    tributosFora,cenarioAliquota,cbs,ibs,reducaoCbs,reducaoIbs,
+    crescimento,despesas
   ]);
 
-  async function consultarCnpjSimulador(){
-    const limpo=String(cnpj||"").replace(/\D/g,"");
-    if(limpo.length!==14){
-      setErroCnpj("Informe um CNPJ com 14 dígitos.");
-      return;
-    }
-    setConsultandoCnpj(true);
-    setErroCnpj("");
+  async function gerarRelatorioIa(){
+    if(gerandoRelatorioIa)return;
+
+    setGerandoRelatorioIa(true);
+    setErroRelatorioIa("");
+
     try{
-      const r=await fetch(`/api/cnpj?cnpj=${limpo}`);
-      const data=await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(data?.error||data?.message||"Não foi possível consultar o CNPJ.");
+      const empresaNome=empresaCadastral?.razaoSocial||"Empresa";
+      const payload={
+        responsavel:{nome,cargo:"",telefone,email},
+        segmento:`Reforma Tributária / ${natureza||"atividade a validar"}`,
+        categoria:"Simulador Reforma",
+        codigoQuestionario:"SIMULADOR_REFORMA_PUBLICO",
+        cnaePrincipal:
+          atividadesReais.find(x=>x.principal)||null,
+        cnaesSecundarios:
+          atividadesReais.filter(x=>!x.principal),
+        atividadesSelecionadas:
+          atividadesReais.filter(x=>{
+            const v=`${x.codigo}${x.codigo?" — ":""}${x.descricao}`;
+            return v===atividadeSelecionada;
+          }),
+        atividadePredominante:
+          atividadesReais.find(x=>{
+            const v=`${x.codigo}${x.codigo?" — ":""}${x.descricao}`;
+            return v===atividadeSelecionada;
+          })||null,
+        empresas:[{
+          razao:empresaNome,
+          categoria:natureza||"",
+          segmento:natureza||"",
+          cnae:atividadeSelecionada,
+        }],
+        faturamento:fat?moedaSimulador(fat):"",
+        colaboradores:"",
+        regime,
+        observacao:"Relatório gerado a partir do Simulador público da Reforma Tributária.",
+        descricaoNegocio:`Atividade selecionada: ${atividadeSelecionada}. Natureza utilizada na simulação: ${natureza}.`,
+        estruturaNegocio:"simulador_reforma",
+        contextoEstrutura:{
+          estruturaNegocio:"simulador_reforma",
+          reformaTributaria:{
+            ativo:true,
+            origem:"Simulador Reforma",
+          },
+          simuladorReforma:snapshot,
+        },
+        reformaTributaria:{
+          ativo:true,
+          origem:"Simulador Reforma",
+        },
+        simuladorReforma:snapshot,
+        doresSelecionadas:[
+          diferenca!=null&&diferenca>0
+            ?"Possível aumento de carga no cenário simulado"
+            :"Validar impacto financeiro da Reforma Tributária"
+        ],
+        prioridadesSelecionadas:[
+          {id:"reforma_carga",label:"Carga tributária e cenários"},
+          {id:"reforma_creditos",label:"Créditos de IBS/CBS"},
+          {id:"reforma_transicao",label:"Transição e preparação"},
+        ],
+        eixosObrigatorios:[
+          {id:"reforma_carga",label:"Carga tributária e cenários"},
+          {id:"reforma_creditos",label:"Créditos de IBS/CBS"},
+          {id:"reforma_precos",label:"Preço, margem e repasse"},
+          {id:"reforma_transicao",label:"Transição e preparação"},
+        ],
+        dorPrincipal:
+          diferenca!=null&&diferenca>0
+            ?"Possível aumento de carga com IBS/CBS"
+            :"Entender impacto da Reforma Tributária",
+        dor90Dias:"Validar o cenário com documentos e operação real.",
+        impactosDor:[
+          "Carga tributária",
+          "Créditos",
+          "Preço e margem",
+          "Fluxo de caixa",
+        ],
+        areas:[
+          {
+            id:"reforma_carga",
+            area:"Carga tributária e cenários",
+            prioridade:true,
+            score:50,
+            subtemas:[
+              {
+                tema:"Simulação",
+                perguntas:[
+                  {
+                    id:"simulacao_base",
+                    texto:"Qual foi o resultado da simulação da Reforma?",
+                    tema:"Simulação",
+                    motivo:"Contextualizar a análise.",
+                    riscoAvaliado:"Impacto financeiro",
+                    importancia:5,
+                    resposta:JSON.stringify(snapshot.resultado),
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        scoreGeral:50,
+        qualidadeRespostas:{
+          total:1,
+          respondidas:1,
+          desconhecidas:naoSeiImpostoAtual?1:0,
+          naoAplicaveis:0,
+        },
+        lacunasConhecimento:
+          naoSeiImpostoAtual
+            ?["Valor real dos tributos pagos atualmente não foi informado."]
+            :[],
+      };
 
-      setEmpresaCadastral(data);
+      const r=await fetch("/api/diagnostico",{
+        method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify(payload),
+      });
 
-      const lista=[];
-      const principal=data?.cnae_fiscal_descricao||data?.cnaePrincipalDescricao||data?.atividade_principal?.[0]?.text||data?.atividadePrincipal;
-      const principalCodigo=data?.cnae_fiscal||data?.cnaePrincipal||data?.atividade_principal?.[0]?.code||"";
-      if(principal){
-        lista.push({
-          codigo:String(principalCodigo||""),
-          descricao:String(principal),
-          tipo:"Principal"
-        });
+      const data=await r.json().catch(()=>null);
+
+      if(!r.ok){
+        throw new Error(data?.error||"Não foi possível gerar o relatório com IA.");
       }
 
-      const secundarias=data?.cnaes_secundarios||data?.cnaesSecundarios||data?.atividades_secundarias||data?.atividadesSecundarias||[];
-      if(Array.isArray(secundarias)){
-        secundarias.forEach(x=>{
-          const descricao=x?.descricao||x?.text||x?.description||"";
-          const codigo=x?.codigo||x?.code||x?.cnae||"";
-          if(descricao) lista.push({codigo:String(codigo||""),descricao:String(descricao),tipo:"Secundária"});
-        });
+      const d=data?.diagnostico||data?.resultado||null;
+
+      if(!d){
+        throw new Error("A IA não retornou um relatório válido.");
       }
 
-      const unicas=lista.filter((x,i,a)=>a.findIndex(y=>`${y.codigo}|${y.descricao}`===`${x.codigo}|${x.descricao}`)===i);
-      setAtividadesReais(unicas);
-      if(unicas[0]) setAtividadeSelecionada(`${unicas[0].codigo}${unicas[0].codigo?" — ":""}${unicas[0].descricao}`);
-
-      const descricaoBase=String(principal||"").toLowerCase();
-      if(/indústr|fabric|manuf|produção|industrial/.test(descricaoBase)) setAtividade("Indústria");
-      else if(/comércio|varej|atacad|loja|mercad/.test(descricaoBase)) setAtividade("Comércio");
-      else if(principal) setAtividade("Serviço");
+      setRelatorioIa({
+        leituraExecutiva:
+          textoIaSeguro(d.leituraExecutiva)||
+          "A simulação foi concluída. A interpretação definitiva depende da validação dos dados e da legislação aplicável.",
+        riscosPrioritarios:listaIaSegura(d.riscosPrioritarios),
+        prioridades:listaIaSegura(d.prioridades),
+        recomendacoes:listaIaSegura(d.recomendacoes),
+        proximosPassos:listaIaSegura(d.proximosPassos),
+        pontosFortes:listaIaSegura(d.pontosFortes),
+        impactos:listaIaSegura(d.impactos),
+      });
     }catch(e){
-      setEmpresaCadastral(null);
-      setAtividadesReais([]);
-      setAtividadeSelecionada("");
-      setErroCnpj(e?.message||"Erro ao consultar o CNPJ.");
+      console.error("[simulador-reforma][relatorio-ia]",e);
+      setErroRelatorioIa(e?.message||"Não foi possível gerar o relatório com IA.");
     }finally{
-      setConsultandoCnpj(false);
+      setGerandoRelatorioIa(false);
     }
   }
 
-  function alterarDespesa(id,patch){
-    setDespesas(a=>({...a,[id]:{...a[id],...patch}}));
+  useEffect(()=>{
+    if(
+      etapa==="resultado" &&
+      !relatorioIa &&
+      !gerandoRelatorioIa &&
+      empresaCadastral &&
+      fat>0
+    ){
+      gerarRelatorioIa();
+    }
+  },[etapa]);
+
+  function gerarPdfSimulador(){
+    const empresaNome=
+      empresaCadastral?.razaoSocial||
+      empresaCadastral?.nomeFantasia||
+      "Empresa";
+
+    const linhasHtml=(arr=[])=>
+      arr.length
+        ?`<ul>${arr.map(x=>`<li>${String(x||"").replace(/[<>]/g,"")}</li>`).join("")}</ul>`
+        :"<p>Sem apontamentos adicionais.</p>";
+
+    const html=`<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Relatório da Reforma Tributária</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Arial,sans-serif;color:#17233D;margin:0;background:#fff}
+  .page{max-width:900px;margin:auto;padding:36px}
+  .hero{background:#17233D;color:#fff;border-radius:18px;padding:28px}
+  .eyebrow{font-size:11px;font-weight:800;color:#FFB7A7}
+  h1{font-size:30px;margin:8px 0}
+  h2{font-size:18px;margin:26px 0 10px}
+  .muted{color:#5B667A;font-size:12px;line-height:1.55}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:16px}
+  .kpi{border:1px solid #E1E6EE;border-radius:12px;padding:14px}
+  .kpi small{display:block;color:#5B667A;font-weight:800}
+  .kpi strong{display:block;font-size:22px;margin-top:5px}
+  .box{border:1px solid #E1E6EE;border-radius:12px;padding:16px;margin-top:10px}
+  .row{display:flex;justify-content:space-between;gap:20px;padding:8px 0;border-bottom:1px solid #EEF0F4}
+  .alert{background:#FFF8EC;border:1px solid #F3D99B;border-radius:12px;padding:14px;color:#805B10}
+  ul{line-height:1.6}
+  .footer{margin-top:30px;color:#7A8495;font-size:10px;border-top:1px solid #E1E6EE;padding-top:12px}
+  @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.page{padding:18px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hero">
+    <div class="eyebrow">FINDER INTELLIGENCE · RELATÓRIO DA REFORMA TRIBUTÁRIA</div>
+    <h1>${empresaNome}</h1>
+    <div>${String(empresaCadastral?.cnpj||cnpj||"")} · ${atividadeSelecionada||"Atividade a validar"}</div>
+  </div>
+
+  <div class="grid">
+    <div class="kpi"><small>FATURAMENTO MENSAL</small><strong>${moedaSimulador(fat)}</strong></div>
+    <div class="kpi"><small>CENÁRIO ATUAL</small><strong>${atual==null?"Pendente":moedaSimulador(atual)}</strong></div>
+    <div class="kpi"><small>CENÁRIO REFORMA</small><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
+    <div class="kpi"><small>VARIAÇÃO</small><strong>${variacao==null?"Pendente":percentualSimulador(variacao)}</strong></div>
+  </div>
+
+  <h2>Empresa e atividade analisada</h2>
+  <div class="box">
+    <div class="row"><span>Razão social</span><strong>${empresaNome}</strong></div>
+    <div class="row"><span>CNPJ</span><strong>${String(empresaCadastral?.cnpj||cnpj||"")}</strong></div>
+    <div class="row"><span>Atividade selecionada</span><strong>${atividadeSelecionada||"-"}</strong></div>
+    <div class="row"><span>Natureza utilizada</span><strong>${natureza||"-"}</strong></div>
+    <div class="row"><span>Regime informado</span><strong>${regime||"-"}</strong></div>
+  </div>
+
+  <h2>Premissas tributárias</h2>
+  <div class="box">
+    <div class="row"><span>CBS nominal</span><strong>${percentualSimulador(cbsNom)}</strong></div>
+    <div class="row"><span>IBS nominal</span><strong>${percentualSimulador(ibsNom)}</strong></div>
+    <div class="row"><span>Redução CBS</span><strong>${percentualSimulador(redCbs)}</strong></div>
+    <div class="row"><span>Redução IBS</span><strong>${percentualSimulador(redIbs)}</strong></div>
+    <div class="row"><span>IVA efetivo usado</span><strong>${percentualSimulador(iva)}</strong></div>
+  </div>
+
+  <div class="alert" style="margin-top:14px">
+    <strong>Origem da alíquota:</strong> ${fonteAliquota.titulo}. ${fonteAliquota.texto}
+    <br><br><strong>Referência:</strong> ${fonteAliquota.referencia}
+  </div>
+
+  <h2>Memória de cálculo</h2>
+  <div class="box">
+    <div class="row"><span>Débito CBS</span><strong>${moedaSimulador(debitoCbs)}</strong></div>
+    <div class="row"><span>Débito IBS</span><strong>${moedaSimulador(debitoIbs)}</strong></div>
+    <div class="row"><span>(-) Créditos potenciais</span><strong>${moedaSimulador(creditoNovo)}</strong></div>
+    <div class="row"><span>IBS/CBS líquido</span><strong>${moedaSimulador(ibsCbsLiquido)}</strong></div>
+    <div class="row"><span>(+) Tributos fora do IBS/CBS</span><strong>${moedaSimulador(fora)}</strong></div>
+    <div class="row"><span>Total Reforma</span><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
+  </div>
+
+  <h2>Leitura executiva da IA</h2>
+  <div class="box">
+    <p>${String(relatorioIa?.leituraExecutiva||"Relatório de IA ainda não disponível.").replace(/[<>]/g,"")}</p>
+  </div>
+
+  <h2>Riscos prioritários</h2>
+  <div class="box">${linhasHtml(relatorioIa?.riscosPrioritarios||[])}</div>
+
+  <h2>Recomendações</h2>
+  <div class="box">${linhasHtml(relatorioIa?.recomendacoes||[])}</div>
+
+  <h2>Próximos passos</h2>
+  <div class="box">${linhasHtml(relatorioIa?.proximosPassos||[])}</div>
+
+  <div class="footer">
+    Simulação gerencial. O resultado não substitui apuração fiscal, parecer tributário ou validação jurídica. 
+    Alíquotas, créditos e tratamentos devem ser conferidos conforme legislação, operação real e data-base.
+  </div>
+</div>
+<script>
+window.onload=function(){setTimeout(function(){window.print()},500)}
+</script>
+</body>
+</html>`;
+
+    try{
+      const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+      const url=URL.createObjectURL(blob);
+      const janela=window.open(url,"_blank");
+
+      if(!janela){
+        URL.revokeObjectURL(url);
+        alert("Permita pop-ups para abrir o relatório em PDF.");
+        return;
+      }
+
+      setTimeout(()=>URL.revokeObjectURL(url),15000);
+    }catch(e){
+      console.error("[simulador-reforma][pdf]",e);
+      alert("Não foi possível gerar o relatório.");
+    }
   }
 
   const input={
-    width:"100%",boxSizing:"border-box",minHeight:46,
+    width:"100%",boxSizing:"border-box",minHeight:44,
     border:"1px solid #D8DEEA",borderRadius:11,padding:"10px 11px",
-    fontFamily:BODY_FONT,fontSize:15,color:NAVY,background:"#fff"
+    fontFamily:BODY_FONT,fontSize:14,color:NAVY,background:"#fff"
   };
+
   const card={
     background:"#fff",border:"1px solid #E1E6EE",
-    borderRadius:14,padding:14
+    borderRadius:14,padding:13
   };
-  const muted={fontSize:9,color:MUTED,lineHeight:1.5};
 
-  const etapas=[
-    ["dados","1. Dados"],
-    ["creditos","2. Créditos"],
-    ["comparar","3. Comparar"],
-    ["resultado","4. Resultado"],
-  ];
+  const muted={fontSize:8.5,color:MUTED,lineHeight:1.5};
 
-  const kpi=(titulo,valor,cor=NAVY,sub="")=><div style={{...card,padding:11,minWidth:0}}>
-    <div style={{fontSize:7.5,fontWeight:900,color:MUTED,textTransform:"uppercase"}}>{titulo}</div>
+  const kpi=(titulo,valor,cor=NAVY,sub="")=><div style={{...card,padding:10,minWidth:0}}>
+    <div style={{fontSize:7.2,fontWeight:900,color:MUTED,textTransform:"uppercase"}}>{titulo}</div>
     <div style={{fontSize:17,fontWeight:900,color:cor,marginTop:4,overflowWrap:"anywhere"}}>{valor}</div>
-    {sub&&<div style={{...muted,fontSize:7.8,marginTop:3}}>{sub}</div>}
+    {sub&&<div style={{...muted,fontSize:7.5,marginTop:3}}>{sub}</div>}
   </div>;
 
   const barra=(titulo,valor,max,cor)=><div style={{display:"grid",gap:5}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:9}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:8.5}}>
       <b>{titulo}</b><b>{moedaSimulador(valor)}</b>
     </div>
-    <div style={{height:11,background:"#EDF0F4",borderRadius:999,overflow:"hidden"}}>
-      <div style={{height:"100%",width:`${max>0?Math.max(valor>0?2:0,Math.min(100,valor/max*100)):0}%`,background:cor}}/>
+    <div style={{height:10,background:"#EDF0F4",borderRadius:999,overflow:"hidden"}}>
+      <div style={{
+        height:"100%",
+        width:`${max>0?Math.max(valor>0?2:0,Math.min(100,valor/max*100)):0}%`,
+        background:cor
+      }}/>
     </div>
   </div>;
 
-  return <div className="sim-reforma-simples" style={{display:"grid",gap:10,minWidth:0}}>
+  const etapas=[
+    ["empresa","1. Empresa"],
+    ["dados","2. Dados"],
+    ["creditos","3. Créditos"],
+    ["comparar","4. Comparar"],
+    ["resultado","5. Relatório"],
+  ];
+
+  const empresaOk=Boolean(empresaCadastral&&atividadeSelecionada);
+
+  return <div className="sim-reforma-v5" style={{display:"grid",gap:9,minWidth:0}}>
     <style>{`
-      .sim-reforma-simples *{box-sizing:border-box}
-      .sim-reforma-simples .sr-grid2,.sim-reforma-simples .sr-grid3{
+      .sim-reforma-v5 *{box-sizing:border-box}
+      .sim-reforma-v5 .sr-grid2,.sim-reforma-v5 .sr-grid3{
         display:grid;grid-template-columns:1fr;gap:8px
       }
-      .sim-reforma-simples .sr-tabs{
-        display:flex;gap:5px;overflow-x:auto;scrollbar-width:none
+      .sim-reforma-v5 .sr-tabs{
+        display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px
       }
-      .sim-reforma-simples .sr-tabs::-webkit-scrollbar{display:none}
+      .sim-reforma-v5 .sr-tabs::-webkit-scrollbar{display:none}
       @media(min-width:520px){
-        .sim-reforma-simples .sr-grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
-        .sim-reforma-simples .sr-grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
+        .sim-reforma-v5 .sr-grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .sim-reforma-v5 .sr-grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
       }
     `}</style>
 
     <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
-      <button type="button" onClick={onVoltar} style={{border:0,background:"transparent",padding:0,color:MUTED,fontWeight:800,cursor:"pointer"}}>← Voltar</button>
-      <span style={{fontSize:8,fontWeight:900,color:"#31589C",background:"#EEF3FF",borderRadius:999,padding:"5px 8px"}}>SIMULADOR REFORMA</span>
+      <button
+        type="button"
+        onClick={onVoltar}
+        style={{border:0,background:"transparent",padding:0,color:MUTED,fontWeight:800,cursor:"pointer"}}
+      >
+        ← Voltar
+      </button>
+
+      <span style={{
+        fontSize:7.5,fontWeight:900,color:"#31589C",
+        background:"#EEF3FF",borderRadius:999,padding:"5px 8px"
+      }}>
+        SIMULADOR REFORMA
+      </span>
     </div>
 
-    <div style={{background:"linear-gradient(145deg,#101C35,#17233D)",borderRadius:16,padding:15,color:"#fff"}}>
-      <div style={{fontSize:8,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE</div>
-      <h2 style={{fontFamily:DISPLAY_FONT,fontSize:21,lineHeight:1.1,margin:"5px 0"}}>Quanto a Reforma pode mudar sua carga?</h2>
-      <p style={{fontSize:9,color:"#D8DEEA",lineHeight:1.5,margin:0}}>Quatro passos: informe a situação atual, mapeie créditos, compare e veja o resultado.</p>
+    <div style={{background:"linear-gradient(145deg,#101C35,#17233D)",borderRadius:15,padding:14,color:"#fff"}}>
+      <div style={{fontSize:7.5,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE</div>
+      <h2 style={{fontFamily:DISPLAY_FONT,fontSize:20,lineHeight:1.1,margin:"5px 0"}}>
+        Simulação da Reforma Tributária
+      </h2>
+      <p style={{fontSize:8.5,color:"#D8DEEA",lineHeight:1.5,margin:0}}>
+        Primeiro identificamos a empresa e a atividade real. Depois calculamos os cenários e geramos um relatório com IA.
+      </p>
     </div>
 
     <div className="sr-tabs">
       {etapas.map(([id,label])=><button
-        key={id} type="button" onClick={()=>setEtapa(id)}
+        key={id}
+        type="button"
+        onClick={()=>setEtapa(id)}
         style={{
-          flex:"0 0 auto",border:"1px solid #DDE3EC",borderRadius:999,
-          padding:"7px 10px",background:etapa===id?NAVY:"#fff",
-          color:etapa===id?"#fff":NAVY,fontSize:8,fontWeight:900,cursor:"pointer"
+          flex:"0 0 auto",
+          border:"1px solid #DDE3EC",
+          borderRadius:999,
+          padding:"7px 9px",
+          background:etapa===id?NAVY:"#fff",
+          color:etapa===id?"#fff":NAVY,
+          fontSize:7.7,fontWeight:900,cursor:"pointer"
         }}
-      >{label}</button>)}
+      >
+        {label}
+      </button>)}
     </div>
+
+    {etapa==="empresa"&&<>
+      <div style={card}>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>
+          1. Identifique a empresa
+        </h3>
+        <p style={{...muted,margin:"0 0 10px"}}>
+          O CNPJ é usado para carregar razão social, CNAE principal e atividades secundárias. Depois você escolhe qual operação será simulada.
+        </p>
+
+        <label style={labelStyle}>CNPJ
+          <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:6,marginTop:4}}>
+            <input
+              value={cnpj}
+              onChange={e=>setCnpj(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter")consultarCnpjSimulador()}}
+              style={input}
+              placeholder="00.000.000/0000-00"
+            />
+            <button
+              type="button"
+              onClick={consultarCnpjSimulador}
+              disabled={consultandoCnpj}
+              style={{
+                border:0,borderRadius:10,padding:"0 12px",
+                background:NAVY,color:"#fff",fontWeight:900,cursor:"pointer"
+              }}
+            >
+              {consultandoCnpj?"...":"Buscar"}
+            </button>
+          </div>
+        </label>
+
+        {erroCnpj&&<div style={{fontSize:8,color:"#B42318",fontWeight:800,marginTop:7}}>
+          {erroCnpj}
+        </div>}
+      </div>
+
+      {empresaCadastral&&<div style={{...card,background:"#EEF8F3",borderColor:"#CDE8DA"}}>
+        <div style={{fontSize:7,fontWeight:900,color:"#176B47"}}>EMPRESA LOCALIZADA</div>
+        <div style={{fontSize:14,fontWeight:900,color:NAVY,marginTop:3}}>
+          {empresaCadastral.razaoSocial||empresaCadastral.nomeFantasia||"Empresa"}
+        </div>
+        {empresaCadastral.nomeFantasia&&empresaCadastral.nomeFantasia!==empresaCadastral.razaoSocial&&
+          <div style={{...muted,marginTop:2}}>{empresaCadastral.nomeFantasia}</div>}
+        <div style={{...muted,marginTop:4}}>
+          {[
+            empresaCadastral.porte,
+            empresaCadastral.endereco?.municipio,
+            empresaCadastral.endereco?.uf
+          ].filter(Boolean).join(" · ")}
+        </div>
+      </div>}
+
+      {atividadesReais.length>0&&<div style={card}>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>
+          Atividades do CNPJ
+        </h3>
+        <p style={{...muted,margin:"0 0 9px"}}>
+          Selecione a atividade que representa a operação que você quer simular.
+        </p>
+
+        <div style={{display:"grid",gap:6}}>
+          {atividadesReais.map((item,i)=>{
+            const valor=`${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
+            const ativo=atividadeSelecionada===valor;
+
+            return <button
+              key={`${item.codigo}-${i}`}
+              type="button"
+              onClick={()=>selecionarAtividade(item)}
+              style={{
+                textAlign:"left",
+                border:`1px solid ${ativo?"#31589C":"#E1E6EE"}`,
+                borderRadius:10,
+                padding:9,
+                background:ativo?"#EEF3FF":"#fff",
+                color:NAVY,cursor:"pointer"
+              }}
+            >
+              <div style={{fontSize:7,fontWeight:900,color:ativo?"#31589C":MUTED}}>
+                {item.principal?"ATIVIDADE PRINCIPAL":"ATIVIDADE SECUNDÁRIA"}
+                {item.codigo?` · CNAE ${item.codigo}`:""}
+              </div>
+              <div style={{fontSize:8.5,fontWeight:800,marginTop:2}}>
+                {item.descricao}
+              </div>
+            </button>
+          })}
+        </div>
+
+        {atividadeSelecionada&&<div style={{
+          marginTop:8,background:"#F7F9FC",
+          borderRadius:9,padding:8,fontSize:8,color:MUTED,lineHeight:1.45
+        }}>
+          <b>Atividade escolhida:</b> {atividadeSelecionada}<br/>
+          <b>Natureza sugerida:</b> {natureza}. Você poderá corrigir essa classificação no próximo passo.
+        </div>}
+      </div>}
+
+      <PrimaryButton
+        disabled={!empresaOk}
+        onClick={()=>setEtapa("dados")}
+      >
+        Continuar <ArrowRight size={16}/>
+      </PrimaryButton>
+    </>}
 
     {etapa==="dados"&&<>
       <div style={card}>
-        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>1. Situação atual</h3>
-        <p style={{...muted,margin:"0 0 12px"}}>Use preferencialmente o total real de tributos do mês. Se não tiver, use uma estimativa rápida.</p>
-
-        <div style={{background:"#F7F9FC",border:"1px solid #E1E6EE",borderRadius:12,padding:11,marginBottom:10}}>
-          <div style={{fontSize:8,fontWeight:900,color:"#31589C",marginBottom:7}}>COMECE PELO CNPJ</div>
-          <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:7}}>
-            <input value={cnpj} onChange={e=>setCnpj(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")consultarCnpjSimulador()}} style={input} placeholder="00.000.000/0000-00"/>
-            <button type="button" onClick={consultarCnpjSimulador} disabled={consultandoCnpj} style={{border:0,borderRadius:10,padding:"0 13px",background:NAVY,color:"#fff",fontWeight:900,cursor:"pointer"}}>
-              {consultandoCnpj?"Consultando...":"Buscar"}
-            </button>
-          </div>
-          {erroCnpj&&<div style={{fontSize:8,color:"#B42318",fontWeight:800,marginTop:6}}>{erroCnpj}</div>}
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>
+          2. Dados da operação
+        </h3>
+        <div style={{
+          background:"#F7F9FC",borderRadius:10,padding:8,
+          marginBottom:10,fontSize:8,lineHeight:1.45
+        }}>
+          <b>{empresaCadastral?.razaoSocial||"Empresa"}</b><br/>
+          {atividadeSelecionada}
         </div>
 
-        {empresaCadastral&&<div style={{background:"#EEF8F3",border:"1px solid #CDE8DA",borderRadius:12,padding:11,marginBottom:10}}>
-          <div style={{fontSize:7.5,fontWeight:900,color:"#176B47"}}>EMPRESA LOCALIZADA</div>
-          <div style={{fontSize:13,fontWeight:900,color:NAVY,marginTop:3}}>
-            {empresaCadastral?.razao_social||empresaCadastral?.razaoSocial||empresaCadastral?.nome||"Empresa"}
-          </div>
-          <div style={{fontSize:8,color:MUTED,marginTop:3}}>
-            {[empresaCadastral?.municipio,empresaCadastral?.uf].filter(Boolean).join(" / ")}
-          </div>
-        </div>}
-
-        {atividadesReais.length>0&&<div style={{...card,padding:10,marginBottom:10,background:"#FCFDFE"}}>
-          <div style={{fontSize:8,fontWeight:900,color:NAVY,marginBottom:7}}>ATIVIDADES CADASTRADAS NO CNPJ</div>
-          <div style={{display:"grid",gap:6}}>
-            {atividadesReais.map((x,i)=>{
-              const valor=`${x.codigo}${x.codigo?" — ":""}${x.descricao}`;
-              const ativo=atividadeSelecionada===valor;
-              return <button key={`${x.codigo}-${i}`} type="button" onClick={()=>setAtividadeSelecionada(valor)} style={{
-                textAlign:"left",border:`1px solid ${ativo?"#31589C":"#E1E6EE"}`,
-                borderRadius:9,padding:8,background:ativo?"#EEF3FF":"#fff",
-                color:NAVY,cursor:"pointer"
-              }}>
-                <div style={{fontSize:7,fontWeight:900,color:ativo?"#31589C":MUTED}}>{x.tipo}{x.codigo?` • ${x.codigo}`:""}</div>
-                <div style={{fontSize:8.5,fontWeight:800,marginTop:2}}>{x.descricao}</div>
-              </button>
-            })}
-          </div>
-          <div style={{...muted,fontSize:7.6,marginTop:7}}>Selecione a atividade que melhor representa a operação que será simulada. O CNAE cadastral é a referência inicial; o diagnóstico completo valida a operação real.</div>
-        </div>}
-
         <div className="sr-grid2">
-          <label style={labelStyle}>Regime atual
+          <label style={labelStyle}>Regime tributário atual
             <select value={regime} onChange={e=>setRegime(e.target.value)} style={input}>
+              <option value="">Selecione</option>
               {["Simples Nacional","Lucro Presumido","Lucro Real"].map(x=><option key={x}>{x}</option>)}
             </select>
           </label>
-          <label style={labelStyle}>Natureza da operação simulada
-            <select value={atividade} onChange={e=>setAtividade(e.target.value)} style={input}>
+
+          <label style={labelStyle}>Natureza da operação
+            <select value={natureza} onChange={e=>setNatureza(e.target.value)} style={input}>
+              <option value="">Selecione</option>
               {["Serviço","Comércio","Indústria"].map(x=><option key={x}>{x}</option>)}
             </select>
           </label>
         </div>
 
-        <label style={{...labelStyle,marginTop:8}}>Faturamento mensal
-          <input value={faturamento} onChange={e=>setFaturamento(e.target.value)} style={input} placeholder="Ex.: 125000"/>
+        <label style={{...labelStyle,marginTop:8}}>Faturamento mensal da atividade
+          <input
+            value={faturamento}
+            onChange={e=>setFaturamento(e.target.value)}
+            style={input}
+            placeholder="Ex.: 80000"
+          />
         </label>
 
-        <div style={{display:"grid",gap:6,marginTop:9}}>
-          <button type="button" onClick={()=>setUsarEstimativa(false)} style={{...chipStyle(!usarEstimativa),textAlign:"left"}}>Tenho o valor real de impostos pagos</button>
-          <button type="button" onClick={()=>setUsarEstimativa(true)} style={{...chipStyle(usarEstimativa),textAlign:"left"}}>Não tenho agora — usar estimativa</button>
+        <div style={{marginTop:10}}>
+          <div style={{fontSize:8.5,fontWeight:900,color:NAVY}}>
+            Quanto a empresa paga hoje?
+          </div>
+          <div style={{...muted,marginTop:2}}>
+            Para não inventar uma alíquota do Lucro Real, Presumido ou Simples, o simulador usa o valor real informado.
+          </div>
         </div>
 
-        {!usarEstimativa?<label style={{...labelStyle,marginTop:8}}>Total de tributos pagos no mês
-          <input value={impostoAtual} onChange={e=>setImpostoAtual(e.target.value)} style={input} placeholder="Ex.: 23092,50"/>
-        </label>:<div style={{marginTop:9,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:10,padding:10}}>
-          <div style={{fontSize:7.5,fontWeight:900,color:"#31589C"}}>ESTIMATIVA</div>
-          <div style={{fontSize:18,fontWeight:900,marginTop:3}}>{moedaSimulador(impostoAtualEstimado)}</div>
-          <div style={{...muted,fontSize:7.8}}>Referência simplificada de {aliquotaAtualEstimada==null?"-":percentualSimulador(aliquotaAtualEstimada)}.</div>
+        <label style={{...labelStyle,marginTop:7}}>Total de tributos pagos no mês
+          <input
+            value={impostoAtual}
+            onChange={e=>{setImpostoAtual(e.target.value);setNaoSeiImpostoAtual(false)}}
+            style={input}
+            placeholder="Ex.: 16000"
+            disabled={naoSeiImpostoAtual}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={()=>{
+            setNaoSeiImpostoAtual(!naoSeiImpostoAtual);
+            if(!naoSeiImpostoAtual)setImpostoAtual("");
+          }}
+          style={{
+            ...chipStyle(naoSeiImpostoAtual),
+            width:"100%",textAlign:"left",marginTop:6
+          }}
+        >
+          Não tenho esse valor agora
+        </button>
+
+        {naoSeiImpostoAtual&&<div style={{
+          marginTop:7,background:"#FFF8EC",
+          border:"1px solid #F3D99B",borderRadius:10,padding:9,
+          color:"#805B10",fontSize:8,lineHeight:1.5
+        }}>
+          O comparativo "Hoje × Reforma" ficará <b>preliminar</b>. Removemos a antiga estimativa fixa de 20% do Lucro Real porque ela não possui fundamento para representar a carga total de uma empresa.
         </div>}
 
-        <label style={{...labelStyle,marginTop:8}}>Tributos que continuarão fora do IBS/CBS
-          <input value={tributosFora} onChange={e=>setTributosFora(e.target.value)} style={input} placeholder="Ex.: IRPJ, CSLL, CPP que permanecerem"/>
-          <span style={{...muted,fontSize:7.8}}>Se não souber, deixe em branco e o resultado ficará sinalizado como preliminar.</span>
+        <label style={{...labelStyle,marginTop:8}}>Tributos que permanecerão fora do IBS/CBS
+          <input
+            value={tributosFora}
+            onChange={e=>setTributosFora(e.target.value)}
+            style={input}
+            placeholder="Ex.: IRPJ, CSLL, CPP que permanecerem"
+          />
+          <span style={{...muted,fontSize:7.5}}>
+            Se não houver dado confiável, deixe em branco e valide depois no diagnóstico completo.
+          </span>
         </label>
       </div>
 
       <div style={card}>
-        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>2. Premissa IBS/CBS</h3>
-        <p style={{...muted,margin:"0 0 10px"}}>Os campos são editáveis. Use redução somente quando houver base para isso.</p>
-        <div className="sr-grid2">
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:17,margin:"0 0 4px"}}>
+          Premissa IBS/CBS
+        </h3>
+
+        <div style={{display:"grid",gap:6,marginTop:8}}>
+          <button
+            type="button"
+            onClick={()=>aplicarCenario("2026")}
+            style={{...chipStyle(cenarioAliquota==="2026"),textAlign:"left"}}
+          >
+            2026 — fase de teste oficial: CBS 0,9% + IBS 0,1%
+          </button>
+
+          <button
+            type="button"
+            onClick={()=>aplicarCenario("referencia")}
+            style={{...chipStyle(cenarioAliquota==="referencia"),textAlign:"left"}}
+          >
+            Cenário gerencial de referência — 28% editável
+          </button>
+
+          <button
+            type="button"
+            onClick={()=>setCenarioAliquota("manual")}
+            style={{...chipStyle(cenarioAliquota==="manual"),textAlign:"left"}}
+          >
+            Informar manualmente
+          </button>
+        </div>
+
+        <div className="sr-grid2" style={{marginTop:8}}>
           <label style={labelStyle}>CBS %
-            <input value={cbs} onChange={e=>setCbs(e.target.value)} style={input}/>
+            <input value={cbs} onChange={e=>{setCbs(e.target.value);setCenarioAliquota("manual")}} style={input}/>
           </label>
           <label style={labelStyle}>IBS %
-            <input value={ibs} onChange={e=>setIbs(e.target.value)} style={input}/>
+            <input value={ibs} onChange={e=>{setIbs(e.target.value);setCenarioAliquota("manual")}} style={input}/>
           </label>
           <label style={labelStyle}>Redução CBS %
             <input value={reducaoCbs} onChange={e=>setReducaoCbs(e.target.value)} style={input}/>
@@ -1872,34 +2490,94 @@ function SimuladorReformaPublico({
             <input value={reducaoIbs} onChange={e=>setReducaoIbs(e.target.value)} style={input}/>
           </label>
         </div>
-        <div style={{background:"#F7F9FC",borderRadius:10,padding:9,display:"flex",justifyContent:"space-between",marginTop:8}}>
-          <span style={{fontSize:9,fontWeight:800}}>IVA efetivo usado</span>
+
+        <div style={{
+          marginTop:9,
+          background:fonteAliquota.oficial?"#EEF8F3":"#FFF8EC",
+          border:`1px solid ${fonteAliquota.oficial?"#CDE8DA":"#F3D99B"}`,
+          borderRadius:10,padding:9
+        }}>
+          <div style={{
+            fontSize:7,fontWeight:900,
+            color:fonteAliquota.oficial?"#176B47":"#805B10"
+          }}>
+            ORIGEM DA PREMISSA
+          </div>
+          <div style={{fontSize:8.4,fontWeight:900,marginTop:3}}>
+            {fonteAliquota.titulo}
+          </div>
+          <div style={{...muted,fontSize:7.7,marginTop:3}}>
+            {fonteAliquota.texto}
+          </div>
+          <div style={{...muted,fontSize:7.4,marginTop:4}}>
+            <b>Fonte/referência:</b> {fonteAliquota.referencia}
+          </div>
+        </div>
+
+        <div style={{
+          marginTop:8,background:"#F7F9FC",
+          borderRadius:9,padding:8,
+          display:"flex",justifyContent:"space-between",gap:10
+        }}>
+          <span style={{fontSize:8,fontWeight:800}}>IVA efetivo usado</span>
           <b>{percentualSimulador(iva)}</b>
         </div>
       </div>
 
-      <PrimaryButton disabled={!empresaCadastral||!atividadeSelecionada||!fat||atual<=0||iva<=0} onClick={()=>setEtapa("creditos")}>Continuar <ArrowRight size={16}/></PrimaryButton>
+      <PrimaryButton
+        disabled={!regime||!natureza||!fat||iva<=0}
+        onClick={()=>setEtapa("creditos")}
+      >
+        Continuar <ArrowRight size={16}/>
+      </PrimaryButton>
     </>}
 
     {etapa==="creditos"&&<>
       <div style={card}>
-        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>Créditos</h3>
-        <p style={{...muted,margin:"0 0 10px"}}>Informe somente despesas relevantes. Você pode deixar categorias em branco.</p>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>
+          3. Créditos
+        </h3>
+        <p style={{...muted,margin:"0 0 9px"}}>
+          Informe as principais despesas mensais. O crédito é tratado como potencial e precisa ser validado.
+        </p>
 
-        <div style={{display:"grid",gap:8}}>
-          {linhas.map(item=><div key={item.id} style={{border:"1px solid #E6EAF0",borderRadius:10,padding:9}}>
-            <b style={{fontSize:9}}>{item.label}</b>
-            <div className="sr-grid2" style={{marginTop:7}}>
-              <label style={{fontSize:7.5,fontWeight:800,color:MUTED}}>Valor mensal
-                <input value={item.valor} onChange={e=>alterarDespesa(item.id,{valor:e.target.value})} style={{...input,minHeight:40,padding:8}} placeholder="R$"/>
+        <div style={{display:"grid",gap:7}}>
+          {linhas.map(item=><div key={item.id} style={{
+            border:"1px solid #E6EAF0",borderRadius:10,padding:9
+          }}>
+            <b style={{fontSize:8.8}}>{item.label}</b>
+            <div className="sr-grid2" style={{marginTop:6}}>
+              <label style={{fontSize:7.3,fontWeight:800,color:MUTED}}>
+                Valor mensal
+                <input
+                  value={item.valor}
+                  onChange={e=>alterarDespesa(item.id,{valor:e.target.value})}
+                  style={{...input,minHeight:39,padding:8}}
+                  placeholder="R$"
+                />
               </label>
-              <label style={{fontSize:7.5,fontWeight:800,color:MUTED}}>Crédito atual
-                <input value={item.creditoAtual} onChange={e=>alterarDespesa(item.id,{creditoAtual:e.target.value})} style={{...input,minHeight:40,padding:8}} placeholder="R$"/>
+
+              <label style={{fontSize:7.3,fontWeight:800,color:MUTED}}>
+                Crédito atual
+                <input
+                  value={item.creditoAtual}
+                  onChange={e=>alterarDespesa(item.id,{creditoAtual:e.target.value})}
+                  style={{...input,minHeight:39,padding:8}}
+                  placeholder="R$"
+                />
               </label>
             </div>
-            <label style={{display:"flex",gap:6,alignItems:"center",fontSize:8,marginTop:7}}>
-              <input type="checkbox" checked={item.considerarNovo} onChange={e=>alterarDespesa(item.id,{considerarNovo:e.target.checked})}/>
-              Considerar como potencial crédito no cenário IBS/CBS
+
+            <label style={{
+              display:"flex",gap:6,alignItems:"center",
+              fontSize:7.8,marginTop:6
+            }}>
+              <input
+                type="checkbox"
+                checked={item.considerarNovo}
+                onChange={e=>alterarDespesa(item.id,{considerarNovo:e.target.checked})}
+              />
+              Considerar como potencial crédito IBS/CBS
             </label>
           </div>)}
         </div>
@@ -1910,94 +2588,235 @@ function SimuladorReformaPublico({
         {kpi("Crédito novo estimado",moedaSimulador(creditoNovo),"#176B47")}
       </div>
 
-      <div style={{background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:10,padding:9,color:"#805B10",fontSize:8,lineHeight:1.5}}>
-        O sistema trata os valores como potencial de crédito para simulação. A elegibilidade deve ser confirmada na análise técnica.
-      </div>
-
-      <PrimaryButton onClick={()=>setEtapa("comparar")}>Comparar <ArrowRight size={16}/></PrimaryButton>
+      <PrimaryButton onClick={()=>setEtapa("comparar")}>
+        Calcular <ArrowRight size={16}/>
+      </PrimaryButton>
     </>}
 
     {etapa==="comparar"&&<>
       <div style={card}>
-        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>Atual × Reforma</h3>
-        <p style={{...muted,margin:"0 0 12px"}}>Veja o valor final e a memória de cálculo.</p>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>
+          4. Comparativo
+        </h3>
 
-        <div className="sr-grid2">
-          {kpi("Hoje",moedaSimulador(atual),"#31589C",usarEstimativa?"estimado":"informado")}
-          {kpi("Reforma",reforma==null?"Pendente":moedaSimulador(reforma),reforma!=null&&reforma>atual?"#B42318":"#176B47")}
+        <div className="sr-grid2" style={{marginTop:9}}>
+          {kpi(
+            "Hoje",
+            atual==null?"Não informado":moedaSimulador(atual),
+            "#31589C",
+            atual==null?"comparativo preliminar":"valor informado"
+          )}
+          {kpi(
+            "Cenário Reforma",
+            reforma==null?"Pendente":moedaSimulador(reforma),
+            reforma!=null&&atual!=null&&reforma>atual?"#B42318":"#176B47"
+          )}
         </div>
 
-        <div style={{display:"grid",gap:10,marginTop:12}}>
-          {barra("Hoje",atual,Math.max(atual,reforma||0,1),"#31589C")}
-          {barra("Reforma",reforma||0,Math.max(atual,reforma||0,1),reforma!=null&&reforma>atual?"#FF6B4A":"#176B47")}
-        </div>
+        {atual!=null&&reforma!=null&&<div style={{display:"grid",gap:9,marginTop:11}}>
+          {barra("Hoje",atual,Math.max(atual,reforma,1),"#31589C")}
+          {barra(
+            "Reforma",
+            reforma,
+            Math.max(atual,reforma,1),
+            reforma>atual?"#FF6B4A":"#176B47"
+          )}
+        </div>}
 
-        <div className="sr-grid2" style={{marginTop:12}}>
-          {kpi("Diferença mensal",diferenca==null?"Pendente":moedaSimulador(diferenca),diferenca!=null&&diferenca>0?"#B42318":"#176B47")}
-          {kpi("Variação",variacao==null?"Pendente":percentualSimulador(variacao),variacao!=null&&variacao>0?"#B42318":"#176B47")}
+        <div className="sr-grid2" style={{marginTop:10}}>
+          {kpi(
+            "Diferença mensal",
+            diferenca==null?"Pendente":moedaSimulador(diferenca),
+            diferenca!=null&&diferenca>0?"#B42318":"#176B47"
+          )}
+          {kpi(
+            "Variação",
+            variacao==null?"Pendente":percentualSimulador(variacao),
+            variacao!=null&&variacao>0?"#B42318":"#176B47"
+          )}
         </div>
       </div>
 
       <div style={card}>
-        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 8px"}}>Como chegamos ao valor da Reforma</h3>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 7px"}}>
+          Memória de cálculo
+        </h3>
+
         {[
+          ["Faturamento",fat],
           ["Débito CBS",debitoCbs],
           ["Débito IBS",debitoIbs],
-          ["(-) Créditos",creditoNovo],
+          ["(-) Créditos potenciais",creditoNovo],
           ["IBS/CBS líquido",ibsCbsLiquido],
           ["(+) Tributos fora do IBS/CBS",fora],
           ["Total Reforma",reforma],
-        ].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",gap:8,borderBottom:"1px solid #EEF0F4",padding:"7px 0",fontSize:8.7}}>
-          <span style={{color:MUTED}}>{l}</span><b>{v==null?"Pendente":moedaSimulador(v)}</b>
+        ].map(([l,v])=><div key={l} style={{
+          display:"flex",justifyContent:"space-between",
+          gap:8,borderBottom:"1px solid #EEF0F4",
+          padding:"7px 0",fontSize:8.3
+        }}>
+          <span style={{color:MUTED}}>{l}</span>
+          <b>{v==null?"Pendente":moedaSimulador(v)}</b>
         </div>)}
-      </div>
 
-      <PrimaryButton onClick={()=>setEtapa("resultado")}>Ver resultado <ArrowRight size={16}/></PrimaryButton>
-    </>}
-
-    {etapa==="resultado"&&<>
-      <div style={{background:"linear-gradient(145deg,#101C35,#17233D)",color:"#fff",borderRadius:16,padding:15}}>
-        <div style={{fontSize:8,fontWeight:900,color:"#FFB7A7"}}>RESULTADO</div>
-        <h2 style={{fontFamily:DISPLAY_FONT,fontSize:20,lineHeight:1.1,margin:"5px 0"}}>
-          {diferenca==null?"Complete os dados para concluir":diferenca>0?"Neste cenário, a carga aumenta":"Neste cenário, há redução estimada"}
-        </h2>
-        <p style={{fontSize:9,color:"#D8DEEA",lineHeight:1.5,margin:0}}>
-          {diferenca==null?"Ainda faltam dados para fechar a comparação.":<>De <b>{moedaSimulador(atual)}</b> para <b>{moedaSimulador(reforma)}</b> por mês.</>}
-        </p>
-      </div>
-
-      <div className="sr-grid2">
-        {kpi("Carga atual",cargaAtual==null?"Pendente":percentualSimulador(cargaAtual),"#31589C")}
-        {kpi("Carga Reforma",cargaReforma==null?"Pendente":percentualSimulador(cargaReforma),cargaReforma!=null&&cargaAtual!=null&&cargaReforma>cargaAtual?"#B42318":"#176B47")}
-        {kpi("Diferença / mês",diferenca==null?"Pendente":moedaSimulador(diferenca),diferenca!=null&&diferenca>0?"#B42318":"#176B47")}
-        {kpi("Diferença / ano",diferenca==null?"Pendente":moedaSimulador(diferenca*12),diferenca!=null&&diferenca>0?"#B42318":"#176B47")}
-      </div>
-
-      <div style={card}>
-        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 8px"}}>Se o faturamento crescer {crescimentoPct}%</h3>
-        <label style={labelStyle}>Crescimento %
-          <input value={crescimento} onChange={e=>setCrescimento(e.target.value)} style={input}/>
-        </label>
-        <div className="sr-grid2" style={{marginTop:7}}>
-          {kpi("Hoje projetado",moedaSimulador(atualProjetado),"#31589C")}
-          {kpi("Reforma projetada",reformaProjetada==null?"Pendente":moedaSimulador(reformaProjetada),reformaProjetada!=null&&reformaProjetada>atualProjetado?"#B42318":"#176B47")}
+        <div style={{
+          marginTop:8,background:"#F7F9FC",
+          borderRadius:9,padding:8,fontSize:7.7,lineHeight:1.45
+        }}>
+          <b>Premissa utilizada:</b> {fonteAliquota.titulo}. {fonteAliquota.texto}
         </div>
       </div>
 
-      <div style={{background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:10,padding:9,color:"#805B10",fontSize:8,lineHeight:1.5}}>
-        Simulação gerencial. A recomendação definitiva exige CNPJ, CNAEs, documentos, créditos válidos, operação real e legislação aplicável.
+      <PrimaryButton onClick={()=>setEtapa("resultado")}>
+        Gerar relatório <Sparkles size={15}/>
+      </PrimaryButton>
+    </>}
+
+    {etapa==="resultado"&&<>
+      <div style={{
+        background:"linear-gradient(145deg,#101C35,#17233D)",
+        color:"#fff",borderRadius:15,padding:14
+      }}>
+        <div style={{fontSize:7.5,fontWeight:900,color:"#FFB7A7"}}>
+          RELATÓRIO DA SIMULAÇÃO
+        </div>
+        <h2 style={{
+          fontFamily:DISPLAY_FONT,fontSize:19,
+          lineHeight:1.12,margin:"5px 0"
+        }}>
+          {empresaCadastral?.razaoSocial||"Empresa"}
+        </h2>
+        <div style={{fontSize:8,color:"#D8DEEA",lineHeight:1.5}}>
+          {atividadeSelecionada}
+        </div>
       </div>
 
-      <PrimaryButton onClick={()=>setEtapa("resultado")}>
-        Simulação concluída
-      </PrimaryButton>
+      <div className="sr-grid2">
+        {kpi("Faturamento",moedaSimulador(fat))}
+        {kpi("Hoje",atual==null?"Pendente":moedaSimulador(atual),"#31589C")}
+        {kpi(
+          "Reforma",
+          reforma==null?"Pendente":moedaSimulador(reforma),
+          reforma!=null&&atual!=null&&reforma>atual?"#B42318":"#176B47"
+        )}
+        {kpi(
+          "Diferença anual",
+          diferenca==null?"Pendente":moedaSimulador(diferenca*12),
+          diferenca!=null&&diferenca>0?"#B42318":"#176B47"
+        )}
+      </div>
 
-      <button type="button" onClick={()=>onAprofundar?.(snapshot)} style={{...chipStyle(false),width:"100%",minHeight:42}}>
-        Quero fazer o Diagnóstico completo da Reforma
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+          <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:0}}>
+            Leitura da IA
+          </h3>
+
+          {gerandoRelatorioIa&&<Loader2 size={16} className="spin"/>}
+        </div>
+
+        {gerandoRelatorioIa&&<div style={{...muted,marginTop:8}}>
+          Analisando o CNPJ, atividade, premissas, créditos e resultado da simulação...
+        </div>}
+
+        {erroRelatorioIa&&<div style={{
+          marginTop:8,background:"#FFF3F0",
+          border:"1px solid #F0C4BC",
+          borderRadius:9,padding:8,
+          color:"#B42318",fontSize:8
+        }}>
+          {erroRelatorioIa}
+          <button
+            type="button"
+            onClick={gerarRelatorioIa}
+            style={{...chipStyle(false),width:"100%",marginTop:6}}
+          >
+            Tentar gerar novamente
+          </button>
+        </div>}
+
+        {relatorioIa&&<>
+          <p style={{fontSize:8.5,lineHeight:1.55,color:NAVY}}>
+            {relatorioIa.leituraExecutiva}
+          </p>
+
+          {(relatorioIa.riscosPrioritarios||[]).length>0&&<>
+            <b style={{fontSize:8.5}}>Riscos prioritários</b>
+            <ul style={{fontSize:8.2,lineHeight:1.5,paddingLeft:17}}>
+              {relatorioIa.riscosPrioritarios.slice(0,5).map((x,i)=><li key={i}>{x}</li>)}
+            </ul>
+          </>}
+
+          {(relatorioIa.recomendacoes||[]).length>0&&<>
+            <b style={{fontSize:8.5}}>Recomendações</b>
+            <ul style={{fontSize:8.2,lineHeight:1.5,paddingLeft:17}}>
+              {relatorioIa.recomendacoes.slice(0,5).map((x,i)=><li key={i}>{x}</li>)}
+            </ul>
+          </>}
+
+          {(relatorioIa.proximosPassos||[]).length>0&&<>
+            <b style={{fontSize:8.5}}>Próximos passos</b>
+            <ol style={{fontSize:8.2,lineHeight:1.5,paddingLeft:17}}>
+              {relatorioIa.proximosPassos.slice(0,5).map((x,i)=><li key={i}>{x}</li>)}
+            </ol>
+          </>}
+        </>}
+      </div>
+
+      <div style={card}>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 7px"}}>
+          Crescimento
+        </h3>
+
+        <label style={labelStyle}>Se o faturamento crescer %
+          <input value={crescimento} onChange={e=>setCrescimento(e.target.value)} style={input}/>
+        </label>
+
+        <div className="sr-grid2" style={{marginTop:7}}>
+          {kpi(
+            "Hoje projetado",
+            atualProjetado==null?"Pendente":moedaSimulador(atualProjetado),
+            "#31589C"
+          )}
+          {kpi(
+            "Reforma projetada",
+            reformaProjetada==null?"Pendente":moedaSimulador(reformaProjetada),
+            reformaProjetada!=null&&atualProjetado!=null&&reformaProjetada>atualProjetado?"#B42318":"#176B47"
+          )}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={gerarPdfSimulador}
+        disabled={!relatorioIa}
+        style={{
+          minHeight:44,border:0,borderRadius:11,
+          background:relatorioIa?CORAL:"#D7DDE8",
+          color:"#fff",fontWeight:900,cursor:relatorioIa?"pointer":"default"
+        }}
+      >
+        <Download size={15} style={{verticalAlign:"middle",marginRight:6}}/>
+        Gerar PDF do relatório
       </button>
 
-      <button type="button" onClick={()=>setEtapa("dados")} style={{background:"none",border:0,color:MUTED,fontSize:10,cursor:"pointer",padding:7}}>
-        Alterar dados da simulação
+      <button
+        type="button"
+        onClick={()=>onAprofundar?.(snapshot)}
+        style={{...chipStyle(false),width:"100%",minHeight:42}}
+      >
+        Fazer Diagnóstico completo da Reforma
+      </button>
+
+      <button
+        type="button"
+        onClick={()=>setEtapa("empresa")}
+        style={{
+          background:"none",border:0,
+          color:MUTED,fontSize:9,cursor:"pointer",padding:6
+        }}
+      >
+        Alterar simulação
       </button>
     </>}
   </div>;
