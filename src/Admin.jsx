@@ -43,6 +43,7 @@ import PropostaPDFButton from "./PropostaPDF";
 import { FinderSidebar, FinderTopbar } from "./TechShell";
 import { finderStyles } from "./Theme";
 import Tributario from "./tributario/Tributario";
+import SimuladorFiscal from "./simulador-fiscal/SimuladorFiscal";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -140,7 +141,11 @@ const ESTRUTURAS_DIAGNOSTICO = [
   },
   {
     id: "reforma_tributaria",
-    label: "Reforma Tributária / IBS e CBS",
+    label: "Diagnóstico da Reforma Tributária",
+  },
+  {
+    id: "simulador_reforma",
+    label: "Simulador Reforma",
   },
   {
     id: "holding",
@@ -191,6 +196,12 @@ function normalizarEstruturaDiagnostico(
       "reforma_tributaria",
     reforma_tributaria_ibs_cbs:
       "reforma_tributaria",
+    simulador_reforma:
+      "simulador_reforma",
+    simulacao_reforma:
+      "simulador_reforma",
+    simulador_da_reforma:
+      "simulador_reforma",
 
     holding:
       "holding",
@@ -251,6 +262,14 @@ function estruturaDiagnostico(item = {}) {
     ).toLowerCase();
 
   if (
+    contextoTexto.includes("simuladorreforma") ||
+    contextoTexto.includes("simulador_reforma") ||
+    contextoTexto.includes("simulador reforma")
+  ) {
+    return "simulador_reforma";
+  }
+
+  if (
     contextoTexto.includes(
       "reformatributaria"
     ) ||
@@ -284,6 +303,13 @@ function estruturaDiagnostico(item = {}) {
       item?.empresa?.cnpj ||
       ""
     ).replace(/\D/g, "");
+
+  if (
+    segmento.includes("simulador reforma") ||
+    razao.includes("simulador reforma")
+  ) {
+    return "simulador_reforma";
+  }
 
   if (
     segmento.includes("reforma tribut") ||
@@ -370,6 +396,11 @@ function corEstruturaDiagnostico(
     reforma_tributaria: {
       bg: "#FFF0EB",
       color: "#B54708",
+    },
+
+    simulador_reforma: {
+      bg: "#EEF8F3",
+      color: "#176B47",
     },
 
     holding: {
@@ -9997,17 +10028,14 @@ async function salvarPropostaCaso() {
                           <option value="NAO_INICIADO">
                             Não iniciado
                           </option>
-                          <option value="EM_ANALISE">
-                            Avaliando
+                          <option value="EM_ANDAMENTO">
+                            Em andamento
                           </option>
-                          <option value="REUNIAO_AGENDADA">
-                            Reunião agendada
+                          <option value="AGUARDANDO_CLIENTE">
+                            Aguardando cliente
                           </option>
-                          <option value="EM_ATENDIMENTO">
-                            Em tratativa
-                          </option>
-                          <option value="PLANO_APRESENTADO">
-                            Proposta / plano apresentado
+                          <option value="AGUARDANDO_INTERNO">
+                            Aguardando interno
                           </option>
                           <option value="CONCLUIDO">
                             Concluído
@@ -10035,8 +10063,8 @@ async function salvarPropostaCaso() {
                           <option value="NAO_ANALISADA">
                             Não analisada
                           </option>
-                          <option value="EM_ANALISE">
-                            Em análise
+                          <option value="SEM_OPORTUNIDADE">
+                            Sem oportunidade
                           </option>
                           <option value="OPORTUNIDADE_IDENTIFICADA">
                             Oportunidade identificada
@@ -10044,11 +10072,8 @@ async function salvarPropostaCaso() {
                           <option value="PROPOSTA">
                             Proposta
                           </option>
-                          <option value="CONTRATADO">
-                            Contratado
-                          </option>
-                          <option value="SEM_OPORTUNIDADE">
-                            Sem oportunidade
+                          <option value="FECHADO">
+                            Fechado
                           </option>
                         </select>
 
@@ -13571,6 +13596,11 @@ function ResumoEstruturaSelecionada({
     contexto?.reforma_tributaria ||
     {};
 
+  const simuladorReforma =
+    perfil?.simuladorReforma ||
+    contexto?.simuladorReforma ||
+    {};
+
   function Linha({
     titulo,
     valor,
@@ -13660,6 +13690,47 @@ function ResumoEstruturaSelecionada({
           <Linha titulo="INVESTIMENTOS ATUAIS" valor={pessoaFisica.investimentosAtuais} />
           <Linha titulo="APOSENTADORIA" valor={pessoaFisica.aposentadoria} />
           <Linha titulo="DEPENDENTES" valor={pessoaFisica.dependentes} />
+        </div>
+      </Card>
+    );
+  }
+
+  if (
+    estrutura ===
+    "simulador_reforma"
+  ) {
+    const empresaSim=simuladorReforma?.empresa||{};
+    const configSim=simuladorReforma?.configuracao||{};
+    const resultadoSim=simuladorReforma?.resultado||{};
+    const memoriaSim=simuladorReforma?.memoria||{};
+
+    return (
+      <Card style={{marginBottom:16,borderLeft:"4px solid #176B47"}}>
+        <h3 style={{margin:"0 0 4px"}}>
+          Contexto preenchido — Simulador Reforma
+        </h3>
+
+        <p style={{margin:"0 0 12px",color:MUTED,fontSize:10.5}}>
+          Simulação tributária salva no CRM com atividade analisada, premissas, carga atual e cenário IBS/CBS.
+        </p>
+
+        <div style={{
+          display:"grid",
+          gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",
+          gap:8,
+        }}>
+          <Linha titulo="CNPJ" valor={empresaSim.cnpj} />
+          <Linha titulo="ATIVIDADE PREPONDERANTE" valor={empresaSim.atividadeSelecionada} />
+          <Linha titulo="ATIVIDADE DE FATO" valor={empresaSim.descricaoAtividadeReal} />
+          <Linha titulo="REGIME ATUAL" valor={configSim.regime} />
+          <Linha titulo="NATUREZA" valor={configSim.natureza} />
+          <Linha titulo="FATURAMENTO MENSAL" valor={configSim.faturamentoMensal} />
+          <Linha titulo="CARGA ATUAL" valor={resultadoSim.atual} />
+          <Linha titulo="CENÁRIO REFORMA" valor={resultadoSim.reforma} />
+          <Linha titulo="DIFERENÇA" valor={resultadoSim.diferenca} />
+          <Linha titulo="VARIAÇÃO %" valor={resultadoSim.variacaoPct} />
+          <Linha titulo="IBS/CBS LÍQUIDO" valor={memoriaSim.ibsCbsLiquido} />
+          <Linha titulo="CRÉDITOS ESTIMADOS" valor={memoriaSim.creditoNovo} />
         </div>
       </Card>
     );
@@ -14315,6 +14386,20 @@ function DetalheDiagnostico({
     ) || [];
 
   // COMPLEMENTO — inteligência tributária
+  const relatoriosSegmentados =
+    resultado.relatoriosSegmentados ||
+    resultado?.resultadoCompleto?.relatoriosSegmentados ||
+    {};
+
+  const relatorioClienteSegmentado =
+    relatoriosSegmentados.cliente || null;
+
+  const relatorioEquipeSegmentado =
+    relatoriosSegmentados.equipe || null;
+
+  const relatorioAdministracaoSegmentado =
+    relatoriosSegmentados.administracao || null;
+
   const inteligenciaTributaria =
     resultado.inteligenciaTributaria ||
     null;
@@ -15293,6 +15378,68 @@ function DetalheDiagnostico({
 
         {abaRelatorio === "administracao" && (
           <>
+            {relatorioAdministracaoSegmentado && (
+              <Card style={{ marginBottom: 16, borderLeft: "4px solid #31589C" }}>
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: "#31589C",
+                    fontWeight: 900,
+                    marginBottom: 5,
+                  }}
+                >
+                  RELATÓRIO ADAPTADO À ADMINISTRAÇÃO
+                </div>
+
+                <h3 style={{ margin: "0 0 6px" }}>
+                  {relatorioAdministracaoSegmentado.titulo}
+                </h3>
+
+                {relatorioAdministracaoSegmentado.leituraExecutiva && (
+                  <p
+                    style={{
+                      fontSize: 11,
+                      lineHeight: 1.55,
+                      color: NAVY,
+                      margin: "0 0 10px",
+                    }}
+                  >
+                    {relatorioAdministracaoSegmentado.leituraExecutiva}
+                  </p>
+                )}
+
+                {(relatorioAdministracaoSegmentado.riscos || []).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 900, margin: "10px 0 6px" }}>
+                      Riscos prioritários
+                    </div>
+                    <ListaDossie itens={relatorioAdministracaoSegmentado.riscos} vazio="" />
+                  </>
+                )}
+
+                {(relatorioAdministracaoSegmentado.oportunidadesConsultoria || []).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 900, margin: "12px 0 6px" }}>
+                      Oportunidades de consultoria
+                    </div>
+                    <ListaDossie
+                      itens={relatorioAdministracaoSegmentado.oportunidadesConsultoria}
+                      vazio=""
+                    />
+                  </>
+                )}
+
+                {relatorioAdministracaoSegmentado.plano90Dias && (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 900, margin: "12px 0 6px" }}>
+                      Plano de 90 dias
+                    </div>
+                    <Plano90Dias plano={relatorioAdministracaoSegmentado.plano90Dias} />
+                  </>
+                )}
+              </Card>
+            )}
+
         <div
           style={{
             display:
@@ -16419,6 +16566,22 @@ function DetalheDiagnostico({
 
         {abaRelatorio === "cliente" && (
           <div>
+            {relatorioClienteSegmentado && (
+              <Card style={{marginBottom:16,borderLeft:`4px solid ${CORAL}`}}>
+                <div style={{fontSize:9,color:CORAL,fontWeight:900,marginBottom:5}}>
+                  RELATÓRIO ADAPTADO AO CLIENTE
+                </div>
+                <h3 style={{margin:"0 0 6px"}}>{relatorioClienteSegmentado.titulo}</h3>
+                {relatorioClienteSegmentado.leituraExecutiva && (
+                  <p style={{fontSize:11,lineHeight:1.55,color:NAVY,margin:"0 0 10px"}}>
+                    {relatorioClienteSegmentado.leituraExecutiva}
+                  </p>
+                )}
+                {(relatorioClienteSegmentado.riscos||[]).length>0 && (
+                  <ListaDossie itens={relatorioClienteSegmentado.riscos} vazio="" />
+                )}
+              </Card>
+            )}
             <div
               style={{
                 marginBottom: 18,
@@ -16906,6 +17069,17 @@ function DetalheDiagnostico({
 
         {abaRelatorio === "equipe" && (
           <div>
+            {relatorioEquipeSegmentado && (
+              <Card style={{marginBottom:16,borderLeft:"4px solid #176B47"}}>
+                <div style={{fontSize:9,color:"#176B47",fontWeight:900,marginBottom:5}}>
+                  RELATÓRIO ADAPTADO À EQUIPE
+                </div>
+                <h3 style={{margin:"0 0 6px"}}>{relatorioEquipeSegmentado.titulo}</h3>
+                {(relatorioEquipeSegmentado.pendencias||[]).length>0 && (
+                  <ListaDossie itens={relatorioEquipeSegmentado.pendencias} vazio="" />
+                )}
+              </Card>
+            )}
             <div
               style={{
                 marginBottom: 16,
@@ -22791,9 +22965,13 @@ export default function Admin() {
           <History size={14} />
           Auditoria
         </Botao>
+        <Botao secundario={aba !== "simulador-fiscal"} onClick={() => setAba("simulador-fiscal")}>
+          <Sparkles size={14} />
+          Simulador Fiscal
+        </Botao>
         <Botao secundario={aba !== "tributario"} onClick={() => setAba("tributario")}>
           <Gauge size={14} />
-          Inteligência Tributária
+          Tributário
         </Botao>
       </div>
     );
@@ -22989,10 +23167,15 @@ export default function Admin() {
       subtitulo:
         "Histórico de acessos, cliques e alterações do sistema",
     },
+    "simulador-fiscal": {
+      titulo: "Simulador Fiscal",
+      subtitulo:
+        "Reforma Tributária (IBS/CBS) e Planejamento Tributário — módulo novo, independente da Inteligência Tributária",
+    },
     tributario: {
       titulo: "Inteligência Tributária",
       subtitulo:
-        "Reforma Tributária (IBS/CBS) e Planejamento Tributário com análise documental, IA, histórico e acompanhamento por responsável.",
+        "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
     },
   };
 
@@ -23178,6 +23361,22 @@ export default function Admin() {
           <AuditoriaSistema
             token={token}
           />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "simulador-fiscal") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas["simulador-fiscal"].titulo}
+        subtitulo={paginas["simulador-fiscal"].subtitulo}
+      >
+        <ConteudoPadrao>
+          <SimuladorFiscal token={token} />
         </ConteudoPadrao>
       </FinderTechLayout>
     );
