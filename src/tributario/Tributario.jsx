@@ -804,6 +804,9 @@ function ReformaTributariaV2({token,onVoltar}){
  const [faturamentoAnual,setFaturamentoAnual]=useState(""),[margem,setMargem]=useState(""),[folha,setFolha]=useState(""),[proLabore,setProLabore]=useState(""),[despesasDedutiveis,setDespesasDedutiveis]=useState("");
  const [aliquotaAtual,setAliquotaAtual]=useState(""),[incentivoAtual,setIncentivoAtual]=useState("NORMAL"),[reducaoIbsCbs,setReducaoIbsCbs]=useState("0"),[exportacao,setExportacao]=useState("0"),[tratamentoEspecial,setTratamentoEspecial]=useState("");
  const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
+ const [documentosBanco,setDocumentosBanco]=useState([]);
+ const [documentosSelecionados,setDocumentosSelecionados]=useState({});
+ const [carregandoDocumentos,setCarregandoDocumentos]=useState(false);
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}});
  const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["motor","7. Recomendação"],["impacto","8. Impactos"],["transicao","9. Transição"],["relatorio","10. Relatório"]];
@@ -824,9 +827,54 @@ function ReformaTributariaV2({token,onVoltar}){
  const list=(titulo,itens)=><div style={card}><b>{titulo}</b>{itens?.length?<ul>{itens.map((x,i)=><li key={i} style={{fontSize:9.5,lineHeight:1.5}}>{x}</li>)}</ul>:<p style={{fontSize:9,color:"#697386"}}>Nenhum item confirmado.</p>}</div>;
  async function apiCall(action,{method="GET",body=null,query={}}={}){const p=new URLSearchParams({action});Object.entries(query).forEach(([k,v])=>v!==""&&v!=null&&p.set(k,String(v)));const r=await fetch(`/api/tributario?${p}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro no módulo tributário.");return d}
  async function arquivoParaDataUrl(file){return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error(`Não foi possível ler ${file.name}.`));reader.readAsDataURL(file)})}
+
+ async function carregarArquivoCliente(cnpjForcado=cnpj){
+  const c=digits(cnpjForcado);
+  if(c.length!==14){
+   setDocumentosBanco([]);
+   return [];
+  }
+  setCarregandoDocumentos(true);
+  try{
+   const d=await apiCall("listar-documentos",{query:{cnpj:c}});
+   const docs=Array.isArray(d.documentos)?d.documentos.filter(x=>x.ativo!==false):[];
+   setDocumentosBanco(docs);
+   setDocumentosSelecionados(atual=>{
+    const prox={...atual};
+    docs.forEach(doc=>{
+     if(prox[doc.id]===undefined)prox[doc.id]=true;
+    });
+    return prox;
+   });
+   return docs;
+  }catch(e){
+   setErro(e?.message||"Não foi possível carregar o arquivo documental do cliente.");
+   return [];
+  }finally{
+   setCarregandoDocumentos(false);
+  }
+ }
+
+ async function removerDocumentoBanco(id){
+  if(!window.confirm("Remover este documento do arquivo ativo do cliente? O histórico continuará preservado."))return;
+  try{
+   await apiCall("remover-documento",{method:"POST",body:{id}});
+   setDocumentosSelecionados(at=>({...at,[id]:false}));
+   await carregarArquivoCliente();
+   setOk("Documento removido do arquivo ativo do cliente.");
+  }catch(e){
+   setErro(e?.message||"Não foi possível remover o documento.");
+  }
+ }
+
+ useEffect(()=>{
+  if(digits(cnpj).length===14){
+   carregarArquivoCliente(cnpj);
+  }
+ },[cnpj]);
  function normalizarCnaes(data){const p=data?.cnaePrincipal||data?.cnae?.principal||null,s=data?.cnaesSecundarios||data?.cnae?.secundarios||[],todos=data?.todosCnaes||data?.cnae?.todos||[p,...s].filter(Boolean);return(todos||[]).map((x,i)=>({codigo:String(x?.codigo||x?.cnae||""),descricao:x?.descricao||"",principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&p)})).filter(x=>x.codigo||x.descricao)}
  async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");return{dados:d,cnaes:lista}}
- async function buscarCnpj(){try{setErro("");await consultarCnpj(cnpj);setOk("CNPJ e CNAEs atualizados pela consulta cadastral.")}catch(e){setErro(e.message)}}
+ async function buscarCnpj(){try{setErro("");await consultarCnpj(cnpj);await carregarArquivoCliente(cnpj);setOk("CNPJ, CNAEs e arquivo documental do cliente atualizados.")}catch(e){setErro(e.message)}}
  const EXTENSOES_SUPORTADAS_IA=new Set([
   "art","bat","brf","c","cls","css","csv","diff","doc","docx","dot","eml","epub","es",
   "h","hs","htm","html","hwp","hwpx","ics","ifb","java","js","json","keynote","ksh","ltx",
@@ -986,21 +1034,108 @@ function ReformaTributariaV2({token,onVoltar}){
   if(tratamentos.length)setTratamentoEspecial(tratamentos.join(" | "));
  }
  async function interpretarDocumentos(){
-  if(!documentos.length){setErro("Selecione pelo menos um documento.");return}
+  const cnpjAtual=digits(cnpj);
+  const idsExistentes=documentosBanco
+   .filter(d=>d.ativo!==false&&documentosSelecionados[d.id]!==false)
+   .map(d=>d.id);
+
+  if(!documentos.length&&!idsExistentes.length){
+   setErro("Adicione novos documentos ou selecione documentos já salvos no arquivo do cliente.");
+   return;
+  }
 
   const invalidos=documentos.filter(arq=>!arquivoSuportadoIA(arq));
   if(invalidos.length){
-    setErro(
-      `Não é possível interpretar: ${invalidos.map(a=>a.name).join(", ")}. `+
-      `O formato não é suportado pela IA. Remova o arquivo ou converta para PDF, DOCX, XLSX, CSV, TXT ou XML.`
-    );
-    return;
+   setErro(`Não é possível interpretar: ${invalidos.map(a=>a.name).join(", ")}. Converta os arquivos para um formato suportado.`);
+   return;
   }
 
-  setExtraindo(true);setErro("");setOk("");try{const up=[];for(const file of documentos){const fileData=await arquivoParaDataUrl(file);const u=await apiCall("upload-file",{method:"POST",body:{filename:file.name,mimeType:file.type||"application/octet-stream",fileData}});up.push({fileId:u.fileId,filename:file.name,mimeType:file.type||"",bytes:file.size})}setDocumentosIa(up);const d=await apiCall("reforma-extrair",{method:"POST",body:{projetoId,arquivos:up}});aplicarExtracao(d.extracao);const c=digits(d.extracao?.identificacao?.cnpj);if(c.length===14){try{const cad=await consultarCnpj(c);setOk(`IA identificou o CNPJ e o sistema consultou ${cad.cnaes.length} CNAE(s) oficiais.`)}catch{setOk("IA interpretou os documentos e identificou o CNPJ, mas a consulta cadastral precisa ser validada.")}}else setOk("IA interpretou os documentos. Confirme o CNPJ manualmente.");setAba("identificacao")}catch(e){setErro(e.message)}finally{setExtraindo(false)}}
+  setExtraindo(true);setErro("");setOk("");
+
+  try{
+   const novos=[];
+
+   for(const file of documentos){
+    const fileData=await arquivoParaDataUrl(file);
+    const u=await apiCall("upload-file",{
+     method:"POST",
+     body:{
+      projetoId,
+      cnpj:cnpjAtual,
+      tipoProjeto:"reforma",
+      categoria:"reforma",
+      filename:file.name,
+      mimeType:file.type||"application/octet-stream",
+      fileData,
+      persistir:Boolean(cnpjAtual||projetoId)
+     }
+    });
+
+    novos.push({
+     documentId:u.documentoId||null,
+     fileId:u.fileId,
+     filename:file.name,
+     mimeType:file.type||"",
+     bytes:file.size
+    });
+   }
+
+   let antigos=[];
+
+   if(idsExistentes.length){
+    const p=await apiCall("preparar-documentos-ia",{
+     method:"POST",
+     body:{documentoIds:idsExistentes}
+    });
+    antigos=Array.isArray(p.arquivos)?p.arquivos:[];
+   }
+
+   const mapa=new Map();
+
+   [...antigos,...novos].forEach(a=>{
+    const chave=a.documentId||`${a.filename}_${a.bytes}`;
+    mapa.set(chave,a);
+   });
+
+   const up=Array.from(mapa.values());
+
+   if(!up.length)throw new Error("Nenhum documento pôde ser preparado para a análise.");
+
+   setDocumentosIa(up);
+
+   const d=await apiCall("reforma-extrair",{
+    method:"POST",
+    body:{projetoId,arquivos:up}
+   });
+
+   aplicarExtracao(d.extracao);
+
+   const c=digits(d.extracao?.identificacao?.cnpj)||cnpjAtual;
+
+   if(c.length===14){
+    try{
+     const cad=await consultarCnpj(c);
+     await carregarArquivoCliente(c);
+     setOk(`IA consolidou ${up.length} documento(s), identificou o CNPJ e o sistema atualizou ${cad.cnaes.length} CNAE(s) oficiais.`);
+    }catch{
+     await carregarArquivoCliente(c);
+     setOk(`IA consolidou ${up.length} documento(s). A consulta cadastral precisa ser validada.`);
+    }
+   }else{
+    setOk(`IA consolidou ${up.length} documento(s). Confirme o CNPJ manualmente.`);
+   }
+
+   setDocumentos([]);
+   setAba("identificacao");
+  }catch(e){
+   setErro(e.message);
+  }finally{
+   setExtraindo(false);
+  }
+ }
  function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(d.analise);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
- async function salvar(status="EM_ANALISE"){try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:documentos.length?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao,simulacao},status}});setOk("Reforma Tributária salva.")}catch(e){setErro(e.message)}}
+ async function salvar(status="EM_ANALISE"){try{await apiCall("salvar-projeto",{method:"POST",body:{id:projetoId,tipoProjeto:"reforma",estrutura:"empresa",modalidade:(documentos.length||documentosBanco.length)?"hibrido":"manual",responsavelFinder:responsavel,origemCliente:origem,empresas:[{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""}],atividades:{selecionadas:cnaes,principalReal:principal,descricaoReal:descricao},dadosManuais:{reformaV2:baseAtual(),analise,extracao,simulacao},status}});setOk("Reforma Tributária salva.")}catch(e){setErro(e.message)}}
  const fatSim=faturamentoAnual||receita;
 
  const motor=useMemo(()=>{
@@ -1099,6 +1234,53 @@ function ReformaTributariaV2({token,onVoltar}){
   const cargaAtual=n(tributosAtuais);
   return{dentro,fora,residual,ibscbs,diff,pctDiff,cargaAtual};
  },[simulacao,tributosAtuais]);
+
+ const prontidaoRelatorio=useMemo(()=>{
+  const simplesAtual=String(regime||"").toLowerCase().includes("simples");
+  const residual=simulacao?.simples?.dasResidualEstimado;
+  const checks=[
+   {id:"empresa",label:"Empresa/CNPJ confirmado",ok:digits(cnpj).length===14},
+   {id:"operacao",label:"Operação real descrita",ok:Boolean(descricao)},
+   {id:"base",label:"Base financeira disponível",ok:n(fatSim)>0},
+   {id:"documentos",label:"Documentação interpretada",ok:Boolean(extracao)},
+   {id:"diagnostico",label:"Diagnóstico técnico gerado",ok:Boolean(analise)},
+   {id:"simulacao",label:"Simulação financeira executada",ok:Boolean(simulacao)},
+   {id:"composicao",label:"Base do cenário por fora validada",ok:!simplesAtual||Boolean(residual?.composicaoConfere)},
+   {id:"anexo",label:"Anexo do Simples confirmado",ok:!simplesAtual||Boolean(anexoSimples)}
+  ];
+
+  const completos=checks.filter(x=>x.ok).length;
+  const percentual=Math.round(completos/checks.length*100);
+  const conclusivo=percentual===100&&motor.confianca!=="BAIXA";
+
+  return{
+   checks,
+   percentual,
+   conclusivo,
+   status:conclusivo?"CONCLUSIVO":percentual>=75?"PRELIMINAR AVANÇADO":"PRELIMINAR",
+   faltantes:checks.filter(x=>!x.ok)
+  };
+ },[regime,cnpj,descricao,fatSim,extracao,analise,simulacao,anexoSimples,motor.confianca]);
+
+ const recomendacoes30_60_90=useMemo(()=>{
+  const plano=Array.isArray(analise?.planoAcao)?analise.planoAcao:[];
+  const oportunidades=Array.isArray(analise?.oportunidades)?analise.oportunidades:[];
+
+  return{
+   dias30:[
+    ...plano.slice(0,2),
+    ...(!extracao?["Completar a documentação fiscal/contábil necessária para consolidar a base."]:[])
+   ].slice(0,3),
+   dias60:[
+    ...plano.slice(2,4),
+    ...(simulacao?.simples?.fora!=null?["Validar comercialmente o impacto em preço, margem e contratos."]:[])
+   ].slice(0,3),
+   dias90:[
+    ...plano.slice(4,6),
+    ...(oportunidades.length?["Implementar as oportunidades validadas e medir o efeito financeiro."]:[])
+   ].slice(0,3)
+  };
+ },[analise,extracao,simulacao]);
 
  const corRisco=motor.risco==="ALTO"?"#B42318":motor.risco==="ATENÇÃO"?"#B7791F":motor.risco==="CONTROLADO"?"#176B47":"#697386";
  const moedaMotor=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
@@ -1450,8 +1632,12 @@ function ReformaTributariaV2({token,onVoltar}){
    doc.setTextColor(216,222,234);
    const meta=`CNPJ ${cnpjPdf} | ${clean(regime||"Regime nao informado")} | ${clean(municipio||"-")}/${clean(uf||"-")}`;
    doc.text(meta,M,57);
+   doc.setFont("helvetica","normal");
+   doc.setFontSize(6.8);
+   doc.setTextColor(190,201,218);
+   doc.text(`Status do laudo: ${clean(prontidaoRelatorio.status)} | Cobertura: ${prontidaoRelatorio.percentual}% | Confianca IA: ${clean(motor.confianca)}`,M,63);
 
-   const badgeText=motor.risco==="ALTO"?"RISCO ALTO":motor.risco==="ATENÇÃO"?"ATENCAO":motor.risco==="CONTROLADO"?"CONTROLADO":"BASE EM VALIDACAO";
+   const badgeText=`${prontidaoRelatorio.status} | ${motor.risco==="ALTO"?"RISCO ALTO":motor.risco==="ATENÇÃO"?"ATENCAO":motor.risco==="CONTROLADO"?"CONTROLADO":"BASE EM VALIDACAO"}`;
    const badgeColor=motor.risco==="ALTO"?C.red:motor.risco==="ATENÇÃO"?C.amber:motor.risco==="CONTROLADO"?C.green:C.muted;
    pill(155,13,badgeText,{fill:[255,255,255],color:badgeColor,border:[255,255,255]});
 
@@ -1729,6 +1915,25 @@ function ReformaTributariaV2({token,onVoltar}){
    doc.text(fal,M+5,y+21);
    y+=35;
 
+   sectionTitle("Plano executivo 30 / 60 / 90 dias");
+   const acoesPdf=[
+    ["0-30 dias",recomendacoes30_60_90.dias30],
+    ["31-60 dias",recomendacoes30_60_90.dias60],
+    ["61-90 dias",recomendacoes30_60_90.dias90]
+   ];
+   acoesPdf.forEach(([fase,itens])=>{
+    if(!itens?.length)return;
+    need(12);
+    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...C.navy);doc.text(fase,M,y);y+=5;
+    itens.forEach(item=>{
+     const ls=doc.splitTextToSize(clean(item),CONTENT-10);
+     need(ls.length*3.7+3);
+     doc.setFillColor(...C.coral);doc.circle(M+2,y-1,1,"F");
+     doc.setFont("helvetica","normal");doc.setFontSize(7.7);doc.setTextColor(...C.text);doc.text(ls,M+6,y);y+=ls.length*3.7+2;
+    });
+    y+=2;
+   });
+
    // =======================
    // PAGINA 6 - FUNDAMENTACAO / RASTREABILIDADE
    // =======================
@@ -1953,52 +2158,84 @@ function ReformaTributariaV2({token,onVoltar}){
  </div>
 </div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
 
-  {aba==="documentos"&&<div style={{display:"grid",gap:10}}><div style={card}>
-   <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}>
-    <div>
-     <h3 style={{margin:"0 0 4px"}}>Documentos para interpretação da IA</h3>
-     <p style={{fontSize:9,color:"#697386",margin:0}}>Você pode adicionar arquivos em momentos diferentes. Os novos anexos serão somados aos que já estão na lista.</p>
-    </div>
-    <span style={{background:"#EEF3FF",color:"#31589C",borderRadius:999,padding:"5px 8px",fontSize:9,fontWeight:900}}>{documentos.length} arquivo(s)</span>
-   </div>
-
-   <label style={{display:"inline-flex",alignItems:"center",gap:7,marginTop:12,padding:"9px 12px",border:"1px dashed #AEB8C8",borderRadius:9,background:"#F8FAFD",fontSize:10,fontWeight:800,cursor:"pointer"}}>
-    + Adicionar documentos
-    <input
-     type="file"
-     multiple
-     accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json,.xml,.md,.rtf,.odt,.ods,.ppt,.pptx,.html,.yaml,.yml,.eml,.msg"
-     style={{display:"none"}}
-     onChange={e=>{
-      adicionarDocumentos(e.target.files);
-      e.target.value="";
-     }}
-    />
-   </label>
-
-   <div style={{marginTop:8,padding:"8px 10px",background:"#FFF8E7",border:"1px solid #F3D99B",borderRadius:8,fontSize:8.5,color:"#805B10"}}>
-    Formatos como <b>.REC</b> não são suportados pela IA. Se o documento estiver nesse formato, converta antes para PDF, DOCX, XLSX, CSV, TXT ou XML.
-   </div>
-
-   {!!documentos.length&&<div style={{display:"grid",gap:6,marginTop:10}}>
-    {documentos.map((arq,i)=><div key={`${arq.name}_${arq.size}_${arq.lastModified}_${i}`} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",padding:"8px 9px",border:"1px solid #E7EAF0",borderRadius:8,background:"#FBFCFE"}}>
-     <div style={{minWidth:0}}>
-      <div style={{fontSize:9.5,fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{arq.name}</div>
-      <div style={{fontSize:8,color:"#697386"}}>{(arq.size/1024/1024).toFixed(2)} MB</div>
+  {aba==="documentos"&&<div style={{display:"grid",gap:10}}>
+   <div style={card}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}>
+     <div>
+      <div style={{fontSize:8,fontWeight:900,color:"#31589C"}}>ARQUIVO DOCUMENTAL DO CLIENTE</div>
+      <h3 style={{margin:"4px 0"}}>Use documentos novos e documentos já salvos</h3>
+      <p style={{fontSize:9,color:"#697386",margin:0,lineHeight:1.55}}>O arquivo é compartilhado por CNPJ entre Reforma e Planejamento Tributário. Um documento já enviado pode ser reutilizado sem novo upload.</p>
      </div>
-     <button type="button" onClick={()=>removerDocumento(i)} disabled={extraindo} style={{border:"1px solid #F0C7BD",background:"#FFF6F3",color:"#A5422A",borderRadius:7,padding:"5px 8px",fontSize:8.5,fontWeight:800,cursor:"pointer"}}>Remover</button>
-    </div>)}
+     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <span style={{background:"#EEF3FF",color:"#31589C",borderRadius:999,padding:"5px 8px",fontSize:8.5,fontWeight:900}}>{documentosBanco.length} salvo(s)</span>
+      <span style={{background:"#FFF3EF",color:"#FF6B4A",borderRadius:999,padding:"5px 8px",fontSize:8.5,fontWeight:900}}>{documentos.length} novo(s)</span>
+     </div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",marginTop:12}}>
+     <label style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7,padding:"11px 13px",border:"1px dashed #AEB8C8",borderRadius:11,background:"#F8FAFD",fontSize:10,fontWeight:850,cursor:"pointer"}}>
+      + Adicionar novos documentos
+      <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json,.xml,.md,.rtf,.odt,.ods,.ppt,.pptx,.html,.yaml,.yml,.eml,.msg" style={{display:"none"}} onChange={e=>{adicionarDocumentos(e.target.files);e.target.value=""}}/>
+     </label>
+     <button type="button" onClick={()=>carregarArquivoCliente()} disabled={carregandoDocumentos} style={{padding:"10px 12px",border:"1px solid #D8DEEA",borderRadius:10,background:"#fff",fontWeight:800,cursor:"pointer"}}>{carregandoDocumentos?"Atualizando...":"Atualizar arquivo"}</button>
+    </div>
+
+    <div style={{marginTop:8,padding:"8px 10px",background:"#FFF8E7",border:"1px solid #F3D99B",borderRadius:9,fontSize:8.5,color:"#805B10"}}>Arquivos .REC não são suportados. Converta para PDF, XLSX, CSV, XML, TXT ou outro formato aceito antes do envio.</div>
+   </div>
+
+   {!!documentos.length&&<div style={card}>
+    <h3 style={{margin:"0 0 4px"}}>Novos documentos</h3>
+    <div style={{fontSize:8.5,color:"#697386",marginBottom:9}}>Serão salvos no arquivo do cliente quando a IA for acionada.</div>
+    <div style={{display:"grid",gap:6}}>
+     {documentos.map((arq,i)=><div key={`${arq.name}_${arq.size}_${arq.lastModified}_${i}`} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",padding:"9px 10px",border:"1px solid #E7EAF0",borderRadius:9,background:"#FBFCFE"}}>
+      <div style={{minWidth:0}}><div style={{fontSize:9.5,fontWeight:850,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{arq.name}</div><div style={{fontSize:8,color:"#697386"}}>{(arq.size/1024/1024).toFixed(2)} MB</div></div>
+      <button type="button" onClick={()=>removerDocumento(i)} disabled={extraindo} style={{border:"1px solid #F0C7BD",background:"#FFF6F3",color:"#A5422A",borderRadius:7,padding:"5px 8px",fontSize:8.5,fontWeight:800,cursor:"pointer"}}>Remover</button>
+     </div>)}
+    </div>
    </div>}
 
-   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:10}}>
-    <button onClick={interpretarDocumentos} disabled={extraindo||!documentos.length} style={{padding:"9px 12px",fontWeight:800}}>
-     {extraindo?"Interpretando documentos...":extracao?"Reinterpretar todos os documentos":"Interpretar documentos com IA"}
-    </button>
-    {!!documentos.length&&<button type="button" onClick={limparDocumentos} disabled={extraindo} style={{padding:"9px 12px",fontWeight:800,border:"1px solid #D8DEEA",background:"#fff",borderRadius:7,cursor:"pointer"}}>Limpar lista</button>}
+   <div style={card}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+     <div><h3 style={{margin:"0 0 3px"}}>Documentos já salvos</h3><div style={{fontSize:8.5,color:"#697386"}}>Marque os arquivos que devem participar da próxima leitura da IA.</div></div>
+     <div style={{fontSize:8.5,color:"#697386"}}>{documentosBanco.filter(d=>documentosSelecionados[d.id]!==false).length} selecionado(s)</div>
+    </div>
+
+    <div style={{display:"grid",gap:6,marginTop:10}}>
+     {documentosBanco.map(doc=><div key={doc.id} style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:9,alignItems:"center",padding:"9px 10px",border:"1px solid #E7EAF0",borderRadius:9}}>
+      <input type="checkbox" checked={documentosSelecionados[doc.id]!==false} onChange={e=>setDocumentosSelecionados(at=>({...at,[doc.id]:e.target.checked}))}/>
+      <div style={{minWidth:0}}>
+       <div style={{fontSize:9.3,fontWeight:850,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{doc.filename}</div>
+       <div style={{fontSize:8,color:"#697386"}}>{(n(doc.bytes)/1024/1024).toFixed(2)} MB · {doc.tipoProjeto||"tributário"} · {doc.criadoPorNome||"Usuário"} {doc.criadoEm?`· ${new Date(doc.criadoEm).toLocaleDateString("pt-BR")}`:""}</div>
+      </div>
+      <button type="button" onClick={()=>removerDocumentoBanco(doc.id)} disabled={extraindo} style={{border:"1px solid #F0C7BD",background:"#FFF6F3",color:"#A5422A",borderRadius:7,padding:"5px 8px",fontSize:8.2,fontWeight:800,cursor:"pointer"}}>Arquivar</button>
+     </div>)}
+     {!documentosBanco.length&&<div style={{padding:18,textAlign:"center",color:"#697386",fontSize:9}}>Nenhum documento salvo para este CNPJ ainda.</div>}
+    </div>
+
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginTop:12}}>
+     <button onClick={interpretarDocumentos} disabled={extraindo||(!documentos.length&&!documentosBanco.some(d=>documentosSelecionados[d.id]!==false))} style={{padding:"10px 13px",fontWeight:900,borderRadius:9,cursor:"pointer"}}>
+      {extraindo?"Consolidando documentos...":extracao?"Reprocessar base documental":"Interpretar base documental com IA"}
+     </button>
+     {!!documentos.length&&<button type="button" onClick={limparDocumentos} disabled={extraindo} style={{padding:"9px 12px",fontWeight:800,border:"1px solid #D8DEEA",background:"#fff",borderRadius:9,cursor:"pointer"}}>Limpar novos</button>}
+    </div>
    </div>
 
-   <p style={{fontSize:8.5,color:"#697386",margin:"8px 0 0"}}>Ao adicionar um novo arquivo depois da primeira análise, clique em <b>Reinterpretar todos os documentos</b> para a IA consolidar os anexos antigos + novos.</p>
-  </div>{extracao&&<div style={card}><h3>Auditoria da extração</h3><p style={{fontSize:9.5}}><b>Documentos:</b> {(extracao.documentosReconhecidos||[]).join(", ")||"-"} · <b>Confiança:</b> {extracao.confiancaGeral||"-"}</p>{(extracao.fontes||[]).map((x,i)=><div key={i} style={{fontSize:9,padding:"5px 0",borderBottom:"1px solid #EEF0F4"}}><b>{x.campo}</b>: {x.valor} <span style={{color:"#697386"}}>({x.documento} · {x.confianca})</span></div>)}{!!extracao.divergencias?.length&&<>{list("Divergências",extracao.divergencias)}</>}{!!extracao.dadosNaoComprovados?.length&&<>{list("Não comprovado nos documentos",extracao.dadosNaoComprovados)}</>}{!!extracao.sugestoesPreenchimentoManual?.length&&<>{list("Complete manualmente para melhorar a análise",extracao.sugestoesPreenchimentoManual)}</>}</div>}</div>}
+   {extracao&&<div style={card}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}>
+     <div><h3 style={{margin:"0 0 3px"}}>Auditoria da extração</h3><div style={{fontSize:8.5,color:"#697386"}}>Veja exatamente o que a IA encontrou, de onde veio e o que ainda falta.</div></div>
+     <span style={{background:extracao.confiancaGeral==="ALTA"?"#EAF7F0":extracao.confiancaGeral==="MEDIA"?"#FFF8E7":"#FFF3EF",color:extracao.confiancaGeral==="ALTA"?"#176B47":extracao.confiancaGeral==="MEDIA"?"#805B10":"#A5422A",borderRadius:999,padding:"5px 8px",fontSize:8,fontWeight:900}}>CONFIANÇA {extracao.confiancaGeral||"-"}</span>
+    </div>
+    <p style={{fontSize:9.2}}><b>Documentos reconhecidos:</b> {(extracao.documentosReconhecidos||[]).join(", ")||"-"}</p>
+    <div style={{maxHeight:270,overflow:"auto",border:"1px solid #EEF0F4",borderRadius:9}}>
+     {(extracao.fontes||[]).map((x,i)=><div key={i} style={{fontSize:8.8,padding:"7px 9px",borderBottom:"1px solid #EEF0F4",display:"grid",gridTemplateColumns:"1fr 1.2fr .8fr",gap:8}}><b>{x.campo}</b><span>{x.valor}</span><span style={{color:"#697386"}}>{x.documento} · {x.confianca}</span></div>)}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:10}}>
+     {!!extracao.divergencias?.length&&<>{list("Divergências",extracao.divergencias)}</>}
+     {!!extracao.dadosNaoComprovados?.length&&<>{list("Não comprovado",extracao.dadosNaoComprovados)}</>}
+     {!!extracao.sugestoesPreenchimentoManual?.length&&<>{list("Completar manualmente",extracao.sugestoesPreenchimentoManual)}</>}
+    </div>
+   </div>}
+  </div>}
 
   {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}><div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",analise.dadosFaltantes)}</>}</div>}
 
@@ -2162,6 +2399,22 @@ function ReformaTributariaV2({token,onVoltar}){
   </div>}
 
   {aba==="relatorio"&&<div style={{display:"grid",gap:10}}>
+   <div style={{...card,borderLeft:`5px solid ${prontidaoRelatorio.conclusivo?"#176B47":prontidaoRelatorio.percentual>=75?"#B7791F":"#FF6B4A"}`,background:"#fff"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"start",flexWrap:"wrap"}}>
+     <div>
+      <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>QUALIDADE DO LAUDO</div>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
+       <h3 style={{margin:0}}>Status: {prontidaoRelatorio.status}</h3>
+       <span style={{padding:"4px 7px",borderRadius:999,background:prontidaoRelatorio.conclusivo?"#EAF7F0":"#FFF8E7",color:prontidaoRelatorio.conclusivo?"#176B47":"#805B10",fontSize:8,fontWeight:900}}>{prontidaoRelatorio.percentual}% pronto</span>
+      </div>
+      <p style={{fontSize:8.8,color:"#697386",lineHeight:1.55,marginBottom:0}}>O relatório só é tratado como conclusivo quando empresa, operação, documentação, diagnóstico, simulação e premissas essenciais estão confirmados.</p>
+     </div>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(140px,1fr))",gap:5}}>
+      {prontidaoRelatorio.checks.map(x=><div key={x.id} style={{fontSize:8,padding:"5px 7px",borderRadius:7,background:x.ok?"#F1FBF6":"#FFF8E7",color:x.ok?"#176B47":"#805B10",fontWeight:800}}>{x.ok?"✓":"!"} {x.label}</div>)}
+     </div>
+    </div>
+   </div>
+
    <div style={{...card,background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0,padding:20}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"start",flexWrap:"wrap"}}>
      <div>
@@ -2308,6 +2561,21 @@ function ReformaTributariaV2({token,onVoltar}){
      })}
     </div>
    </div>}
+
+   <div style={card}>
+    <div style={{fontSize:8,fontWeight:900,color:"#31589C"}}>PLANO EXECUTIVO</div>
+    <h3 style={{margin:"4px 0"}}>O que fazer nos próximos 90 dias</h3>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9,marginTop:10}}>
+     {[
+      ["0–30 dias",recomendacoes30_60_90.dias30,"#31589C"],
+      ["31–60 dias",recomendacoes30_60_90.dias60,"#B7791F"],
+      ["61–90 dias",recomendacoes30_60_90.dias90,"#176B47"]
+     ].map(([titulo,itens,cor])=><div key={titulo} style={{border:"1px solid #E5EAF1",borderTop:`4px solid ${cor}`,borderRadius:11,padding:11}}>
+      <b style={{fontSize:9.5}}>{titulo}</b>
+      {itens.length?<ol style={{paddingLeft:16,margin:"8px 0 0"}}>{itens.map((x,i)=><li key={i} style={{fontSize:8.6,lineHeight:1.5,marginBottom:5}}>{x}</li>)}</ol>:<div style={{fontSize:8.5,color:"#697386",marginTop:7}}>Aguardando diagnóstico completo.</div>}
+     </div>)}
+    </div>
+   </div>
 
    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
     {analise&&<div style={card}><h3 style={{marginTop:0}}>Base legal / fundamentação</h3><ol style={{paddingLeft:17,margin:0}}>{(analise.fundamentacao||[]).map((x,i)=><li key={i} style={{fontSize:8.7,lineHeight:1.55,marginBottom:5}}>{x}</li>)}</ol></div>}
