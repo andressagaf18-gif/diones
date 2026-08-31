@@ -1514,6 +1514,7 @@ function SimuladorReformaPublico({
   const [empresaCadastral,setEmpresaCadastral]=useState(null);
   const [atividadesReais,setAtividadesReais]=useState([]);
   const [atividadeSelecionada,setAtividadeSelecionada]=useState("");
+  const [descricaoAtividadeReal,setDescricaoAtividadeReal]=useState("");
 
   const [regime,setRegime]=useState("");
   const [natureza,setNatureza]=useState("");
@@ -1521,6 +1522,13 @@ function SimuladorReformaPublico({
   const [impostoAtual,setImpostoAtual]=useState("");
   const [naoSeiImpostoAtual,setNaoSeiImpostoAtual]=useState(false);
   const [tributosFora,setTributosFora]=useState("");
+
+  // Dados para estimar a carga vigente quando o usuário não tiver o imposto real.
+  const [rbt12,setRbt12]=useState("");
+  const [anexoSimples,setAnexoSimples]=useState("");
+  const [fs12,setFs12]=useState("");
+  const [aliquotaLocalAtual,setAliquotaLocalAtual]=useState("");
+  const [custosDespesasDedutiveis,setCustosDespesasDedutiveis]=useState("");
 
   const [cenarioAliquota,setCenarioAliquota]=useState("2026");
   const [cbs,setCbs]=useState("0,9");
@@ -1551,8 +1559,125 @@ function SimuladorReformaPublico({
 
   const n=numeroSimulador;
   const fat=n(faturamento);
-  const atual=naoSeiImpostoAtual?null:n(impostoAtual);
   const fora=n(tributosFora);
+
+  const TABELAS_SIMPLES={
+    I:[
+      [180000,4,0],[360000,7.3,5940],[720000,9.5,13860],
+      [1800000,10.7,22500],[3600000,14.3,87300],[4800000,19,378000]
+    ],
+    II:[
+      [180000,4.5,0],[360000,7.8,5940],[720000,10,13860],
+      [1800000,11.2,22500],[3600000,14.7,85500],[4800000,30,720000]
+    ],
+    III:[
+      [180000,6,0],[360000,11.2,9360],[720000,13.5,17640],
+      [1800000,16,35640],[3600000,21,125640],[4800000,33,648000]
+    ],
+    IV:[
+      [180000,4.5,0],[360000,9,8100],[720000,10.2,12420],
+      [1800000,14,39780],[3600000,22,183780],[4800000,33,828000]
+    ],
+    V:[
+      [180000,15.5,0],[360000,18,4500],[720000,19.5,9900],
+      [1800000,20.5,17100],[3600000,23,62100],[4800000,30.5,540000]
+    ],
+  };
+
+  function calcularSimplesEstimado(){
+    const rbt=n(rbt12)||fat*12;
+    if(!fat||!rbt||!anexoSimples)return null;
+
+    const tabela=TABELAS_SIMPLES[anexoSimples];
+    if(!tabela)return null;
+
+    const faixa=tabela.find(([limite])=>rbt<=limite)||tabela[tabela.length-1];
+    const [,aliquotaNominal,pd]=faixa;
+    const aliquotaEfetiva=((rbt*(aliquotaNominal/100))-pd)/rbt*100;
+    const das=fat*Math.max(0,aliquotaEfetiva)/100;
+    const fatorR=rbt>0?n(fs12)/rbt:null;
+
+    return{
+      regime:"Simples Nacional",
+      valor:das,
+      aliquotaEfetivaPct:Math.max(0,aliquotaEfetiva),
+      aliquotaNominalPct:aliquotaNominal,
+      parcelaDeduzir:pd,
+      rbt12:rbt,
+      anexo:anexoSimples,
+      fatorR,
+      fonte:"LC 123/2006 e Resolução CGSN 140/2018 — fórmula da alíquota efetiva: (RBT12 × alíquota nominal − parcela a deduzir) ÷ RBT12.",
+      observacao:!n(rbt12)
+        ?"RBT12 não informado: foi usada a anualização do faturamento mensal apenas como aproximação."
+        :"RBT12 informado pelo usuário."
+    };
+  }
+
+  function calcularPresumidoEstimado(){
+    if(!fat||!natureza)return null;
+
+    const servico=natureza==="Serviço";
+    const presIrpj=servico?32:8;
+    const presCsll=servico?32:12;
+
+    // Equivalência mensal de uma apuração trimestral simplificada.
+    const receitaTri=fat*3;
+    const baseIrpjTri=receitaTri*presIrpj/100;
+    const irpjTri=baseIrpjTri*0.15+Math.max(0,baseIrpjTri-60000)*0.10;
+    const baseCsllTri=receitaTri*presCsll/100;
+    const csllTri=baseCsllTri*0.09;
+    const pisCofinsMes=fat*0.0365;
+    const tributoLocalMes=fat*n(aliquotaLocalAtual)/100;
+    const valor=irpjTri/3+csllTri/3+pisCofinsMes+tributoLocalMes;
+
+    return{
+      regime:"Lucro Presumido",
+      valor,
+      irpjMensalEquivalente:irpjTri/3,
+      csllMensalEquivalente:csllTri/3,
+      pisCofinsMensal:pisCofinsMes,
+      tributoLocalMensal:tributoLocalMes,
+      presuncaoIrpjPct:presIrpj,
+      presuncaoCsllPct:presCsll,
+      aliquotaLocalPct:n(aliquotaLocalAtual),
+      fonte:"IRPJ: Lei 9.249/1995 e orientação da Receita; CSLL: Lei 7.689/1988/Receita. PIS/Cofins cumulativos usados como referência geral de 0,65% + 3%, sujeitos a exceções.",
+      observacao:n(aliquotaLocalAtual)
+        ?"Inclui a alíquota local informada pelo usuário."
+        :"Não inclui ISS/ICMS/IPI porque nenhuma alíquota local foi informada."
+    };
+  }
+
+  function calcularRealEstimado(){
+    if(!fat)return null;
+
+    const dedutiveis=Math.min(fat,Math.max(0,n(custosDespesasDedutiveis)));
+    const lucroEstimado=Math.max(0,fat-dedutiveis);
+
+    // Simplificação mensal do IRPJ/CSLL sobre o lucro estimado.
+    const irpj=lucroEstimado*0.15+Math.max(0,lucroEstimado-20000)*0.10;
+    const csll=lucroEstimado*0.09;
+
+    // PIS/Cofins: usa débito cheio como teto preliminar; créditos atuais
+    // informados nas despesas reduzem a estimativa quando disponíveis.
+    const debitoPisCofins=fat*0.0925;
+    const creditoPisCofins=Math.min(debitoPisCofins,creditoAtual||0);
+    const pisCofinsLiquido=Math.max(0,debitoPisCofins-creditoPisCofins);
+    const tributoLocalMes=fat*n(aliquotaLocalAtual)/100;
+
+    return{
+      regime:"Lucro Real",
+      valor:irpj+csll+pisCofinsLiquido+tributoLocalMes,
+      lucroEstimado,
+      custosDespesasDedutiveis:dedutiveis,
+      irpj,
+      csll,
+      pisCofinsLiquido,
+      tributoLocalMensal:tributoLocalMes,
+      aliquotaLocalPct:n(aliquotaLocalAtual),
+      fonte:"IRPJ: 15% sobre o lucro + adicional de 10% sobre a parcela que excede R$ 20 mil/mês; CSLL: 9% para pessoas jurídicas em geral. PIS/Cofins não cumulativos usados como referência de débito de 1,65% + 7,6%, abatendo apenas créditos informados.",
+      observacao:"Estimativa gerencial. A base real depende do resultado contábil ajustado, despesas dedutíveis, adições, exclusões, compensações e créditos efetivamente admitidos."
+    };
+  }
 
   const cbsNom=n(cbs);
   const ibsNom=n(ibs);
@@ -1568,6 +1693,22 @@ function SimuladorReformaPublico({
   const creditoNovo=linhas.reduce(
     (a,x)=>a+(x.considerarNovo?n(x.valor)*iva/100:0),0
   );
+
+  const estimativaAtual=useMemo(()=>{
+    if(!naoSeiImpostoAtual)return null;
+    if(regime==="Simples Nacional")return calcularSimplesEstimado();
+    if(regime==="Lucro Presumido")return calcularPresumidoEstimado();
+    if(regime==="Lucro Real")return calcularRealEstimado();
+    return null;
+  },[
+    naoSeiImpostoAtual,regime,natureza,faturamento,rbt12,
+    anexoSimples,fs12,aliquotaLocalAtual,custosDespesasDedutiveis,
+    creditoAtual
+  ]);
+
+  const atual=naoSeiImpostoAtual
+    ?(estimativaAtual?.valor??null)
+    :n(impostoAtual);
 
   const debitoCbs=fat*cbsEfetiva/100;
   const debitoIbs=fat*ibsEfetiva/100;
@@ -1794,6 +1935,7 @@ function SimuladorReformaPublico({
       municipio:empresaCadastral?.endereco?.municipio||"",
       uf:empresaCadastral?.endereco?.uf||"",
       atividadeSelecionada,
+      descricaoAtividadeReal,
       atividadesReais,
     },
     configuracao:{
@@ -1802,6 +1944,12 @@ function SimuladorReformaPublico({
       faturamentoMensal:fat,
       impostoAtualMensal:atual,
       naoSeiImpostoAtual,
+      estimativaCargaAtual:estimativaAtual,
+      rbt12:n(rbt12)||null,
+      anexoSimples:anexoSimples||null,
+      fs12:n(fs12)||null,
+      aliquotaLocalAtualPct:n(aliquotaLocalAtual)||null,
+      custosDespesasDedutiveis:n(custosDespesasDedutiveis)||null,
       tributosForaIbsCbsMensal:fora,
       cenarioAliquota,
       cbsPct:cbsNom,
@@ -1844,9 +1992,10 @@ function SimuladorReformaPublico({
 
   useEffect(()=>{onSnapshot?.(snapshot)},[
     etapa,cnpj,empresaCadastral,atividadesReais,atividadeSelecionada,
-    regime,natureza,faturamento,impostoAtual,naoSeiImpostoAtual,
-    tributosFora,cenarioAliquota,cbs,ibs,reducaoCbs,reducaoIbs,
-    crescimento,despesas
+    descricaoAtividadeReal,regime,natureza,faturamento,impostoAtual,
+    naoSeiImpostoAtual,rbt12,anexoSimples,fs12,aliquotaLocalAtual,
+    custosDespesasDedutiveis,tributosFora,cenarioAliquota,cbs,ibs,
+    reducaoCbs,reducaoIbs,crescimento,despesas
   ]);
 
   function textoIaSeguroSimulador(valor){
@@ -1916,10 +2065,11 @@ function SimuladorReformaPublico({
         colaboradores:"",
         regime,
         observacao:"Relatório gerado a partir do Simulador público da Reforma Tributária.",
-        descricaoNegocio:`Atividade selecionada: ${atividadeSelecionada}. Natureza utilizada na simulação: ${natureza}.`,
-        estruturaNegocio:"simulador_reforma",
+        descricaoNegocio:`Atividade cadastral selecionada: ${atividadeSelecionada}. Atividade de fato descrita pelo usuário: ${descricaoAtividadeReal||"não informada"}. Natureza utilizada na simulação: ${natureza}.`,
+        estruturaNegocio:"reforma_tributaria",
+        areasSelecionadas:["reforma_carga","reforma_creditos","reforma_transicao"],
         contextoEstrutura:{
-          estruturaNegocio:"simulador_reforma",
+          estruturaNegocio:"reforma_tributaria",
           reformaTributaria:{
             ativo:true,
             origem:"Simulador Reforma",
@@ -1960,8 +2110,8 @@ function SimuladorReformaPublico({
         ],
         areas:[
           {
-            id:"reforma_carga",
-            area:"Carga tributária e cenários",
+            id:"fiscal",
+            area:"Fiscal / Tributário",
             prioridade:true,
             score:50,
             subtemas:[
@@ -1969,7 +2119,7 @@ function SimuladorReformaPublico({
                 tema:"Simulação",
                 perguntas:[
                   {
-                    id:"simulacao_base",
+                    id:"simulacao_reforma_base",
                     texto:"Qual foi o resultado da simulação da Reforma?",
                     tema:"Simulação",
                     motivo:"Contextualizar a análise.",
@@ -2105,6 +2255,14 @@ function SimuladorReformaPublico({
     <div class="row"><span>Regime informado</span><strong>${regime||"-"}</strong></div>
   </div>
 
+  <h2>Carga tributária vigente utilizada</h2>
+  <div class="box">
+    <div class="row"><span>Origem</span><strong>${naoSeiImpostoAtual?"Estimativa pelo regime":"Valor informado pelo usuário"}</strong></div>
+    <div class="row"><span>Valor mensal</span><strong>${atual==null?"Pendente":moedaSimulador(atual)}</strong></div>
+    ${estimativaAtual?`<div class="row"><span>Regra</span><strong>${estimativaAtual.regime}</strong></div>`:""}
+  </div>
+  ${estimativaAtual?`<div class="alert" style="margin-top:14px"><strong>Base legal / memória:</strong> ${estimativaAtual.fonte}<br><br>${estimativaAtual.observacao}</div>`:""}
+
   <h2>Premissas tributárias</h2>
   <div class="box">
     <div class="row"><span>CBS nominal</span><strong>${percentualSimulador(cbsNom)}</strong></div>
@@ -2212,7 +2370,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
     ["resultado","5. Relatório"],
   ];
 
-  const empresaOk=Boolean(empresaCadastral&&atividadeSelecionada);
+  const empresaOk=Boolean(
+    empresaCadastral&&atividadeSelecionada&&descricaoAtividadeReal.trim().length>=10
+  );
 
   return <div className="sim-reforma-v5" style={{display:"grid",gap:9,minWidth:0}}>
     <style>{`
@@ -2373,6 +2533,18 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           <b>Atividade escolhida:</b> {atividadeSelecionada}<br/>
           <b>Natureza sugerida:</b> {natureza}. Você poderá corrigir essa classificação no próximo passo.
         </div>}
+
+        <label style={{...labelStyle,marginTop:9}}>Descreva o que a empresa realmente faz
+          <textarea
+            value={descricaoAtividadeReal}
+            onChange={e=>setDescricaoAtividadeReal(e.target.value)}
+            style={{...input,minHeight:88,resize:"vertical"}}
+            placeholder="Ex.: escritório contábil que presta contabilidade mensal, folha, fiscal, BPO financeiro e consultoria para empresas."
+          />
+          <span style={{...muted,fontSize:7.5}}>
+            A IA vai cruzar esta descrição com o CNAE preponderante e os CNAEs secundários.
+          </span>
+        </label>
       </div>}
 
       <PrimaryButton
@@ -2459,7 +2631,71 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           border:"1px solid #F3D99B",borderRadius:10,padding:9,
           color:"#805B10",fontSize:8,lineHeight:1.5
         }}>
-          O comparativo "Hoje × Reforma" ficará <b>preliminar</b>. Removemos a antiga estimativa fixa de 20% do Lucro Real porque ela não possui fundamento para representar a carga total de uma empresa.
+          O sistema vai estimar a carga vigente conforme o regime selecionado. A memória de cálculo e a base legal serão exibidas no relatório.
+        </div>}
+
+        {naoSeiImpostoAtual&&regime==="Simples Nacional"&&<div style={{...card,marginTop:8,background:"#FBFCFE"}}>
+          <div style={{fontSize:8,fontWeight:900,color:NAVY}}>BASE PARA O SIMPLES NACIONAL</div>
+          <label style={{...labelStyle,marginTop:7}}>RBT12 — receita dos últimos 12 meses
+            <input value={rbt12} onChange={e=>setRbt12(e.target.value)} style={input} placeholder={`Se vazio, estimamos ${moedaSimulador(fat*12)}`}/>
+          </label>
+          <label style={{...labelStyle,marginTop:7}}>Anexo aplicável
+            <select value={anexoSimples} onChange={e=>setAnexoSimples(e.target.value)} style={input}>
+              <option value="">Selecione / confirme</option>
+              <option value="I">Anexo I — Comércio</option>
+              <option value="II">Anexo II — Indústria</option>
+              <option value="III">Anexo III — Serviços</option>
+              <option value="IV">Anexo IV — Serviços específicos</option>
+              <option value="V">Anexo V — Serviços sujeitos ao Fator R quando aplicável</option>
+            </select>
+          </label>
+          {(anexoSimples==="III"||anexoSimples==="V")&&<label style={{...labelStyle,marginTop:7}}>FS12 — folha + encargos dos últimos 12 meses
+            <input value={fs12} onChange={e=>setFs12(e.target.value)} style={input} placeholder="Usado para verificar Fator R quando a atividade estiver sujeita"/>
+          </label>}
+          {estimativaAtual&&<div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:10,padding:9}}>
+            <div style={{fontSize:7,fontWeight:900,color:"#31589C"}}>CARGA ESTIMADA ATUAL</div>
+            <div style={{fontSize:18,fontWeight:900,color:NAVY,marginTop:2}}>{moedaSimulador(estimativaAtual.valor)}</div>
+            <div style={{...muted,fontSize:7.5}}>
+              Anexo {estimativaAtual.anexo} · alíquota efetiva {percentualSimulador(estimativaAtual.aliquotaEfetivaPct)}
+              {estimativaAtual.fatorR!=null?` · Fator R ${percentualSimulador(estimativaAtual.fatorR*100)}`:""}
+            </div>
+          </div>}
+        </div>}
+
+        {naoSeiImpostoAtual&&regime==="Lucro Presumido"&&<div style={{...card,marginTop:8,background:"#FBFCFE"}}>
+          <div style={{fontSize:8,fontWeight:900,color:NAVY}}>BASE PARA O LUCRO PRESUMIDO</div>
+          <div style={{...muted,marginTop:4}}>
+            O motor usa presunção de IRPJ/CSLL por natureza da atividade e calcula PIS/Cofins cumulativos. Informe também a tributação local para aproximar a carga total.
+          </div>
+          <label style={{...labelStyle,marginTop:7}}>
+            {natureza==="Serviço"?"ISS atual %":"ICMS/IPI efetivo estimado %"}
+            <input value={aliquotaLocalAtual} onChange={e=>setAliquotaLocalAtual(e.target.value)} style={input} placeholder="Ex.: 5"/>
+          </label>
+          {estimativaAtual&&<div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:10,padding:9}}>
+            <div style={{fontSize:7,fontWeight:900,color:"#31589C"}}>CARGA ESTIMADA ATUAL</div>
+            <div style={{fontSize:18,fontWeight:900,color:NAVY,marginTop:2}}>{moedaSimulador(estimativaAtual.valor)}</div>
+            <div style={{...muted,fontSize:7.5}}>
+              Presunção IRPJ {estimativaAtual.presuncaoIrpjPct}% · CSLL {estimativaAtual.presuncaoCsllPct}%.
+            </div>
+          </div>}
+        </div>}
+
+        {naoSeiImpostoAtual&&regime==="Lucro Real"&&<div style={{...card,marginTop:8,background:"#FBFCFE"}}>
+          <div style={{fontSize:8,fontWeight:900,color:NAVY}}>BASE PARA O LUCRO REAL</div>
+          <label style={{...labelStyle,marginTop:7}}>Custos e despesas dedutíveis mensais
+            <input value={custosDespesasDedutiveis} onChange={e=>setCustosDespesasDedutiveis(e.target.value)} style={input} placeholder="Ex.: 60000"/>
+          </label>
+          <label style={{...labelStyle,marginTop:7}}>
+            {natureza==="Serviço"?"ISS atual %":"ICMS/IPI efetivo estimado %"}
+            <input value={aliquotaLocalAtual} onChange={e=>setAliquotaLocalAtual(e.target.value)} style={input} placeholder="Ex.: 5"/>
+          </label>
+          {estimativaAtual&&<div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:10,padding:9}}>
+            <div style={{fontSize:7,fontWeight:900,color:"#31589C"}}>CARGA ESTIMADA ATUAL</div>
+            <div style={{fontSize:18,fontWeight:900,color:NAVY,marginTop:2}}>{moedaSimulador(estimativaAtual.valor)}</div>
+            <div style={{...muted,fontSize:7.5}}>
+              Lucro estimado {moedaSimulador(estimativaAtual.lucroEstimado)} · IRPJ {moedaSimulador(estimativaAtual.irpj)} · CSLL {moedaSimulador(estimativaAtual.csll)}.
+            </div>
+          </div>}
         </div>}
 
         <label style={{...labelStyle,marginTop:8}}>Tributos que permanecerão fora do IBS/CBS
@@ -2555,7 +2791,11 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       </div>
 
       <PrimaryButton
-        disabled={!regime||!natureza||!fat||iva<=0}
+        disabled={
+          !regime||!natureza||!fat||iva<=0||
+          (naoSeiImpostoAtual&&regime==="Simples Nacional"&&!anexoSimples)||
+          (naoSeiImpostoAtual&&regime==="Lucro Real"&&!n(custosDespesasDedutiveis))
+        }
         onClick={()=>setEtapa("creditos")}
       >
         Continuar <ArrowRight size={16}/>
@@ -2735,6 +2975,19 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           diferenca!=null&&diferenca>0?"#B42318":"#176B47"
         )}
       </div>
+
+      {estimativaAtual&&<div style={card}>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 7px"}}>
+          Como calculamos a carga atual
+        </h3>
+        <div style={{fontSize:8.3,lineHeight:1.55,color:NAVY}}>
+          <b>{estimativaAtual.regime}</b><br/>
+          {estimativaAtual.fonte}
+        </div>
+        <div style={{...muted,fontSize:7.6,marginTop:6}}>
+          {estimativaAtual.observacao}
+        </div>
+      </div>}
 
       <div style={card}>
         <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
