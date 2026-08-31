@@ -1,4 +1,5 @@
 import ReformaSimulador from "./ReformaSimulador";
+import { estimarDasResidualPorFora } from "./reforma-engine.js";
 import { jsPDF } from "jspdf";
 import PlanejamentoTributario from "./PlanejamentoTributario";
 import {
@@ -1404,7 +1405,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       reformaV2:baseAtual(),
       analise,
       extracao,
-      simulacao,
+      simulacao:simulacaoEfetiva||simulacao,
       analiseDesatualizada,
       documentosSnapshot:documentosBanco.map(d=>({
        id:d.id,
@@ -1508,6 +1509,61 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   };
  },[analise,extracao,simulacao,regime,tributosAtuais,receita,fatSim,cnpj,descricao,compras,creditosAtuais,b2b,b2c,documentosIa,dadosFaltantesAtuais]);
 
+ const simulacaoEfetiva=useMemo(()=>{
+  if(!simulacao)return null;
+
+  const dasAtual=n(dasPeriodo);
+  const ibsCbs=simulacao?.ibsCbs||{};
+
+  const componentes={
+   pis:n(extracao?.tributos?.pis),
+   cofins:n(extracao?.tributos?.cofins),
+   icms:n(extracao?.tributos?.icms),
+   iss:n(extracao?.tributos?.iss),
+   ipi:n(extracao?.tributos?.ipi),
+   cpp:n(extracao?.tributos?.cpp),
+   irpj:n(extracao?.tributos?.irpj),
+   csll:n(extracao?.tributos?.csll),
+   outros:n(extracao?.tributos?.outros)
+  };
+
+  const residualAtual=estimarDasResidualPorFora({dasAtual,componentes});
+  const totalIbsCbs=n(ibsCbs?.total);
+  const fora=residualAtual.residual==null?null:residualAtual.residual+totalIbsCbs;
+
+  const dasAnterior=n(simulacao?.simples?.dentro);
+  const residualAnterior=simulacao?.simples?.dasResidualEstimado?.residual;
+
+  const mudouDas=dasAnterior>0&&dasAtual>0&&Math.abs(dasAnterior-dasAtual)>0.01;
+  const mudouResidual=
+   residualAtual.residual!=null&&residualAnterior!=null&&
+   Math.abs(n(residualAnterior)-residualAtual.residual)>0.01;
+
+  return{
+   ...simulacao,
+   simples:{
+    ...(simulacao?.simples||{}),
+    dentro:dasAtual,
+    fora,
+    dasResidualEstimado:residualAtual,
+    diferenca:fora==null?null:fora-dasAtual,
+    menorCargaMatematica:
+     fora==null?"NAO_CALCULAVEL":
+     fora<dasAtual?"FORA":
+     fora>dasAtual?"DENTRO":"EMPATE"
+   },
+   reconciliacao:{
+    aplicada:mudouDas||mudouResidual,
+    dasAnterior:dasAnterior||null,
+    dasAtual,
+    residualAnterior:residualAnterior??null,
+    residualAtual:residualAtual.residual,
+    totalAnterior:simulacao?.simples?.fora??null,
+    totalAtual:fora
+   }
+  };
+ },[simulacao,dasPeriodo,extracao]);
+
  const transicaoModelo=useMemo(()=>[
   {ano:"2026",ibs:0,antigos:100,fase:"Teste",descricao:"CBS 0,9% e IBS 0,1% em fase de teste/compensação, observadas as regras aplicáveis."},
   {ano:"2027",ibs:0.1,antigos:100,fase:"CBS entra",descricao:"CBS passa a substituir PIS/Cofins; IBS permanece em 0,1 p.p.; IPI é reduzido a zero nas hipóteses gerais, ressalvadas exceções."},
@@ -1520,19 +1576,20 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  ],[]);
 
  const comparativoRelatorio=useMemo(()=>{
-  const dentro=n(simulacao?.simples?.dentro);
-  const fora=simulacao?.simples?.fora==null?null:n(simulacao?.simples?.fora);
-  const residual=simulacao?.simples?.dasResidualEstimado?.residual;
-  const ibscbs=n(simulacao?.ibsCbs?.total);
+  const fonte=simulacaoEfetiva;
+  const dentro=n(dasPeriodo);
+  const fora=fonte?.simples?.fora==null?null:n(fonte?.simples?.fora);
+  const residual=fonte?.simples?.dasResidualEstimado?.residual;
+  const ibscbs=n(fonte?.ibsCbs?.total);
   const diff=fora==null?null:fora-dentro;
   const pctDiff=dentro>0&&diff!=null?(diff/dentro)*100:null;
   const cargaAtual=n(tributosAtuais);
-  return{dentro,fora,residual,ibscbs,diff,pctDiff,cargaAtual};
- },[simulacao,tributosAtuais]);
+  return{dentro,fora,residual,ibscbs,diff,pctDiff,cargaAtual,reconciliacao:fonte?.reconciliacao||null};
+ },[simulacaoEfetiva,dasPeriodo,tributosAtuais]);
 
  const prontidaoRelatorio=useMemo(()=>{
   const simplesAtual=String(regime||"").toLowerCase().includes("simples");
-  const residual=simulacao?.simples?.dasResidualEstimado;
+  const residual=simulacaoEfetiva?.simples?.dasResidualEstimado;
   const checks=[
    {id:"empresa",label:"Empresa/CNPJ confirmado",ok:digits(cnpj).length===14},
    {id:"operacao",label:"Operação real descrita",ok:Boolean(descricao)},
@@ -1555,7 +1612,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    status:conclusivo?"CONCLUSIVO":percentual>=75?"PRELIMINAR AVANÇADO":"PRELIMINAR",
    faltantes:checks.filter(x=>!x.ok)
   };
- },[regime,cnpj,descricao,fatSim,extracao,analise,simulacao,anexoSimples,motor.confianca,analiseDesatualizada]);
+ },[regime,cnpj,descricao,fatSim,extracao,analise,simulacaoEfetiva,anexoSimples,motor.confianca,analiseDesatualizada]);
 
  const recomendacoes30_60_90=useMemo(()=>{
   const plano=Array.isArray(analise?.planoAcao)?analise.planoAcao:[];
@@ -1613,10 +1670,10 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
    const nome=empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"Cliente";
    const cnpjPdf=digits(cnpj)||"-";
-   const atual=n(simulacao?.simples?.dentro||dasPeriodo||0);
-   const reforma=simulacao?.simples?.fora==null?null:n(simulacao.simples.fora);
-   const residual=simulacao?.simples?.dasResidualEstimado||null;
-   const ibsCbs=n(simulacao?.ibsCbs?.total||0);
+   const atual=n(dasPeriodo||0);
+   const reforma=simulacaoEfetiva?.simples?.fora==null?null:n(simulacaoEfetiva.simples.fora);
+   const residual=simulacaoEfetiva?.simples?.dasResidualEstimado||null;
+   const ibsCbs=n(simulacaoEfetiva?.ibsCbs?.total||0);
    const diferenca=reforma==null?null:reforma-atual;
    const variacao=atual>0&&diferenca!=null?(diferenca/atual)*100:null;
    const impactoAnual=diferenca==null?null:diferenca*12;
@@ -2374,7 +2431,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      ["Faturamento / base",n(fatSim)?moedaMotor(n(fatSim)):"Pendente","#31589C"],
      ["DAS atual",n(dasPeriodo)?moedaMotor(n(dasPeriodo)):"Pendente","#17233D"],
      ["IBS + CBS simulado",simulacao?moedaMotor(n(simulacao?.ibsCbs?.total)):"Pendente","#FF6B4A"],
-     ["Total cenário Reforma",simulacao?.simples?.fora!=null?moedaMotor(n(simulacao.simples.fora)):"Pendente",simulacao?.simples?.fora!=null&&n(simulacao.simples.fora)>n(dasPeriodo)?"#B42318":"#176B47"]
+     ["Total cenário Reforma",simulacaoEfetiva?.simples?.fora!=null?moedaMotor(n(simulacaoEfetiva.simples.fora)):"Pendente",simulacaoEfetiva?.simples?.fora!=null&&n(simulacaoEfetiva.simples.fora)>n(dasPeriodo)?"#B42318":"#176B47"]
     ].map(([label,value,color])=><div key={label} style={{background:"#fff",border:"1px solid #E5EAF1",borderRadius:14,padding:13,boxShadow:"0 6px 18px rgba(23,35,61,.035)"}}>
      <div style={{fontSize:7.5,fontWeight:900,color:"#697386",textTransform:"uppercase"}}>{label}</div>
      <div style={{fontSize:17,fontWeight:950,color,marginTop:4}}>{value}</div>
@@ -2710,6 +2767,17 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   </div>}
 
   {aba==="relatorio"&&<div style={{display:"grid",gap:10}}>
+   {simulacaoEfetiva?.reconciliacao?.aplicada&&<div style={{...card,background:"#EEF6FF",borderColor:"#BFD3F2",color:"#31589C"}}>
+    <b>Simulação atualizada com a base corrigida</b>
+    <div style={{fontSize:8.8,lineHeight:1.55,marginTop:3}}>
+     O relatório não está mais usando o DAS antigo salvo na simulação.
+     {simulacaoEfetiva.reconciliacao.dasAnterior!=null&&<> DAS anterior: <b>{moedaMotor(simulacaoEfetiva.reconciliacao.dasAnterior)}</b>.</>}
+     {" "}DAS documental atual: <b>{moedaMotor(simulacaoEfetiva.reconciliacao.dasAtual)}</b>.
+     {simulacaoEfetiva.reconciliacao.residualAtual!=null&&<> DAS residual recalculado: <b>{moedaMotor(simulacaoEfetiva.reconciliacao.residualAtual)}</b>.</>}
+     {simulacaoEfetiva.reconciliacao.totalAtual!=null&&<> Total por fora: <b>{moedaMotor(simulacaoEfetiva.reconciliacao.totalAtual)}</b>.</>}
+    </div>
+   </div>}
+
    <div style={{...card,borderLeft:`5px solid ${prontidaoRelatorio.conclusivo?"#176B47":prontidaoRelatorio.percentual>=75?"#B7791F":"#FF6B4A"}`,background:"#fff"}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"start",flexWrap:"wrap"}}>
      <div>
@@ -2745,7 +2813,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       ["Cobertura da análise",`${motor.coberturaPct}%`],
       ["DAS atual",moedaMotor(comparativoRelatorio.dentro)],
       ["DAS residual por fora",comparativoRelatorio.residual==null?"Pendente":moedaMotor(comparativoRelatorio.residual)],
-      ["IBS + CBS",simulacao?moedaMotor(comparativoRelatorio.ibscbs):"Pendente"],
+      ["IBS + CBS",simulacaoEfetiva?moedaMotor(comparativoRelatorio.ibscbs):"Pendente"],
       ["Total por fora",comparativoRelatorio.fora==null?"Pendente":moedaMotor(comparativoRelatorio.fora)]
      ].map(([a,b],i)=><div key={i} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.10)",borderRadius:10,padding:10}}>
       <div style={{fontSize:7.5,color:"#BFC8D8",fontWeight:900,textTransform:"uppercase"}}>{a}</div><div style={{fontSize:15,fontWeight:900,marginTop:4}}>{b}</div>
