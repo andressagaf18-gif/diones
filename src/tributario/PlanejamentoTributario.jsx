@@ -85,14 +85,20 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
  async function carregarDocumentosBanco(cnpjForcado=""){
   const d=digits(cnpjForcado||cnpj);
-  if(d.length!==14){
+
+  if(d.length!==14&&!projetoId){
    setDocumentosBanco([]);
    return [];
   }
 
   try{
-   const r=await api(`listar-documentos&cnpj=${encodeURIComponent(d)}`);
-   const docs=Array.isArray(r.documentos)?r.documentos:[];
+   const qs=[];
+   if(d.length===14)qs.push(`cnpj=${encodeURIComponent(d)}`);
+   if(projetoId)qs.push(`projetoId=${encodeURIComponent(projetoId)}`);
+
+   const r=await api(`listar-documentos&${qs.join("&")}`);
+   const docs=Array.isArray(r.documentos)?r.documentos.filter(x=>x.ativo!==false):[];
+
    setDocumentosBanco(docs);
    setDocumentosSelecionados(atual=>{
     const proximo={...atual};
@@ -101,6 +107,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     });
     return proximo;
    });
+
    return docs;
   }catch(e){
    setErro(e?.message||"Não foi possível carregar os documentos do cliente.");
@@ -207,7 +214,25 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
  useEffect(()=>{
   if(!projetoInicial?.id)return;
 
-  const p=projetoInicial;
+  const backupMaisRecente=
+   Array.isArray(projetoInicial.backups)&&projetoInicial.backups.length
+    ?projetoInicial.backups[0]?.projeto||{}
+    :{};
+
+  const p={
+   ...backupMaisRecente,
+   ...projetoInicial,
+   empresas:Array.isArray(projetoInicial.empresas)&&projetoInicial.empresas.length
+    ?projetoInicial.empresas
+    :(backupMaisRecente.empresas||[]),
+   atividades:Object.keys(projetoInicial.atividades||{}).length
+    ?projetoInicial.atividades
+    :(backupMaisRecente.atividades||{}),
+   dadosManuais:Object.keys(projetoInicial.dadosManuais||{}).length
+    ?projetoInicial.dadosManuais
+    :(backupMaisRecente.dadosManuais||{})
+  };
+
   const manuais=p.dadosManuais||{};
   const salvo=manuais.planejamentoV2||{};
   const emp=Array.isArray(p.empresas)&&p.empresas.length?p.empresas[0]:null;
@@ -237,14 +262,14 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   setResponsavel(p.responsavelFinder||"");
   setOrigem(p.origemCliente||"");
 
-  if(Array.isArray(p.documentos)&&p.documentos.length){
-   setDocumentosBanco(p.documentos);
-   setDocumentosSelecionados(Object.fromEntries(p.documentos.map(d=>[d.id,true])));
-  }else if(digits(emp?.cnpj||p.cnpj||"").length===14){
-   setTimeout(()=>carregarDocumentosBanco(emp?.cnpj||p.cnpj),0);
+  if(Array.isArray(projetoInicial.documentos)&&projetoInicial.documentos.length){
+   setDocumentosBanco(projetoInicial.documentos);
+   setDocumentosSelecionados(Object.fromEntries(projetoInicial.documentos.map(d=>[d.id,true])));
   }
 
-  setOk(`Planejamento reaberto mantendo o projeto ${p.id}. ${Array.isArray(p.backups)?p.backups.length:0} backup(s) disponível(is).`);
+  setTimeout(()=>carregarDocumentosBanco(emp?.cnpj||p.cnpj||""),0);
+
+  setOk(`Planejamento reaberto mantendo o projeto ${p.id}. ${Array.isArray(projetoInicial.backups)?projetoInicial.backups.length:0} backup(s) disponível(is).`);
  },[projetoInicial?.id]);
 
  async function consultar(){
