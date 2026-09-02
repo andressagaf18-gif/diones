@@ -98,7 +98,7 @@ function aliquotaEfetivaSimples(rbt12,anexo){
 
 export function baseVazia() {
   return {
-    faturamento:{industria:mapaMes(),comercio:mapaMes(),servicos:mapaMes()},
+    faturamento:{industria:mapaMes(),comercio:mapaMes(),servicos:mapaMes(),declaradoNaoSegregado:mapaMes()},
     tributos:{pis:mapaMes(),cofins:mapaMes(),icms:mapaMes(),ipi:mapaMes(),iss:mapaMes()},
     custos:{
       industria:{estoqueInicial:mapaMes(),insumos:mapaMes(),maoObraDireta:mapaMes(),ggf:mapaMes(),estoqueFinal:mapaMes()},
@@ -170,7 +170,7 @@ function garantirBase(base={}){
 
 export function operacional(baseOriginal){
   const base=garantirBase(baseOriginal);
-  const receita=somaMes(base.faturamento.industria,base.faturamento.comercio,base.faturamento.servicos);
+  const receita=somaMes(base.faturamento.industria,base.faturamento.comercio,base.faturamento.servicos,base.faturamento.declaradoNaoSegregado);
   const cpv=Object.fromEntries(MESES.map(m=>[m,
     num(base.custos.industria.estoqueInicial[m])
     +num(base.custos.industria.insumos[m])
@@ -199,11 +199,13 @@ export function operacional(baseOriginal){
       industria:base.faturamento.industria,
       comercio:base.faturamento.comercio,
       servicos:base.faturamento.servicos,
+      declaradoNaoSegregado:base.faturamento.declaradoNaoSegregado,
     },
     totalReceita:somaMapa(receita),
     totalReceitaIndustria:somaMapa(base.faturamento.industria),
     totalReceitaComercio:somaMapa(base.faturamento.comercio),
     totalReceitaServicos:somaMapa(base.faturamento.servicos),
+    totalReceitaNaoSegregada:somaMapa(base.faturamento.declaradoNaoSegregado),
     totalCustos:somaMapa(custos),
     totalDespesas:somaMapa(despesas),
     totalMassa:somaMapa(massa)
@@ -242,6 +244,7 @@ export function simples(baseOriginal){
     ["industria","II"],
     ["comercio","I"],
     ["servicos",""],
+    ["declaradoNaoSegregado",""],
   ];
 
   const detalhes=[];
@@ -256,7 +259,7 @@ export function simples(baseOriginal){
     let anexo=normalizarAnexo(anexos[natureza]||padrao);
 
     // Serviço: não assumimos Anexo III/V sem classificação confirmada.
-    if(natureza==="servicos"&&!normalizarAnexo(anexos[natureza]))anexo="";
+    if(["servicos","declaradoNaoSegregado"].includes(natureza)&&!normalizarAnexo(anexos[natureza]))anexo="";
 
     const faixa=anexo?aliquotaEfetivaSimples(rbt12Referencia,anexo):null;
 
@@ -360,7 +363,8 @@ export function presumido(baseOriginal){
     const ri=num(base.faturamento.industria[m]);
     const rc=num(base.faturamento.comercio[m]);
     const rs=num(base.faturamento.servicos[m]);
-    const r=ri+rc+rs;
+    const rn=num(base.faturamento.declaradoNaoSegregado[m]);
+    const r=ri+rc+rs+rn;
 
     const bir=
       ri*presuncaoNatureza(p,"industria","irpj")/100+
@@ -382,7 +386,7 @@ export function presumido(baseOriginal){
     const enc=num(base.folha.encargosPatronais[m]);
 
     return {
-      mes:m,receita:r,baseIrpj:bir,baseCsll:bcs,pis,cofins:cof,irpj:ir,
+      mes:m,receita:r,receitaNaoSegregada:rn,baseIrpj:bir,baseCsll:bcs,pis,cofins:cof,irpj:ir,
       adicionalIrpj:0,csll:cs,iss,icms,ipi,encargos:enc,
       total:pis+cof+ir+cs+iss+icms+ipi+enc
     };
@@ -422,7 +426,8 @@ export function presumido(baseOriginal){
     baseIrpj:mensal.reduce((a,x)=>a+x.baseIrpj,0),
     baseCsll:mensal.reduce((a,x)=>a+x.baseCsll,0),
     carga:o.totalReceita?total/o.totalReceita*100:0,
-    completo:o.totalReceita>0,
+    completo:o.totalReceita>0&&o.totalReceitaNaoSegregada===0,
+    pendencias:o.totalReceitaNaoSegregada>0?["Confirmar a natureza das receitas históricas não segregadas para calcular as bases presumidas de IRPJ e CSLL."]:[],
     presuncoesUsadas:{
       industria:{irpj:presuncaoNatureza(p,"industria","irpj"),csll:presuncaoNatureza(p,"industria","csll")},
       comercio:{irpj:presuncaoNatureza(p,"comercio","irpj"),csll:presuncaoNatureza(p,"comercio","csll")},
@@ -456,24 +461,36 @@ export function real(baseOriginal){
       +num(ajustes.adicoes?.[m])
       -num(ajustes.exclusoes?.[m]);
 
-    const lucroRealBase=Math.max(
-      0,
-      lucroFiscalAntesComp-num(ajustes.compensacoes?.[m])
-    );
-
-    const ir=lucroRealBase*num(p.irpj)/100;
-    const ad=adicional(lucroRealBase,p.adicionalIrpj,p.limiteAdicionalMensal);
-    const cs=lucroRealBase*num(p.csll)/100;
-
     return {
       mes:m,receita:r,pis,cofins:cof,iss,icms,ipi,encargos:enc,
       custos:cust,despesas:desp,
       lucroContabilAntesIrCs,
       lucroFiscalAntesComp,
-      lucroRealBase,
-      irpj:ir,adicionalIrpj:ad,csll:cs,
-      total:pis+cof+iss+icms+ipi+enc+ir+ad+cs
+      compensacao:num(ajustes.compensacoes?.[m]),
+      lucroRealBase:0,irpj:0,adicionalIrpj:0,csll:0,
+      total:pis+cof+iss+icms+ipi+enc
     };
+  });
+
+  // O período é consolidado antes de calcular IRPJ e CSLL. Assim, lucros e
+  // prejuízos mensais do mesmo período se compensam. Se o resultado fiscal
+  // acumulado for zero ou negativo, não há IRPJ, adicional nem CSLL.
+  const lucroFiscalPeriodo=mensal.reduce((a,x)=>a+x.lucroFiscalAntesComp,0);
+  const compensacoesPeriodo=mensal.reduce((a,x)=>a+x.compensacao,0);
+  const baseLucroReal=Math.max(0,lucroFiscalPeriodo-compensacoesPeriodo);
+  const mesesDoPeriodo=Math.max(1,mensal.filter(x=>x.receita!==0||x.custos!==0||x.despesas!==0).length);
+  const irpjPeriodo=baseLucroReal>0?baseLucroReal*num(p.irpj)/100:0;
+  const adicionalPeriodo=baseLucroReal>0?adicional(baseLucroReal,p.adicionalIrpj,num(p.limiteAdicionalMensal)*mesesDoPeriodo):0;
+  const csllPeriodo=baseLucroReal>0?baseLucroReal*num(p.csll)/100:0;
+  const basesPositivas=mensal.reduce((a,x)=>a+Math.max(0,x.lucroFiscalAntesComp-x.compensacao),0);
+
+  mensal.forEach(x=>{
+    const peso=basesPositivas>0?Math.max(0,x.lucroFiscalAntesComp-x.compensacao)/basesPositivas:0;
+    x.lucroRealBase=baseLucroReal*peso;
+    x.irpj=irpjPeriodo*peso;
+    x.adicionalIrpj=adicionalPeriodo*peso;
+    x.csll=csllPeriodo*peso;
+    x.total+=x.irpj+x.adicionalIrpj+x.csll;
   });
 
   const total=mensal.reduce((a,x)=>a+x.total,0);
@@ -488,7 +505,6 @@ export function real(baseOriginal){
     adicionalIrpj:mensal.reduce((a,x)=>a+x.adicionalIrpj,0),
     csll:mensal.reduce((a,x)=>a+x.csll,0),
   };
-  const baseLucroReal=mensal.reduce((a,x)=>a+x.lucroRealBase,0);
   const dadosOperacionaisSuficientes=
     o.totalReceita>0 &&
     (
@@ -503,6 +519,7 @@ export function real(baseOriginal){
     carga:o.totalReceita?total/o.totalReceita*100:0,
     completo:o.totalReceita>0&&dadosOperacionaisSuficientes,
     baseLucroReal,
+    prejuizoFiscalPeriodo:Math.min(0,lucroFiscalPeriodo-compensacoesPeriodo),
     lucroContabilAntesIrCs:mensal.reduce((a,x)=>a+x.lucroContabilAntesIrCs,0),
     observacaoBase:"IRPJ/CSLL calculados sobre lucro fiscal estimado antes de IRPJ/CSLL, ajustável por adições, exclusões e compensações."
   };
