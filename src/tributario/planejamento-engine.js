@@ -114,6 +114,10 @@ export function baseVazia() {
       regimeAtual:"",
       simplesAliquotaEfetiva:0,
       simplesDas:mapaMes(),
+      simplesComposicaoDas:{
+        irpj:mapaMes(),csll:mapaMes(),cofins:mapaMes(),pis:mapaMes(),
+        cpp:mapaMes(),icms:mapaMes(),ipi:mapaMes(),iss:mapaMes()
+      },
       simplesRbt12Base:0,
       simplesAnexos:{
         comercio:"I",
@@ -286,12 +290,42 @@ export function simples(baseOriginal){
     receitaSemTabela=0;
   }
 
+  // Na competência histórica, o DAS efetivamente apurado no PGDAS prevalece
+  // sobre a recomposição teórica, pois pode conter redução de ICMS/ISS,
+  // segregações, imunidades ou particularidades comprovadas no documento.
+  // Em cenários de crescimento, o motor volta a recalcular pelas tabelas.
+  if(dasInformado>0&&crescimento===0){
+    total=dasInformado;
+  }
+
   const completo=o.totalReceita>0&&receitaSemTabela===0&&rbt12Referencia>0;
   const mensal=Object.fromEntries(MESES.map(m=>{
     const recMes=num(o.receita[m]);
     const proporcao=o.totalReceita>0?recMes/o.totalReceita:0;
     return [m,total*proporcao];
   }));
+
+  // A composição informada pelo PGDAS é a fonte prioritária para demonstrar
+  // quanto de cada tributo está contido no DAS. Ela é informativa: os valores
+  // não podem ser somados novamente ao total do Simples.
+  const composicaoFonte=p.simplesComposicaoDas||{};
+  const composicaoObservada={
+    irpj:somaMapa(composicaoFonte.irpj),
+    csll:somaMapa(composicaoFonte.csll),
+    cofins:somaMapa(composicaoFonte.cofins),
+    pis:somaMapa(composicaoFonte.pis),
+    cpp:somaMapa(composicaoFonte.cpp),
+    icms:somaMapa(composicaoFonte.icms),
+    ipi:somaMapa(composicaoFonte.ipi),
+    iss:somaMapa(composicaoFonte.iss),
+  };
+  const totalComposicao=Object.values(composicaoObservada).reduce((a,v)=>a+num(v),0);
+  const composicaoDas=Object.fromEntries(
+    Object.entries(composicaoObservada).map(([tributo,valor])=>[
+      tributo,
+      totalComposicao>0?total*(num(valor)/totalComposicao):null
+    ])
+  );
 
   return {
     regime:"SIMPLES_NACIONAL",
@@ -300,9 +334,13 @@ export function simples(baseOriginal){
     carga:o.totalReceita?total/o.totalReceita*100:0,
     completo,
     aliquotaEfetivaUsada:o.totalReceita?total/o.totalReceita*100:0,
-    origemAliquota:detalhes.some(d=>d.origem==="TABELA_CGSN")?"TABELAS_CGSN_SEGREGADAS":aliquotaInformada>0?"ALIQUOTA_INFORMADA":dasInformado>0?"ALIQUOTA_OBSERVADA_PELO_DAS":"SEM_BASE",
+    origemAliquota:dasInformado>0&&crescimento===0?"DAS_PGDAS_COMPROVADO":detalhes.some(d=>d.origem==="TABELA_CGSN")?"TABELAS_CGSN_SEGREGADAS":aliquotaInformada>0?"ALIQUOTA_INFORMADA":"SEM_BASE",
     rbt12Referencia,
     detalhes,
+    tributos:{das:total,...composicaoDas},
+    composicaoDas,
+    origemComposicao:totalComposicao>0?"PGDAS_PROPORCIONAL":"NAO_INFORMADA",
+    composicaoCompleta:totalComposicao>0,
     pendencias:detalhes.filter(d=>d.origem==="PENDENTE_ANEXO").map(d=>`Confirmar Anexo do Simples para receita de ${d.natureza}.`)
   };
 }
@@ -369,9 +407,23 @@ export function presumido(baseOriginal){
   }
 
   const total=mensal.reduce((a,x)=>a+x.total,0);
+  const tributos={
+    pis:mensal.reduce((a,x)=>a+x.pis,0),
+    cofins:mensal.reduce((a,x)=>a+x.cofins,0),
+    icms:mensal.reduce((a,x)=>a+x.icms,0),
+    ipi:mensal.reduce((a,x)=>a+x.ipi,0),
+    iss:mensal.reduce((a,x)=>a+x.iss,0),
+    cpp:mensal.reduce((a,x)=>a+x.encargos,0),
+    irpj:mensal.reduce((a,x)=>a+x.irpj,0),
+    adicionalIrpj:mensal.reduce((a,x)=>a+x.adicionalIrpj,0),
+    csll:mensal.reduce((a,x)=>a+x.csll,0),
+  };
   return {
     regime:"LUCRO_PRESUMIDO",
     mensal,total,
+    tributos,
+    baseIrpj:mensal.reduce((a,x)=>a+x.baseIrpj,0),
+    baseCsll:mensal.reduce((a,x)=>a+x.baseCsll,0),
     carga:o.totalReceita?total/o.totalReceita*100:0,
     completo:o.totalReceita>0,
     presuncoesUsadas:{
@@ -428,6 +480,17 @@ export function real(baseOriginal){
   });
 
   const total=mensal.reduce((a,x)=>a+x.total,0);
+  const tributos={
+    pis:mensal.reduce((a,x)=>a+x.pis,0),
+    cofins:mensal.reduce((a,x)=>a+x.cofins,0),
+    icms:mensal.reduce((a,x)=>a+x.icms,0),
+    ipi:mensal.reduce((a,x)=>a+x.ipi,0),
+    iss:mensal.reduce((a,x)=>a+x.iss,0),
+    cpp:mensal.reduce((a,x)=>a+x.encargos,0),
+    irpj:mensal.reduce((a,x)=>a+x.irpj,0),
+    adicionalIrpj:mensal.reduce((a,x)=>a+x.adicionalIrpj,0),
+    csll:mensal.reduce((a,x)=>a+x.csll,0),
+  };
   const baseLucroReal=mensal.reduce((a,x)=>a+x.lucroRealBase,0);
   const dadosOperacionaisSuficientes=
     o.totalReceita>0 &&
@@ -439,7 +502,7 @@ export function real(baseOriginal){
 
   return {
     regime:"LUCRO_REAL",
-    mensal,total,
+    mensal,total,tributos,
     carga:o.totalReceita?total/o.totalReceita*100:0,
     completo:o.totalReceita>0&&dadosOperacionaisSuficientes,
     baseLucroReal,
@@ -457,20 +520,39 @@ export function comparar(baseOriginal){
   const atual=mapa[String(base.parametros.regimeAtual||"").toUpperCase()]||null;
   const economia=atual&&melhor?Math.max(0,atual.total-melhor.total):0;
 
-  const dre=(reg)=>({
+  const dre=(reg)=>{
+    const t=reg.tributos||{};
+    const irCs=num(t.irpj)+num(t.adicionalIrpj)+num(t.csll);
+    const tributosSobreReceita=
+      reg.regime==="SIMPLES_NACIONAL"
+        ?reg.total
+        :num(t.pis)+num(t.cofins)+num(t.icms)+num(t.ipi)+num(t.iss);
+    const encargosFolha=num(t.cpp);
+    const lucroAntesIrCs=
+      o.totalReceita-tributosSobreReceita-encargosFolha-o.totalCustos-o.totalDespesas;
+    return {
     receitaBruta:o.totalReceita,
     tributos:reg.total,
-    receitaLiquida:o.totalReceita-reg.total,
+    tributosSobreReceita,
+    encargosFolha,
+    detalhamentoTributos:t,
+    baseIrpj:reg.regime==="LUCRO_REAL"?num(reg.baseLucroReal):num(reg.baseIrpj),
+    baseCsll:reg.regime==="LUCRO_REAL"?num(reg.baseLucroReal):num(reg.baseCsll),
+    receitaLiquida:o.totalReceita-tributosSobreReceita,
     cpv:somaMapa(o.cpv),
     cmv:somaMapa(o.cmv),
     csp:somaMapa(o.csp),
     despesas:o.totalDespesas,
     lucroAntesIrCs:
-      reg.regime==="LUCRO_REAL"
+      reg.regime==="SIMPLES_NACIONAL"
+        ?lucroAntesIrCs
+        :reg.regime==="LUCRO_REAL"
         ?num(reg.lucroContabilAntesIrCs)
-        :o.totalReceita-o.totalCustos-o.totalDespesas,
+        :lucroAntesIrCs,
+    irpjCsll:reg.regime==="SIMPLES_NACIONAL"?0:irCs,
     lucroLiquido:o.totalReceita-reg.total-o.totalCustos-o.totalDespesas,
-  });
+    composicaoInformativa:reg.regime==="SIMPLES_NACIONAL",
+  }};
 
   return {
     simples:s,presumido:p,real:r,fatorR:fr,melhor,regimeAtual:atual,
