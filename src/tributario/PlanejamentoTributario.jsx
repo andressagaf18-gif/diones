@@ -228,6 +228,12 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       });
     }
 
+    const documentosExtracao=Array.isArray(ext?.documentosAnalisados)?ext.documentosAnalisados:[];
+    const somenteDocumentosSimples=documentosExtracao.length>0&&documentosExtracao.every(nome=>/pgdas|simples.?nacional|das|declara[cç][aã]o|recibo|extrato/i.test(String(nome||"")));
+    if(somenteDocumentosSimples&&simples.composicaoDas){
+      c.parametros.tributosOrigemSimplesDas=true;
+    }
+
     // Leva para o faturamento mensal todas as competências do ano-base
     // efetivamente declaradas no PGDAS, sem transformar RBT12 em receita mensal.
     const historico=Array.isArray(simples.receitasHistoricas)?simples.receitasHistoricas:[];
@@ -240,7 +246,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       const ano=String(achou[2]||achou[3]);
       if(anoDocumento&&ano!==anoDocumento)return;
       const mes=MESES[mesNumero-1];
-      const natureza=String(item?.natureza||"").toUpperCase();
+      const natureza=String(item?.natureza||"NAO_IDENTIFICADA").toUpperCase();
       const grupo=natureza==="INDUSTRIA"?"industria":natureza==="COMERCIO"?"comercio":natureza==="SERVICOS"?"servicos":natureza==="NAO_IDENTIFICADA"?"declaradoNaoSegregado":"";
       if(!mes||!grupo)return;
       const chave=`${grupo}_${mes}`;
@@ -253,7 +259,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       c.faturamento[grupo][mes]=valor;
     });
 
-    const naoClassificadas=historico.filter(item=>String(item?.natureza||"").toUpperCase()==="NAO_IDENTIFICADA"&&num(item?.receita)>0);
+    const naoClassificadas=historico.filter(item=>["","NAO_IDENTIFICADA"].includes(String(item?.natureza||"").toUpperCase())&&num(item?.receita)>0);
     if(naoClassificadas.length){
       c.dadosFaltantes=[...(c.dadosFaltantes||[]),"Existem receitas históricas do PGDAS sem natureza identificada; confirme se são indústria, comércio ou serviços antes do comparativo."];
     }
@@ -337,7 +343,11 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   }
 
   if(manuais.crescimento!=null)setCrescimento(num(manuais.crescimento));
-  if(manuais.extracaoResumo)setExtracaoResumo(manuais.extracaoResumo);
+  if(manuais.extracaoResumo){
+   setExtracaoResumo(manuais.extracaoResumo);
+   // Reaplica históricos antigos que ainda não tinham o campo natureza.
+   setTimeout(()=>mergeExtracao(manuais.extracaoResumo),0);
+  }
   if(manuais.conferenciaIa)setConferenciaIa(manuais.conferenciaIa);
   if(manuais.ia)setIa(manuais.ia);
   if(manuais.conferenciaDesatualizada!=null)setConferenciaDesatualizada(Boolean(manuais.conferenciaDesatualizada));
