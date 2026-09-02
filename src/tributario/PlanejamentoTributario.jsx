@@ -217,9 +217,38 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       });
     }
 
+    // Leva para o faturamento mensal todas as competências do ano-base
+    // efetivamente declaradas no PGDAS, sem transformar RBT12 em receita mensal.
+    const historico=Array.isArray(simples.receitasHistoricas)?simples.receitasHistoricas:[];
+    const historicoAgrupado={};
+    historico.forEach(item=>{
+      const texto=String(item?.competencia||"");
+      const achou=texto.match(/(0?[1-9]|1[0-2])\D+(20\d{2})|(20\d{2})\D+(0?[1-9]|1[0-2])/);
+      if(!achou||item?.receita===null||item?.receita===undefined)return;
+      const mesNumero=Number(achou[1]||achou[4]);
+      const ano=String(achou[2]||achou[3]);
+      if(anoDocumento&&ano!==anoDocumento)return;
+      const mes=MESES[mesNumero-1];
+      const natureza=String(item?.natureza||"").toUpperCase();
+      const grupo=natureza==="INDUSTRIA"?"industria":natureza==="COMERCIO"?"comercio":natureza==="SERVICOS"?"servicos":"";
+      if(!mes||!grupo)return;
+      const chave=`${grupo}_${mes}`;
+      historicoAgrupado[chave]=num(historicoAgrupado[chave])+num(item.receita);
+    });
+    Object.entries(historicoAgrupado).forEach(([chave,valor])=>{
+      const separador=chave.lastIndexOf("_");
+      const grupo=chave.slice(0,separador),mes=chave.slice(separador+1);
+      c.faturamento[grupo][mes]=valor;
+    });
+
+    const naoClassificadas=historico.filter(item=>String(item?.natureza||"").toUpperCase()==="NAO_IDENTIFICADA"&&num(item?.receita)>0);
+    if(naoClassificadas.length){
+      c.dadosFaltantes=[...(c.dadosFaltantes||[]),"Existem receitas históricas do PGDAS sem natureza identificada; confirme se são indústria, comércio ou serviços antes do comparativo."];
+    }
+
     c.fontes=[...(c.fontes||[]),...(ext?.fontes||[])];
     c.divergencias=ext?.divergencias||[];
-    c.dadosFaltantes=ext?.dadosFaltantes||[];
+    c.dadosFaltantes=[...new Set([...(c.dadosFaltantes||[]),...(ext?.dadosFaltantes||[])])];
 
     return c;
   });
@@ -879,16 +908,16 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     ["ICMS",dreTax(calc.dre.simples,"icms"),dreTax(calc.dre.presumido,"icms"),dreTax(calc.dre.real,"icms")],
     ["IPI",dreTax(calc.dre.simples,"ipi"),dreTax(calc.dre.presumido,"ipi"),dreTax(calc.dre.real,"ipi")],
     ["ISS",dreTax(calc.dre.simples,"iss"),dreTax(calc.dre.presumido,"iss"),dreTax(calc.dre.real,"iss")],
-    ["IRPJ",dreTax(calc.dre.simples,"irpj"),dreTax(calc.dre.presumido,"irpj"),dreTax(calc.dre.real,"irpj")],
-    ["Adicional de IRPJ",dreTax(calc.dre.simples,"adicionalIrpj"),dreTax(calc.dre.presumido,"adicionalIrpj"),dreTax(calc.dre.real,"adicionalIrpj")],
-    ["CSLL",dreTax(calc.dre.simples,"csll"),dreTax(calc.dre.presumido,"csll"),dreTax(calc.dre.real,"csll")],
-    ["Total de tributos",`${money(calc.dre.simples.tributos)} (${drePct(calc.dre.simples,calc.dre.simples.tributos)})`,`${money(calc.dre.presumido.tributos)} (${drePct(calc.dre.presumido,calc.dre.presumido.tributos)})`,`${money(calc.dre.real.tributos)} (${drePct(calc.dre.real,calc.dre.real.tributos)})`],
     ["Receita liquida",money(calc.dre.simples.receitaLiquida),money(calc.dre.presumido.receitaLiquida),money(calc.dre.real.receitaLiquida)],
     ["CPV",money(calc.dre.simples.cpv),money(calc.dre.presumido.cpv),money(calc.dre.real.cpv)],
     ["CMV",money(calc.dre.simples.cmv),money(calc.dre.presumido.cmv),money(calc.dre.real.cmv)],
     ["CSP",money(calc.dre.simples.csp),money(calc.dre.presumido.csp),money(calc.dre.real.csp)],
     ["Despesas",money(calc.dre.simples.despesas),money(calc.dre.presumido.despesas),money(calc.dre.real.despesas)],
     ["Lucro antes de IRPJ/CSLL",money(calc.dre.simples.lucroAntesIrCs),money(calc.dre.presumido.lucroAntesIrCs),money(calc.dre.real.lucroAntesIrCs)],
+    ["IRPJ",dreTax(calc.dre.simples,"irpj"),dreTax(calc.dre.presumido,"irpj"),dreTax(calc.dre.real,"irpj")],
+    ["Adicional de IRPJ",dreTax(calc.dre.simples,"adicionalIrpj"),dreTax(calc.dre.presumido,"adicionalIrpj"),dreTax(calc.dre.real,"adicionalIrpj")],
+    ["CSLL",dreTax(calc.dre.simples,"csll"),dreTax(calc.dre.presumido,"csll"),dreTax(calc.dre.real,"csll")],
+    ["Total de tributos",`${money(calc.dre.simples.tributos)} (${drePct(calc.dre.simples,calc.dre.simples.tributos)})`,`${money(calc.dre.presumido.tributos)} (${drePct(calc.dre.presumido,calc.dre.presumido.tributos)})`,`${money(calc.dre.real.tributos)} (${drePct(calc.dre.real,calc.dre.real.tributos)})`],
     ["Lucro liquido",money(calc.dre.simples.lucroLiquido),money(calc.dre.presumido.lucroLiquido),money(calc.dre.real.lucroLiquido)]
    ],[51,44,44,43]);
 
@@ -1250,7 +1279,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
        {extracaoResumo.simplesNacional.receitasHistoricas.filter(x=>x.mercado==="INTERNO").map((x,i)=>
         <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
-         <small>{x.competencia}</small>
+         <small>{x.competencia} · {x.natureza||"NATUREZA NÃO IDENTIFICADA"}</small>
          <b style={{display:"block",marginTop:3}}>{x.receita!=null?moeda(x.receita):"-"}</b>
         </div>
        )}
@@ -1459,19 +1488,25 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
      {[
       ["Receita bruta",d=>moeda(d.receitaBruta),d=>moeda(d.receitaBruta),d=>moeda(d.receitaBruta)],
       ["DAS - todos os tributos englobados",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,()=>"-",()=>"-"],
-      ...[["PIS","pis"],["COFINS","cofins"],["CPP / encargos patronais","cpp"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"],["IRPJ","irpj"],["Adicional de IRPJ","adicionalIrpj"],["CSLL","csll"]].map(([rotulo,chave])=>[
+      ...[["PIS","pis"],["COFINS","cofins"],["CPP / encargos patronais","cpp"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([rotulo,chave])=>[
        rotulo,
        d=>d.detalhamentoTributos?.[chave]==null?"Não identificado":`${moeda(d.detalhamentoTributos[chave])} · ${pct(d.receitaBruta?d.detalhamentoTributos[chave]/d.receitaBruta*100:0)} (no DAS)`,
        d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`,
        d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`
       ]),
-      ["Total de tributos",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`],
       ["Receita líquida",d=>moeda(d.receitaLiquida),d=>moeda(d.receitaLiquida),d=>moeda(d.receitaLiquida)],
       ["CPV",d=>moeda(d.cpv),d=>moeda(d.cpv),d=>moeda(d.cpv)],
       ["CMV",d=>moeda(d.cmv),d=>moeda(d.cmv),d=>moeda(d.cmv)],
       ["CSP",d=>moeda(d.csp),d=>moeda(d.csp),d=>moeda(d.csp)],
       ["Despesas",d=>moeda(d.despesas),d=>moeda(d.despesas),d=>moeda(d.despesas)],
       ["Lucro antes de IRPJ/CSLL",d=>moeda(d.lucroAntesIrCs),d=>moeda(d.lucroAntesIrCs),d=>moeda(d.lucroAntesIrCs)],
+      ...[["IRPJ","irpj"],["Adicional de IRPJ","adicionalIrpj"],["CSLL","csll"]].map(([rotulo,chave])=>[
+       rotulo,
+       d=>d.detalhamentoTributos?.[chave]==null?"Não identificado":`${moeda(d.detalhamentoTributos[chave])} · ${pct(d.receitaBruta?d.detalhamentoTributos[chave]/d.receitaBruta*100:0)} (no DAS)`,
+       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`,
+       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`
+      ]),
+      ["Total de tributos",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`],
       ["Lucro líquido estimado",d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido)]
      ].flatMap(([l,s,p,r],i)=>[<span key={`${i}l`} style={{fontWeight:i===0||/Total/.test(l)?800:500}}>{l}</span>,<span key={`${i}s`}>{s(calc.dre.simples)}</span>,<span key={`${i}p`}>{p(calc.dre.presumido)}</span>,<span key={`${i}r`}>{r(calc.dre.real)}</span>])}
     </div>
