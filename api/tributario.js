@@ -2350,9 +2350,10 @@ const planejamentoExtracaoSchema = {
             properties: {
               competencia: { type: "string" },
               receita: { type: ["number", "null"] },
-              mercado: { type: "string", enum: ["INTERNO","EXTERNO"] }
+              mercado: { type: "string", enum: ["INTERNO","EXTERNO"] },
+              natureza: { type: "string", enum: ["INDUSTRIA","COMERCIO","SERVICOS","NAO_IDENTIFICADA"] }
             },
-            required: ["competencia","receita","mercado"],
+            required: ["competencia","receita","mercado","natureza"],
             additionalProperties: false
           }
         }
@@ -2689,8 +2690,9 @@ REGRAS:
 33. A composição do DAS é informativa e já está englobada no Simples Nacional. Não some IRPJ, CSLL, PIS, COFINS, CPP, ICMS, IPI ou ISS novamente ao DAS total.
 34. RBT12, RBA e RBAA são acumuladores de receita. Nunca classifique esses valores como CPV, CMV, CSP, custos, compras, insumos, despesas ou folha.
 35. PGDAS-D, DAS, extrato e recibo não comprovam custos ou despesas. Na ausência de DRE, balancete, razão, livro-caixa ou planilha específica, mantenha custos e despesas como null e registre-os em dadosFaltantes.
-36. Para cada competência do PGDAS, extraia a receita histórica sem duplicar mercado interno, mercado externo, receita segregada e total. O RPA total deve ser igual à soma das receitas segregadas da competência, admitindo arredondamento.
+36. Para cada competência do PGDAS, extraia a receita histórica sem duplicar mercado interno, mercado externo, receita segregada e total. Gere um registro por competência e natureza (INDUSTRIA, COMERCIO ou SERVICOS). Use NAO_IDENTIFICADA somente quando o documento realmente não permitir a classificação. O RPA total deve ser igual à soma das receitas segregadas da competência, admitindo arredondamento.
 37. Quando houver atividades em anexos diferentes, segregue comércio, indústria e serviços conforme a descrição do próprio PGDAS. Não use CNAE isoladamente para alterar uma receita já classificada no documento.
+38. Leia todas as apurações/competências existentes no mesmo PDF do PGDAS. Não limite a extração à última competência. As receitas de cada mês devem entrar em receitasHistoricas com a natureza indicada pelo Anexo/descrição: Anexo I normalmente COMERCIO, Anexo II INDUSTRIA e Anexos III, IV ou V SERVICOS, salvo evidência documental diferente.
 `});
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_planejamento_extracao",effort:"medium"});
