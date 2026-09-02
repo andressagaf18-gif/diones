@@ -2685,6 +2685,12 @@ REGRAS:
 29. Não transforme total anual em valor mensal e não replique valor pontual como recorrente sem indicação explícita.
 30. Se houver várias fontes para o mesmo campo, priorize documento fiscal/contábil oficial sobre checklist gerencial e registre divergência.
 31. Se o CNPJ estiver em qualquer documento, extraia-o mesmo que o usuário não tenha informado CNPJ antes do upload.
+32. Em PGDAS-D, reconcilie obrigatoriamente a composição do DAS: IRPJ + CSLL + COFINS + PIS + CPP/INSS + ICMS + IPI + ISS deve ser igual ao DAS total, admitindo somente diferença de arredondamento de até R$ 0,10. Se não reconciliar, registre divergência e não invente a diferença.
+33. A composição do DAS é informativa e já está englobada no Simples Nacional. Não some IRPJ, CSLL, PIS, COFINS, CPP, ICMS, IPI ou ISS novamente ao DAS total.
+34. RBT12, RBA e RBAA são acumuladores de receita. Nunca classifique esses valores como CPV, CMV, CSP, custos, compras, insumos, despesas ou folha.
+35. PGDAS-D, DAS, extrato e recibo não comprovam custos ou despesas. Na ausência de DRE, balancete, razão, livro-caixa ou planilha específica, mantenha custos e despesas como null e registre-os em dadosFaltantes.
+36. Para cada competência do PGDAS, extraia a receita histórica sem duplicar mercado interno, mercado externo, receita segregada e total. O RPA total deve ser igual à soma das receitas segregadas da competência, admitindo arredondamento.
+37. Quando houver atividades em anexos diferentes, segregue comércio, indústria e serviços conforme a descrição do próprio PGDAS. Não use CNAE isoladamente para alterar uma receita já classificada no documento.
 `});
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_planejamento_extracao",effort:"medium"});
