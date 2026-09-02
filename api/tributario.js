@@ -2575,21 +2575,49 @@ const planejamentoAnaliseSchema = {
   type:"object",
   properties:{
     resumoExecutivo:{type:"string"}, regimeAtual:{type:"string"}, regimeMenorCargaMatematica:{type:"string"},
+    statusRecomendacao:{type:"string",enum:["RECOMENDADO","TENDENCIA","INCONCLUSIVO"]},
+    regimeRecomendado:{type:"string"},
+    motivosRecomendacao:{type:"array",items:{type:"string"}},
     recomendacao:{type:"string"}, justificativa:{type:"string"}, fatorR:{type:"string"},
     riscos:{type:"array",items:{type:"string"}}, oportunidades:{type:"array",items:{type:"string"}},
     validacoesNecessarias:{type:"array",items:{type:"string"}}, dadosFaltantes:{type:"array",items:{type:"string"}},
     ressalvas:{type:"array",items:{type:"string"}}, proximosPassos:{type:"array",items:{type:"string"}},
     confiancaGeral:{type:"string",enum:["ALTA","MEDIA","BAIXA"]}
   },
-  required:["resumoExecutivo","regimeAtual","regimeMenorCargaMatematica","recomendacao","justificativa","fatorR","riscos","oportunidades","validacoesNecessarias","dadosFaltantes","ressalvas","proximosPassos","confiancaGeral"],
+  required:["resumoExecutivo","regimeAtual","regimeMenorCargaMatematica","statusRecomendacao","regimeRecomendado","motivosRecomendacao","recomendacao","justificativa","fatorR","riscos","oportunidades","validacoesNecessarias","dadosFaltantes","ressalvas","proximosPassos","confiancaGeral"],
   additionalProperties:false
 };
 
-async function respostaPlanejamentoIA({content,schema,nomeSchema,effort="medium"}) {
+async function respostaPlanejamentoIA({content,schema,nomeSchema,effort="medium",webSearch=false}) {
+  const payload={
+    model:MODEL,
+    input:[{role:"user",content}],
+    reasoning:{effort},
+    text:{format:{type:"json_schema",name:nomeSchema,strict:true,schema}}
+  };
+
+  if(webSearch){
+    payload.tools=[{
+      type:"web_search",
+      search_context_size:"high",
+      filters:{
+        allowed_domains:[
+          "gov.br",
+          "receita.fazenda.gov.br",
+          "normas.receita.fazenda.gov.br",
+          "planalto.gov.br",
+          "fazenda.pr.gov.br",
+          "legislacao.pr.gov.br",
+          "confaz.fazenda.gov.br"
+        ]
+      }
+    }];
+  }
+
   const response = await fetch(`${OPENAI_URL}/responses`, {
     method:"POST",
     headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"content-type":"application/json"},
-    body:JSON.stringify({model:MODEL,input:[{role:"user",content}],reasoning:{effort},text:{format:{type:"json_schema",name:nomeSchema,strict:true,schema}}})
+    body:JSON.stringify(payload)
   });
   const data = await response.json().catch(()=>null);
   if(!response.ok) throw new Error(data?.error?.message || "Falha na análise estruturada pela IA.");
@@ -2646,7 +2674,17 @@ REGRAS:
 18. Se o documento disser "Fator r = Não se aplica", retorne fatorRAplicavel=false e fatorR="Não se aplica".
 19. Se constar "Folha de Salários Anteriores: Nenhuma", não conclua que a folha contábil é zero. Registre folha/pró-labore como dado faltante para planejamento, salvo documento específico que comprove zero.
 20. CNAE não deve ser inventado.
-21. Em base.faturamento use jan..dez de 2026 quando esses valores estiverem disponíveis; meses sem comprovação devem ser null.
+21. O período jan..dez representa o ANO/PERÍODO efetivamente presente no documento. NÃO force 2026. Se a planilha trouxer 2027, use jan..dez de 2027 e registre o ano nas fontes/observação geral.
+22. Em planilhas/checklists, examine TODAS as abas relevantes, não apenas a primeira.
+23. Se houver aba equivalente a "Dados Básicos", extraia CNPJ, razão social, CNAE principal e secundários.
+24. Se houver aba equivalente a "Receita", classifique cada linha pela natureza real: indústria, comércio ou serviços. Não some a mesma receita em mais de um grupo.
+25. Se houver aba "Compras/Insumos", valores explicitamente mensais de insumos fabris devem alimentar custos.industria.insumos; compras de mercadoria para revenda devem alimentar custos.comercio.compras; serviços terceirizados diretamente ligados à produção/prestação podem alimentar GGF/gastos diretos quando a classificação estiver clara.
+26. Se houver aba "Despesas", valor rotulado como MENSAL pode ser replicado em jan..dez do período analisado, porque o próprio documento afirma recorrência mensal. Classifique aluguel/energia/água/internet em ocupação/administrativas; marketing em comerciais; fretes/logística em logistica; contabilidade/financeiro/software em administrativas; demais itens conforme natureza. Registre a regra de rateio/classificação em fontes.
+27. Se houver aba "Folha", valor rotulado como folha bruta MENSAL deve alimentar folha.folha13 nos 12 meses do cenário atual; pró-labore deve ir em folha.proLabore; INSS/FGTS em folha.inssFgts; encargos patronais em folha.encargosPatronais. NÃO use o cenário futuro de aumento de produção como folha atual sem identificá-lo como projeção.
+28. Se o documento trouxer "cenário atual" e "cenário futuro/projetado", a BASE principal deve usar o atual; projeções devem ser registradas em fontes/observações para uso em cenários, sem substituir silenciosamente o atual.
+29. Não transforme total anual em valor mensal e não replique valor pontual como recorrente sem indicação explícita.
+30. Se houver várias fontes para o mesmo campo, priorize documento fiscal/contábil oficial sobre checklist gerencial e registre divergência.
+31. Se o CNPJ estiver em qualquer documento, extraia-o mesmo que o usuário não tenha informado CNPJ antes do upload.
 `});
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_planejamento_extracao",effort:"medium"});
@@ -2718,7 +2756,12 @@ REGRAS:
 22. Não misture IBS/CBS/Reforma Tributária nesta conferência.
 23. Riscos, oportunidades e plano de ação devem decorrer somente dos dados disponíveis.
 24. Nunca transforme ausência documental em zero.
-25. Quando não houver suporte, declare a necessidade de validação/pesquisa.`,
+25. Quando não houver suporte, declare a necessidade de validação/pesquisa.
+26. Faça pesquisa jurídica externa em fontes OFICIAIS para benefícios fiscais, regimes especiais, créditos presumidos, diferimentos, reduções de base, isenções e tratamentos setoriais potencialmente relacionados à atividade REAL/CNAEs/UF/município.
+27. Não pesquise benefício apenas pelo CNAE. Cruze produto/serviço, NCM quando disponível, CFOP/operação, destino, regime, estabelecimento industrial/comercial e requisitos objetivos.
+28. Para cada benefício potencial, indique situação, requisitos, fundamento legal, vigência e fonte oficial. Se a pesquisa oficial não confirmar, marque NAO_IDENTIFICADO ou POTENCIAL_VALIDAR.
+29. Procure também oportunidades legítimas de redução de carga que não sejam "benefício fiscal": segregação correta de receitas, créditos válidos, regime de apuração, retenções, compensações, enquadramento por atividade, organização societária e melhoria documental — sem criar operação artificial.
+30. Dê prioridade a legislação vigente na data atual e sinalize regra futura/revogada separadamente.`,
     },
   ];
 
@@ -2787,6 +2830,15 @@ REGRAS:
 5. Se o Lucro Real estiver sem custos/despesas/créditos suficientes, reduza a confiança.
 6. Nunca invente benefício, crédito, fundamento ou enquadramento.
 7. A recomendação deve deixar claro o que depende de conferência profissional.
+8. O campo statusRecomendacao deve ser:
+   - RECOMENDADO somente quando a base é suficiente e existe vantagem técnica defensável;
+   - TENDENCIA quando há um regime provável, mas faltam validações materiais;
+   - INCONCLUSIVO quando não há base para decisão.
+9. regimeRecomendado deve conter SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL ou vazio quando INCONCLUSIVO.
+10. Explique em motivosRecomendacao por que o regime é ou não vantajoso, incluindo carga, margem, folha, créditos, natureza das receitas, obrigações e riscos.
+11. Para Lucro Real, IRPJ/CSLL não incidem sobre faturamento: avalie o lucro fiscal estimado antes de IRPJ/CSLL e ressalve adições, exclusões e compensações.
+12. Para Lucro Presumido, não aceite presunção única em atividade mista. Confira a segregação indústria/comércio/serviços e o período trimestral do adicional de IRPJ.
+13. Para Simples, crescimento pode alterar RBT12/faixa/alíquota efetiva; não congele a alíquota histórica quando houver Anexo e RBT12 suficientes.
 `}];
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoAnaliseSchema,nomeSchema:"finder_planejamento_analise",effort:"high"});
