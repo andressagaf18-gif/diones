@@ -21,6 +21,14 @@ function Mensal({label,mapa,onChange}){
   <strong style={{fontSize:9.5,textAlign:"right"}}>{moeda(total)}</strong>
  </div>
 }
+function MensalResumo({label,mapa}){
+ const total=MESES.reduce((a,m)=>a+num(mapa?.[m]),0);
+ return <div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4,alignItems:"center",padding:"8px 0",marginBottom:4,borderBottom:`2px solid ${C.blue}`,background:"#EEF4FF",borderRadius:8}}>
+  <strong style={{fontSize:9.5,paddingLeft:8,color:C.blue}}>{label}</strong>
+  {MESES.map(m=><strong key={m} style={{fontSize:9,textAlign:"right",padding:"0 5px"}}>{moeda(mapa?.[m])}</strong>)}
+  <strong style={{fontSize:9.5,textAlign:"right",paddingRight:5,color:C.blue}}>{moeda(total)}</strong>
+ </div>
+}
 function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{minWidth:1160}}><div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4}}><span/>{MESES.map(m=><b key={m} style={{fontSize:8.5,textAlign:"center",color:C.muted}}>{ROTULOS[m]}</b>)}<b style={{fontSize:8.5,textAlign:"right",color:C.muted}}>Total</b></div>{children}</div></div>}
 
 export default function PlanejamentoTributario({token,onVoltar,projetoInicial=null}){
@@ -32,6 +40,9 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
  const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}})());
  const calc=useMemo(()=>comparar(base),[base]);
  const calcCenario=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
+ const subtotalFaturamento=useMemo(()=>Object.fromEntries(MESES.map(m=>[m,
+  num(base.faturamento?.industria?.[m])+num(base.faturamento?.comercio?.[m])+num(base.faturamento?.servicos?.[m])+num(base.faturamento?.declaradoNaoSegregado?.[m])
+ ])),[base.faturamento]);
 
  async function api(action,{method="GET",body=null,params=null}={}){
   const query=new URLSearchParams({action});
@@ -230,7 +241,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       if(anoDocumento&&ano!==anoDocumento)return;
       const mes=MESES[mesNumero-1];
       const natureza=String(item?.natureza||"").toUpperCase();
-      const grupo=natureza==="INDUSTRIA"?"industria":natureza==="COMERCIO"?"comercio":natureza==="SERVICOS"?"servicos":"";
+      const grupo=natureza==="INDUSTRIA"?"industria":natureza==="COMERCIO"?"comercio":natureza==="SERVICOS"?"servicos":natureza==="NAO_IDENTIFICADA"?"declaradoNaoSegregado":"";
       if(!mes||!grupo)return;
       const chave=`${grupo}_${mes}`;
       historicoAgrupado[chave]=num(historicoAgrupado[chave])+num(item.receita);
@@ -238,6 +249,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     Object.entries(historicoAgrupado).forEach(([chave,valor])=>{
       const separador=chave.lastIndexOf("_");
       const grupo=chave.slice(0,separador),mes=chave.slice(separador+1);
+      if(!c.faturamento[grupo])c.faturamento[grupo]=Object.fromEntries(MESES.map(m=>[m,0]));
       c.faturamento[grupo][mes]=valor;
     });
 
@@ -838,9 +850,11 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     headers.forEach((h,i)=>{doc.setFont("helvetica","bold");doc.setFontSize(6.3);doc.setTextColor(...P.white);doc.text(safe(h),x+2,y+4.6);x+=widths[i]});
     y+=rh;
     rows.forEach((row,ri)=>{
-     if(ri%2===0){doc.setFillColor(...P.soft);doc.rect(M,y,CONTENT,rh,"F")}
+     const linhaImportante=/^(Receita bruta|Receita liquida|Lucro antes de IRPJ\/CSLL|Total de tributos)$/i.test(String(row?.[0]||""));
+     if(linhaImportante){doc.setFillColor(232,240,255);doc.rect(M,y,CONTENT,rh,"F")}
+     else if(ri%2===0){doc.setFillColor(...P.soft);doc.rect(M,y,CONTENT,rh,"F")}
      x=M;
-     row.forEach((v,i)=>{doc.setFont("helvetica",i===0?"bold":"normal");doc.setFontSize(6.5);doc.setTextColor(...P.text);doc.text(safe(v),x+2,y+4.6);x+=widths[i]});
+     row.forEach((v,i)=>{doc.setFont("helvetica",i===0||linhaImportante?"bold":"normal");doc.setFontSize(linhaImportante?6.8:6.5);doc.setTextColor(...(linhaImportante?P.navy:P.text));doc.text(safe(v),x+2,y+4.6);x+=widths[i]});
      y+=rh;
     });
     y+=5;
@@ -851,6 +865,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     {label:"Presumido",x:calc.presumido,color:P.coral},
     {label:"Real",x:calc.real,color:P.navy}
    ];
+   const regimeDestaque=recomendacaoMotor.status==="RECOMENDADO"?recomendacaoMotor.titulo.replace(/^Regime tecnicamente recomendado:\s*/i,""):recomendacaoMotor.status==="TENDÊNCIA"?recomendacaoMotor.titulo.replace(/^Tendência técnica:\s*/i,""):"PENDENTE DE VALIDACAO TECNICA";
 
    // 1 - capa
    doc.setFillColor(...P.navy2);doc.rect(0,0,W,70,"F");
@@ -874,12 +889,14 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    );
 
    title("Recomendacao do motor");
-   card(M,y,CONTENT,32,P.soft,P.line);
-   doc.setFont("helvetica","bold");doc.setFontSize(10.2);doc.setTextColor(...P.navy);
-   doc.text(doc.splitTextToSize(safe(recomendacaoMotor.titulo),CONTENT-10),M+5,y+7);
-   doc.setFont("helvetica","normal");doc.setFontSize(7.4);doc.setTextColor(...P.text);
-   doc.text(doc.splitTextToSize(safe(recomendacaoMotor.texto),CONTENT-10),M+5,y+17);
-   y+=38;
+   card(M,y,CONTENT,42,P.navy,P.navy);
+   doc.setFont("helvetica","bold");doc.setFontSize(8.2);doc.setTextColor(191,208,255);
+   doc.text("O REGIME MELHOR INDICADO PARA A EMPRESA E",W/2,y+8,{align:"center"});
+   doc.setFontSize(16);doc.setTextColor(...P.white);
+   doc.text(safe(regimeDestaque),W/2,y+18,{align:"center"});
+   doc.setFont("helvetica","normal");doc.setFontSize(7.2);doc.setTextColor(216,222,234);
+   doc.text(doc.splitTextToSize(safe(recomendacaoMotor.texto),CONTENT-12),M+6,y+27);
+   y+=48;
 
    // 2 - comparativo
    addPage("Comparativo detalhado");
@@ -1213,7 +1230,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    </Card>
   </div>}
 
-  {aba==="base"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Faturamento mensal</h3><Grade>{[["Indústria","industria"],["Comércio","comercio"],["Serviços","servicos"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.faturamento[k]} onChange={(m,v)=>setMes(["faturamento",k],m,v)}/>)}</Grade></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Tributos operacionais</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.tributos[k]} onChange={(m,v)=>setMes(["tributos",k],m,v)}/>)}</Grade></Card><Card>
+  {aba==="base"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Faturamento mensal</h3><Grade><MensalResumo label="SUBTOTAL DECLARADO" mapa={subtotalFaturamento}/>{[["Indústria","industria"],["Comércio","comercio"],["Serviços","servicos"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.faturamento[k]} onChange={(m,v)=>setMes(["faturamento",k],m,v)}/>)}{MESES.some(m=>num(base.faturamento?.declaradoNaoSegregado?.[m])>0)&&<MensalResumo label="PGDAS SEM SEGREGAÇÃO" mapa={base.faturamento.declaradoNaoSegregado}/>}</Grade>{MESES.some(m=>num(base.faturamento?.declaradoNaoSegregado?.[m])>0)&&<div style={{marginTop:8,padding:9,borderRadius:8,background:"#FFF9EE",color:C.amber,fontSize:9}}>Os valores acima constam no histórico do PGDAS, mas o documento não separa comércio, indústria e serviços. Eles integram o subtotal; o Lucro Presumido ficará pendente até a natureza ser confirmada.</div>}</Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Tributos operacionais</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.tributos[k]} onChange={(m,v)=>setMes(["tributos",k],m,v)}/>)}</Grade></Card><Card>
  <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Premissas por regime e natureza da receita</h3>
  <div style={{fontSize:8.8,color:C.muted,marginBottom:10}}>Não use uma única presunção para atividades mistas. Comércio/indústria/serviços devem ser segregados e validados pela operação real.</div>
 
@@ -1480,6 +1497,12 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     </div>
    </Card>
 
+   <Card style={{background:`linear-gradient(135deg,${C.blue},${C.navy})`,color:C.white,border:0,textAlign:"center",padding:24}}>
+    <div style={{fontSize:12,fontWeight:900,letterSpacing:1.2,color:"#BFD0FF"}}>O REGIME MELHOR INDICADO PARA A EMPRESA É</div>
+    <div style={{fontSize:30,fontWeight:950,marginTop:8,fontFamily:DISPLAY}}>{recomendacaoMotor.status==="RECOMENDADO"?recomendacaoMotor.titulo.replace(/^Regime tecnicamente recomendado:\s*/i,""):recomendacaoMotor.status==="TENDÊNCIA"?recomendacaoMotor.titulo.replace(/^Tendência técnica:\s*/i,""):"PENDENTE DE VALIDAÇÃO TÉCNICA"}</div>
+    <div style={{fontSize:9.5,marginTop:8,color:"#D8DEEA"}}>{recomendacaoMotor.texto}</div>
+   </Card>
+
    <Card>
     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>DRE comparativa por regime e por tributo</h3>
     <div style={{fontSize:8.8,color:C.muted,marginBottom:10}}>No Simples, a composição é informativa e já está contida no DAS. No Presumido, IRPJ e CSLL usam bases presumidas por atividade. No Real, IRPJ e CSLL usam o lucro fiscal antes desses tributos.</div>
@@ -1508,7 +1531,11 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       ]),
       ["Total de tributos",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`],
       ["Lucro líquido estimado",d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido)]
-     ].flatMap(([l,s,p,r],i)=>[<span key={`${i}l`} style={{fontWeight:i===0||/Total/.test(l)?800:500}}>{l}</span>,<span key={`${i}s`}>{s(calc.dre.simples)}</span>,<span key={`${i}p`}>{p(calc.dre.presumido)}</span>,<span key={`${i}r`}>{r(calc.dre.real)}</span>])}
+     ].flatMap(([l,s,p,r],i)=>{
+      const importante=/^(Receita bruta|Receita líquida|Lucro antes de IRPJ\/CSLL|Total de tributos)$/i.test(l);
+      const estilo={fontWeight:importante?900:i===0||/Total/.test(l)?800:500,background:importante?"#E8F0FF":"transparent",color:importante?C.navy:"inherit",padding:importante?"7px 6px":"2px 0",borderRadius:importante?6:0,borderLeft:importante?`4px solid ${C.blue}`:0};
+      return [<span key={`${i}l`} style={estilo}>{l}</span>,<span key={`${i}s`} style={estilo}>{s(calc.dre.simples)}</span>,<span key={`${i}p`} style={estilo}>{p(calc.dre.presumido)}</span>,<span key={`${i}r`} style={estilo}>{r(calc.dre.real)}</span>];
+     })}
     </div>
     <div style={{marginTop:10,padding:9,background:"#F7F9FC",borderRadius:8,fontSize:8.8,color:C.muted}}>
      No Lucro Real, IRPJ e CSLL são calculados sobre o lucro fiscal estimado antes de IRPJ/CSLL, após custos, despesas, tributos operacionais e ajustes fiscais disponíveis. Não é correto aplicar IRPJ/CSLL sobre o faturamento.
