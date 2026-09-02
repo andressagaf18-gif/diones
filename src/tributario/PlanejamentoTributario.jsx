@@ -33,8 +33,12 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
  const calc=useMemo(()=>comparar(base),[base]);
  const calcCenario=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
 
- async function api(action,{method="GET",body=null}={}){
-  const r=await fetch(`/api/tributario?action=${encodeURIComponent(action)}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ async function api(action,{method="GET",body=null,params=null}={}){
+  const query=new URLSearchParams({action});
+  Object.entries(params||{}).forEach(([chave,valor])=>{
+   if(valor!==undefined&&valor!==null&&valor!=="")query.set(chave,String(valor));
+  });
+  const r=await fetch(`/api/tributario?${query.toString()}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const d=await r.json().catch(()=>null); if(!r.ok||!d?.sucesso) throw new Error(d?.error||"Falha na operação."); return d;
  }
 
@@ -93,11 +97,10 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   }
 
   try{
-   const qs=[];
-   if(d.length===14)qs.push(`cnpj=${encodeURIComponent(d)}`);
-   if(projetoId)qs.push(`projetoId=${encodeURIComponent(projetoId)}`);
-
-   const r=await api(`listar-documentos&${qs.join("&")}`);
+   const r=await api("listar-documentos",{params:{
+    ...(d.length===14?{cnpj:d}:{}),
+    ...(projetoId?{projetoId}:{}),
+   }});
    const docs=Array.isArray(r.documentos)?r.documentos.filter(x=>x.ativo!==false):[];
 
    setDocumentosBanco(docs);
@@ -194,6 +197,25 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
     const anoDocumento=String(competenciaDocumento).match(/20\d{2}/)?.[0];
     if(anoDocumento)c.parametros.anoBase=Number(anoDocumento);
+
+    const partesCompetencia=String(competenciaDocumento).match(/(?:^|\D)(0?[1-9]|1[0-2])(?:\D|$)/);
+    const indiceMes=partesCompetencia?Number(partesCompetencia[1])-1:-1;
+    const mesDocumento=indiceMes>=0?MESES[indiceMes]:"";
+    const simples=ext?.simplesNacional||{};
+
+    if(mesDocumento&&simples.dasTotal!==null&&simples.dasTotal!==undefined){
+      c.parametros.simplesDas[mesDocumento]=num(simples.dasTotal);
+    }
+
+    if(mesDocumento&&simples.composicaoDas){
+      if(!c.parametros.simplesComposicaoDas)c.parametros.simplesComposicaoDas={};
+      const mapaComposicao={irpj:"irpj",csll:"csll",cofins:"cofins",pis:"pis",cppInss:"cpp",icms:"icms",ipi:"ipi",iss:"iss"};
+      Object.entries(mapaComposicao).forEach(([origem,destino])=>{
+        if(!c.parametros.simplesComposicaoDas[destino])c.parametros.simplesComposicaoDas[destino]=Object.fromEntries(MESES.map(m=>[m,0]));
+        const valor=simples.composicaoDas[origem];
+        if(valor!==null&&valor!==undefined)c.parametros.simplesComposicaoDas[destino][mesDocumento]=num(valor);
+      });
+    }
 
     c.fontes=[...(c.fontes||[]),...(ext?.fontes||[])];
     c.divergencias=ext?.divergencias||[];
@@ -845,15 +867,28 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     "Tributos em relacao a receita bruta."
    );
 
-   title("DRE comparativa");
+   const drePct=(dre,valor)=>dre.receitaBruta>0?percent(num(valor)/dre.receitaBruta*100):"-";
+   const dreTax=(dre,chave)=>`${money(dre.detalhamentoTributos?.[chave])} (${drePct(dre,dre.detalhamentoTributos?.[chave])})`;
+   title("DRE comparativa por tributo");
    table(["Indicador","Simples","Presumido","Real"],[
     ["Receita bruta",money(calc.dre.simples.receitaBruta),money(calc.dre.presumido.receitaBruta),money(calc.dre.real.receitaBruta)],
-    ["Tributos",money(calc.dre.simples.tributos),money(calc.dre.presumido.tributos),money(calc.dre.real.tributos)],
+    ["DAS - total englobado",`${money(calc.dre.simples.tributos)} (${drePct(calc.dre.simples,calc.dre.simples.tributos)})`,"-","-"],
+    ["PIS",dreTax(calc.dre.simples,"pis"),dreTax(calc.dre.presumido,"pis"),dreTax(calc.dre.real,"pis")],
+    ["COFINS",dreTax(calc.dre.simples,"cofins"),dreTax(calc.dre.presumido,"cofins"),dreTax(calc.dre.real,"cofins")],
+    ["CPP / encargos patronais",dreTax(calc.dre.simples,"cpp"),dreTax(calc.dre.presumido,"cpp"),dreTax(calc.dre.real,"cpp")],
+    ["ICMS",dreTax(calc.dre.simples,"icms"),dreTax(calc.dre.presumido,"icms"),dreTax(calc.dre.real,"icms")],
+    ["IPI",dreTax(calc.dre.simples,"ipi"),dreTax(calc.dre.presumido,"ipi"),dreTax(calc.dre.real,"ipi")],
+    ["ISS",dreTax(calc.dre.simples,"iss"),dreTax(calc.dre.presumido,"iss"),dreTax(calc.dre.real,"iss")],
+    ["IRPJ",dreTax(calc.dre.simples,"irpj"),dreTax(calc.dre.presumido,"irpj"),dreTax(calc.dre.real,"irpj")],
+    ["Adicional de IRPJ",dreTax(calc.dre.simples,"adicionalIrpj"),dreTax(calc.dre.presumido,"adicionalIrpj"),dreTax(calc.dre.real,"adicionalIrpj")],
+    ["CSLL",dreTax(calc.dre.simples,"csll"),dreTax(calc.dre.presumido,"csll"),dreTax(calc.dre.real,"csll")],
+    ["Total de tributos",`${money(calc.dre.simples.tributos)} (${drePct(calc.dre.simples,calc.dre.simples.tributos)})`,`${money(calc.dre.presumido.tributos)} (${drePct(calc.dre.presumido,calc.dre.presumido.tributos)})`,`${money(calc.dre.real.tributos)} (${drePct(calc.dre.real,calc.dre.real.tributos)})`],
     ["Receita liquida",money(calc.dre.simples.receitaLiquida),money(calc.dre.presumido.receitaLiquida),money(calc.dre.real.receitaLiquida)],
     ["CPV",money(calc.dre.simples.cpv),money(calc.dre.presumido.cpv),money(calc.dre.real.cpv)],
     ["CMV",money(calc.dre.simples.cmv),money(calc.dre.presumido.cmv),money(calc.dre.real.cmv)],
     ["CSP",money(calc.dre.simples.csp),money(calc.dre.presumido.csp),money(calc.dre.real.csp)],
     ["Despesas",money(calc.dre.simples.despesas),money(calc.dre.presumido.despesas),money(calc.dre.real.despesas)],
+    ["Lucro antes de IRPJ/CSLL",money(calc.dre.simples.lucroAntesIrCs),money(calc.dre.presumido.lucroAntesIrCs),money(calc.dre.real.lucroAntesIrCs)],
     ["Lucro liquido",money(calc.dre.simples.lucroLiquido),money(calc.dre.presumido.lucroLiquido),money(calc.dre.real.lucroLiquido)]
    ],[51,44,44,43]);
 
@@ -1417,20 +1452,28 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    </Card>
 
    <Card>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-     <div><small>REGIME ATUAL</small><b style={{display:"block"}}>{base.parametros.regimeAtual||"-"}</b></div>
-     <div><small>MENOR CARGA MATEMÁTICA</small><b style={{display:"block"}}>{calc.melhor?.regime||"Pendente"}</b><span style={{fontSize:8,color:C.muted}}>Use o quadro acima para a recomendação técnica.</span></div>
-     <div><small>ECONOMIA POTENCIAL</small><b style={{display:"block",color:C.green}}>{calc.regimeAtual&&calc.melhor?moeda(calc.economia):"Pendente"}</b></div>
-     <div><small>REDUÇÃO</small><b style={{display:"block",color:C.green}}>{calc.regimeAtual&&calc.melhor?pct(calc.economiaPct):"Pendente"}</b></div>
-    </div>
-    <div style={{marginTop:10,padding:9,background:"#FFF9EE",fontSize:9.5,color:C.amber,borderRadius:8}}>Menor carga matemática não é recomendação automática. O motor técnico considera documentação, risco, elegibilidade, folha, créditos, margem e operação real.</div>
-   </Card>
-
-   <Card>
-    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>DRE comparativa</h3>
-    <div style={{display:"grid",gridTemplateColumns:"1.4fr repeat(3,1fr)",gap:5,fontSize:9.5}}>
+    <h3 style={{fontFamily:DISPLAY,marginTop:0}}>DRE comparativa por regime e por tributo</h3>
+    <div style={{fontSize:8.8,color:C.muted,marginBottom:10}}>No Simples, a composição é informativa e já está contida no DAS. No Presumido, IRPJ e CSLL usam bases presumidas por atividade. No Real, IRPJ e CSLL usam o lucro fiscal antes desses tributos.</div>
+    <div style={{display:"grid",gridTemplateColumns:"1.4fr repeat(3,1fr)",gap:5,fontSize:9.5,alignItems:"start"}}>
      <b>Indicador</b><b>Simples</b><b>Presumido</b><b>Real</b>
-     {[["Receita bruta","receitaBruta"],["Tributos","tributos"],["Receita líquida","receitaLiquida"],["CPV","cpv"],["CMV","cmv"],["CSP","csp"],["Despesas","despesas"],["Lucro antes de IRPJ/CSLL","lucroAntesIrCs"],["Lucro líquido estimado","lucroLiquido"]].flatMap(([l,k])=>[<span key={k+"l"}>{l}</span>,<span key={k+"s"}>{moeda(calc.dre.simples[k])}</span>,<span key={k+"p"}>{moeda(calc.dre.presumido[k])}</span>,<span key={k+"r"}>{moeda(calc.dre.real[k])}</span>])}
+     {[
+      ["Receita bruta",d=>moeda(d.receitaBruta),d=>moeda(d.receitaBruta),d=>moeda(d.receitaBruta)],
+      ["DAS - todos os tributos englobados",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,()=>"-",()=>"-"],
+      ...[["PIS","pis"],["COFINS","cofins"],["CPP / encargos patronais","cpp"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"],["IRPJ","irpj"],["Adicional de IRPJ","adicionalIrpj"],["CSLL","csll"]].map(([rotulo,chave])=>[
+       rotulo,
+       d=>d.detalhamentoTributos?.[chave]==null?"Não identificado":`${moeda(d.detalhamentoTributos[chave])} · ${pct(d.receitaBruta?d.detalhamentoTributos[chave]/d.receitaBruta*100:0)} (no DAS)`,
+       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`,
+       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`
+      ]),
+      ["Total de tributos",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`],
+      ["Receita líquida",d=>moeda(d.receitaLiquida),d=>moeda(d.receitaLiquida),d=>moeda(d.receitaLiquida)],
+      ["CPV",d=>moeda(d.cpv),d=>moeda(d.cpv),d=>moeda(d.cpv)],
+      ["CMV",d=>moeda(d.cmv),d=>moeda(d.cmv),d=>moeda(d.cmv)],
+      ["CSP",d=>moeda(d.csp),d=>moeda(d.csp),d=>moeda(d.csp)],
+      ["Despesas",d=>moeda(d.despesas),d=>moeda(d.despesas),d=>moeda(d.despesas)],
+      ["Lucro antes de IRPJ/CSLL",d=>moeda(d.lucroAntesIrCs),d=>moeda(d.lucroAntesIrCs),d=>moeda(d.lucroAntesIrCs)],
+      ["Lucro líquido estimado",d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido)]
+     ].flatMap(([l,s,p,r],i)=>[<span key={`${i}l`} style={{fontWeight:i===0||/Total/.test(l)?800:500}}>{l}</span>,<span key={`${i}s`}>{s(calc.dre.simples)}</span>,<span key={`${i}p`}>{p(calc.dre.presumido)}</span>,<span key={`${i}r`}>{r(calc.dre.real)}</span>])}
     </div>
     <div style={{marginTop:10,padding:9,background:"#F7F9FC",borderRadius:8,fontSize:8.8,color:C.muted}}>
      No Lucro Real, IRPJ e CSLL são calculados sobre o lucro fiscal estimado antes de IRPJ/CSLL, após custos, despesas, tributos operacionais e ajustes fiscais disponíveis. Não é correto aplicar IRPJ/CSLL sobre o faturamento.
