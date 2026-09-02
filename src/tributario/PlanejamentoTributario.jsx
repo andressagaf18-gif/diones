@@ -24,13 +24,14 @@ function Mensal({label,mapa,onChange}){
 function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{minWidth:1160}}><div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4}}><span/>{MESES.map(m=><b key={m} style={{fontSize:8.5,textAlign:"center",color:C.muted}}>{ROTULOS[m]}</b>)}<b style={{fontSize:8.5,textAlign:"right",color:C.muted}}>Total</b></div>{children}</div></div>}
 
 export default function PlanejamentoTributario({token,onVoltar,projetoInicial=null}){
- const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[conferenciaIa,setConferenciaIa]=useState(null),[conferenciaDesatualizada,setConferenciaDesatualizada]=useState(false),[gerandoConferencia,setGerandoConferencia]=useState(false),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
+ const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[cnaesOperacionais,setCnaesOperacionais]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[conferenciaIa,setConferenciaIa]=useState(null),[conferenciaDesatualizada,setConferenciaDesatualizada]=useState(false),[gerandoConferencia,setGerandoConferencia]=useState(false),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
  const [gerandoPdf,setGerandoPdf]=useState(false);
  const [documentosBanco,setDocumentosBanco]=useState([]);
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
  const [salvandoDocumentos,setSalvandoDocumentos]=useState(false);
  const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}})());
- const calc=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
+ const calc=useMemo(()=>comparar(base),[base]);
+ const calcCenario=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
 
  async function api(action,{method="GET",body=null}={}){
   const r=await fetch(`/api/tributario?action=${encodeURIComponent(action)}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -182,6 +183,18 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       c.parametros.simplesAliquotaEfetiva=num(ext.simplesNacional.aliquotaEfetivaObservada);
     }
 
+    if(ext?.simplesNacional?.rbt12!==null&&ext?.simplesNacional?.rbt12!==undefined){
+      c.parametros.simplesRbt12Base=num(ext.simplesNacional.rbt12);
+    }
+
+    const competenciaDocumento=
+      ext?.simplesNacional?.competencia||
+      ext?.fontes?.find?.(f=>/ano|compet[eê]ncia|per[ií]odo/i.test(f?.campo||""))?.competencia||
+      "";
+
+    const anoDocumento=String(competenciaDocumento).match(/20\d{2}/)?.[0];
+    if(anoDocumento)c.parametros.anoBase=Number(anoDocumento);
+
     c.fontes=[...(c.fontes||[]),...(ext?.fontes||[])];
     c.divergencias=ext?.divergencias||[];
     c.dadosFaltantes=ext?.dadosFaltantes||[];
@@ -245,7 +258,14 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    setCnpj(digits(p.cnpj));
   }
 
-  if(Array.isArray(at.selecionadas))setCnaes(at.selecionadas);
+  if(Array.isArray(at.selecionadas)){
+   setCnaes(at.selecionadas);
+   setCnaesOperacionais(
+    Array.isArray(at.operacionais)&&at.operacionais.length
+     ?at.operacionais.map(x=>typeof x==="string"?x:(x?.codigo||x?.cnae||"")).filter(Boolean)
+     :at.selecionadas.map(x=>typeof x==="string"?x:(x?.codigo||x?.cnae||"")).filter(Boolean)
+   );
+  }
   if(at.principalReal)setPrincipal(at.principalReal);
   if(at.descricaoReal)setDescricao(at.descricaoReal);
 
@@ -272,6 +292,42 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   setOk(`Planejamento reaberto mantendo o projeto ${p.id}. ${Array.isArray(projetoInicial.backups)?projetoInicial.backups.length:0} backup(s) disponível(is).`);
  },[projetoInicial?.id]);
 
+
+ async function consultarCnpjExtraido(cnpjExtraido){
+  const d=digits(cnpjExtraido);
+  if(d.length!==14)return null;
+
+  const r=await fetch(`/api/cnpj?cnpj=${d}`);
+  const x=await r.json().catch(()=>null);
+  if(!r.ok||!x)return null;
+
+  setCnpj(d);
+  setEmpresa(x);
+
+  const pr=x.cnaePrincipal||x.cnae?.principal||null;
+  const sec=x.cnaesSecundarios||x.cnae?.secundarios||[];
+  const todos=x.todosCnaes||x.cnae?.todos||[...(pr?[pr]:[]),...(Array.isArray(sec)?sec:[])];
+
+  const ns=(Array.isArray(todos)?todos:[])
+   .map(i=>({codigo:i.codigo||i.code||"",descricao:i.descricao||i.description||""}))
+   .filter(i=>i.codigo||i.descricao);
+
+  setCnaes(ns);
+  setCnaesOperacionais(atuais=>atuais.length?atuais:ns.map(i=>i.codigo).filter(Boolean));
+  setPrincipal(atual=>atual||pr?.codigo||pr?.code||ns[0]?.codigo||"");
+
+  return x;
+ }
+
+ function alternarCnaeOperacional(codigo){
+  setCnaesOperacionais(atuais=>
+   atuais.includes(codigo)
+    ?atuais.filter(x=>x!==codigo)
+    :[...atuais,codigo]
+  );
+  setConferenciaDesatualizada(true);
+ }
+
  async function consultar(){
   setErro("");
   const d=digits(cnpj);
@@ -295,6 +351,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    const principalNovo=pr?.codigo||pr?.code||ns[0]?.codigo||"";
 
    setCnaes(ns);
+   setCnaesOperacionais(ns.map(i=>i.codigo).filter(Boolean));
    setPrincipal(principalNovo);
 
    setConferenciaIa(atual=>reconciliarConferenciaCadastral(atual,{
@@ -314,11 +371,6 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
  }
  async function extrair(){
   const cnpjLimpo=digits(cnpj);
-
-  if(cnpjLimpo.length!==14){
-   setErro("Consulte um CNPJ válido antes de armazenar e analisar documentos.");
-   return;
-  }
 
   const existentesSelecionados=documentosBanco
    .filter(d=>d.ativo!==false&&documentosSelecionados[d.id]!==false)
@@ -348,7 +400,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
      method:"POST",
      body:{
       projetoId,
-      cnpj:cnpjLimpo,
+      cnpj:cnpjLimpo.length===14?cnpjLimpo:"",
       tipoProjeto:"planejamento",
       categoria:"planejamento",
       filename:f.name,
@@ -400,7 +452,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""
      },
      atividades:{
-      cnaesSelecionados:cnaes,
+      cnaesSelecionados:cnaes.filter(x=>cnaesOperacionais.includes(x.codigo)),
       atividadePrincipalReal:principal,
       descricaoOperacao:descricao
      },
@@ -409,10 +461,16 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    });
 
    mergeExtracao(d.extracao);
+
+   const cnpjDocumento=digits(d?.extracao?.identificacao?.cnpj||cnpjLimpo);
+   if(cnpjDocumento.length===14){
+    await consultarCnpjExtraido(cnpjDocumento);
+   }
+
    setIa(a=>({...a,extracao:d.extracao}));
    setArquivos([]);
 
-   const docs=await carregarDocumentosBanco(cnpjLimpo);
+   const docs=await carregarDocumentosBanco(cnpjDocumento);
    setAba("conferencia");
    setOk(`IA analisou ${ups.length} documento(s). O arquivo do cliente agora possui ${docs.length} documento(s) ativo(s). Você pode voltar à aba Documentos, anexar mais e reprocessar a análise.`);
   }catch(e){
@@ -442,6 +500,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
      }]:[],
      atividades:{
       selecionadas:cnaes,
+      operacionais:cnaes.filter(x=>cnaesOperacionais.includes(x.codigo)),
       principalReal:principal,
       descricaoReal:descricao
      },
@@ -486,7 +545,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
           razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""
         },
         atividades:{
-          cnaesSelecionados:cnaes,
+          cnaesSelecionados:cnaes.filter(x=>cnaesOperacionais.includes(x.codigo)),
           atividadePrincipalReal:principal,
           descricaoOperacao:descricao
         },
@@ -510,7 +569,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
  async function analisar(){
   if(!calc.real?.completo){setErro("Preencha a base antes de gerar a análise.");return} setAnalisando(true);setErro("");
-  try{const d=await api("planejamento-analisar",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes,atividadePrincipalReal:principal,descricaoOperacao:descricao},base,calculos:calc,crescimento}});
+  try{const d=await api("planejamento-analisar",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes.filter(x=>cnaesOperacionais.includes(x.codigo)),atividadePrincipalReal:principal,descricaoOperacao:descricao},base,calculos:calc,crescimento}});
    setIa(a=>({...a,analise:d.analise}));await salvar("DIAGNOSTICO_GERADO");await api("salvar-diagnostico",{method:"POST",body:{projetoId,tipoProjeto:"planejamento",diagnostico:d.analise,documentos:documentosBanco
     .filter(d=>d.ativo!==false&&documentosSelecionados[d.id]!==false)
     .map(d=>({id:d.id,filename:d.filename,bytes:d.bytes,categoria:d.categoria,criadoEm:d.criadoEm})),modelo:d.modelo,usage:d.usage||null}});setAba("relatorio");setOk("Análise IA gerada e salva.");
@@ -566,35 +625,66 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
  },[cnpj,descricao,base,extracaoResumo,documentosBanco,conferenciaIa,conferenciaDesatualizada,calc,ia,regimesValidos]);
 
  const recomendacaoMotor=useMemo(()=>{
+  const nomes={
+   SIMPLES:"Simples Nacional",
+   SIMPLES_NACIONAL:"Simples Nacional",
+   PRESUMIDO:"Lucro Presumido",
+   LUCRO_PRESUMIDO:"Lucro Presumido",
+   REAL:"Lucro Real",
+   LUCRO_REAL:"Lucro Real"
+  };
+
+  const statusIa=String(ia?.analise?.statusRecomendacao||"").toUpperCase();
+  const regimeIa=String(ia?.analise?.regimeRecomendado||"").toUpperCase();
+
+  if(statusIa==="RECOMENDADO"&&regimeIa){
+   return{
+    titulo:`Regime tecnicamente recomendado: ${nomes[regimeIa]||regimeIa}`,
+    texto:ia?.analise?.recomendacao||ia?.analise?.justificativa||"",
+    regime:regimeIa,
+    status:"RECOMENDADO",
+    cor:C.green
+   };
+  }
+
+  if(statusIa==="TENDENCIA"&&regimeIa){
+   return{
+    titulo:`Tendência técnica: ${nomes[regimeIa]||regimeIa}`,
+    texto:ia?.analise?.recomendacao||"Há uma tendência, mas ainda existem validações antes da decisão.",
+    regime:regimeIa,
+    status:"TENDÊNCIA",
+    cor:C.amber
+   };
+  }
+
   if(!calc.melhor){
    return{
-    titulo:"Base insuficiente para recomendar regime",
-    texto:"Complete faturamento, folha, custos, despesas e parâmetros tributários antes de comparar os regimes.",
-    regime:null
+    titulo:"Base insuficiente para apontar o regime mais vantajoso",
+    texto:"Complete a base documental e operacional. O sistema não deve chamar um regime de vantajoso enquanto faltarem premissas materiais.",
+    regime:null,
+    status:"INCONCLUSIVO",
+    cor:C.red
    };
   }
 
   if(regimesValidos.length<2){
    return{
-    titulo:`${calc.melhor.regime} é o único cenário calculável`,
-    texto:"Não trate esse resultado como recomendação. É necessário ter pelo menos dois regimes calculáveis para uma comparação útil.",
-    regime:calc.melhor.regime
+    titulo:"Comparação ainda inconclusiva",
+    texto:`${nomes[calc.melhor.regime]||calc.melhor.regime} é o único cenário calculável. Isso não permite recomendar mudança de regime.`,
+    regime:null,
+    status:"INCONCLUSIVO",
+    cor:C.amber
    };
   }
 
-  const nomes={
-   SIMPLES_NACIONAL:"Simples Nacional",
-   LUCRO_PRESUMIDO:"Lucro Presumido",
-   LUCRO_REAL:"Lucro Real"
-  };
-
   return{
-   titulo:`${nomes[calc.melhor.regime]||calc.melhor.regime} aparece como menor carga matemática`,
-   texto:ia?.analise?.recomendacao||"A hipótese precisa ser validada com elegibilidade, créditos, margem, folha, natureza das receitas, operação real e documentação.",
-   regime:calc.melhor.regime
+   titulo:`Menor carga matemática: ${nomes[calc.melhor.regime]||calc.melhor.regime}`,
+   texto:ia?.analise?.recomendacao||"Gere a análise técnica IA para transformar a comparação matemática em recomendação, considerando elegibilidade, atividade real, folha, margem, custos, créditos e riscos.",
+   regime:calc.melhor.regime,
+   status:"AGUARDANDO ANÁLISE TÉCNICA",
+   cor:C.blue
   };
  },[calc,regimesValidos,ia]);
-
  const cenariosPadrao=useMemo(()=>[0,10,20,30,50].map(p=>{
   const c=comparar(cenario(base,p));
   return{crescimento:p,simples:c.simples,presumido:c.presumido,real:c.real,melhor:c.melhor};
@@ -957,7 +1047,33 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
   {aba==="identificacao"&&<div style={{display:"grid",gap:10}}>
    <Card><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}><label><b style={{fontSize:9}}>RESPONSÁVEL</b><input value={responsavel} onChange={e=>{setResponsavel(e.target.value);setConferenciaDesatualizada(true)}} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>ORIGEM</b><input value={origem} onChange={e=>{setOrigem(e.target.value);setConferenciaDesatualizada(true)}} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>REGIME ATUAL</b><select value={base.parametros.regimeAtual} onChange={e=>setParam(["parametros","regimeAtual"],e.target.value)} style={{...inp,marginTop:4}}><option value="">Selecione</option><option value="SIMPLES_NACIONAL">Simples Nacional</option><option value="LUCRO_PRESUMIDO">Lucro Presumido</option><option value="LUCRO_REAL">Lucro Real</option></select></label></div></Card>
-   <Card><div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:7,alignItems:"end"}}><label><b style={{fontSize:9}}>CNPJ</b><input value={cnpj} onChange={e=>{setCnpj(e.target.value);setConferenciaDesatualizada(true)}} style={{...inp,marginTop:4}}/></label><Btn onClick={consultar}>Consultar CNPJ</Btn></div>{empresa&&<div style={{marginTop:10,padding:10,background:"#F7F9FC",borderRadius:10}}><strong>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</strong><div style={{fontSize:9,color:C.muted}}>{fmtCnpj(cnpj)}</div><div style={{display:"grid",gap:4,marginTop:8}}>{cnaes.map((x,i)=><label key={i} style={{fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>{setPrincipal(x.codigo);setConferenciaDesatualizada(true)}}/> <b>{x.codigo}</b> · {x.descricao}</label>)}</div><textarea rows={4} value={descricao} onChange={e=>{setDescricao(e.target.value);setConferenciaDesatualizada(true)}} placeholder="Descreva o que a empresa realmente faz..." style={{...inp,marginTop:9,fontFamily:BODY}}/></div>}</Card>
+   <Card>
+    <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:7,alignItems:"end"}}>
+     <label><b style={{fontSize:9}}>CNPJ</b><input value={cnpj} onChange={e=>{setCnpj(e.target.value);setConferenciaDesatualizada(true)}} placeholder="Pode ser preenchido automaticamente pelos documentos" style={{...inp,marginTop:4}}/></label>
+     <Btn onClick={consultar}>Consultar CNPJ</Btn>
+    </div>
+    <div style={{fontSize:8.8,color:C.muted,marginTop:6}}>Se o CNPJ estiver em PGDAS, planilha, balancete ou outro documento, a extração documental pode identificá-lo automaticamente.</div>
+    {empresa&&<div style={{marginTop:10,padding:10,background:"#F7F9FC",borderRadius:10}}>
+     <strong>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</strong>
+     <div style={{fontSize:9,color:C.muted}}>{fmtCnpj(cnpj)}</div>
+
+     <div style={{marginTop:10,fontSize:9,fontWeight:900}}>ATIVIDADES EFETIVAMENTE EXERCIDAS</div>
+     <div style={{fontSize:8.7,color:C.muted,margin:"3px 0 7px"}}>Marque todos os CNAEs que realmente geram receita/operação. O cadastro pode conter atividades que a empresa não exerce.</div>
+
+     <div style={{display:"grid",gap:6}}>
+      {cnaes.map((x,i)=>{
+       const ativa=cnaesOperacionais.includes(x.codigo);
+       return <div key={i} style={{display:"grid",gridTemplateColumns:"24px 24px 1fr",gap:6,alignItems:"start",padding:7,border:`1px solid ${ativa?C.blue:C.border}`,borderRadius:9,background:ativa?"#F3F7FF":"#fff"}}>
+        <input type="checkbox" checked={ativa} onChange={()=>alternarCnaeOperacional(x.codigo)} title="Atividade exercida"/>
+        <input type="radio" name="cnae-principal-real" disabled={!ativa} checked={principal===x.codigo} onChange={()=>{setPrincipal(x.codigo);setConferenciaDesatualizada(true)}} title="Atividade principal real"/>
+        <label style={{fontSize:9.5,cursor:"pointer"}} onClick={()=>!ativa&&alternarCnaeOperacional(x.codigo)}><b>{x.codigo}</b> · {x.descricao}{principal===x.codigo&&<span style={{color:C.green,fontWeight:900}}> · PRINCIPAL REAL</span>}</label>
+       </div>
+      })}
+     </div>
+
+     <textarea rows={4} value={descricao} onChange={e=>{setDescricao(e.target.value);setConferenciaDesatualizada(true)}} placeholder="Descreva a atividade principal de fato: o que vende/fabrica/presta, para quem, como fatura e qual operação gera mais receita..." style={{...inp,marginTop:9,fontFamily:BODY}}/>
+    </div>}
+   </Card>
   </div>}
 
   {aba==="documentos"&&<div style={{display:"grid",gap:10}}>
@@ -1033,7 +1149,31 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    </Card>
   </div>}
 
-  {aba==="base"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Faturamento mensal</h3><Grade>{[["Indústria","industria"],["Comércio","comercio"],["Serviços","servicos"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.faturamento[k]} onChange={(m,v)=>setMes(["faturamento",k],m,v)}/>)}</Grade></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Tributos operacionais</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.tributos[k]} onChange={(m,v)=>setMes(["tributos",k],m,v)}/>)}</Grade></Card><Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><label><b style={{fontSize:9}}>SIMPLES · ALÍQUOTA EFETIVA %</b><input type="number" value={base.parametros.simplesAliquotaEfetiva} onChange={e=>setParam(["parametros","simplesAliquotaEfetiva"],num(e.target.value))} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>PRESUNÇÃO IRPJ %</b><input type="number" value={base.parametros.presumido.presuncaoIrpj} onChange={e=>setParam(["parametros","presumido","presuncaoIrpj"],num(e.target.value))} style={{...inp,marginTop:4}}/></label><label><b style={{fontSize:9}}>PRESUNÇÃO CSLL %</b><input type="number" value={base.parametros.presumido.presuncaoCsll} onChange={e=>setParam(["parametros","presumido","presuncaoCsll"],num(e.target.value))} style={{...inp,marginTop:4}}/></label></div></Card></div>}
+  {aba==="base"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Faturamento mensal</h3><Grade>{[["Indústria","industria"],["Comércio","comercio"],["Serviços","servicos"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.faturamento[k]} onChange={(m,v)=>setMes(["faturamento",k],m,v)}/>)}</Grade></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Tributos operacionais</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.tributos[k]} onChange={(m,v)=>setMes(["tributos",k],m,v)}/>)}</Grade></Card><Card>
+ <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Premissas por regime e natureza da receita</h3>
+ <div style={{fontSize:8.8,color:C.muted,marginBottom:10}}>Não use uma única presunção para atividades mistas. Comércio/indústria/serviços devem ser segregados e validados pela operação real.</div>
+
+ <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:9,marginBottom:12}}>
+  <label><b style={{fontSize:9}}>SIMPLES · RBT12 DE REFERÊNCIA</b><input type="number" value={base.parametros.simplesRbt12Base||0} onChange={e=>setParam(["parametros","simplesRbt12Base"],num(e.target.value))} style={{...inp,marginTop:4}}/></label>
+  <label><b style={{fontSize:9}}>COMÉRCIO · ANEXO</b><select value={base.parametros.simplesAnexos?.comercio||"I"} onChange={e=>setParam(["parametros","simplesAnexos","comercio"],e.target.value)} style={{...inp,marginTop:4}}><option value="I">Anexo I</option></select></label>
+  <label><b style={{fontSize:9}}>INDÚSTRIA · ANEXO</b><select value={base.parametros.simplesAnexos?.industria||"II"} onChange={e=>setParam(["parametros","simplesAnexos","industria"],e.target.value)} style={{...inp,marginTop:4}}><option value="II">Anexo II</option></select></label>
+  <label><b style={{fontSize:9}}>SERVIÇOS · ANEXO</b><select value={base.parametros.simplesAnexos?.servicos||""} onChange={e=>setParam(["parametros","simplesAnexos","servicos"],e.target.value)} style={{...inp,marginTop:4}}><option value="">Confirmar</option><option value="III">Anexo III</option><option value="IV">Anexo IV</option><option value="V">Anexo V</option></select></label>
+ </div>
+
+ <div style={{display:"grid",gridTemplateColumns:"150px repeat(2,1fr)",gap:6,alignItems:"center",fontSize:9}}>
+  <b>Natureza da receita</b><b>Presunção IRPJ</b><b>Presunção CSLL</b>
+  {[
+   ["Indústria","industria",8,12],
+   ["Comércio","comercio",8,12],
+   ["Serviços","servicos",32,32],
+  ].flatMap(([label,key,pir,pcs])=>[
+   <b key={`${key}-l`}>{label}</b>,
+   <input key={`${key}-ir`} type="number" value={base.parametros.presumido.presuncoesPorNatureza?.[key]?.irpj??pir} onChange={e=>setParam(["parametros","presumido","presuncoesPorNatureza",key,"irpj"],num(e.target.value))} style={{...inp,padding:"7px 8px"}}/>,
+   <input key={`${key}-cs`} type="number" value={base.parametros.presumido.presuncoesPorNatureza?.[key]?.csll??pcs} onChange={e=>setParam(["parametros","presumido","presuncoesPorNatureza",key,"csll"],num(e.target.value))} style={{...inp,padding:"7px 8px"}}/>
+  ])}
+ </div>
+ <div style={{fontSize:8.5,color:C.amber,marginTop:9}}>Referências usuais não substituem validação da natureza específica da receita. Serviços podem ter tratamentos excepcionais; em 2026 há ainda regra de acréscimo dos percentuais de presunção sobre parcela de receita acima do limite legal.</div>
+</Card></div>}
 
   {aba==="folha"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Folha e Fator R</h3><Grade>{[["Folha / 13º","folha13"],["Pró-labore","proLabore"],["INSS + FGTS","inssFgts"],["Outros","outros"],["Encargos patronais","encargosPatronais"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.folha[k]} onChange={(m,v)=>setMes(["folha",k],m,v)}/>)}</Grade></Card><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}><Card><small>RBT12</small><h3>{moeda(calc.fatorR.rbt12)}</h3></Card><Card><small>Massa salarial 12m</small><h3>{moeda(calc.fatorR.massa)}</h3></Card><Card><small>Fator R</small><h3 style={{color:calc.fatorR.atinge28?C.green:C.red}}>{pct(calc.fatorR.percentual)}</h3><div style={{fontSize:9,color:C.muted}}>Referência de 28% somente quando aplicável.</div></Card></div></div>}
 
@@ -1044,33 +1184,32 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   ].map(([titulo,g,linhas])=><Card key={g}><h3 style={{fontFamily:DISPLAY,marginTop:0}}>{titulo}</h3><Grade>{linhas.map(([l,k])=><Mensal key={k} label={l} mapa={base.custos[g][k]} onChange={(m,v)=>setMes(["custos",g,k],m,v)}/>)}</Grade></Card>)}<Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Despesas</h3><Grade>{[["Operacionais","operacionais"],["Comerciais","comerciais"],["Administrativas","administrativas"],["Tributárias","tributarias"],["Diretoria","diretoria"],["Logística","logistica"],["Ocupação","ocupacao"],["Outras","outras"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.despesas[k]} onChange={(m,v)=>setMes(["despesas",k],m,v)}/>)}</Grade></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Créditos</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"]].map(([l,k])=><Mensal key={k} label={`Crédito ${l}`} mapa={base.creditos[k]} onChange={(m,v)=>setMes(["creditos",k],m,v)}/>)}</Grade></Card></div>}
 
   {aba==="conferencia"&&<div style={{display:"grid",gap:9}}>
-   {extracaoResumo&&<>
     <Card>
      <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Resumo identificado automaticamente</h3>
      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-      <div><small>EMPRESA</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.razaoSocial||empresa?.razaoSocial||"-"}</b></div>
-      <div><small>CNPJ</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.cnpj||cnpj||"-"}</b></div>
-      <div><small>REGIME</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.regimeAtual||base.parametros.regimeAtual||"-"}</b></div>
-      <div><small>APURAÇÃO</small><b style={{display:"block"}}>{extracaoResumo.identificacao?.regimeApuracao||"-"}</b></div>
+      <div><small>EMPRESA</small><b style={{display:"block"}}>{extracaoResumo?.identificacao?.razaoSocial||empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"-"}</b></div>
+      <div><small>CNPJ</small><b style={{display:"block"}}>{extracaoResumo?.identificacao?.cnpj||fmtCnpj(cnpj)||"-"}</b></div>
+      <div><small>REGIME</small><b style={{display:"block"}}>{extracaoResumo?.identificacao?.regimeAtual||base.parametros.regimeAtual||"-"}</b></div>
+      <div><small>APURAÇÃO</small><b style={{display:"block"}}>{extracaoResumo?.identificacao?.regimeApuracao||"-"}</b></div>
      </div>
 
      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginTop:10}}>
-      <div><small>COMPETÊNCIA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.competencia||"-"}</b></div>
-      <div><small>RPA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.rpa!=null?moeda(extracaoResumo.simplesNacional.rpa):"-"}</b></div>
-      <div><small>RBT12</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.rbt12!=null?moeda(extracaoResumo.simplesNacional.rbt12):"-"}</b></div>
-      <div><small>DAS</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.dasTotal!=null?moeda(extracaoResumo.simplesNacional.dasTotal):"-"}</b></div>
-      <div><small>ALÍQUOTA OBSERVADA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.aliquotaEfetivaObservada!=null?pct(extracaoResumo.simplesNacional.aliquotaEfetivaObservada):"-"}</b></div>
+      <div><small>COMPETÊNCIA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.competencia||base.parametros.anoBase||"-"}</b></div>
+      <div><small>RPA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rpa!=null?moeda(extracaoResumo.simplesNacional.rpa):moeda(MESES.reduce((a,m)=>a+num(base.faturamento.industria[m])+num(base.faturamento.comercio[m])+num(base.faturamento.servicos[m]),0)/12)}</b></div>
+      <div><small>RBT12</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rbt12!=null?moeda(extracaoResumo.simplesNacional.rbt12):base.parametros.simplesRbt12Base?moeda(base.parametros.simplesRbt12Base):moeda(calc.fatorR.rbt12)}</b></div>
+      <div><small>DAS</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.dasTotal!=null?moeda(extracaoResumo.simplesNacional.dasTotal):calc.simples?.completo?moeda(calc.simples.total):"-"}</b></div>
+      <div><small>ALÍQUOTA OBSERVADA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.aliquotaEfetivaObservada!=null?pct(extracaoResumo.simplesNacional.aliquotaEfetivaObservada):calc.simples?.completo?pct(calc.simples.carga):"-"}</b></div>
      </div>
 
      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:10}}>
-      <div><small>ANEXO</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.anexo||"-"}</b></div>
-      <div><small>ATIVIDADE TRIBUTADA</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.atividadeTributada||"-"}</b></div>
-      <div><small>FATOR R</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.fatorR||"-"}</b></div>
-      <div><small>ISS</small><b style={{display:"block"}}>{extracaoResumo.simplesNacional?.issMunicipio||"-"}</b></div>
+      <div><small>ANEXO</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.anexo||[base.parametros.simplesAnexos?.comercio,base.parametros.simplesAnexos?.industria,base.parametros.simplesAnexos?.servicos].filter(Boolean).join(" / ")||"-"}</b></div>
+      <div><small>ATIVIDADE TRIBUTADA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.atividadeTributada||descricao||"-"}</b></div>
+      <div><small>FATOR R</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.fatorR||pct(calc.fatorR.percentual)}</b></div>
+      <div><small>ISS</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.issMunicipio||empresa?.municipio||"-"}</b></div>
      </div>
     </Card>
 
-    {Array.isArray(extracaoResumo.simplesNacional?.receitasHistoricas)&&extracaoResumo.simplesNacional.receitasHistoricas.length>0&&
+    {Array.isArray(extracaoResumo?.simplesNacional?.receitasHistoricas)&&extracaoResumo.simplesNacional.receitasHistoricas.length>0&&
      <Card>
       <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Histórico identificado no PGDAS</h3>
       <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
@@ -1083,7 +1222,6 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       </div>
      </Card>
     }
-   </>}
 
    <Card style={{
     borderColor:conferenciaDesatualizada?"#F0C27B":C.border,
@@ -1173,7 +1311,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
    {conferenciaIa?.beneficiosFiscais?.length>0&&<Card>
     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Benefícios fiscais e enquadramentos especiais</h3>
-    <p style={{fontSize:9.5,color:C.muted}}>Só considerar benefício com atividade real compatível, requisitos atendidos e fundamento verificável.</p>
+    <p style={{fontSize:9.5,color:C.muted}}>A Conferência IA pesquisa fontes oficiais e cruza atividade real, CNAEs operacionais, município/UF, regime e requisitos. Benefício sugerido como potencial continua exigindo validação profissional.</p>
     <div style={{display:"grid",gap:8}}>
      {conferenciaIa.beneficiosFiscais.map((b,i)=><div key={i} style={{border:`1px solid ${C.border}`,borderRadius:9,padding:10}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b>{b.nome}</b><b style={{fontSize:9,color:b.situacao==="APLICAVEL"?C.green:b.situacao==="POTENCIAL_VALIDAR"?C.amber:C.muted}}>{b.situacao}</b></div>
@@ -1248,9 +1386,13 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
   {aba==="comparativo"&&<div style={{display:"grid",gap:10}}>
    <Card style={{background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0}}>
-    <div style={{fontSize:8,fontWeight:900,color:"#9EBBFF"}}>MOTOR DE REGIME</div>
-    <h2 style={{margin:"5px 0",fontFamily:DISPLAY}}>{recomendacaoMotor.titulo}</h2>
+    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+     <div style={{fontSize:8,fontWeight:900,color:"#9EBBFF"}}>DECISÃO TÉCNICA DO REGIME</div>
+     <span style={{background:recomendacaoMotor.cor,color:"#fff",borderRadius:999,padding:"5px 8px",fontSize:8,fontWeight:900}}>{recomendacaoMotor.status}</span>
+    </div>
+    <h2 style={{margin:"6px 0",fontFamily:DISPLAY}}>{recomendacaoMotor.titulo}</h2>
     <p style={{fontSize:9.5,lineHeight:1.6,color:"#D8DEEA",margin:0}}>{recomendacaoMotor.texto}</p>
+    {ia?.analise?.motivosRecomendacao?.length>0&&<ul style={{margin:"9px 0 0",paddingLeft:18}}>{ia.analise.motivosRecomendacao.map((x,i)=><li key={i} style={{fontSize:9,color:"#D8DEEA",marginBottom:3}}>{x}</li>)}</ul>}
    </Card>
 
    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
@@ -1277,7 +1419,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    <Card>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
      <div><small>REGIME ATUAL</small><b style={{display:"block"}}>{base.parametros.regimeAtual||"-"}</b></div>
-     <div><small>MENOR CARGA MATEMÁTICA</small><b style={{display:"block"}}>{calc.melhor?.regime||"Pendente"}</b></div>
+     <div><small>MENOR CARGA MATEMÁTICA</small><b style={{display:"block"}}>{calc.melhor?.regime||"Pendente"}</b><span style={{fontSize:8,color:C.muted}}>Use o quadro acima para a recomendação técnica.</span></div>
      <div><small>ECONOMIA POTENCIAL</small><b style={{display:"block",color:C.green}}>{calc.regimeAtual&&calc.melhor?moeda(calc.economia):"Pendente"}</b></div>
      <div><small>REDUÇÃO</small><b style={{display:"block",color:C.green}}>{calc.regimeAtual&&calc.melhor?pct(calc.economiaPct):"Pendente"}</b></div>
     </div>
@@ -1288,7 +1430,10 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>DRE comparativa</h3>
     <div style={{display:"grid",gridTemplateColumns:"1.4fr repeat(3,1fr)",gap:5,fontSize:9.5}}>
      <b>Indicador</b><b>Simples</b><b>Presumido</b><b>Real</b>
-     {[["Receita bruta","receitaBruta"],["Tributos","tributos"],["Receita líquida","receitaLiquida"],["CPV","cpv"],["CMV","cmv"],["CSP","csp"],["Despesas","despesas"],["Lucro líquido estimado","lucroLiquido"]].flatMap(([l,k])=>[<span key={k+"l"}>{l}</span>,<span key={k+"s"}>{moeda(calc.dre.simples[k])}</span>,<span key={k+"p"}>{moeda(calc.dre.presumido[k])}</span>,<span key={k+"r"}>{moeda(calc.dre.real[k])}</span>])}
+     {[["Receita bruta","receitaBruta"],["Tributos","tributos"],["Receita líquida","receitaLiquida"],["CPV","cpv"],["CMV","cmv"],["CSP","csp"],["Despesas","despesas"],["Lucro antes de IRPJ/CSLL","lucroAntesIrCs"],["Lucro líquido estimado","lucroLiquido"]].flatMap(([l,k])=>[<span key={k+"l"}>{l}</span>,<span key={k+"s"}>{moeda(calc.dre.simples[k])}</span>,<span key={k+"p"}>{moeda(calc.dre.presumido[k])}</span>,<span key={k+"r"}>{moeda(calc.dre.real[k])}</span>])}
+    </div>
+    <div style={{marginTop:10,padding:9,background:"#F7F9FC",borderRadius:8,fontSize:8.8,color:C.muted}}>
+     No Lucro Real, IRPJ e CSLL são calculados sobre o lucro fiscal estimado antes de IRPJ/CSLL, após custos, despesas, tributos operacionais e ajustes fiscais disponíveis. Não é correto aplicar IRPJ/CSLL sobre o faturamento.
     </div>
    </Card>
   </div>}
@@ -1302,8 +1447,14 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    </Card>
 
    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
-    {regimesComparativo.map(r=><Card key={r.id} style={{borderTop:`4px solid ${r.color}`}}>
-     <b>{r.label}</b><h2 style={{margin:"5px 0"}}>{r.dados.completo?moeda(r.dados.total):"Pendente"}</h2><div style={{fontSize:8.7,color:C.muted}}>Cenário selecionado: {crescimento}%</div>
+    {[
+     {id:"SIMPLES_NACIONAL",label:"Simples Nacional",dados:calcCenario.simples,color:"#31589C"},
+     {id:"LUCRO_PRESUMIDO",label:"Lucro Presumido",dados:calcCenario.presumido,color:"#FF6B4A"},
+     {id:"LUCRO_REAL",label:"Lucro Real",dados:calcCenario.real,color:"#17233D"}
+    ].map(r=><Card key={r.id} style={{borderTop:`4px solid ${r.color}`}}>
+     <b>{r.label}</b><h2 style={{margin:"5px 0"}}>{r.dados.completo?moeda(r.dados.total):"Pendente"}</h2>
+     <div style={{fontSize:8.7,color:C.muted}}>Cenário selecionado: {crescimento}% · carga {r.dados.completo?pct(r.dados.carga):"-"}</div>
+     {r.id==="SIMPLES_NACIONAL"&&r.dados?.detalhes?.length>0&&<div style={{fontSize:8.2,color:C.muted,marginTop:5}}>Alíquota recalculada por RBT12/Anexo: {r.dados.detalhes.filter(x=>x.aliquotaEfetiva!=null).map(x=>`${x.natureza} ${pct(x.aliquotaEfetiva)}`).join(" · ")}</div>}
     </Card>)}
    </div>
 
