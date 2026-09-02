@@ -119,6 +119,7 @@ export function baseVazia() {
         cpp:mapaMes(),icms:mapaMes(),ipi:mapaMes(),iss:mapaMes()
       },
       simplesRbt12Base:0,
+      tributosOrigemSimplesDas:false,
       simplesAnexos:{
         comercio:"I",
         industria:"II",
@@ -359,6 +360,7 @@ export function presumido(baseOriginal){
   const base=garantirBase(baseOriginal);
   const o=operacional(base);
   const p=base.parametros.presumido||{};
+  const tributosVieramDoDas=Boolean(base.parametros.tributosOrigemSimplesDas);
   const mensal=MESES.map(m=>{
     const ri=num(base.faturamento.industria[m]);
     const rc=num(base.faturamento.comercio[m]);
@@ -380,9 +382,9 @@ export function presumido(baseOriginal){
     const cof=r*num(p.cofins)/100;
     const ir=bir*num(p.irpj)/100;
     const cs=bcs*num(p.csll)/100;
-    const iss=num(base.tributos.iss[m]);
-    const icms=num(base.tributos.icms[m]);
-    const ipi=num(base.tributos.ipi[m]);
+    const iss=tributosVieramDoDas?0:num(base.tributos.iss[m]);
+    const icms=tributosVieramDoDas?0:num(base.tributos.icms[m]);
+    const ipi=tributosVieramDoDas?0:num(base.tributos.ipi[m]);
     const enc=num(base.folha.encargosPatronais[m]);
 
     return {
@@ -426,8 +428,11 @@ export function presumido(baseOriginal){
     baseIrpj:mensal.reduce((a,x)=>a+x.baseIrpj,0),
     baseCsll:mensal.reduce((a,x)=>a+x.baseCsll,0),
     carga:o.totalReceita?total/o.totalReceita*100:0,
-    completo:o.totalReceita>0&&o.totalReceitaNaoSegregada===0,
-    pendencias:o.totalReceitaNaoSegregada>0?["Confirmar a natureza das receitas históricas não segregadas para calcular as bases presumidas de IRPJ e CSLL."]:[],
+    completo:o.totalReceita>0&&o.totalReceitaNaoSegregada===0&&!tributosVieramDoDas,
+    pendencias:[
+      ...(o.totalReceitaNaoSegregada>0?["Confirmar a natureza das receitas históricas não segregadas para calcular as bases presumidas de IRPJ e CSLL."]:[]),
+      ...(tributosVieramDoDas?["Informar a apuração própria de ICMS/IPI/ISS fora do Simples. A parcela contida no DAS não pode ser reutilizada no Lucro Presumido."]:[])
+    ],
     presuncoesUsadas:{
       industria:{irpj:presuncaoNatureza(p,"industria","irpj"),csll:presuncaoNatureza(p,"industria","csll")},
       comercio:{irpj:presuncaoNatureza(p,"comercio","irpj"),csll:presuncaoNatureza(p,"comercio","csll")},
@@ -440,15 +445,16 @@ export function real(baseOriginal){
   const base=garantirBase(baseOriginal);
   const o=operacional(base);
   const p=base.parametros.real||{};
+  const tributosVieramDoDas=Boolean(base.parametros.tributosOrigemSimplesDas);
   const ajustes=base.ajustesLucroReal||{adicoes:mapaMes(),exclusoes:mapaMes(),compensacoes:mapaMes()};
 
   const mensal=MESES.map(m=>{
     const r=num(o.receita[m]);
     const pis=Math.max(0,r*num(p.pis)/100-num(base.creditos.pis[m]));
     const cof=Math.max(0,r*num(p.cofins)/100-num(base.creditos.cofins[m]));
-    const iss=num(base.tributos.iss[m]);
-    const icms=Math.max(0,num(base.tributos.icms[m])-num(base.creditos.icms[m]));
-    const ipi=Math.max(0,num(base.tributos.ipi[m])-num(base.creditos.ipi[m]));
+    const iss=tributosVieramDoDas?0:num(base.tributos.iss[m]);
+    const icms=tributosVieramDoDas?0:Math.max(0,num(base.tributos.icms[m])-num(base.creditos.icms[m]));
+    const ipi=tributosVieramDoDas?0:Math.max(0,num(base.tributos.ipi[m])-num(base.creditos.ipi[m]));
     const enc=num(base.folha.encargosPatronais[m]);
     const cust=num(o.custos[m]);
     const desp=num(o.despesas[m]);
@@ -517,7 +523,8 @@ export function real(baseOriginal){
     regime:"LUCRO_REAL",
     mensal,total,tributos,
     carga:o.totalReceita?total/o.totalReceita*100:0,
-    completo:o.totalReceita>0&&dadosOperacionaisSuficientes,
+    completo:o.totalReceita>0&&dadosOperacionaisSuficientes&&!tributosVieramDoDas,
+    pendencias:tributosVieramDoDas?["Informar débitos e créditos próprios de ICMS/IPI/ISS para o cenário de Lucro Real. Os valores do DAS não representam a apuração normal desses tributos."]:[],
     baseLucroReal,
     prejuizoFiscalPeriodo:Math.min(0,lucroFiscalPeriodo-compensacoesPeriodo),
     lucroContabilAntesIrCs:mensal.reduce((a,x)=>a+x.lucroContabilAntesIrCs,0),
