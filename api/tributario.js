@@ -2693,6 +2693,9 @@ REGRAS:
 36. Para cada competência do PGDAS, extraia a receita histórica sem duplicar mercado interno, mercado externo, receita segregada e total. Gere um registro por competência e natureza (INDUSTRIA, COMERCIO ou SERVICOS). Use NAO_IDENTIFICADA somente quando o documento realmente não permitir a classificação. O RPA total deve ser igual à soma das receitas segregadas da competência, admitindo arredondamento.
 37. Quando houver atividades em anexos diferentes, segregue comércio, indústria e serviços conforme a descrição do próprio PGDAS. Não use CNAE isoladamente para alterar uma receita já classificada no documento.
 38. Leia todas as apurações/competências existentes no mesmo PDF do PGDAS. Não limite a extração à última competência. As receitas de cada mês devem entrar em receitasHistoricas com a natureza indicada pelo Anexo/descrição: Anexo I normalmente COMERCIO, Anexo II INDUSTRIA e Anexos III, IV ou V SERVICOS, salvo evidência documental diferente.
+39. Os valores de IRPJ, CSLL, PIS, COFINS, CPP, ICMS, IPI e ISS encontrados como PARTILHA DO DAS devem ser preenchidos somente em simplesNacional.composicaoDas. Não copie a partilha do DAS para base.tributos, pois esses campos representam apurações próprias fora do Simples e serão usados nos cenários de Lucro Presumido e Lucro Real.
+40. A tabela "Receitas Brutas Anteriores" deve ser integralmente transcrita para receitasHistoricas. Quando ela trouxer apenas Mercado Interno/Externo sem separar a atividade, use natureza=NAO_IDENTIFICADA; ainda assim, nunca omita a competência nem o valor.
+41. Para o período mostrado no documento, confira que a soma das competências anteriores é compatível com o RBT12 informado. Se houver diferença por janela temporal, explique-a em observacaoGeral; não descarte os meses.
 `});
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_planejamento_extracao",effort:"medium"});
