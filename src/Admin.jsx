@@ -43,7 +43,6 @@ import PropostaPDFButton from "./PropostaPDF";
 import { FinderSidebar, FinderTopbar } from "./TechShell";
 import { finderStyles } from "./Theme";
 import Tributario from "./tributario/Tributario";
-import SimuladorFiscal from "./simulador-fiscal/SimuladorFiscal";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -22965,10 +22964,6 @@ export default function Admin() {
           <History size={14} />
           Auditoria
         </Botao>
-        <Botao secundario={aba !== "simulador-fiscal"} onClick={() => setAba("simulador-fiscal")}>
-          <Sparkles size={14} />
-          Simulador Fiscal
-        </Botao>
         <Botao secundario={aba !== "tributario"} onClick={() => setAba("tributario")}>
           <Gauge size={14} />
           Tributário
@@ -23167,11 +23162,6 @@ export default function Admin() {
       subtitulo:
         "Histórico de acessos, cliques e alterações do sistema",
     },
-    "simulador-fiscal": {
-      titulo: "Simulador Fiscal",
-      subtitulo:
-        "Reforma Tributária (IBS/CBS) e Planejamento Tributário — módulo novo, independente da Inteligência Tributária",
-    },
     tributario: {
       titulo: "Inteligência Tributária",
       subtitulo:
@@ -23361,22 +23351,6 @@ export default function Admin() {
           <AuditoriaSistema
             token={token}
           />
-        </ConteudoPadrao>
-      </FinderTechLayout>
-    );
-  }
-
-  if (aba === "simulador-fiscal") {
-    return (
-      <FinderTechLayout
-        aba={aba}
-        setAba={setAba}
-        logout={sair}
-        titulo={paginas["simulador-fiscal"].titulo}
-        subtitulo={paginas["simulador-fiscal"].subtitulo}
-      >
-        <ConteudoPadrao>
-          <SimuladorFiscal token={token} />
         </ConteudoPadrao>
       </FinderTechLayout>
     );
