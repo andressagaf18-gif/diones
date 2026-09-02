@@ -228,15 +228,12 @@ export function simples(baseOriginal){
   const aliquotaObservada=o.totalReceita>0&&dasInformado>0?(dasInformado/o.totalReceita)*100:0;
 
   const rbt12Documental=num(p.simplesRbt12Base);
-  const mesesComReceita=MESES.filter(m=>num(o.receita[m])>0).length;
 
-  // Se o próprio planejamento contém uma série anual suficientemente preenchida,
-  // a receita anual projetada é a melhor aproximação do RBT12 do cenário.
-  // Se existe apenas um período pontual, preservamos o RBT12 documental.
+  // O RBT12 comprovado no PGDAS é a referência prioritária do Simples.
+  // O faturamento do quadro não o substitui, pois pode representar apenas o
+  // ano-calendário corrente ou um conjunto parcial de competências.
   const rbt12Referencia=
-    mesesComReceita>=6 && o.totalReceita>0
-      ?o.totalReceita
-      :rbt12Documental>0
+    rbt12Documental>0
       ?rbt12Documental*(1+crescimento/100)
       :o.totalReceita;
 
