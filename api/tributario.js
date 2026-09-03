@@ -2351,7 +2351,7 @@ const planejamentoExtracaoSchema = {
               competencia: { type: "string" },
               receita: { type: ["number", "null"] },
               mercado: { type: "string", enum: ["INTERNO","EXTERNO"] },
-              natureza: { type: "string", enum: ["INDUSTRIA","COMERCIO","SERVICOS","NAO_IDENTIFICADA"] }
+              natureza: { type: "string", enum: ["NAO_IDENTIFICADA","COMERCIO","INDUSTRIA","SERVICOS"] }
             },
             required: ["competencia","receita","mercado","natureza"],
             additionalProperties: false
@@ -2367,11 +2367,12 @@ const planejamentoExtracaoSchema = {
         faturamento: {
           type: "object",
           properties: {
+            naoSegregado: planejamentoMesesSchema,
             industria: planejamentoMesesSchema,
             comercio: planejamentoMesesSchema,
             servicos: planejamentoMesesSchema
           },
-          required: ["industria","comercio","servicos"],
+          required: ["naoSegregado","industria","comercio","servicos"],
           additionalProperties: false
         },
         tributos: {
@@ -2643,7 +2644,7 @@ ATIVIDADES:\n${JSON.stringify(body.atividades||{},null,2)}
 DOCUMENTOS:\n${JSON.stringify(arquivos.map(a=>({filename:a.filename,bytes:a.bytes})),null,2)}
 
 Estrutura inspirada na planilha FS® - Planejamento Tributário:
-- faturamento: industria, comercio, servicos, por mês;
+- faturamento: naoSegregado, industria, comercio, servicos, por mês;
 - tributos: pis, cofins, icms, ipi, iss;
 - custos.industria: estoqueInicial, insumos, maoObraDireta, ggf, estoqueFinal;
 - custos.comercio: estoqueInicial, compras, estoqueFinal;
@@ -2663,6 +2664,9 @@ REGRAS:
 6. Em identificacao extraia CNPJ, razão social, abertura, município, UF, regime e regime de apuração.
 7. Em simplesNacional extraia competência, RPA, RBT12, RBA, RBAA, DAS, Anexo, atividade, Fator R e composição do DAS.
 8. Em receitasHistoricas liste TODAS as competências encontradas no formato MM/AAAA.
+8.0. Inclua também a competência atual do PGDAS e crie uma entrada por atividade quando o item 3 discriminar comércio, indústria ou serviços; a soma dessas entradas deve coincidir com o RPA.
+8.1. Para cada item histórico, informe natureza=NAO_IDENTIFICADA quando o PGDAS trouxer apenas o total; use COMERCIO, INDUSTRIA ou SERVICOS somente quando o próprio documento discriminar a natureza.
+8.2. No ano da competência analisada, transporte receitas históricas sem natureza para base.faturamento.naoSegregado. Não rateie, estime ou duplique em indústria/comércio/serviços.
 9. PGDAS-D pode sustentar receita, RBT12, Anexo, alíquota efetiva e DAS.
 10. DRE/balancete/razão podem sustentar receitas, custos, despesas e resultado.
 11. Folha/eSocial/pró-labore podem sustentar massa salarial e encargos.
@@ -2671,6 +2675,7 @@ REGRAS:
 14. Registre divergências e dados faltantes.
 15. Se a declaração disser expressamente prestação de serviços, preencha base.faturamento.servicos. Não duplique a receita em outros grupos.
 16. Preencha parametros.simplesDas na competência correspondente.
+16.1. A composição do DAS pertence a simplesNacional.composicaoDas. Não copie PIS, COFINS, ICMS ou IPI contidos no DAS para base.tributos, pois essas parcelas não representam os débitos do regime normal.
 17. aliquotaEfetivaObservada = DAS total / receita do PA * 100, quando ambos estiverem comprovados.
 18. Se o documento disser "Fator r = Não se aplica", retorne fatorRAplicavel=false e fatorR="Não se aplica".
 19. Se constar "Folha de Salários Anteriores: Nenhuma", não conclua que a folha contábil é zero. Registre folha/pró-labore como dado faltante para planejamento, salvo documento específico que comprove zero.
@@ -2684,18 +2689,9 @@ REGRAS:
 27. Se houver aba "Folha", valor rotulado como folha bruta MENSAL deve alimentar folha.folha13 nos 12 meses do cenário atual; pró-labore deve ir em folha.proLabore; INSS/FGTS em folha.inssFgts; encargos patronais em folha.encargosPatronais. NÃO use o cenário futuro de aumento de produção como folha atual sem identificá-lo como projeção.
 28. Se o documento trouxer "cenário atual" e "cenário futuro/projetado", a BASE principal deve usar o atual; projeções devem ser registradas em fontes/observações para uso em cenários, sem substituir silenciosamente o atual.
 29. Não transforme total anual em valor mensal e não replique valor pontual como recorrente sem indicação explícita.
+29.1. Nunca crie projeções de comércio ou indústria para preencher meses ausentes. Meses futuros sem documento devem permanecer null.
 30. Se houver várias fontes para o mesmo campo, priorize documento fiscal/contábil oficial sobre checklist gerencial e registre divergência.
 31. Se o CNPJ estiver em qualquer documento, extraia-o mesmo que o usuário não tenha informado CNPJ antes do upload.
-32. Em PGDAS-D, reconcilie obrigatoriamente a composição do DAS: IRPJ + CSLL + COFINS + PIS + CPP/INSS + ICMS + IPI + ISS deve ser igual ao DAS total, admitindo somente diferença de arredondamento de até R$ 0,10. Se não reconciliar, registre divergência e não invente a diferença.
-33. A composição do DAS é informativa e já está englobada no Simples Nacional. Não some IRPJ, CSLL, PIS, COFINS, CPP, ICMS, IPI ou ISS novamente ao DAS total.
-34. RBT12, RBA e RBAA são acumuladores de receita. Nunca classifique esses valores como CPV, CMV, CSP, custos, compras, insumos, despesas ou folha.
-35. PGDAS-D, DAS, extrato e recibo não comprovam custos ou despesas. Na ausência de DRE, balancete, razão, livro-caixa ou planilha específica, mantenha custos e despesas como null e registre-os em dadosFaltantes.
-36. Para cada competência do PGDAS, extraia a receita histórica sem duplicar mercado interno, mercado externo, receita segregada e total. Gere um registro por competência e natureza (INDUSTRIA, COMERCIO ou SERVICOS). Use NAO_IDENTIFICADA somente quando o documento realmente não permitir a classificação. O RPA total deve ser igual à soma das receitas segregadas da competência, admitindo arredondamento.
-37. Quando houver atividades em anexos diferentes, segregue comércio, indústria e serviços conforme a descrição do próprio PGDAS. Não use CNAE isoladamente para alterar uma receita já classificada no documento.
-38. Leia todas as apurações/competências existentes no mesmo PDF do PGDAS. Não limite a extração à última competência. As receitas de cada mês devem entrar em receitasHistoricas com a natureza indicada pelo Anexo/descrição: Anexo I normalmente COMERCIO, Anexo II INDUSTRIA e Anexos III, IV ou V SERVICOS, salvo evidência documental diferente.
-39. Os valores de IRPJ, CSLL, PIS, COFINS, CPP, ICMS, IPI e ISS encontrados como PARTILHA DO DAS devem ser preenchidos somente em simplesNacional.composicaoDas. Não copie a partilha do DAS para base.tributos, pois esses campos representam apurações próprias fora do Simples e serão usados nos cenários de Lucro Presumido e Lucro Real.
-40. A tabela "Receitas Brutas Anteriores" deve ser integralmente transcrita para receitasHistoricas. Quando ela trouxer apenas Mercado Interno/Externo sem separar a atividade, use natureza=NAO_IDENTIFICADA; ainda assim, nunca omita a competência nem o valor.
-41. Para o período mostrado no documento, confira que a soma das competências anteriores é compatível com o RBT12 informado. Se houver diferença por janela temporal, explique-a em observacaoGeral; não descarte os meses.
 `});
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_planejamento_extracao",effort:"medium"});
@@ -2703,983 +2699,94 @@ REGRAS:
   }catch(error){console.error("[tributario][planejamento-extrair]",error);return send(res,500,{sucesso:false,error:error?.message||"Não foi possível extrair a base do planejamento."});}
 }
 
-async function planejamentoConferir(
-  req,
-  res
-) {
-  const body =
-    req.body ||
-    {};
+async function planejamentoConferir(req,res){
+  const body=req.body||{};
+  const content=[{type:"input_text",text:`
+Você é o Finder Tax AI atuando como CONFERENTE de planejamento tributário.
+Não recalcule livremente e nunca invente valores.
 
-  const content = [
-    {
-      type: "input_text",
-      text: `
-Você é o Finder Tax AI atuando como CONFERENTE de um Planejamento Tributário.
+CLIENTE:\n${JSON.stringify(body.cliente||{},null,2)}
+ATIVIDADES:\n${JSON.stringify(body.atividades||{},null,2)}
+EXTRAÇÃO DOCUMENTAL:\n${JSON.stringify(body.extracaoOriginal||{},null,2).slice(0,70000)}
+BASE ATUAL:\n${JSON.stringify(body.base||{},null,2).slice(0,90000)}
 
-IMPORTANTE:
-- NÃO trate IBS, CBS ou transição da Reforma Tributária.
-- NÃO recalcule tributos livremente.
-- NÃO invente valores.
-- Compare a extração documental original com a BASE ATUAL, que pode ter sido alterada manualmente pelo consultor.
-- Sua função é dizer se a base atual continua coerente para seguir ao comparativo Simples x Presumido x Real.
-
-CLIENTE:
-${JSON.stringify(body.cliente || {}, null, 2)}
-
-ATIVIDADES:
-${JSON.stringify(body.atividades || {}, null, 2)}
-
-EXTRAÇÃO ORIGINAL DOS DOCUMENTOS:
-${JSON.stringify(body.extracaoOriginal || {}, null, 2).slice(0, 70000)}
-
-BASE ATUAL APÓS ALTERAÇÕES:
-${JSON.stringify(body.base || {}, null, 2).slice(0, 90000)}
-
-RESPONSÁVEL:
-${String(body.responsavel || "")}
-
-ORIGEM:
-${String(body.origem || "")}
-
-REGRAS:
-1. A data de referência é a data atual do servidor: ${new Date().toISOString().slice(0,10)}.
-2. Nunca classifique mês futuro como dado faltante. Coloque-o em periodosNaoExigiveis.
-3. Mês corrente ainda não encerrado não deve ser exigido como faturamento definitivo.
-4. Se CNAE, descrição operacional ou outro dado já estiver preenchido na BASE ATUAL/ATIVIDADES, não o repita como pendência; registre como dado manual quando não houver documento.
-5. Diferencie: DADO FALTANTE, NÃO APLICÁVEL, PERÍODO NÃO EXIGÍVEL e DADO INFORMADO MANUALMENTE.
-6. Alteração manual não é erro; registre-a para rastreabilidade.
-7. Não exija estoque de empresa sem operação com estoque. Não exija ICMS/IPI quando não aplicáveis.
-8. Custos, despesas, folha, retenções e créditos só são pendências quando materialmente necessários ao regime/operação.
-9. Se faltarem custos/despesas/créditos relevantes, alerte que o Lucro Real pode estar distorcido.
-10. Se o Simples usar somente alíquota observada histórica, registre a limitação.
-11. Incompatibilidade entre CNAE e atividade real deve ir para validação e pode bloquear recomendação final.
-12. podeCompararRegimes pode ser true em base PARCIAL apenas para simulação preliminar.
-13. qualidadeBase representa cobertura/origem dos dados, não uma falsa precisão estatística. Explique a metodologia.
-14. Registre em premissas a competência de corte, dados manuais, projeções e limitações.
-15. Benefício fiscal nunca pode ser afirmado apenas pelo CNAE. Considere atividade real, operação, município/UF, regime e requisitos.
-16. Não invente lei, artigo, jurisprudência, súmula, tema, processo, solução de consulta ou fonte.
-17. Só marque benefício como APLICAVEL quando houver fundamento jurídico identificável e requisitos compatíveis.
-18. Sem fonte jurídica verificável no contexto, use POTENCIAL_VALIDAR ou NAO_IDENTIFICADO e escreva "Pesquisa jurídica externa necessária".
-19. fonteOficial deve identificar o órgão/fonte, mas não invente URL.
-20. jurisprudencia só deve conter precedente conhecido no contexto; caso contrário: "Não pesquisada nesta etapa".
-21. efeitoFinanceiro deve ser null sem base objetiva suficiente.
-22. Não misture IBS/CBS/Reforma Tributária nesta conferência.
-23. Riscos, oportunidades e plano de ação devem decorrer somente dos dados disponíveis.
-24. Nunca transforme ausência documental em zero.
-25. Quando não houver suporte, declare a necessidade de validação/pesquisa.
-26. Faça pesquisa jurídica externa em fontes OFICIAIS para benefícios fiscais, regimes especiais, créditos presumidos, diferimentos, reduções de base, isenções e tratamentos setoriais potencialmente relacionados à atividade REAL/CNAEs/UF/município.
-27. Não pesquise benefício apenas pelo CNAE. Cruze produto/serviço, NCM quando disponível, CFOP/operação, destino, regime, estabelecimento industrial/comercial e requisitos objetivos.
-28. Para cada benefício potencial, indique situação, requisitos, fundamento legal, vigência e fonte oficial. Se a pesquisa oficial não confirmar, marque NAO_IDENTIFICADO ou POTENCIAL_VALIDAR.
-29. Procure também oportunidades legítimas de redução de carga que não sejam "benefício fiscal": segregação correta de receitas, créditos válidos, regime de apuração, retenções, compensações, enquadramento por atividade, organização societária e melhoria documental — sem criar operação artificial.
-30. Dê prioridade a legislação vigente na data atual e sinalize regra futura/revogada separadamente.`,
-    },
-  ];
-
-  try {
-    const {
-      result,
-      usage,
-    } =
-      await respostaPlanejamentoIA({
-        content,
-        schema:
-          planejamentoConferenciaSchema,
-        nomeSchema:
-          "finder_planejamento_conferencia",
-        effort:
-          "medium",
-      });
-
-    return send(
-      res,
-      200,
-      {
-        sucesso: true,
-        modelo: MODEL,
-        conferencia: result,
-        usage,
-      }
-    );
-  } catch (
-    error
-  ) {
-    console.error(
-      "[tributario][planejamento-conferir]",
-      error
-    );
-
-    return send(
-      res,
-      500,
-      {
-        sucesso: false,
-        error:
-          error?.message ||
-          "Não foi possível gerar a nova Conferência IA.",
-      }
-    );
+REGRAS OBRIGATÓRIAS:
+1. Receita histórica do PGDAS sem natureza deve permanecer como NÃO SEGREGADA; nunca rateie entre comércio e indústria.
+2. Receita segregada no próprio PA deve permanecer na natureza documental.
+3. Não some receita não segregada novamente às receitas segregadas do mesmo mês.
+4. Não crie projeções para meses futuros.
+5. Comércio e indústria usam, em regra, 8% de presunção para IRPJ e 12% para CSLL; a falta de divisão entre essas duas naturezas não impede o cálculo federal quando estiver comprovado que não há serviços.
+6. ICMS de 19,5% no Paraná é somente débito interno preliminar; exija validação de créditos, ST, benefícios e destino.
+7. IPI depende de NCM/TIPI. Sem NCM confirmado, mantenha-o pendente.
+8. No Lucro Real, se o lucro fiscal do período for zero ou negativo, IRPJ, adicional e CSLL devem ser zero.
+9. Compare todos os regimes no mesmo período e sobre a mesma receita.
+10. Informe claramente tudo que impedir recomendação conclusiva.
+`}];
+  try{
+    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoConferenciaSchema,nomeSchema:"finder_planejamento_conferencia",effort:"medium",webSearch:false});
+    return send(res,200,{sucesso:true,modelo:MODEL,conferencia:result,usage});
+  }catch(error){
+    console.error("[tributario][planejamento-conferir]",error);
+    return send(res,500,{sucesso:false,error:error?.message||"Não foi possível conferir o planejamento."});
   }
 }
 
 async function planejamentoAnalisar(req,res){
   const body=req.body||{};
   const content=[{type:"input_text",text:`
-Você é um consultor tributário sênior da Finder of Solutions. Faça SOMENTE PLANEJAMENTO TRIBUTÁRIO para redução LEGAL e eficiência tributária. NÃO analise IBS, CBS ou transição da Reforma Tributária.
+Você é o Finder Tax AI. Interprete o cálculo determinístico abaixo e emita uma análise técnica prudente.
 
 CLIENTE:\n${JSON.stringify(body.cliente||{},null,2)}
 ATIVIDADES:\n${JSON.stringify(body.atividades||{},null,2)}
-BASE:\n${JSON.stringify(body.base||{},null,2).slice(0,85000)}
-RESULTADOS DO MOTOR:\n${JSON.stringify(body.calculos||{},null,2).slice(0,85000)}
-CENÁRIO: ${JSON.stringify(body.crescimento??0)}
+BASE:\n${JSON.stringify(body.base||{},null,2).slice(0,90000)}
+CÁLCULOS DO MOTOR:\n${JSON.stringify(body.calculos||{},null,2).slice(0,90000)}
+CRESCIMENTO SELECIONADO: ${Number(body.crescimento||0)}%
 
 REGRAS:
-1. Não recomende automaticamente o regime de menor carga.
-2. Diferencie menor carga matemática de recomendação técnica.
-3. Questione CNAEs/atividade real, segregação de receitas, folha/pró-labore/Fator R, créditos, custos, despesas, margens, retenções, ICMS/IPI/ISS, encargos e adicional de IRPJ.
-4. Se o Simples estiver baseado apenas em alíquota efetiva informada, ressalve.
-5. Se o Lucro Real estiver sem custos/despesas/créditos suficientes, reduza a confiança.
-6. Nunca invente benefício, crédito, fundamento ou enquadramento.
-7. A recomendação deve deixar claro o que depende de conferência profissional.
-8. O campo statusRecomendacao deve ser:
-   - RECOMENDADO somente quando a base é suficiente e existe vantagem técnica defensável;
-   - TENDENCIA quando há um regime provável, mas faltam validações materiais;
-   - INCONCLUSIVO quando não há base para decisão.
-9. regimeRecomendado deve conter SIMPLES_NACIONAL, LUCRO_PRESUMIDO, LUCRO_REAL ou vazio quando INCONCLUSIVO.
-10. Explique em motivosRecomendacao por que o regime é ou não vantajoso, incluindo carga, margem, folha, créditos, natureza das receitas, obrigações e riscos.
-11. Para Lucro Real, IRPJ/CSLL não incidem sobre faturamento: avalie o lucro fiscal estimado antes de IRPJ/CSLL e ressalve adições, exclusões e compensações.
-12. Para Lucro Presumido, não aceite presunção única em atividade mista. Confira a segregação indústria/comércio/serviços e o período trimestral do adicional de IRPJ.
-13. Para Simples, crescimento pode alterar RBT12/faixa/alíquota efetiva; não congele a alíquota histórica quando houver Anexo e RBT12 suficientes.
+1. Não substitua os valores calculados pelo motor.
+2. Não recomende regime quando períodos, receitas ou premissas não forem comparáveis.
+3. No Simples, os componentes são informativos e já estão dentro do DAS.
+4. No Presumido, diferencie tributos sobre receita de IRPJ/CSLL sobre bases presumidas.
+5. No Real, IRPJ/CSLL somente existem sobre lucro fiscal positivo; prejuízo implica zero desses tributos no período.
+6. ICMS estimado por alíquota interna não equivale a imposto líquido. Ressalve créditos, ST, benefícios e operações interestaduais.
+7. IPI sem NCM/TIPI confirmado é pendência material.
+8. Menor carga matemática não é automaticamente o melhor regime.
+9. Destaque riscos, dados faltantes e validações necessárias.
 `}];
   try{
-    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoAnaliseSchema,nomeSchema:"finder_planejamento_analise",effort:"high"});
+    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoAnaliseSchema,nomeSchema:"finder_planejamento_analise",effort:"high",webSearch:false});
     return send(res,200,{sucesso:true,modelo:MODEL,analise:result,usage});
-  }catch(error){console.error("[tributario][planejamento-analisar]",error);return send(res,500,{sucesso:false,error:error?.message||"Não foi possível interpretar o planejamento."});}
-}
-
-
-
-// =========================================================
-// REFORMA TRIBUTÁRIA V2 — EXTRAÇÃO DOCUMENTAL
-// ADIÇÃO INCREMENTAL: não altera Planejamento Tributário nem rotas validadas.
-// =========================================================
-
-const reformaExtracaoSchema = {
-  type: "object",
-  properties: {
-    identificacao: {
-      type: "object",
-      properties: {
-        cnpj: { type: ["string", "null"] },
-        razaoSocial: { type: ["string", "null"] },
-        nomeFantasia: { type: ["string", "null"] },
-        municipio: { type: ["string", "null"] },
-        uf: { type: ["string", "null"] },
-        regime: { type: ["string", "null"] },
-        competencia: { type: ["string", "null"] },
-        periodoInicial: { type: ["string", "null"] },
-        periodoFinal: { type: ["string", "null"] }
-      },
-      required: [
-        "cnpj","razaoSocial","nomeFantasia","municipio","uf","regime",
-        "competencia","periodoInicial","periodoFinal"
-      ],
-      additionalProperties: false
-    },
-
-    operacao: {
-      type: "object",
-      properties: {
-        descricao: { type: ["string", "null"] },
-        setorAtividade: { type: ["string", "null"] },
-        tipoEstabelecimento: { type: ["string", "null"] },
-        b2bPct: { type: ["number", "null"] },
-        b2cPct: { type: ["number", "null"] },
-        exportacaoPct: { type: ["number", "null"] },
-        possuiFiliais: { type: ["boolean", "null"] },
-        quantidadeEstabelecimentos: { type: ["number", "null"] },
-        municipiosOperacao: { type: "array", items: { type: "string" } },
-        ufsOperacao: { type: "array", items: { type: "string" } }
-      },
-      required: [
-        "descricao","setorAtividade","tipoEstabelecimento","b2bPct","b2cPct",
-        "exportacaoPct","possuiFiliais","quantidadeEstabelecimentos",
-        "municipiosOperacao","ufsOperacao"
-      ],
-      additionalProperties: false
-    },
-
-    economicos: {
-      type: "object",
-      properties: {
-        receitaPeriodo: { type: ["number", "null"] },
-        faturamentoAnual: { type: ["number", "null"] },
-        faturamentoMensalMedio: { type: ["number", "null"] },
-        comprasPeriodo: { type: ["number", "null"] },
-        servicosTomadosPeriodo: { type: ["number", "null"] },
-        custosDespesasPeriodo: { type: ["number", "null"] },
-        custosDespesasAnuais: { type: ["number", "null"] },
-        margemLucroPct: { type: ["number", "null"] },
-        folhaMensal: { type: ["number", "null"] },
-        proLaboreMensal: { type: ["number", "null"] },
-        folha12Meses: { type: ["number", "null"] },
-        rbt12: { type: ["number", "null"] }
-      },
-      required: [
-        "receitaPeriodo","faturamentoAnual","faturamentoMensalMedio",
-        "comprasPeriodo","servicosTomadosPeriodo","custosDespesasPeriodo",
-        "custosDespesasAnuais","margemLucroPct","folhaMensal","proLaboreMensal",
-        "folha12Meses","rbt12"
-      ],
-      additionalProperties: false
-    },
-
-    simples: {
-      type: "object",
-      properties: {
-        anexo: { type: ["string", "null"] },
-        faixa: { type: ["string", "null"] },
-        aliquotaEfetivaPct: { type: ["number", "null"] },
-        dasPeriodo: { type: ["number", "null"] },
-        fatorRPct: { type: ["number", "null"] },
-        fatorRAplicavel: { type: ["boolean", "null"] }
-      },
-      required: [
-        "anexo","faixa","aliquotaEfetivaPct","dasPeriodo","fatorRPct","fatorRAplicavel"
-      ],
-      additionalProperties: false
-    },
-
-    tributos: {
-      type: "object",
-      properties: {
-        totalPeriodo: { type: ["number", "null"] },
-        pis: { type: ["number", "null"] },
-        cofins: { type: ["number", "null"] },
-        icms: { type: ["number", "null"] },
-        iss: { type: ["number", "null"] },
-        ipi: { type: ["number", "null"] },
-        cpp: { type: ["number", "null"] },
-        irpj: { type: ["number", "null"] },
-        csll: { type: ["number", "null"] },
-        outros: { type: ["number", "null"] },
-        aliquotaIssPct: { type: ["number", "null"] },
-        aliquotaIcmsPct: { type: ["number", "null"] },
-        creditosAtuais: { type: ["number", "null"] }
-      },
-      required: [
-        "totalPeriodo","pis","cofins","icms","iss","ipi","cpp","irpj","csll",
-        "outros","aliquotaIssPct","aliquotaIcmsPct","creditosAtuais"
-      ],
-      additionalProperties: false
-    },
-
-    tratamentos: {
-      type: "object",
-      properties: {
-        incentivoPisCofins: { type: ["string", "null"] },
-        incentivoIcms: { type: ["string", "null"] },
-        incentivoIss: { type: ["string", "null"] },
-        beneficioSetorial: { type: ["string", "null"] },
-        presuncaoHospitalarIndicadaDocumento: { type: ["boolean", "null"] },
-        observacoes: { type: "array", items: { type: "string" } }
-      },
-      required: [
-        "incentivoPisCofins","incentivoIcms","incentivoIss","beneficioSetorial",
-        "presuncaoHospitalarIndicadaDocumento","observacoes"
-      ],
-      additionalProperties: false
-    },
-
-    documentosReconhecidos: {
-      type: "array",
-      items: { type: "string" }
-    },
-
-    fontes: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          campo: { type: "string" },
-          valor: { type: "string" },
-          documento: { type: "string" },
-          paginaOuReferencia: { type: ["string", "null"] },
-          confianca: { type: "string", enum: ["ALTA","MEDIA","BAIXA"] }
-        },
-        required: ["campo","valor","documento","paginaOuReferencia","confianca"],
-        additionalProperties: false
-      }
-    },
-
-    divergencias: {
-      type: "array",
-      items: { type: "string" }
-    },
-
-    dadosNaoComprovados: {
-      type: "array",
-      items: { type: "string" }
-    },
-
-    sugestoesPreenchimentoManual: {
-      type: "array",
-      items: { type: "string" }
-    },
-
-    confiancaGeral: {
-      type: "string",
-      enum: ["ALTA","MEDIA","BAIXA"]
-    }
-  },
-
-  required: [
-    "identificacao","operacao","economicos","simples","tributos","tratamentos",
-    "documentosReconhecidos","fontes","divergencias","dadosNaoComprovados",
-    "sugestoesPreenchimentoManual","confiancaGeral"
-  ],
-
-  additionalProperties: false
-};
-
-async function reformaExtrair(
-  req,
-  res
-) {
-  const body =
-    req.body ||
-    {};
-
-  const arquivos =
-    Array.isArray(
-      body.arquivos
-    )
-      ? body.arquivos.filter(
-          (a) =>
-            a?.fileId
-        )
-      : [];
-
-  if (
-    !arquivos.length
-  ) {
-    return send(
-      res,
-      400,
-      {
-        sucesso: false,
-        error:
-          "Envie ao menos um documento para extração da Reforma Tributária.",
-      }
-    );
-  }
-
-  const content = [];
-
-  for (
-    const arquivo of
-      arquivos
-  ) {
-    content.push({
-      type:
-        "input_file",
-      file_id:
-        arquivo.fileId,
-    });
-  }
-
-  content.push({
-    type:
-      "input_text",
-
-    text: `
-Você é o Finder Tax AI atuando SOMENTE como extrator documental do módulo Reforma Tributária.
-
-OBJETIVO:
-Ler todos os documentos anexados e extrair SOMENTE informações comprovadas nos arquivos.
-
-DOCUMENTOS:
-${JSON.stringify(
-  arquivos.map(
-    (a) => ({
-      filename:
-        a.filename,
-      bytes:
-        a.bytes,
-    })
-  ),
-  null,
-  2
-)}
-
-REGRAS OBRIGATÓRIAS:
-1. Leia TODOS os arquivos em conjunto e consolide os dados por empresa/período.
-2. Identifique CNPJ, razão social, nome fantasia, município, UF, regime e períodos quando comprovados.
-3. NÃO invente CNAE. O CNPJ será usado depois pelo sistema para consultar CNAEs oficiais.
-4. Reconheça PGDAS-D, DAS, DEFIS, DRE, balancete, razão, SPED/EFD, NF-e, NFS-e, apurações, relatórios de faturamento/compras/vendas/folha e demais documentos fiscais/contábeis.
-5. Preencha a OPERAÇÃO quando houver suporte documental: descrição, setor, empresa única/múltiplos estabelecimentos, municípios/UFs, B2B/B2C e exportação.
-6. Preencha DADOS ECONÔMICOS sempre que o documento permitir: receita do período, faturamento anual/RBT12, média mensal, compras, serviços tomados, custos/despesas, margem, folha, pró-labore e folha 12 meses.
-7. Se houver PGDAS/DAS, extraia Anexo, faixa quando comprovável, alíquota efetiva, DAS e Fator R. O campo simples.anexo SOMENTE pode ser preenchido quando o documento declarar expressamente o Anexo aplicável àquela receita/atividade (ex.: "Anexo III"). NÃO deduza Anexo por CNAE, descrição da atividade, alíquota, Fator R ou conhecimento geral. Se houver receitas enquadradas em anexos diferentes, não escolha um único Anexo: use null em simples.anexo e registre a divergência/necessidade de segregação. NÃO calcule Fator R sem bases suficientes.
-8. Extraia tributos separadamente: PIS, Cofins, ICMS, ISS, IPI, CPP, IRPJ, CSLL, outros, total e créditos atuais.
-9. Se houver alíquota de ISS/ICMS documental, extraia. Não estime alíquota ausente.
-10. Identifique incentivos/benefícios SOMENTE se constarem nos documentos. Não conclua aplicabilidade jurídica nesta etapa.
-11. Margem de lucro só pode ser preenchida quando houver DRE/balancete ou dados suficientes e objetivos. Caso contrário use null.
-12. Faturamento anual pode ser preenchido por valor anual explícito ou RBT12 comprovado. Não anualize um único mês como fato documental.
-13. B2B/B2C somente com documento que permita identificação objetiva dos clientes/vendas. Caso contrário null.
-14. Zero só quando o documento demonstrar zero. Ausência de dado = null.
-15. Para CADA campo relevante preenchido, registre fonte, documento, página/referência se disponível e confiança.
-16. Registre divergências entre documentos, especialmente faturamento, regime, tributos e período.
-17. Em sugestoesPreenchimentoManual, liste os dados importantes para a simulação que não puderam ser comprovados (ex.: margem, folha, pró-labore, B2B/B2C, compras, despesas, alíquota atual).
-18. NÃO faça cálculo de IBS/CBS, recomendação de regime ou pesquisa legal nesta etapa.
-19. NÃO invente benefício, alíquota, lei, artigo, NCM, NBS, classificação fiscal ou jurisprudência.
-20. Todos os campos do schema devem existir.
-21. Campo não comprovado = null, false somente quando comprovadamente falso, ou array vazio.
-`,
-  });
-
-  try {
-    const response =
-      await fetch(
-        `${OPENAI_URL}/responses`,
-        {
-          method:
-            "POST",
-
-          headers: {
-            Authorization:
-              `Bearer ${process.env.OPENAI_API_KEY}`,
-
-            "content-type":
-              "application/json",
-          },
-
-          body:
-            JSON.stringify({
-              model:
-                MODEL,
-
-              input: [
-                {
-                  role:
-                    "user",
-                  content,
-                },
-              ],
-
-              reasoning: {
-                effort:
-                  "medium",
-              },
-
-              text: {
-                format: {
-                  type:
-                    "json_schema",
-                  name:
-                    "finder_reforma_extracao",
-                  strict:
-                    true,
-                  schema:
-                    reformaExtracaoSchema,
-                },
-              },
-            }),
-        }
-      );
-
-    const data =
-      await response
-        .json()
-        .catch(
-          () => null
-        );
-
-    if (
-      !response.ok
-    ) {
-      console.error(
-        "[tributario][reforma-extrair]",
-        data
-      );
-
-      return send(
-        res,
-        response.status ||
-          500,
-        {
-          sucesso:
-            false,
-
-          error:
-            data?.error?.message ||
-            "Falha na interpretação documental da Reforma Tributária.",
-        }
-      );
-    }
-
-    const raw =
-      outputText(
-        data
-      );
-
-    let extracao;
-
-    try {
-      extracao =
-        JSON.parse(
-          raw
-        );
-    } catch {
-      console.error(
-        "[tributario][reforma-extrair][json]",
-        raw
-      );
-
-      return send(
-        res,
-        500,
-        {
-          sucesso:
-            false,
-
-          error:
-            "A IA respondeu, mas a extração da Reforma Tributária veio em formato inválido.",
-        }
-      );
-    }
-
-    return send(
-      res,
-      200,
-      {
-        sucesso: true,
-        modelo:
-          MODEL,
-        extracao,
-        usage:
-          data?.usage ||
-          null,
-      }
-    );
-  } catch (
-    error
-  ) {
-    console.error(
-      "[tributario][reforma-extrair]",
-      error
-    );
-
-    return send(
-      res,
-      500,
-      {
-        sucesso: false,
-        error:
-          error?.message ||
-          "Não foi possível interpretar os documentos da Reforma Tributária.",
-      }
-    );
-  }
-}
-
-
-const reformaAnaliseSchema = {
-  type: "object",
-  properties: {
-    dataBase: { type: "string" },
-    confianca: { type: "string", enum: ["ALTA","MEDIA","BAIXA"] },
-    resumo: { type: "string" },
-    impactos: { type: "array", items: { type: "string" } },
-    creditos: { type: "array", items: { type: "string" } },
-    precificacao: { type: "array", items: { type: "string" } },
-    transicao: { type: "array", items: { type: "string" } },
-    riscos: { type: "array", items: { type: "string" } },
-    oportunidades: { type: "array", items: { type: "string" } },
-    adequacoes: { type: "array", items: { type: "string" } },
-    dadosFaltantes: { type: "array", items: { type: "string" } },
-    fundamentacao: { type: "array", items: { type: "string" } },
-    planoAcao: { type: "array", items: { type: "string" } },
-    matrizImpacto: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          area: { type: "string" },
-          nivel: { type: "string", enum: ["ALTO","MEDIO","BAIXO","NAO_AVALIADO"] },
-          diagnostico: { type: "string" }
-        },
-        required: ["area","nivel","diagnostico"],
-        additionalProperties: false
-      }
-    }
-  },
-  required: ["dataBase","confianca","resumo","impactos","creditos","precificacao","transicao","riscos","oportunidades","adequacoes","dadosFaltantes","fundamentacao","planoAcao","matrizImpacto"],
-  additionalProperties: false
-};
-
-async function reformaAnalisar(req,res){
-  if(!process.env.OPENAI_API_KEY){
-    return send(res,500,{sucesso:false,error:"OPENAI_API_KEY não configurada."});
-  }
-
-  const body=req.body||{};
-  const baseAtual=jsonSeguro(body.base||{});
-  const dataBase=new Date().toISOString().slice(0,10);
-
-  const prompt=`Você é o motor técnico do módulo Finder Intelligence — Reforma Tributária do Consumo brasileira.
-
-DATA-BASE DA ANÁLISE: ${dataBase}
-
-OBJETIVO:
-Produzir diagnóstico empresarial de IBS, CBS e transição, SEM inventar números, alíquotas, créditos, benefícios, leis ou jurisprudência.
-
-BASE ATUAL INFORMADA:
-${JSON.stringify(baseAtual,null,2)}
-
-DOCUMENTOS REGISTRADOS:
-${JSON.stringify(jsonSeguro(body.documentos||[]),null,2)}
-
-REGRAS OBRIGATÓRIAS:
-1. Considere CNAE apenas como indício cadastral; atividade real e operação prevalecem para diagnóstico.
-2. Diferencie B2B e B2C e explique impactos sobre crédito, repasse, preço e margem apenas qualitativamente quando faltarem dados.
-3. Não presuma direito a crédito IBS/CBS. Aponte quais aquisições precisam ser classificadas/validadas.
-4. Não invente alíquota-padrão definitiva, carga líquida ou economia.
-5. Não trate ausência de informação como zero.
-6. Não trate período futuro como pendência.
-7. Identifique impactos em precificação, margem, caixa, contratos, ERP, documentos fiscais, cadastro de itens, fornecedores e clientes.
-8. Para transição, somente afirme marcos jurídicos que você tenha segurança de que estão vigentes na data-base. Quando houver dúvida, escreva "validar na legislação vigente".
-9. Fundamentação: não invente lei, artigo, ato, nota técnica, solução de consulta, jurisprudência ou URL.
-10. Quando a fonte jurídica não estiver disponível no contexto, escreva "Pesquisa jurídica externa necessária".
-11. Não use blogs como autoridade jurídica.
-12. Dados faltantes devem conter somente informações materialmente necessárias à análise da empresa.
-13. Gere matriz para: Carga tributária, Créditos, Precificação, Margem, Caixa, Contratos, ERP/Faturamento, Cadastro de produtos/serviços, Fornecedores, Clientes B2B/B2C e Benefícios atuais.
-14. Classifique impacto ALTO/MEDIO/BAIXO somente quando a base permitir; caso contrário NAO_AVALIADO.
-15. O relatório é diagnóstico preliminar e não substitui validação profissional/legal.
-16. Não misture o comparativo Simples/Presumido/Real do módulo Planejamento Tributário; aqui o foco é Reforma Tributária do Consumo.
-`;
-
-  try{
-    const response=await fetch("https://api.openai.com/v1/responses",{
-      method:"POST",
-      headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
-      body:JSON.stringify({
-        model:process.env.OPENAI_MODEL||"gpt-5-mini",
-        input:prompt,
-        text:{
-          format:{
-            type:"json_schema",
-            name:"finder_reforma_tributaria",
-            strict:true,
-            schema:reformaAnaliseSchema
-          }
-        }
-      })
-    });
-
-    const raw=await response.json();
-    if(!response.ok) throw new Error(raw?.error?.message||"Falha ao analisar Reforma Tributária.");
-
-    const outputText=
-      raw.output_text ||
-      raw.output?.flatMap(x=>x.content||[]).find(x=>x.type==="output_text")?.text ||
-      "";
-
-    const analise=JSON.parse(outputText);
-    return send(res,200,{sucesso:true,analise,usage:raw.usage||null});
   }catch(error){
-    console.error("[tributario][reforma-analisar]",error);
-    return send(res,500,{sucesso:false,error:error?.message||"Não foi possível gerar o diagnóstico da Reforma Tributária."});
+    console.error("[tributario][planejamento-analisar]",error);
+    return send(res,500,{sucesso:false,error:error?.message||"Não foi possível analisar o planejamento."});
   }
 }
 
-export default async function handler(
-  req,
-  res
-) {
-  const action =
-    txt(
-      req.query?.action,
-      100
-    );
-
-  try {
-    if (
-      action ===
-      "listar-projetos" &&
-      req.method ===
-      "GET"
-    ) {
-      return await listarProjetos(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "obter-projeto" &&
-      req.method ===
-      "GET"
-    ) {
-      return await obterProjeto(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "arquivar-projeto" &&
-      req.method ===
-      "POST"
-    ) {
-      return await arquivarProjeto(req,res);
-    }
-
-    if (
-      action ===
-      "excluir-projeto" &&
-      req.method ===
-      "POST"
-    ) {
-      return await excluirProjeto(req,res);
-    }
-
-    if (
-      action ===
-      "reforma-extrair" &&
-      req.method ===
-      "POST"
-    ) {
-      if (
-        !process.env
-          .OPENAI_API_KEY
-      ) {
-        return send(
-          res,
-          500,
-          {
-            sucesso:
-              false,
-            error:
-              "OPENAI_API_KEY não configurada.",
-          }
-        );
-      }
-
-      return await reformaExtrair(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "reforma-analisar" &&
-      req.method ===
-      "POST"
-    ) {
-      return await reformaAnalisar(req,res);
-    }
-
-    if (
-      action ===
-      "salvar-projeto" &&
-      req.method ===
-      "POST"
-    ) {
-      return await salvarProjeto(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "salvar-diagnostico" &&
-      req.method ===
-      "POST"
-    ) {
-      return await salvarDiagnostico(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "validar-projeto" &&
-      req.method ===
-      "POST"
-    ) {
-      return await validarProjeto(
-        req,
-        res
-      );
-    }
-
-    if (
-      action === "listar-documentos" &&
-      req.method === "GET"
-    ) {
-      return await listarDocumentos(req, res);
-    }
-
-    if (
-      action === "remover-documento" &&
-      req.method === "POST"
-    ) {
-      return await removerDocumento(req, res);
-    }
-
-    if (
-      action === "preparar-documentos-ia" &&
-      req.method === "POST"
-    ) {
-      if (!process.env.OPENAI_API_KEY) {
-        return send(res, 500, {
-          sucesso: false,
-          error: "OPENAI_API_KEY não configurada.",
-        });
-      }
-
-      return await prepararDocumentosIa(req, res);
-    }
-
-    if (
-      action ===
-      "upload-file" &&
-      req.method ===
-      "POST"
-    ) {
-      if (
-        !process.env
-          .OPENAI_API_KEY
-      ) {
-        return send(
-          res,
-          500,
-          {
-            sucesso:
-              false,
-            error:
-              "OPENAI_API_KEY não configurada.",
-          }
-        );
-      }
-
-      return await uploadFile(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "diagnostico" &&
-      req.method ===
-      "POST"
-    ) {
-      if (
-        !process.env
-          .OPENAI_API_KEY
-      ) {
-        return send(
-          res,
-          500,
-          {
-            sucesso:
-              false,
-            error:
-              "OPENAI_API_KEY não configurada.",
-          }
-        );
-      }
-
-      return await diagnostico(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "planejamento-extrair" &&
-      req.method ===
-      "POST"
-    ) {
-      if (!process.env.OPENAI_API_KEY) return send(res,500,{sucesso:false,error:"OPENAI_API_KEY não configurada."});
-      return await planejamentoExtrair(req,res);
-    }
-
-    if (
-      action ===
-      "planejamento-conferir" &&
-      req.method ===
-      "POST"
-    ) {
-      if (
-        !process.env
-          .OPENAI_API_KEY
-      ) {
-        return send(
-          res,
-          500,
-          {
-            sucesso:
-              false,
-            error:
-              "OPENAI_API_KEY não configurada.",
-          }
-        );
-      }
-
-      return await planejamentoConferir(
-        req,
-        res
-      );
-    }
-
-    if (
-      action ===
-      "planejamento-analisar" &&
-      req.method ===
-      "POST"
-    ) {
-      if (!process.env.OPENAI_API_KEY) return send(res,500,{sucesso:false,error:"OPENAI_API_KEY não configurada."});
-      return await planejamentoAnalisar(req,res);
-    }
-
-    return send(
-      res,
-      400,
-      {
-        sucesso:
-          false,
-
-        error:
-          "Ação tributária inválida.",
-      }
-    );
-  } catch (
-    error
-  ) {
-    console.error(
-      "[tributario]",
-      error
-    );
-
-    return send(
-      res,
-      500,
-      {
-        sucesso:
-          false,
-
-        error:
-          error?.message ||
-          "Erro interno no módulo tributário.",
-      }
-    );
+export default async function handler(req,res){
+  if(req.method==="OPTIONS")return res.status(204).end();
+  const action=txt(req.query?.action,100);
+  const routes={
+    "salvar-projeto":salvarProjeto,
+    "salvar-diagnostico":salvarDiagnostico,
+    "listar-projetos":listarProjetos,
+    "obter-projeto":obterProjeto,
+    "arquivar-projeto":arquivarProjeto,
+    "excluir-projeto":excluirProjeto,
+    "validar-projeto":validarProjeto,
+    "upload-file":uploadFile,
+    "listar-documentos":listarDocumentos,
+    "remover-documento":removerDocumento,
+    "preparar-documentos-ia":prepararDocumentosIa,
+    "diagnostico":diagnostico,
+    "planejamento-extrair":planejamentoExtrair,
+    "planejamento-conferir":planejamentoConferir,
+    "planejamento-analisar":planejamentoAnalisar
+  };
+  const route=routes[action];
+  if(!route)return send(res,404,{sucesso:false,error:"Ação tributária não encontrada."});
+  try{return await route(req,res)}
+  catch(error){
+    console.error(`[tributario][${action}]`,error);
+    return send(res,500,{sucesso:false,error:error?.message||"Erro interno no módulo tributário."});
   }
 }
