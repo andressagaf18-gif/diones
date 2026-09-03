@@ -1,134 +1,164 @@
-// DESTINO: /src/tributario/ReformaSimulador.jsx
-// EXCLUSIVO DO MÓDULO REFORMA. Sem dependência externa de gráficos.
+// DESTINO REAL: /src/tributario/ReformaSimulador.jsx
+// Simulador Reforma V2 — carga tributária completa por regime e ano.
 import React,{useEffect,useMemo,useState} from "react";
-import {calcularIbsCbs,compararSimplesDentroFora,projetarCrescimento,estimarDasResidualPorFora,moeda,numero} from "./reforma-engine.js";
+import {ANOS_TRANSICAO,calcularCargaCompleta,moeda,numero} from "./reforma-engine.js";
 
-const box={background:"#fff",border:"1px solid #E3E7EF",borderRadius:14,padding:15};
-const inp={width:"100%",boxSizing:"border-box",padding:"9px 10px",border:"1px solid #DDE3EC",borderRadius:8,fontSize:11};
-const F=({t,v,s,help})=><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>{t}<input value={v} onChange={e=>s(e.target.value)} style={inp}/>{help&&<small style={{fontWeight:500,color:"#697386"}}>{help}</small>}</label>;
-const K=({t,v,sub})=><div style={{background:"#F7F9FC",border:"1px solid #E6EAF0",borderRadius:12,padding:12}}><div style={{fontSize:8,color:"#697386",fontWeight:900,textTransform:"uppercase"}}>{t}</div><div style={{fontSize:18,fontWeight:900,marginTop:3}}>{v}</div>{sub&&<div style={{fontSize:8,color:"#697386",marginTop:2}}>{sub}</div>}</div>;
+const C={navy:"#17233D",blue:"#31589C",coral:"#FF6B4A",muted:"#687386",border:"#E3E7EF",bg:"#F6F8FC",green:"#0F6E56",amber:"#855A12",red:"#A33A2B"};
+const box={background:"#fff",border:`1px solid ${C.border}`,borderRadius:16,padding:16};
+const inp={width:"100%",boxSizing:"border-box",padding:"9px 10px",border:"1px solid #DDE3EC",borderRadius:8,fontSize:11,color:C.navy,background:"#fff"};
+const grid=(n=3)=>({display:"grid",gridTemplateColumns:`repeat(${n},minmax(0,1fr))`,gap:8});
+const fmtPct=v=>`${numero(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}%`;
 
+function F({t,v,s,help,type="input",children}){
+ return <label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,color:C.navy}}>{t}
+  {type==="select"?<select value={v} onChange={e=>s(e.target.value)} style={inp}>{children}</select>:<input value={v} onChange={e=>s(e.target.value)} style={inp}/>} 
+  {help&&<small style={{fontWeight:500,color:C.muted,lineHeight:1.35}}>{help}</small>}
+ </label>;
+}
+function K({t,v,sub,tone="default"}){
+ const colors={default:C.navy,green:C.green,amber:C.amber,red:C.red};
+ return <div style={{background:"#F7F9FC",border:`1px solid ${C.border}`,borderRadius:12,padding:12,minWidth:0}}>
+  <div style={{fontSize:8,color:C.muted,fontWeight:900,textTransform:"uppercase"}}>{t}</div>
+  <div style={{fontSize:18,fontWeight:900,marginTop:3,color:colors[tone]||C.navy,overflowWrap:"anywhere"}}>{v}</div>
+  {sub&&<div style={{fontSize:8,color:C.muted,marginTop:3,lineHeight:1.35}}>{sub}</div>}
+ </div>;
+}
+function SectionTitle({children,sub}){return <div style={{marginBottom:10}}><h3 style={{margin:"0 0 3px",fontFamily:"Georgia,serif",fontSize:18}}>{children}</h3>{sub&&<div style={{fontSize:9,color:C.muted}}>{sub}</div>}</div>}
 function BarChart({items=[]}){
- const max=Math.max(...items.map(x=>Math.max(0,Number(x.valor)||0)),1);
- return <div style={{display:"grid",gap:9,paddingTop:5}}>{items.map((x,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"130px 1fr 110px",gap:8,alignItems:"center",fontSize:9}}><b>{x.label}</b><div style={{height:18,background:"#EEF1F5",borderRadius:6,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(2,(Number(x.valor)||0)/max*100)}%`,background:x.cor||"#17233D",borderRadius:6}}/></div><b style={{textAlign:"right"}}>{moeda(x.valor)}</b></div>)}</div>
+ const max=Math.max(...items.map(x=>Math.max(0,numero(x.valor))),1);
+ return <div style={{display:"grid",gap:8}}>{items.map((x,i)=><div key={`${x.label}-${i}`} style={{display:"grid",gridTemplateColumns:"140px 1fr 115px",gap:8,alignItems:"center",fontSize:9}}>
+  <b>{x.label}</b><div style={{height:18,background:"#EEF1F5",borderRadius:6,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(x.valor?2:0,numero(x.valor)/max*100)}%`,background:x.cor||C.navy,borderRadius:6}}/></div><b style={{textAlign:"right"}}>{moeda(x.valor)}</b>
+ </div>)}</div>;
 }
-function LineChart({items=[]}){
- const w=620,h=190,pad=34;
- const vals=items.map(x=>Number(x.valor)||0), max=Math.max(...vals,1), min=Math.min(...vals,0), range=Math.max(1,max-min);
- const pts=items.map((x,i)=>{const px=pad+(items.length===1?0:i*(w-pad*2)/(items.length-1));const py=h-pad-((vals[i]-min)/range)*(h-pad*2);return{x:px,y:py,...x}});
- const path=pts.map((p,i)=>`${i?"L":"M"} ${p.x} ${p.y}`).join(" ");
- return <div style={{overflowX:"auto"}}><svg viewBox={`0 0 ${w} ${h}`} style={{width:"100%",minWidth:560,height:210}}>
-  {[0,.25,.5,.75,1].map((q,i)=><line key={i} x1={pad} x2={w-pad} y1={pad+q*(h-pad*2)} y2={pad+q*(h-pad*2)} stroke="#E6EAF0" strokeWidth="1"/>)}
-  <path d={path} fill="none" stroke="#17233D" strokeWidth="3"/>
-  {pts.map((p,i)=><g key={i}><circle cx={p.x} cy={p.y} r="4" fill="#FF6B4A"/><text x={p.x} y={h-9} textAnchor="middle" fontSize="9" fill="#5B667A">{p.label}</text></g>)}
- </svg></div>
-}
-function Donut({b2b=0,b2c=0}){
- const a=Math.max(0,Math.min(100,numero(b2b))), b=Math.max(0,Math.min(100,numero(b2c)));
- const total=a+b||100, pa=a/total*100;
- return <div style={{display:"flex",alignItems:"center",gap:18}}>
-  <div style={{width:120,height:120,borderRadius:"50%",background:`conic-gradient(#17233D 0 ${pa}%,#FF6B4A ${pa}% 100%)`,position:"relative"}}><div style={{position:"absolute",inset:22,background:"#fff",borderRadius:"50%"}}/></div>
-  <div style={{fontSize:10,lineHeight:1.9}}><div><span style={{display:"inline-block",width:9,height:9,background:"#17233D",borderRadius:2,marginRight:6}}/>B2B <b>{a.toFixed(1)}%</b></div><div><span style={{display:"inline-block",width:9,height:9,background:"#FF6B4A",borderRadius:2,marginRight:6}}/>B2C <b>{b.toFixed(1)}%</b></div></div>
- </div>
-}
+function Linha({nome,valor,nota,destaque=false}){return <div style={{display:"grid",gridTemplateColumns:"1fr 150px",gap:8,padding:"7px 8px",borderTop:`1px solid ${C.border}`,background:destaque?"#EEF4FF":"transparent",fontSize:9.5}}><span>{nome}{nota&&<small style={{display:"block",color:C.muted}}>{nota}</small>}</span><b style={{textAlign:"right"}}>{valor}</b></div>}
 
 export default function ReformaSimulador({dadosIniciais={},onResultado}){
- const [fat,setFat]=useState(""),[cbs,setCbs]=useState(""),[ibs,setIbs]=useState("");
- const [redCbs,setRedCbs]=useState("0"),[redIbs,setRedIbs]=useState("0");
- const [credCbs,setCredCbs]=useState(""),[credIbs,setCredIbs]=useState("");
- const [dasDentro,setDasDentro]=useState(""),[dasFora,setDasFora]=useState("");
- const [cres,setCres]=useState("20"),[cresCred,setCresCred]=useState("20");
+ const inicial=dadosIniciais.componentesDas||{};
+ const [regime,setRegime]=useState(dadosIniciais.regime||"SIMPLES_NACIONAL");
+ const [ano,setAno]=useState("2026");
+ const [fat,setFat]=useState("");
+ const [base,setBase]=useState("");
+ const [meses,setMeses]=useState("1");
+ const [cbs,setCbs]=useState(""),[ibs,setIbs]=useState("");
+ const [redCbs,setRedCbs]=useState(String(dadosIniciais.reducaoCBS||0));
+ const [redIbs,setRedIbs]=useState(String(dadosIniciais.reducaoIBS||0));
+ const [credCbs,setCredCbs]=useState(String(dadosIniciais.creditoCBS||""));
+ const [credIbs,setCredIbs]=useState(String(dadosIniciais.creditoIBS||""));
+ const [das,setDas]=useState(String(dadosIniciais.dasAtual||""));
+ const [foraSimples,setForaSimples]=useState(false);
+ const [foraDas,setForaDas]=useState(String(dadosIniciais.tributosForaDas||""));
+ const [seletivo,setSeletivo]=useState("");
+ const [manterIpi,setManterIpi]=useState(false);
+ const [dispensa2026,setDispensa2026]=useState(true);
+ const [crescimento,setCrescimento]=useState("20");
+ const [presIrpj,setPresIrpj]=useState("8"),[presCsll,setPresCsll]=useState("12");
+ const [lucro,setLucro]=useState(""),[adicoes,setAdicoes]=useState(""),[exclusoes,setExclusoes]=useState(""),[prejuizo,setPrejuizo]=useState("");
  const [beneficio,setBeneficio]=useState(""),[baseLegal,setBaseLegal]=useState(""),[statusBeneficio,setStatusBeneficio]=useState("POTENCIAL_VALIDAR");
-
- const dasResidualEstimado=useMemo(()=>estimarDasResidualPorFora({
-  dasAtual:dadosIniciais.dasAtual,
-  componentes:dadosIniciais.componentesDas||{}
- }),[dadosIniciais.dasAtual,dadosIniciais.componentesDas]);
-
- useEffect(()=>{
-  if(dadosIniciais.faturamento!=null&&dadosIniciais.faturamento!=="")setFat(String(dadosIniciais.faturamento));
-  if(dadosIniciais.dasAtual)setDasDentro(String(dadosIniciais.dasAtual));
-  if(dadosIniciais.creditoCBS!=null)setCredCbs(String(dadosIniciais.creditoCBS||""));
-  if(dadosIniciais.creditoIBS!=null)setCredIbs(String(dadosIniciais.creditoIBS||""));
-  if(dadosIniciais.reducaoCBS!=null)setRedCbs(String(dadosIniciais.reducaoCBS||0));
-  if(dadosIniciais.reducaoIBS!=null)setRedIbs(String(dadosIniciais.reducaoIBS||0));
- },[dadosIniciais]);
+ const [trib,setTrib]=useState({
+  pis:String(inicial.pis||""),cofins:String(inicial.cofins||""),icms:String(inicial.icms||""),iss:String(inicial.iss||""),
+  ipi:String(inicial.ipi||""),cpp:String(inicial.cpp||""),irpj:String(inicial.irpj||""),adicionalIrpj:"",
+  csll:String(inicial.csll||""),outros:String(inicial.outros||"")
+ });
+ const setT=(k,v)=>setTrib(a=>({...a,[k]:v}));
 
  useEffect(()=>{
-  if(
-   (dasFora===""||dasFora==null)&&
-   dasResidualEstimado.residual!=null
-  ){
-   setDasFora(String(Number(dasResidualEstimado.residual.toFixed(2))));
+  if(dadosIniciais.faturamento!=null&&dadosIniciais.faturamento!==""){
+   setFat(String(dadosIniciais.faturamento));setBase(String(dadosIniciais.faturamento));
   }
- },[dasResidualEstimado.residual]);
+ },[dadosIniciais.faturamento]);
 
- const pars={aliquotaCBS:cbs,aliquotaIBS:ibs,reducaoCBS:redCbs,reducaoIBS:redIbs};
- const calc=useMemo(()=>calcularIbsCbs({faturamento:fat,creditoCBS:credCbs,creditoIBS:credIbs,...pars}),[fat,cbs,ibs,redCbs,redIbs,credCbs,credIbs]);
- const simples=useMemo(()=>compararSimplesDentroFora({faturamento:fat,dasDentro,dasSemIbsCbs:dasFora,cenarioRegular:{...pars,creditoCBS:credCbs,creditoIBS:credIbs}}),[fat,dasDentro,dasFora,cbs,ibs,redCbs,redIbs,credCbs,credIbs]);
- const crescimento=[0,10,20,30,50,100].map(p=>({p,...projetarCrescimento({faturamentoAtual:fat,crescimentoReceita:p,crescimentoCreditos:cresCred,creditoCBSAtual:credCbs,creditoIBSAtual:credIbs,parametros:pars})}));
- const proj=useMemo(()=>projetarCrescimento({faturamentoAtual:fat,crescimentoReceita:cres,crescimentoCreditos:cresCred,creditoCBSAtual:credCbs,creditoIBSAtual:credIbs,parametros:pars}),[fat,cres,cresCred,credCbs,credIbs,cbs,ibs,redCbs,redIbs]);
- const resultado=useMemo(()=>({parametros:{faturamento:numero(fat),aliquotaCBS:numero(cbs),aliquotaIBS:numero(ibs),reducaoCBS:numero(redCbs),reducaoIBS:numero(redIbs),creditoCBS:numero(credCbs),creditoIBS:numero(credIbs)},ibsCbs:calc,simples:{...simples,dasResidualEstimado},crescimento:proj,beneficio:{nome:beneficio,baseLegal,status:statusBeneficio}}),[fat,cbs,ibs,redCbs,redIbs,credCbs,credIbs,calc,simples,proj,beneficio,baseLegal,statusBeneficio,dasResidualEstimado]);
+ const parametros=useMemo(()=>({
+  regime,ano,faturamento:fat,baseTributavel:base||fat,mesesPeriodo:meses,
+  aliquotaCBS:cbs,aliquotaIBS:ibs,reducaoCBS:redCbs,reducaoIBS:redIbs,creditoCBS:credCbs,creditoIBS:credIbs,
+  tributosAtuais:{...trib,das},componentesDas:{...trib},tributosForaDas:foraDas,
+  impostoSeletivo:seletivo,manterIpiApos2027:manterIpi,
+  ibsCbsForaDoSimples:foraSimples,dispensaTeste2026:dispensa2026,
+  presuncaoIrpj:presIrpj,presuncaoCsll:presCsll,lucroAntesIrpjCsll:lucro,adicoes,exclusoes,prejuizoFiscalCompensavel:prejuizo
+ }),[regime,ano,fat,base,meses,cbs,ibs,redCbs,redIbs,credCbs,credIbs,trib,das,foraDas,seletivo,manterIpi,foraSimples,dispensa2026,presIrpj,presCsll,lucro,adicoes,exclusoes,prejuizo]);
+ const calc=useMemo(()=>calcularCargaCompleta(parametros),[parametros]);
+ const simples=calc.simples||{dentro:0,fora:null,menorCargaMatematica:"NAO_CALCULAVEL"};
+
+ const escala=1+numero(crescimento)/100;
+ const proj=useMemo(()=>calcularCargaCompleta({
+  ...parametros,faturamento:numero(fat)*escala,baseTributavel:numero(base||fat)*escala,
+  creditoCBS:numero(credCbs)*escala,creditoIBS:numero(credIbs)*escala,
+  lucroAntesIrpjCsll:numero(lucro)*escala,adicoes:numero(adicoes)*escala,exclusoes:numero(exclusoes)*escala,
+  tributosAtuais:Object.fromEntries(Object.entries({...trib,das}).map(([k,v])=>[k,numero(v)*escala])),
+  componentesDas:Object.fromEntries(Object.entries(trib).map(([k,v])=>[k,numero(v)*escala])),
+  tributosForaDas:numero(foraDas)*escala,impostoSeletivo:numero(seletivo)*escala
+ }),[parametros,fat,base,credCbs,credIbs,lucro,adicoes,exclusoes,trib,das,foraDas,seletivo,escala]);
+
+ const resultado=useMemo(()=>({
+  parametros:{...parametros,faturamento:numero(fat),ano:numero(ano)},
+  ibsCbs:calc.ibsCbs,
+  simples,
+  cargaCompleta:calc,
+  crescimento:{atual:calc,projetado:proj,faturamentoProjetado:numero(fat)*escala,aumentoImposto:proj.totalProjetado-calc.totalProjetado,
+   aumentoImpostoPct:calc.totalProjetado?((proj.totalProjetado/calc.totalProjetado)-1)*100:null},
+  beneficio:{nome:beneficio,baseLegal,status:statusBeneficio}
+ }),[parametros,fat,ano,calc,simples,proj,escala,beneficio,baseLegal,statusBeneficio]);
  useEffect(()=>{onResultado?.(resultado)},[resultado,onResultado]);
 
- return <div style={{display:"grid",gap:11}}>
-  <div style={box}><h3 style={{marginTop:0}}>Simulação financeira IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>Preencha alíquotas somente após validação legal. Valores documentais já identificados entram automaticamente.</p>
-   <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}><F t="Faturamento/base" v={fat} s={setFat}/><F t="CBS %" v={cbs} s={setCbs}/><F t="IBS %" v={ibs} s={setIbs}/><F t="Redução CBS %" v={redCbs} s={setRedCbs}/><F t="Redução IBS %" v={redIbs} s={setRedIbs}/><F t="Crédito CBS" v={credCbs} s={setCredCbs}/><F t="Crédito IBS" v={credIbs} s={setCredIbs}/></div>
-   <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8,marginTop:12}}><K t="CBS líquida" v={moeda(calc.liquidoCBS)}/><K t="IBS líquido" v={moeda(calc.liquidoIBS)}/><K t="Total IBS + CBS" v={moeda(calc.total)}/><K t="Carga efetiva" v={`${calc.cargaEfetiva.toFixed(2)}%`}/></div>
+ const totalNovo=regime==="SIMPLES_NACIONAL"?(foraSimples?simples.fora:simples.dentro):calc.totalProjetado;
+ const totalNovoExibido=numero(ano)>2026&&!calc.comparavel?null:totalNovo;
+ const tom=calc.diferenca==null?"amber":calc.diferenca<=0?"green":"red";
+ const tituloNovo=ano==="2026"?"Carga total em 2026":"Carga total projetada";
+
+ return <div style={{display:"grid",gap:12,color:C.navy}}>
+  <div style={{...box,background:`linear-gradient(135deg,${C.navy},#24385F)`,color:"#fff"}}>
+   <div style={{fontSize:8,fontWeight:900,color:"#AFC5EE",letterSpacing:.7}}>SIMULADOR REFORMA · CARGA COMPLETA</div>
+   <h2 style={{fontFamily:"Georgia,serif",margin:"5px 0",fontSize:24}}>Simulação tributária por regime e transição</h2>
+   <div style={{fontSize:9.5,color:"#DCE6F6",lineHeight:1.5}}>IBS e CBS são apenas uma parte da análise. Este quadro soma tributos do consumo, IRPJ, adicional, CSLL, folha, DAS residual e demais incidências informadas.</div>
   </div>
 
-  <div style={box}><h3 style={{marginTop:0}}>Gráfico 1 — composição IBS/CBS</h3><BarChart items={[{label:"CBS líquida",valor:calc.liquidoCBS,cor:"#31589C"},{label:"IBS líquido",valor:calc.liquidoIBS,cor:"#FF6B4A"},{label:"Carga total",valor:calc.total,cor:"#17233D"}]}/></div>
-
-  <div style={box}>
-   <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}>
-    <div>
-     <h3 style={{margin:"0 0 4px"}}>Gráfico 2 — Simples dentro x por fora</h3>
-     <div style={{fontSize:9,color:"#697386"}}>O DAS residual por fora é estimado automaticamente pela composição documental atual e pode ser ajustado manualmente.</div>
-    </div>
-    <span style={{background:dasResidualEstimado.residual!=null?"#E9F7EF":"#FFF8E7",color:dasResidualEstimado.residual!=null?"#176B47":"#805B10",padding:"5px 8px",borderRadius:999,fontSize:8,fontWeight:900}}>
-     DAS RESIDUAL: {dasResidualEstimado.residual!=null?"CALCULADO":"PENDENTE"}
-    </span>
+  <div style={box}><SectionTitle sub="Selecione o enquadramento e o período. Não compare a fase de teste de 2026 com a carga definitiva.">1. Cenário</SectionTitle>
+   <div style={grid(4)}>
+    <F t="Regime tributário" v={regime} s={setRegime} type="select"><option value="SIMPLES_NACIONAL">Simples Nacional</option><option value="LUCRO_PRESUMIDO">Lucro Presumido</option><option value="LUCRO_REAL">Lucro Real</option></F>
+    <F t="Ano da transição" v={ano} s={setAno} type="select">{ANOS_TRANSICAO.map(a=><option key={a}>{a}</option>)}</F>
+    <F t="Faturamento do período" v={fat} s={setFat}/><F t="Meses do período" v={meses} s={setMeses} help="Usado no limite do adicional de IRPJ."/>
    </div>
-
-   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:10}}>
-    <K t="DAS atual / dentro" v={moeda(simples.dentro)}/>
-    <K t="DAS residual por fora" v={dasResidualEstimado.residual==null?"Pendente":moeda(dasResidualEstimado.residual)} sub="Proxy pela composição atual"/>
-    <K t="IBS/CBS fora" v={moeda(calc.total)} sub="Débito líquido simulado"/>
-   </div>
-
-   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-    <F t="DAS no cenário dentro" v={dasDentro} s={setDasDentro}/>
-    <F t="DAS residual sem IBS/CBS — por fora" v={dasFora} s={setDasFora} help="Preenchido automaticamente quando a composição do DAS foi extraída. Pode ser corrigido."/>
-   </div>
-
-   <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:10}}>
-    <K t="Total dentro" v={moeda(simples.dentro)}/>
-    <K t="Total por fora" v={simples.fora==null?"Pendente":moeda(simples.fora)}/>
-    <K t="Diferença" v={simples.diferenca==null?"Pendente":moeda(simples.diferenca)} sub={simples.diferenca==null?"":simples.diferenca>0?"Por fora maior":"Por fora menor"}/>
-    <K t="Menor carga matemática" v={simples.menorCargaMatematica==="NAO_CALCULAVEL"?"Pendente":simples.menorCargaMatematica}/>
-   </div>
-
-   <BarChart items={[
-    {label:"Simples dentro",valor:simples.dentro,cor:"#31589C"},
-    {label:"DAS residual",valor:numero(dasFora),cor:"#8A94A6"},
-    {label:"IBS/CBS fora",valor:calc.total,cor:"#FF6B4A"},
-    {label:"Total por fora",valor:simples.fora||0,cor:"#17233D"}
-   ]}/>
-
-   <div style={{marginTop:10,padding:"8px 10px",background:"#FFF8E7",border:"1px solid #F3D99B",borderRadius:8,fontSize:8.5,color:"#805B10",lineHeight:1.5}}>
-    <b>Como o DAS residual foi estimado:</b> {dasResidualEstimado.observacao}
-    {dasResidualEstimado.residual!=null&&<> Método: <b>{dasResidualEstimado.metodo}</b>. Parcelas de consumo identificadas no DAS atual: <b>{moeda(dasResidualEstimado.parcelasConsumo)}</b>.</>}
-   </div>
-
-   <p style={{fontSize:9,color:"#697386"}}>A menor carga matemática não vira recomendação automática. A escolha deve considerar B2B/B2C, créditos, preço, margem, caixa e a regulamentação vigente do Simples para o período.</p>
+   <div style={{marginTop:10,padding:"9px 11px",borderRadius:9,background:"#EEF4FF",fontSize:9}}><b>{calc.regra.fase}:</b> {ano==="2026"?"CBS 0,9% e IBS 0,1% são alíquotas de teste. A carga atual continua sendo demonstrada.":`Aplicação do cronograma selecionado para ${ano}.`}</div>
   </div>
 
-  <div style={box}><h3 style={{marginTop:0}}>Gráfico 3 — crescimento x IBS/CBS</h3><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}><F t="Cenário selecionado %" v={cres} s={setCres}/><F t="Crescimento dos créditos %" v={cresCred} s={setCresCred}/></div><LineChart items={crescimento.map(x=>({label:x.p===0?"Atual":`+${x.p}%`,valor:x.projetado.total}))}/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}><K t="Faturamento projetado" v={moeda(proj.faturamentoProjetado)}/><K t="IBS/CBS projetado" v={moeda(proj.projetado.total)}/><K t="Aumento" v={moeda(proj.aumentoImposto)} sub={proj.aumentoImpostoPct!=null?`${proj.aumentoImpostoPct.toFixed(2)}%`:""}/></div></div>
+  <div style={box}><SectionTitle sub="Informe valores do mesmo período do faturamento. Documentos extraídos podem preencher estes campos.">2. Tributos atuais</SectionTitle>
+   {regime==="SIMPLES_NACIONAL"&&<div style={{...grid(3),marginBottom:9}}><F t="DAS atual completo" v={das} s={setDas}/><F t="Tributos fora do DAS" v={foraDas} s={setForaDas} help="ST, DIFAL, antecipação, retenções e outras guias."/><F t="IBS/CBS no cenário" v={foraSimples?"FORA_DO_SIMPLES":"DENTRO_DO_SIMPLES"} s={v=>setForaSimples(v==="FORA_DO_SIMPLES")} type="select"><option value="DENTRO_DO_SIMPLES">Dentro do Simples</option><option value="FORA_DO_SIMPLES">Regime regular — por fora</option></F></div>}
+   <div style={grid(5)}>
+    <F t="PIS" v={trib.pis} s={v=>setT("pis",v)}/><F t="Cofins" v={trib.cofins} s={v=>setT("cofins",v)}/><F t="ICMS" v={trib.icms} s={v=>setT("icms",v)}/><F t="ISS" v={trib.iss} s={v=>setT("iss",v)}/><F t="IPI" v={trib.ipi} s={v=>setT("ipi",v)}/>
+    <F t="CPP/folha" v={trib.cpp} s={v=>setT("cpp",v)}/><F t="IRPJ atual" v={trib.irpj} s={v=>setT("irpj",v)}/><F t="Adicional IRPJ" v={trib.adicionalIrpj} s={v=>setT("adicionalIrpj",v)}/><F t="CSLL atual" v={trib.csll} s={v=>setT("csll",v)}/><F t="Outros" v={trib.outros} s={v=>setT("outros",v)}/>
+   </div>
+  </div>
 
-  <div style={box}><h3 style={{marginTop:0}}>Gráfico 4 — perfil dos clientes</h3><Donut b2b={dadosIniciais.b2b} b2c={dadosIniciais.b2c}/><p style={{fontSize:9,color:"#697386"}}>Esse perfil influencia a análise de crédito, preço e competitividade. Só use B2B/B2C extraído quando houver comprovação documental.</p></div>
+  {regime==="LUCRO_PRESUMIDO"&&<div style={box}><SectionTitle sub="IRPJ e CSLL são calculados pelas bases presumidas, não diretamente pela alíquota sobre todo o faturamento.">3. Particularidades do Lucro Presumido</SectionTitle><div style={grid(2)}><F t="Presunção IRPJ %" v={presIrpj} s={setPresIrpj}/><F t="Presunção CSLL %" v={presCsll} s={setPresCsll}/></div></div>}
+  {regime==="LUCRO_REAL"&&<div style={box}><SectionTitle sub="IRPJ e CSLL incidem sobre o lucro fiscal positivo. Prejuízo no período zera esses tributos.">3. Particularidades do Lucro Real</SectionTitle><div style={grid(4)}><F t="Lucro/prejuízo antes de IRPJ/CSLL" v={lucro} s={setLucro}/><F t="Adições fiscais" v={adicoes} s={setAdicoes}/><F t="Exclusões fiscais" v={exclusoes} s={setExclusoes}/><F t="Prejuízo fiscal compensável" v={prejuizo} s={setPrejuizo} help="O motor limita a compensação a 30% da base positiva."/></div></div>}
 
-  <div style={box}><h3 style={{marginTop:0}}>Benefício / tratamento diferenciado</h3><div style={{display:"grid",gridTemplateColumns:"1.2fr .8fr",gap:8}}><F t="Benefício ou tratamento" v={beneficio} s={setBeneficio}/><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Status<select value={statusBeneficio} onChange={e=>setStatusBeneficio(e.target.value)} style={inp}><option value="POTENCIAL_VALIDAR">Potencial — validar</option><option value="APLICAVEL">Aplicável após validação</option><option value="NAO_APLICAVEL">Não aplicável</option></select></label></div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Base legal / fonte oficial<textarea rows={3} value={baseLegal} onChange={e=>setBaseLegal(e.target.value)} style={{...inp,resize:"vertical"}} placeholder="Lei, dispositivo, fonte oficial e data de verificação"/></label></div>
+  <div style={box}><SectionTitle sub="As alíquotas cheias futuras devem ser preenchidas com premissa validada. O ano define a parcela aplicável na transição.">{regime==="SIMPLES_NACIONAL"?"3":"4"}. IBS/CBS e créditos</SectionTitle>
+   <div style={grid(4)}><F t="Base tributável" v={base} s={setBase}/><F t="CBS cheia %" v={cbs} s={setCbs}/><F t="IBS cheio %" v={ibs} s={setIbs}/><F t="Redução CBS %" v={redCbs} s={setRedCbs}/><F t="Redução IBS %" v={redIbs} s={setRedIbs}/><F t="Crédito CBS" v={credCbs} s={setCredCbs}/><F t="Crédito IBS" v={credIbs} s={setCredIbs}/><F t="Imposto Seletivo do período" v={seletivo} s={setSeletivo} help="Preencher somente quando a operação estiver sujeita."/>{ano==="2026"&&<label style={{display:"flex",gap:7,alignItems:"center",fontSize:9,fontWeight:800}}><input type="checkbox" checked={dispensa2026} onChange={e=>setDispensa2026(e.target.checked)}/>Considerar dispensa/compensação do teste de 2026</label>}{numero(ano)>=2027&&<label style={{display:"flex",gap:7,alignItems:"center",fontSize:9,fontWeight:800}}><input type="checkbox" checked={manterIpi} onChange={e=>setManterIpi(e.target.checked)}/>Manter IPI por exceção validada</label>}</div>
+  </div>
 
-  <div style={box}><h3 style={{marginTop:0}}>Memória de cálculo</h3><div style={{fontSize:9.5,lineHeight:1.8}}><div>Base tributável: <b>{moeda(calc.baseTributavel)}</b></div><div>Débito CBS: <b>{moeda(calc.debitoCBS)}</b> − crédito <b>{moeda(calc.creditoCBS)}</b> = <b>{moeda(calc.liquidoCBS)}</b></div><div>Débito IBS: <b>{moeda(calc.debitoIBS)}</b> − crédito <b>{moeda(calc.creditoIBS)}</b> = <b>{moeda(calc.liquidoIBS)}</b></div><div style={{borderTop:"1px solid #E3E7EF",marginTop:6,paddingTop:6}}>Total líquido = <b>{moeda(calc.total)}</b></div></div></div>
+  <div style={box}><SectionTitle sub="A comparação usa a carga total, não apenas IBS e CBS.">{regime==="SIMPLES_NACIONAL"?"4":"5"}. Comparativo completo</SectionTitle>
+   <div style={grid(4)}><K t="Carga atual completa" v={moeda(calc.cargaAtual)} sub={fmtPct(calc.cargaEfetivaAtual)}/><K t={tituloNovo} v={totalNovoExibido==null?"Pendente":moeda(totalNovoExibido)} sub={totalNovoExibido==null?"Complete as premissas":fmtPct(calc.cargaEfetivaProjetada)}/><K t="Diferença" v={calc.diferenca==null?"Não comparável":moeda(calc.diferenca)} tone={tom}/><K t="Variação" v={calc.variacaoPct==null?"Não comparável":fmtPct(calc.variacaoPct)} tone={tom}/></div>
+   <div style={{marginTop:12}}><BarChart items={[{label:"Carga atual",valor:calc.cargaAtual,cor:C.blue},{label:`Cenário ${ano}`,valor:totalNovoExibido||0,cor:C.green},{label:"IBS/CBS líquido",valor:calc.ibsCbs.total,cor:C.coral}]}/></div>
+   {calc.avisos.map((a,i)=><div key={i} style={{marginTop:8,padding:"8px 10px",background:"#FFF7E8",border:"1px solid #F0D49C",borderRadius:8,color:C.amber,fontSize:9}}><b>Atenção:</b> {a}</div>)}
+  </div>
+
+  {regime==="SIMPLES_NACIONAL"&&<div style={box}><SectionTitle sub="O cenário por fora somente é conclusivo quando a composição do DAS estiver conciliada.">5. Simples: IBS/CBS dentro × por fora</SectionTitle>
+   <div style={grid(4)}><K t="DAS + fora do DAS" v={moeda(simples.dentro)}/><K t="DAS residual" v={simples.dasResidualEstimado?.residual==null?"Pendente":moeda(simples.dasResidualEstimado.residual)}/><K t="IBS/CBS regular" v={moeda(calc.ibsCbs.total)}/><K t="Total por fora" v={simples.fora==null?"Pendente":moeda(simples.fora)}/></div>
+   <div style={{marginTop:10,padding:"9px 10px",background:"#F7F9FC",borderRadius:9,fontSize:9}}><b>Menor carga matemática:</b> {simples.menorCargaMatematica==="NAO_CALCULAVEL"?"Pendente":simples.menorCargaMatematica}. Isso não equivale a recomendação automática; devem ser avaliados B2B/B2C, crédito transferido, preço, margem e caixa.</div>
+  </div>}
+
+  <div style={box}><SectionTitle sub="IRPJ, adicional, CSLL, folha e outros tributos permanecem visíveis.">{regime==="SIMPLES_NACIONAL"?"6":"6"}. Memória de cálculo</SectionTitle>
+   <Linha nome="Faturamento" valor={moeda(calc.faturamento)} destaque/>
+   {ano==="2026"&&<><Linha nome="CBS de teste — 0,9%" valor={moeda(calc.teste2026.liquidoCBS)} nota="Destaque de teste; não é carga definitiva."/><Linha nome="IBS de teste — 0,1%" valor={moeda(calc.teste2026.liquidoIBS)} nota="Destaque de teste; não é carga definitiva."/></>}
+   <Linha nome="CBS líquida regular" valor={moeda(calc.ibsCbs.liquidoCBS)} nota={`${fmtPct(calc.ibsCbs.aliquotaCBSEfetiva)} × fator do ano ${fmtPct(calc.regra.cbsRegular*100)}`}/>
+   <Linha nome="IBS líquido regular" valor={moeda(calc.ibsCbs.liquidoIBS)} nota={`${fmtPct(calc.ibsCbs.aliquotaIBSEfetiva)} × fator do ano ${fmtPct(calc.regra.ibsRegular*100)}`}/>
+   <Linha nome="PIS/Cofins remanescentes" valor={moeda(calc.pisCofinsLegado)}/><Linha nome="ICMS/ISS remanescentes" valor={moeda(calc.icmsIssLegado)}/><Linha nome="IPI remanescente informado" valor={moeda(calc.ipiLegado)} nota={manterIpi?"Exceção marcada para validação.":"Redução conforme o ano selecionado."}/><Linha nome="Imposto Seletivo" valor={moeda(calc.impostoSeletivo)}/>
+   <Linha nome="IRPJ" valor={moeda(calc.irpjCsll.irpj)}/><Linha nome="Adicional de IRPJ" valor={moeda(calc.irpjCsll.adicionalIrpj)}/><Linha nome="CSLL" valor={moeda(calc.irpjCsll.csll)}/><Linha nome="CPP/folha" valor={moeda(calc.cpp)}/><Linha nome="Outros e tributos fora do DAS" valor={moeda(calc.outros+calc.tributosForaDas)}/>
+   {regime==="LUCRO_REAL"&&<Linha nome="Lucro fiscal tributável" valor={moeda(calc.irpjCsll.baseTributavel)} nota={calc.irpjCsll.houvePrejuizo?"Prejuízo fiscal: IRPJ e CSLL zerados.":"Base positiva após ajustes e compensação."} destaque/>}
+   <Linha nome={tituloNovo} valor={totalNovoExibido==null?"Pendente":moeda(totalNovoExibido)} destaque/>
+  </div>
+
+  <div style={box}><SectionTitle sub="A projeção recalcula a carga total e mantém as relações informadas.">7. Sensibilidade de crescimento</SectionTitle><div style={{...grid(3),alignItems:"end"}}><F t="Crescimento do faturamento %" v={crescimento} s={setCrescimento}/><K t="Faturamento projetado" v={moeda(numero(fat)*escala)}/><K t="Carga total projetada" v={moeda(proj.totalProjetado)}/></div></div>
+
+  <div style={box}><SectionTitle>8. Benefício ou tratamento diferenciado</SectionTitle><div style={grid(2)}><F t="Benefício/tratamento" v={beneficio} s={setBeneficio}/><F t="Status" v={statusBeneficio} s={setStatusBeneficio} type="select"><option value="POTENCIAL_VALIDAR">Potencial — validar</option><option value="APLICAVEL">Aplicável após validação</option><option value="NAO_APLICAVEL">Não aplicável</option></F></div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Base legal / fonte oficial<textarea rows={3} value={baseLegal} onChange={e=>setBaseLegal(e.target.value)} style={{...inp,resize:"vertical"}}/></label></div>
  </div>;
 }
