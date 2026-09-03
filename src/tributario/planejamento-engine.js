@@ -1,5 +1,5 @@
 // DESTINO REAL: /src/tributario/planejamento-engine.js
-// Planejamento Tributário V3 — motor determinístico incremental.
+// Planejamento Tributário V4 — motor determinístico incremental.
 // NÃO trata IBS/CBS/transição.
 //
 // Fontes jurídicas de referência do motor:
@@ -98,7 +98,10 @@ function aliquotaEfetivaSimples(rbt12,anexo){
 
 export function baseVazia() {
   return {
-    faturamento:{industria:mapaMes(),comercio:mapaMes(),servicos:mapaMes(),declaradoNaoSegregado:mapaMes()},
+    // naoSegregado guarda receita oficial (ex.: histórico PGDAS) quando o
+    // documento não informa a divisão entre comércio, indústria e serviços.
+    // Ela participa do total uma única vez e nunca é rateada silenciosamente.
+    faturamento:{naoSegregado:mapaMes(),industria:mapaMes(),comercio:mapaMes(),servicos:mapaMes()},
     tributos:{pis:mapaMes(),cofins:mapaMes(),icms:mapaMes(),ipi:mapaMes(),iss:mapaMes()},
     custos:{
       industria:{estoqueInicial:mapaMes(),insumos:mapaMes(),maoObraDireta:mapaMes(),ggf:mapaMes(),estoqueFinal:mapaMes()},
@@ -114,12 +117,13 @@ export function baseVazia() {
       regimeAtual:"",
       simplesAliquotaEfetiva:0,
       simplesDas:mapaMes(),
-      simplesComposicaoDas:{
-        irpj:mapaMes(),csll:mapaMes(),cofins:mapaMes(),pis:mapaMes(),
-        cpp:mapaMes(),icms:mapaMes(),ipi:mapaMes(),iss:mapaMes()
-      },
       simplesRbt12Base:0,
-      tributosOrigemSimplesDas:false,
+      uf:"",
+      icmsAliquotaInterna:0,
+      icmsEstimadoAtivo:false,
+      ipiAliquotaEstimada:0,
+      ipiNcmConfirmado:false,
+      naturezaNaoSegregada:"",
       simplesAnexos:{
         comercio:"I",
         industria:"II",
@@ -171,7 +175,7 @@ function garantirBase(base={}){
 
 export function operacional(baseOriginal){
   const base=garantirBase(baseOriginal);
-  const receita=somaMes(base.faturamento.industria,base.faturamento.comercio,base.faturamento.servicos,base.faturamento.declaradoNaoSegregado);
+  const receita=somaMes(base.faturamento.naoSegregado,base.faturamento.industria,base.faturamento.comercio,base.faturamento.servicos);
   const cpv=Object.fromEntries(MESES.map(m=>[m,
     num(base.custos.industria.estoqueInicial[m])
     +num(base.custos.industria.insumos[m])
@@ -200,13 +204,13 @@ export function operacional(baseOriginal){
       industria:base.faturamento.industria,
       comercio:base.faturamento.comercio,
       servicos:base.faturamento.servicos,
-      declaradoNaoSegregado:base.faturamento.declaradoNaoSegregado,
+      naoSegregado:base.faturamento.naoSegregado,
     },
     totalReceita:somaMapa(receita),
     totalReceitaIndustria:somaMapa(base.faturamento.industria),
     totalReceitaComercio:somaMapa(base.faturamento.comercio),
     totalReceitaServicos:somaMapa(base.faturamento.servicos),
-    totalReceitaNaoSegregada:somaMapa(base.faturamento.declaradoNaoSegregado),
+    totalReceitaNaoSegregada:somaMapa(base.faturamento.naoSegregado),
     totalCustos:somaMapa(custos),
     totalDespesas:somaMapa(despesas),
     totalMassa:somaMapa(massa)
@@ -231,21 +235,24 @@ export function simples(baseOriginal){
   const aliquotaObservada=o.totalReceita>0&&dasInformado>0?(dasInformado/o.totalReceita)*100:0;
 
   const rbt12Documental=num(p.simplesRbt12Base);
+  const mesesComReceita=MESES.filter(m=>num(o.receita[m])>0).length;
 
-  // O RBT12 comprovado no PGDAS é a referência prioritária do Simples.
-  // O faturamento do quadro não o substitui, pois pode representar apenas o
-  // ano-calendário corrente ou um conjunto parcial de competências.
+  // Se o próprio planejamento contém uma série anual suficientemente preenchida,
+  // a receita anual projetada é a melhor aproximação do RBT12 do cenário.
+  // Se existe apenas um período pontual, preservamos o RBT12 documental.
   const rbt12Referencia=
-    rbt12Documental>0
+    mesesComReceita>=6 && o.totalReceita>0
+      ?o.totalReceita
+      :rbt12Documental>0
       ?rbt12Documental*(1+crescimento/100)
       :o.totalReceita;
 
   const anexos=p.simplesAnexos||{};
   const naturezas=[
+    ["naoSegregado",""],
     ["industria","II"],
     ["comercio","I"],
     ["servicos",""],
-    ["declaradoNaoSegregado",""],
   ];
 
   const detalhes=[];
@@ -260,7 +267,7 @@ export function simples(baseOriginal){
     let anexo=normalizarAnexo(anexos[natureza]||padrao);
 
     // Serviço: não assumimos Anexo III/V sem classificação confirmada.
-    if(["servicos","declaradoNaoSegregado"].includes(natureza)&&!normalizarAnexo(anexos[natureza]))anexo="";
+    if(natureza==="servicos"&&!normalizarAnexo(anexos[natureza]))anexo="";
 
     const faixa=anexo?aliquotaEfetivaSimples(rbt12Referencia,anexo):null;
 
@@ -291,42 +298,12 @@ export function simples(baseOriginal){
     receitaSemTabela=0;
   }
 
-  // Na competência histórica, o DAS efetivamente apurado no PGDAS prevalece
-  // sobre a recomposição teórica, pois pode conter redução de ICMS/ISS,
-  // segregações, imunidades ou particularidades comprovadas no documento.
-  // Em cenários de crescimento, o motor volta a recalcular pelas tabelas.
-  if(dasInformado>0&&crescimento===0){
-    total=dasInformado;
-  }
-
   const completo=o.totalReceita>0&&receitaSemTabela===0&&rbt12Referencia>0;
   const mensal=Object.fromEntries(MESES.map(m=>{
     const recMes=num(o.receita[m]);
     const proporcao=o.totalReceita>0?recMes/o.totalReceita:0;
     return [m,total*proporcao];
   }));
-
-  // A composição informada pelo PGDAS é a fonte prioritária para demonstrar
-  // quanto de cada tributo está contido no DAS. Ela é informativa: os valores
-  // não podem ser somados novamente ao total do Simples.
-  const composicaoFonte=p.simplesComposicaoDas||{};
-  const composicaoObservada={
-    irpj:somaMapa(composicaoFonte.irpj),
-    csll:somaMapa(composicaoFonte.csll),
-    cofins:somaMapa(composicaoFonte.cofins),
-    pis:somaMapa(composicaoFonte.pis),
-    cpp:somaMapa(composicaoFonte.cpp),
-    icms:somaMapa(composicaoFonte.icms),
-    ipi:somaMapa(composicaoFonte.ipi),
-    iss:somaMapa(composicaoFonte.iss),
-  };
-  const totalComposicao=Object.values(composicaoObservada).reduce((a,v)=>a+num(v),0);
-  const composicaoDas=Object.fromEntries(
-    Object.entries(composicaoObservada).map(([tributo,valor])=>[
-      tributo,
-      totalComposicao>0?total*(num(valor)/totalComposicao):null
-    ])
-  );
 
   return {
     regime:"SIMPLES_NACIONAL",
@@ -335,13 +312,9 @@ export function simples(baseOriginal){
     carga:o.totalReceita?total/o.totalReceita*100:0,
     completo,
     aliquotaEfetivaUsada:o.totalReceita?total/o.totalReceita*100:0,
-    origemAliquota:dasInformado>0&&crescimento===0?"DAS_PGDAS_COMPROVADO":detalhes.some(d=>d.origem==="TABELA_CGSN")?"TABELAS_CGSN_SEGREGADAS":aliquotaInformada>0?"ALIQUOTA_INFORMADA":"SEM_BASE",
+    origemAliquota:detalhes.some(d=>d.origem==="TABELA_CGSN")?"TABELAS_CGSN_SEGREGADAS":aliquotaInformada>0?"ALIQUOTA_INFORMADA":dasInformado>0?"ALIQUOTA_OBSERVADA_PELO_DAS":"SEM_BASE",
     rbt12Referencia,
     detalhes,
-    tributos:{das:total,...composicaoDas},
-    composicaoDas,
-    origemComposicao:totalComposicao>0?"PGDAS_PROPORCIONAL":"NAO_INFORMADA",
-    composicaoCompleta:totalComposicao>0,
     pendencias:detalhes.filter(d=>d.origem==="PENDENTE_ANEXO").map(d=>`Confirmar Anexo do Simples para receita de ${d.natureza}.`)
   };
 }
@@ -360,20 +333,28 @@ export function presumido(baseOriginal){
   const base=garantirBase(baseOriginal);
   const o=operacional(base);
   const p=base.parametros.presumido||{};
-  const tributosVieramDoDas=Boolean(base.parametros.tributosOrigemSimplesDas);
   const mensal=MESES.map(m=>{
+    const rn=num(base.faturamento.naoSegregado[m]);
     const ri=num(base.faturamento.industria[m]);
     const rc=num(base.faturamento.comercio[m]);
     const rs=num(base.faturamento.servicos[m]);
-    const rn=num(base.faturamento.declaradoNaoSegregado[m]);
-    const r=ri+rc+rs+rn;
+    const r=rn+ri+rc+rs;
+
+    // Comércio e indústria usam 8% (IRPJ) e 12% (CSLL). Quando o PGDAS
+    // comprova apenas o total e os anexos I/II, a falta de segregação entre
+    // essas duas naturezas não impede o cálculo federal do Presumido.
+    const naoSegregadoServico=String(base.parametros.naturezaNaoSegregada||"").toUpperCase()==="SERVICOS";
+    const rnIrpj=rn*(naoSegregadoServico?32:8)/100;
+    const rnCsll=rn*(naoSegregadoServico?32:12)/100;
 
     const bir=
+      rnIrpj+
       ri*presuncaoNatureza(p,"industria","irpj")/100+
       rc*presuncaoNatureza(p,"comercio","irpj")/100+
       rs*presuncaoNatureza(p,"servicos","irpj")/100;
 
     const bcs=
+      rnCsll+
       ri*presuncaoNatureza(p,"industria","csll")/100+
       rc*presuncaoNatureza(p,"comercio","csll")/100+
       rs*presuncaoNatureza(p,"servicos","csll")/100;
@@ -382,13 +363,24 @@ export function presumido(baseOriginal){
     const cof=r*num(p.cofins)/100;
     const ir=bir*num(p.irpj)/100;
     const cs=bcs*num(p.csll)/100;
-    const iss=tributosVieramDoDas?0:num(base.tributos.iss[m]);
-    const icms=tributosVieramDoDas?0:num(base.tributos.icms[m]);
-    const ipi=tributosVieramDoDas?0:num(base.tributos.ipi[m]);
+    const iss=num(base.tributos.iss[m]);
+    const receitaMercadorias=ri+rc+(naoSegregadoServico?0:rn);
+    const icmsInformado=num(base.tributos.icms[m]);
+    const icms=icmsInformado>0
+      ?icmsInformado
+      :base.parametros.icmsEstimadoAtivo
+        ?Math.max(0,receitaMercadorias*num(base.parametros.icmsAliquotaInterna)/100-num(base.creditos.icms[m]))
+        :0;
+    const ipiInformado=num(base.tributos.ipi[m]);
+    const ipi=ipiInformado>0
+      ?ipiInformado
+      :base.parametros.ipiNcmConfirmado
+        ?Math.max(0,ri*num(base.parametros.ipiAliquotaEstimada)/100-num(base.creditos.ipi[m]))
+        :0;
     const enc=num(base.folha.encargosPatronais[m]);
 
     return {
-      mes:m,receita:r,receitaNaoSegregada:rn,baseIrpj:bir,baseCsll:bcs,pis,cofins:cof,irpj:ir,
+      mes:m,receita:r,baseIrpj:bir,baseCsll:bcs,pis,cofins:cof,irpj:ir,
       adicionalIrpj:0,csll:cs,iss,icms,ipi,encargos:enc,
       total:pis+cof+ir+cs+iss+icms+ipi+enc
     };
@@ -410,28 +402,18 @@ export function presumido(baseOriginal){
   }
 
   const total=mensal.reduce((a,x)=>a+x.total,0);
-  const tributos={
-    pis:mensal.reduce((a,x)=>a+x.pis,0),
-    cofins:mensal.reduce((a,x)=>a+x.cofins,0),
-    icms:mensal.reduce((a,x)=>a+x.icms,0),
-    ipi:mensal.reduce((a,x)=>a+x.ipi,0),
-    iss:mensal.reduce((a,x)=>a+x.iss,0),
-    cpp:mensal.reduce((a,x)=>a+x.encargos,0),
-    irpj:mensal.reduce((a,x)=>a+x.irpj,0),
-    adicionalIrpj:mensal.reduce((a,x)=>a+x.adicionalIrpj,0),
-    csll:mensal.reduce((a,x)=>a+x.csll,0),
-  };
   return {
     regime:"LUCRO_PRESUMIDO",
     mensal,total,
-    tributos,
-    baseIrpj:mensal.reduce((a,x)=>a+x.baseIrpj,0),
-    baseCsll:mensal.reduce((a,x)=>a+x.baseCsll,0),
     carga:o.totalReceita?total/o.totalReceita*100:0,
-    completo:o.totalReceita>0&&o.totalReceitaNaoSegregada===0&&!tributosVieramDoDas,
+    completo:o.totalReceita>0,
+    calculavelComRessalvas:
+      o.totalReceita>0&&
+      (!base.parametros.icmsEstimadoAtivo||num(base.parametros.icmsAliquotaInterna)>0),
     pendencias:[
-      ...(o.totalReceitaNaoSegregada>0?["Confirmar a natureza das receitas históricas não segregadas para calcular as bases presumidas de IRPJ e CSLL."]:[]),
-      ...(tributosVieramDoDas?["Informar a apuração própria de ICMS/IPI/ISS fora do Simples. A parcela contida no DAS não pode ser reutilizada no Lucro Presumido."]:[])
+      ...(o.totalReceitaNaoSegregada>0&&!base.parametros.naturezaNaoSegregada?["Confirmar se a receita histórica sem segregação corresponde somente a comércio/indústria."]:[]),
+      ...(!base.parametros.ipiNcmConfirmado&&o.totalReceitaIndustria>0?["IPI pendente: informar NCM/TIPI dos produtos industrializados."]:[]),
+      ...(base.parametros.icmsEstimadoAtivo?[`ICMS estimado pela alíquota interna de ${num(base.parametros.icmsAliquotaInterna).toFixed(2)}%, sujeito a créditos, ST, benefícios e destino da operação.`]:[])
     ],
     presuncoesUsadas:{
       industria:{irpj:presuncaoNatureza(p,"industria","irpj"),csll:presuncaoNatureza(p,"industria","csll")},
@@ -445,16 +427,30 @@ export function real(baseOriginal){
   const base=garantirBase(baseOriginal);
   const o=operacional(base);
   const p=base.parametros.real||{};
-  const tributosVieramDoDas=Boolean(base.parametros.tributosOrigemSimplesDas);
   const ajustes=base.ajustesLucroReal||{adicoes:mapaMes(),exclusoes:mapaMes(),compensacoes:mapaMes()};
 
   const mensal=MESES.map(m=>{
     const r=num(o.receita[m]);
     const pis=Math.max(0,r*num(p.pis)/100-num(base.creditos.pis[m]));
     const cof=Math.max(0,r*num(p.cofins)/100-num(base.creditos.cofins[m]));
-    const iss=tributosVieramDoDas?0:num(base.tributos.iss[m]);
-    const icms=tributosVieramDoDas?0:Math.max(0,num(base.tributos.icms[m])-num(base.creditos.icms[m]));
-    const ipi=tributosVieramDoDas?0:Math.max(0,num(base.tributos.ipi[m])-num(base.creditos.ipi[m]));
+    const iss=num(base.tributos.iss[m]);
+    const naoSegregadoServico=String(base.parametros.naturezaNaoSegregada||"").toUpperCase()==="SERVICOS";
+    const receitaMercadorias=
+      num(base.faturamento.industria[m])+
+      num(base.faturamento.comercio[m])+
+      (naoSegregadoServico?0:num(base.faturamento.naoSegregado[m]));
+    const icmsDebito=num(base.tributos.icms[m])>0
+      ?num(base.tributos.icms[m])
+      :base.parametros.icmsEstimadoAtivo
+        ?receitaMercadorias*num(base.parametros.icmsAliquotaInterna)/100
+        :0;
+    const ipiDebito=num(base.tributos.ipi[m])>0
+      ?num(base.tributos.ipi[m])
+      :base.parametros.ipiNcmConfirmado
+        ?num(base.faturamento.industria[m])*num(base.parametros.ipiAliquotaEstimada)/100
+        :0;
+    const icms=Math.max(0,icmsDebito-num(base.creditos.icms[m]));
+    const ipi=Math.max(0,ipiDebito-num(base.creditos.ipi[m]));
     const enc=num(base.folha.encargosPatronais[m]);
     const cust=num(o.custos[m]);
     const desp=num(o.despesas[m]);
@@ -467,50 +463,28 @@ export function real(baseOriginal){
       +num(ajustes.adicoes?.[m])
       -num(ajustes.exclusoes?.[m]);
 
+    const lucroRealBase=Math.max(
+      0,
+      lucroFiscalAntesComp-num(ajustes.compensacoes?.[m])
+    );
+
+    const ir=lucroRealBase*num(p.irpj)/100;
+    const ad=adicional(lucroRealBase,p.adicionalIrpj,p.limiteAdicionalMensal);
+    const cs=lucroRealBase*num(p.csll)/100;
+
     return {
       mes:m,receita:r,pis,cofins:cof,iss,icms,ipi,encargos:enc,
       custos:cust,despesas:desp,
       lucroContabilAntesIrCs,
       lucroFiscalAntesComp,
-      compensacao:num(ajustes.compensacoes?.[m]),
-      lucroRealBase:0,irpj:0,adicionalIrpj:0,csll:0,
-      total:pis+cof+iss+icms+ipi+enc
+      lucroRealBase,
+      irpj:ir,adicionalIrpj:ad,csll:cs,
+      total:pis+cof+iss+icms+ipi+enc+ir+ad+cs
     };
   });
 
-  // O período é consolidado antes de calcular IRPJ e CSLL. Assim, lucros e
-  // prejuízos mensais do mesmo período se compensam. Se o resultado fiscal
-  // acumulado for zero ou negativo, não há IRPJ, adicional nem CSLL.
-  const lucroFiscalPeriodo=mensal.reduce((a,x)=>a+x.lucroFiscalAntesComp,0);
-  const compensacoesPeriodo=mensal.reduce((a,x)=>a+x.compensacao,0);
-  const baseLucroReal=Math.max(0,lucroFiscalPeriodo-compensacoesPeriodo);
-  const mesesDoPeriodo=Math.max(1,mensal.filter(x=>x.receita!==0||x.custos!==0||x.despesas!==0).length);
-  const irpjPeriodo=baseLucroReal>0?baseLucroReal*num(p.irpj)/100:0;
-  const adicionalPeriodo=baseLucroReal>0?adicional(baseLucroReal,p.adicionalIrpj,num(p.limiteAdicionalMensal)*mesesDoPeriodo):0;
-  const csllPeriodo=baseLucroReal>0?baseLucroReal*num(p.csll)/100:0;
-  const basesPositivas=mensal.reduce((a,x)=>a+Math.max(0,x.lucroFiscalAntesComp-x.compensacao),0);
-
-  mensal.forEach(x=>{
-    const peso=basesPositivas>0?Math.max(0,x.lucroFiscalAntesComp-x.compensacao)/basesPositivas:0;
-    x.lucroRealBase=baseLucroReal*peso;
-    x.irpj=irpjPeriodo*peso;
-    x.adicionalIrpj=adicionalPeriodo*peso;
-    x.csll=csllPeriodo*peso;
-    x.total+=x.irpj+x.adicionalIrpj+x.csll;
-  });
-
   const total=mensal.reduce((a,x)=>a+x.total,0);
-  const tributos={
-    pis:mensal.reduce((a,x)=>a+x.pis,0),
-    cofins:mensal.reduce((a,x)=>a+x.cofins,0),
-    icms:mensal.reduce((a,x)=>a+x.icms,0),
-    ipi:mensal.reduce((a,x)=>a+x.ipi,0),
-    iss:mensal.reduce((a,x)=>a+x.iss,0),
-    cpp:mensal.reduce((a,x)=>a+x.encargos,0),
-    irpj:mensal.reduce((a,x)=>a+x.irpj,0),
-    adicionalIrpj:mensal.reduce((a,x)=>a+x.adicionalIrpj,0),
-    csll:mensal.reduce((a,x)=>a+x.csll,0),
-  };
+  const baseLucroReal=mensal.reduce((a,x)=>a+x.lucroRealBase,0);
   const dadosOperacionaisSuficientes=
     o.totalReceita>0 &&
     (
@@ -521,12 +495,11 @@ export function real(baseOriginal){
 
   return {
     regime:"LUCRO_REAL",
-    mensal,total,tributos,
+    mensal,total,
     carga:o.totalReceita?total/o.totalReceita*100:0,
-    completo:o.totalReceita>0&&dadosOperacionaisSuficientes&&!tributosVieramDoDas,
-    pendencias:tributosVieramDoDas?["Informar débitos e créditos próprios de ICMS/IPI/ISS para o cenário de Lucro Real. Os valores do DAS não representam a apuração normal desses tributos."]:[],
+    completo:o.totalReceita>0&&dadosOperacionaisSuficientes,
     baseLucroReal,
-    prejuizoFiscalPeriodo:Math.min(0,lucroFiscalPeriodo-compensacoesPeriodo),
+    prejuizoFiscal:baseLucroReal<=0,
     lucroContabilAntesIrCs:mensal.reduce((a,x)=>a+x.lucroContabilAntesIrCs,0),
     observacaoBase:"IRPJ/CSLL calculados sobre lucro fiscal estimado antes de IRPJ/CSLL, ajustável por adições, exclusões e compensações."
   };
@@ -542,38 +515,28 @@ export function comparar(baseOriginal){
   const economia=atual&&melhor?Math.max(0,atual.total-melhor.total):0;
 
   const dre=(reg)=>{
-    const t=reg.tributos||{};
-    const irCs=num(t.irpj)+num(t.adicionalIrpj)+num(t.csll);
-    const tributosSobreReceita=
-      reg.regime==="SIMPLES_NACIONAL"
-        ?reg.total
-        :num(t.pis)+num(t.cofins)+num(t.icms)+num(t.ipi)+num(t.iss);
-    const encargosFolha=num(t.cpp);
-    const lucroAntesIrCs=
-      o.totalReceita-tributosSobreReceita-encargosFolha-o.totalCustos-o.totalDespesas;
+    const linhasMensais=Array.isArray(reg.mensal)?reg.mensal:Object.values(reg.mensal||{});
+    const irCs=linhasMensais.reduce((s,x)=>s+num(x?.irpj)+num(x?.adicionalIrpj)+num(x?.csll),0);
+    const tributosAntesIrCs=Math.max(0,num(reg.total)-irCs);
     return {
-    receitaBruta:o.totalReceita,
-    tributos:reg.total,
-    tributosSobreReceita,
-    encargosFolha,
-    detalhamentoTributos:t,
-    baseIrpj:reg.regime==="LUCRO_REAL"?num(reg.baseLucroReal):num(reg.baseIrpj),
-    baseCsll:reg.regime==="LUCRO_REAL"?num(reg.baseLucroReal):num(reg.baseCsll),
-    receitaLiquida:o.totalReceita-tributosSobreReceita,
-    cpv:somaMapa(o.cpv),
-    cmv:somaMapa(o.cmv),
-    csp:somaMapa(o.csp),
-    despesas:o.totalDespesas,
-    lucroAntesIrCs:
-      reg.regime==="SIMPLES_NACIONAL"
-        ?lucroAntesIrCs
-        :reg.regime==="LUCRO_REAL"
-        ?num(reg.lucroContabilAntesIrCs)
-        :lucroAntesIrCs,
-    irpjCsll:reg.regime==="SIMPLES_NACIONAL"?0:irCs,
-    lucroLiquido:o.totalReceita-reg.total-o.totalCustos-o.totalDespesas,
-    composicaoInformativa:reg.regime==="SIMPLES_NACIONAL",
-  }};
+      receitaBruta:o.totalReceita,
+      tributos:reg.total,
+      tributosAntesIrCs,
+      irpjCsll:irCs,
+      receitaLiquida:o.totalReceita-reg.total,
+      cpv:somaMapa(o.cpv),
+      cmv:somaMapa(o.cmv),
+      csp:somaMapa(o.csp),
+      despesas:o.totalDespesas,
+      // No Simples, IRPJ/CSLL são inseparáveis do DAS nesta DRE gerencial;
+      // por isso todo o DAS é tratado antes do resultado líquido.
+      lucroAntesIrCs:
+        reg.regime==="LUCRO_REAL"
+          ?num(reg.lucroContabilAntesIrCs)
+          :o.totalReceita-o.totalCustos-o.totalDespesas-tributosAntesIrCs,
+      lucroLiquido:o.totalReceita-reg.total-o.totalCustos-o.totalDespesas,
+    };
+  };
 
   return {
     simples:s,presumido:p,real:r,fatorR:fr,melhor,regimeAtual:atual,
@@ -586,7 +549,7 @@ export function cenario(baseOriginal,crescimento=0){
   const c=garantirBase(JSON.parse(JSON.stringify(baseOriginal||{})));
   const f=1+num(crescimento)/100;
 
-  ["industria","comercio","servicos"].forEach(
+  ["naoSegregado","industria","comercio","servicos"].forEach(
     g=>MESES.forEach(m=>{
       c.faturamento[g][m]=num(c.faturamento[g][m])*f;
     })
