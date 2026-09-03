@@ -21,15 +21,16 @@ function Mensal({label,mapa,onChange}){
   <strong style={{fontSize:9.5,textAlign:"right"}}>{moeda(total)}</strong>
  </div>
 }
-function MensalResumo({label,mapa}){
+function MensalResumo({label,mapa,destaque=false}){
  const total=MESES.reduce((a,m)=>a+num(mapa?.[m]),0);
- return <div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4,alignItems:"center",padding:"8px 0",marginBottom:4,borderBottom:`2px solid ${C.blue}`,background:"#EEF4FF",borderRadius:8}}>
-  <strong style={{fontSize:9.5,paddingLeft:8,color:C.blue}}>{label}</strong>
-  {MESES.map(m=><strong key={m} style={{fontSize:9,textAlign:"right",padding:"0 5px"}}>{moeda(mapa?.[m])}</strong>)}
-  <strong style={{fontSize:9.5,textAlign:"right",paddingRight:5,color:C.blue}}>{moeda(total)}</strong>
+ return <div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4,alignItems:"center",padding:"7px 8px",borderRadius:9,background:destaque?"#EEF4FF":"transparent",borderBottom:"1px solid #DCE5F4"}}>
+  <strong style={{fontSize:9.5,color:C.blue}}>{label}</strong>
+  {MESES.map(m=><strong key={m} style={{fontSize:8.8,textAlign:"center"}}>{moeda(mapa?.[m])}</strong>)}
+  <strong style={{fontSize:9.5,textAlign:"right",color:C.blue}}>{moeda(total)}</strong>
  </div>
 }
 function Grade({children}){return <div style={{overflowX:"auto"}}><div style={{minWidth:1160}}><div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4}}><span/>{MESES.map(m=><b key={m} style={{fontSize:8.5,textAlign:"center",color:C.muted}}>{ROTULOS[m]}</b>)}<b style={{fontSize:8.5,textAlign:"right",color:C.muted}}>Total</b></div>{children}</div></div>}
+const somaCampo=(reg,campo)=>(reg?.mensal||[]).reduce((s,x)=>s+num(x?.[campo]),0);
 
 export default function PlanejamentoTributario({token,onVoltar,projetoInicial=null}){
  const [aba,setAba]=useState("identificacao"),[base,setBase]=useState(baseVazia),[cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[cnaesOperacionais,setCnaesOperacionais]=useState([]),[principal,setPrincipal]=useState(""),[descricao,setDescricao]=useState(""),[arquivos,setArquivos]=useState([]),[erro,setErro]=useState(""),[ok,setOk]=useState(""),[extraindo,setExtraindo]=useState(false),[analisando,setAnalisando]=useState(false),[ia,setIa]=useState(null),[extracaoResumo,setExtracaoResumo]=useState(null),[conferenciaIa,setConferenciaIa]=useState(null),[conferenciaDesatualizada,setConferenciaDesatualizada]=useState(false),[gerandoConferencia,setGerandoConferencia]=useState(false),[crescimento,setCrescimento]=useState(0),[responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState("");
@@ -40,16 +41,31 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
  const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `plan_${Date.now()}`}})());
  const calc=useMemo(()=>comparar(base),[base]);
  const calcCenario=useMemo(()=>comparar(cenario(base,crescimento)),[base,crescimento]);
- const subtotalFaturamento=useMemo(()=>Object.fromEntries(MESES.map(m=>[m,
-  num(base.faturamento?.industria?.[m])+num(base.faturamento?.comercio?.[m])+num(base.faturamento?.servicos?.[m])+num(base.faturamento?.declaradoNaoSegregado?.[m])
- ])),[base.faturamento]);
+ const dreTributos=useMemo(()=>{
+  const receita=Math.max(0,num(calc?.dre?.simples?.receitaBruta));
+  const comp=extracaoResumo?.simplesNacional?.composicaoDas||{};
+  const somaComp=["pis","cofins","cppInss","icms","ipi","iss","irpj","csll"].reduce((s,k)=>s+num(comp[k]),0);
+  const escala=somaComp>0?num(calc.simples?.total)/somaComp:0;
+  const simples=k=>num(comp[k])*escala;
+  const linha=(label,key,s,p,r)=>({label,key,simples:s,presumido:p,real:r});
+  return [
+   linha("DAS - tributos englobados","das",num(calc.simples?.total),0,0),
+   linha("PIS","pis",simples("pis"),somaCampo(calc.presumido,"pis"),somaCampo(calc.real,"pis")),
+   linha("COFINS","cofins",simples("cofins"),somaCampo(calc.presumido,"cofins"),somaCampo(calc.real,"cofins")),
+   linha("CPP / encargos patronais","cpp",simples("cppInss"),somaCampo(calc.presumido,"encargos"),somaCampo(calc.real,"encargos")),
+   linha("ICMS","icms",simples("icms"),somaCampo(calc.presumido,"icms"),somaCampo(calc.real,"icms")),
+   linha("IPI","ipi",simples("ipi"),somaCampo(calc.presumido,"ipi"),somaCampo(calc.real,"ipi")),
+   linha("ISS","iss",simples("iss"),somaCampo(calc.presumido,"iss"),somaCampo(calc.real,"iss")),
+   linha("IRPJ","irpj",simples("irpj"),somaCampo(calc.presumido,"irpj"),somaCampo(calc.real,"irpj")),
+   linha("Adicional de IRPJ","adicionalIrpj",0,somaCampo(calc.presumido,"adicionalIrpj"),somaCampo(calc.real,"adicionalIrpj")),
+   linha("CSLL","csll",simples("csll"),somaCampo(calc.presumido,"csll"),somaCampo(calc.real,"csll")),
+  ].map(x=>({...x,receita}));
+ },[calc,extracaoResumo]);
 
- async function api(action,{method="GET",body=null,params=null}={}){
-  const query=new URLSearchParams({action});
-  Object.entries(params||{}).forEach(([chave,valor])=>{
-   if(valor!==undefined&&valor!==null&&valor!=="")query.set(chave,String(valor));
-  });
-  const r=await fetch(`/api/tributario?${query.toString()}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ async function api(action,{method="GET",body=null,query=null}={}){
+  const qs=new URLSearchParams({action});
+  Object.entries(query||{}).forEach(([k,v])=>{if(v!==null&&v!==undefined&&v!=="")qs.set(k,String(v))});
+  const r=await fetch(`/api/tributario?${qs.toString()}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const d=await r.json().catch(()=>null); if(!r.ok||!d?.sucesso) throw new Error(d?.error||"Falha na operação."); return d;
  }
 
@@ -108,10 +124,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   }
 
   try{
-   const r=await api("listar-documentos",{params:{
-    ...(d.length===14?{cnpj:d}:{}),
-    ...(projetoId?{projetoId}:{}),
-   }});
+   const r=await api("listar-documentos",{query:{cnpj:d.length===14?d:"",projetoId}});
    const docs=Array.isArray(r.documentos)?r.documentos.filter(x=>x.ativo!==false):[];
 
    setDocumentosBanco(docs);
@@ -184,6 +197,55 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
     merge(c,ext?.base||{});
 
+    // O histórico do PGDAS é a fonte oficial. Quando não há segregação, ele
+    // vai exclusivamente para naoSegregado e limpa valores antigos/projetados
+    // do mesmo mês, evitando dupla contagem.
+    const historico=Array.isArray(ext?.simplesNacional?.receitasHistoricas)
+      ?ext.simplesNacional.receitasHistoricas
+      :[];
+    const anoHistorico=String(ext?.simplesNacional?.competencia||"").match(/20\d{2}/)?.[0];
+    if(anoHistorico)c.parametros.anoBase=Number(anoHistorico);
+    const porCompetencia={};
+    historico.forEach(item=>{
+      const comp=String(item?.competencia||"");
+      if(!/^\d{2}\/20\d{2}$/.test(comp)||item?.mercado==="EXTERNO")return;
+      (porCompetencia[comp]||=[]).push(item);
+    });
+    const nomesMes=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+    const temHistoricoAno=Object.keys(porCompetencia).some(comp=>Number(comp.split("/")[1])===Number(c.parametros.anoBase));
+    if(temHistoricoAno){
+      ["naoSegregado","industria","comercio","servicos"].forEach(k=>nomesMes.forEach(m=>{c.faturamento[k][m]=0}));
+    }
+    Object.entries(porCompetencia).forEach(([comp,itens])=>{
+      const [mes,ano]=comp.split("/");
+      if(Number(ano)!==Number(c.parametros.anoBase))return;
+      const m=nomesMes[Number(mes)-1];
+      if(!m)return;
+      const classificados=itens.filter(x=>["COMERCIO","INDUSTRIA","SERVICOS"].includes(String(x?.natureza||"").toUpperCase()));
+      if(classificados.length){
+        c.faturamento.naoSegregado[m]=0;
+        ["industria","comercio","servicos"].forEach(k=>{c.faturamento[k][m]=0});
+        classificados.forEach(x=>{
+          const k={COMERCIO:"comercio",INDUSTRIA:"industria",SERVICOS:"servicos"}[String(x.natureza).toUpperCase()];
+          c.faturamento[k][m]+=num(x.receita);
+        });
+      }else{
+        c.faturamento.industria[m]=0;
+        c.faturamento.comercio[m]=0;
+        c.faturamento.servicos[m]=0;
+        c.faturamento.naoSegregado[m]=itens.reduce((s,x)=>s+num(x.receita),0);
+      }
+    });
+
+    const uf=String(ext?.identificacao?.uf||c.parametros.uf||"").toUpperCase();
+    c.parametros.uf=uf;
+    if(uf==="PR"){
+      c.parametros.icmsAliquotaInterna=19.5;
+      c.parametros.icmsEstimadoAtivo=true;
+    }
+    const anexos=String(ext?.simplesNacional?.anexo||"").toUpperCase();
+    if(anexos.includes("ANEXO I")||anexos.includes("ANEXO II"))c.parametros.naturezaNaoSegregada="MERCADORIAS";
+
     if(ext?.identificacao?.regimeAtual){
       const regime=String(ext.identificacao.regimeAtual).toUpperCase();
       c.parametros.regimeAtual=
@@ -209,64 +271,9 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     const anoDocumento=String(competenciaDocumento).match(/20\d{2}/)?.[0];
     if(anoDocumento)c.parametros.anoBase=Number(anoDocumento);
 
-    const partesCompetencia=String(competenciaDocumento).match(/(?:^|\D)(0?[1-9]|1[0-2])(?:\D|$)/);
-    const indiceMes=partesCompetencia?Number(partesCompetencia[1])-1:-1;
-    const mesDocumento=indiceMes>=0?MESES[indiceMes]:"";
-    const simples=ext?.simplesNacional||{};
-
-    if(mesDocumento&&simples.dasTotal!==null&&simples.dasTotal!==undefined){
-      c.parametros.simplesDas[mesDocumento]=num(simples.dasTotal);
-    }
-
-    if(mesDocumento&&simples.composicaoDas){
-      if(!c.parametros.simplesComposicaoDas)c.parametros.simplesComposicaoDas={};
-      const mapaComposicao={irpj:"irpj",csll:"csll",cofins:"cofins",pis:"pis",cppInss:"cpp",icms:"icms",ipi:"ipi",iss:"iss"};
-      Object.entries(mapaComposicao).forEach(([origem,destino])=>{
-        if(!c.parametros.simplesComposicaoDas[destino])c.parametros.simplesComposicaoDas[destino]=Object.fromEntries(MESES.map(m=>[m,0]));
-        const valor=simples.composicaoDas[origem];
-        if(valor!==null&&valor!==undefined)c.parametros.simplesComposicaoDas[destino][mesDocumento]=num(valor);
-      });
-    }
-
-    const documentosExtracao=Array.isArray(ext?.documentosAnalisados)?ext.documentosAnalisados:[];
-    const somenteDocumentosSimples=documentosExtracao.length>0&&documentosExtracao.every(nome=>/pgdas|simples.?nacional|das|declara[cç][aã]o|recibo|extrato/i.test(String(nome||"")));
-    if(somenteDocumentosSimples&&simples.composicaoDas){
-      c.parametros.tributosOrigemSimplesDas=true;
-    }
-
-    // Leva para o faturamento mensal todas as competências do ano-base
-    // efetivamente declaradas no PGDAS, sem transformar RBT12 em receita mensal.
-    const historico=Array.isArray(simples.receitasHistoricas)?simples.receitasHistoricas:[];
-    const historicoAgrupado={};
-    historico.forEach(item=>{
-      const texto=String(item?.competencia||"");
-      const achou=texto.match(/(0?[1-9]|1[0-2])\D+(20\d{2})|(20\d{2})\D+(0?[1-9]|1[0-2])/);
-      if(!achou||item?.receita===null||item?.receita===undefined)return;
-      const mesNumero=Number(achou[1]||achou[4]);
-      const ano=String(achou[2]||achou[3]);
-      if(anoDocumento&&ano!==anoDocumento)return;
-      const mes=MESES[mesNumero-1];
-      const natureza=String(item?.natureza||"NAO_IDENTIFICADA").toUpperCase();
-      const grupo=natureza==="INDUSTRIA"?"industria":natureza==="COMERCIO"?"comercio":natureza==="SERVICOS"?"servicos":natureza==="NAO_IDENTIFICADA"?"declaradoNaoSegregado":"";
-      if(!mes||!grupo)return;
-      const chave=`${grupo}_${mes}`;
-      historicoAgrupado[chave]=num(historicoAgrupado[chave])+num(item.receita);
-    });
-    Object.entries(historicoAgrupado).forEach(([chave,valor])=>{
-      const separador=chave.lastIndexOf("_");
-      const grupo=chave.slice(0,separador),mes=chave.slice(separador+1);
-      if(!c.faturamento[grupo])c.faturamento[grupo]=Object.fromEntries(MESES.map(m=>[m,0]));
-      c.faturamento[grupo][mes]=valor;
-    });
-
-    const naoClassificadas=historico.filter(item=>["","NAO_IDENTIFICADA"].includes(String(item?.natureza||"").toUpperCase())&&num(item?.receita)>0);
-    if(naoClassificadas.length){
-      c.dadosFaltantes=[...(c.dadosFaltantes||[]),"Existem receitas históricas do PGDAS sem natureza identificada; confirme se são indústria, comércio ou serviços antes do comparativo."];
-    }
-
     c.fontes=[...(c.fontes||[]),...(ext?.fontes||[])];
     c.divergencias=ext?.divergencias||[];
-    c.dadosFaltantes=[...new Set([...(c.dadosFaltantes||[]),...(ext?.dadosFaltantes||[])])];
+    c.dadosFaltantes=ext?.dadosFaltantes||[];
 
     return c;
   });
@@ -343,11 +350,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   }
 
   if(manuais.crescimento!=null)setCrescimento(num(manuais.crescimento));
-  if(manuais.extracaoResumo){
-   setExtracaoResumo(manuais.extracaoResumo);
-   // Reaplica históricos antigos que ainda não tinham o campo natureza.
-   setTimeout(()=>mergeExtracao(manuais.extracaoResumo),0);
-  }
+  if(manuais.extracaoResumo)setExtracaoResumo(manuais.extracaoResumo);
   if(manuais.conferenciaIa)setConferenciaIa(manuais.conferenciaIa);
   if(manuais.ia)setIa(manuais.ia);
   if(manuais.conferenciaDesatualizada!=null)setConferenciaDesatualizada(Boolean(manuais.conferenciaDesatualizada));
@@ -666,9 +669,10 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   [regimesValidos]
  );
 
- const prontidao=useMemo(()=>{
+  const prontidao=useMemo(()=>{
   const receitaTotal=MESES.reduce((a,m)=>
-   a+num(base.faturamento?.industria?.[m])
+   a+num(base.faturamento?.naoSegregado?.[m])
+    +num(base.faturamento?.industria?.[m])
     +num(base.faturamento?.comercio?.[m])
     +num(base.faturamento?.servicos?.[m]),0);
 
@@ -762,6 +766,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   const c=comparar(cenario(base,p));
   return{crescimento:p,simples:c.simples,presumido:c.presumido,real:c.real,melhor:c.melhor};
  }),[base]);
+ const maxCenarios=useMemo(()=>Math.max(1,...cenariosPadrao.flatMap(c=>[c.simples,c.presumido,c.real].filter(x=>x?.completo).map(x=>num(x.total)))),[cenariosPadrao]);
 
  const plano306090=useMemo(()=>{
   const plano=conferenciaIa?.planoAcao||{};
@@ -860,11 +865,9 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     headers.forEach((h,i)=>{doc.setFont("helvetica","bold");doc.setFontSize(6.3);doc.setTextColor(...P.white);doc.text(safe(h),x+2,y+4.6);x+=widths[i]});
     y+=rh;
     rows.forEach((row,ri)=>{
-     const linhaImportante=/^(Receita bruta|Receita liquida|Lucro antes de IRPJ\/CSLL|Total de tributos)$/i.test(String(row?.[0]||""));
-     if(linhaImportante){doc.setFillColor(232,240,255);doc.rect(M,y,CONTENT,rh,"F")}
-     else if(ri%2===0){doc.setFillColor(...P.soft);doc.rect(M,y,CONTENT,rh,"F")}
+     if(ri%2===0){doc.setFillColor(...P.soft);doc.rect(M,y,CONTENT,rh,"F")}
      x=M;
-     row.forEach((v,i)=>{doc.setFont("helvetica",i===0||linhaImportante?"bold":"normal");doc.setFontSize(linhaImportante?6.8:6.5);doc.setTextColor(...(linhaImportante?P.navy:P.text));doc.text(safe(v),x+2,y+4.6);x+=widths[i]});
+     row.forEach((v,i)=>{doc.setFont("helvetica",i===0?"bold":"normal");doc.setFontSize(6.5);doc.setTextColor(...P.text);doc.text(safe(v),x+2,y+4.6);x+=widths[i]});
      y+=rh;
     });
     y+=5;
@@ -875,7 +878,6 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     {label:"Presumido",x:calc.presumido,color:P.coral},
     {label:"Real",x:calc.real,color:P.navy}
    ];
-   const regimeDestaque=recomendacaoMotor.status==="RECOMENDADO"?recomendacaoMotor.titulo.replace(/^Regime tecnicamente recomendado:\s*/i,""):recomendacaoMotor.status==="TENDÊNCIA"?recomendacaoMotor.titulo.replace(/^Tendência técnica:\s*/i,""):"PENDENTE DE VALIDACAO TECNICA";
 
    // 1 - capa
    doc.setFillColor(...P.navy2);doc.rect(0,0,W,70,"F");
@@ -893,25 +895,23 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    rs.forEach((r,i)=>kpi(M+i*60,y,56,r.label,r.x.completo?money(r.x.total):"Pendente",r.color,r.x.completo?`Carga ${percent(r.x.carga)}`:"Base insuficiente"));
    y+=29;
 
-   bars("Grafico 1 - Carga anual por regime",
+   bars("Grafico 1 - Carga do periodo por regime",
     rs.filter(r=>r.x.completo).map(r=>({label:r.label,value:r.x.total,color:r.color})),
-    "Comparacao anual somente entre regimes calculaveis."
+    "Comparacao do mesmo periodo somente entre regimes calculaveis."
    );
 
-   title("Recomendacao do motor");
-   card(M,y,CONTENT,42,P.navy,P.navy);
-   doc.setFont("helvetica","bold");doc.setFontSize(8.2);doc.setTextColor(191,208,255);
-   doc.text("O REGIME MELHOR INDICADO PARA A EMPRESA E",W/2,y+8,{align:"center"});
-   doc.setFontSize(16);doc.setTextColor(...P.white);
-   doc.text(safe(regimeDestaque),W/2,y+18,{align:"center"});
-   doc.setFont("helvetica","normal");doc.setFontSize(7.2);doc.setTextColor(216,222,234);
-   doc.text(doc.splitTextToSize(safe(recomendacaoMotor.texto),CONTENT-12),M+6,y+27);
-   y+=48;
+   title("O REGIME MELHOR INDICADO PARA A EMPRESA E");
+   card(M,y,CONTENT,32,P.soft,P.line);
+   doc.setFont("helvetica","bold");doc.setFontSize(10.2);doc.setTextColor(...P.navy);
+   doc.text(doc.splitTextToSize(safe(recomendacaoMotor.titulo),CONTENT-10),M+5,y+7);
+   doc.setFont("helvetica","normal");doc.setFontSize(7.4);doc.setTextColor(...P.text);
+   doc.text(doc.splitTextToSize(safe(recomendacaoMotor.texto),CONTENT-10),M+5,y+17);
+   y+=38;
 
    // 2 - comparativo
    addPage("Comparativo detalhado");
-   title("Comparativo tributario","Total anual, carga efetiva e status de completude.");
-   table(["Regime","Tributos anuais","Carga","Status"],rs.map(r=>[
+   title("Comparativo tributario","Total do periodo, carga efetiva e status de completude.");
+   table(["Regime","Tributos do periodo","Carga","Status"],rs.map(r=>[
     r.label,
     r.x.completo?money(r.x.total):"Pendente",
     r.x.completo?percent(r.x.carga):"-",
@@ -923,29 +923,19 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     "Tributos em relacao a receita bruta."
    );
 
-   const drePct=(dre,valor)=>dre.receitaBruta>0?percent(num(valor)/dre.receitaBruta*100):"-";
-   const dreTax=(dre,chave)=>`${money(dre.detalhamentoTributos?.[chave])} (${drePct(dre,dre.detalhamentoTributos?.[chave])})`;
-   title("DRE comparativa por tributo");
+   title("DRE comparativa por regime e por tributo");
+   const linhaPdf=(label,vs,vp,vr)=>[label,money(vs),money(vp),money(vr)];
    table(["Indicador","Simples","Presumido","Real"],[
-    ["Receita bruta",money(calc.dre.simples.receitaBruta),money(calc.dre.presumido.receitaBruta),money(calc.dre.real.receitaBruta)],
-    ["DAS - total englobado",`${money(calc.dre.simples.tributos)} (${drePct(calc.dre.simples,calc.dre.simples.tributos)})`,"-","-"],
-    ["PIS",dreTax(calc.dre.simples,"pis"),dreTax(calc.dre.presumido,"pis"),dreTax(calc.dre.real,"pis")],
-    ["COFINS",dreTax(calc.dre.simples,"cofins"),dreTax(calc.dre.presumido,"cofins"),dreTax(calc.dre.real,"cofins")],
-    ["CPP / encargos patronais",dreTax(calc.dre.simples,"cpp"),dreTax(calc.dre.presumido,"cpp"),dreTax(calc.dre.real,"cpp")],
-    ["ICMS",dreTax(calc.dre.simples,"icms"),dreTax(calc.dre.presumido,"icms"),dreTax(calc.dre.real,"icms")],
-    ["IPI",dreTax(calc.dre.simples,"ipi"),dreTax(calc.dre.presumido,"ipi"),dreTax(calc.dre.real,"ipi")],
-    ["ISS",dreTax(calc.dre.simples,"iss"),dreTax(calc.dre.presumido,"iss"),dreTax(calc.dre.real,"iss")],
-    ["Receita liquida",money(calc.dre.simples.receitaLiquida),money(calc.dre.presumido.receitaLiquida),money(calc.dre.real.receitaLiquida)],
-    ["CPV",money(calc.dre.simples.cpv),money(calc.dre.presumido.cpv),money(calc.dre.real.cpv)],
-    ["CMV",money(calc.dre.simples.cmv),money(calc.dre.presumido.cmv),money(calc.dre.real.cmv)],
-    ["CSP",money(calc.dre.simples.csp),money(calc.dre.presumido.csp),money(calc.dre.real.csp)],
-    ["Despesas",money(calc.dre.simples.despesas),money(calc.dre.presumido.despesas),money(calc.dre.real.despesas)],
-    ["Lucro antes de IRPJ/CSLL",money(calc.dre.simples.lucroAntesIrCs),money(calc.dre.presumido.lucroAntesIrCs),money(calc.dre.real.lucroAntesIrCs)],
-    ["IRPJ",dreTax(calc.dre.simples,"irpj"),dreTax(calc.dre.presumido,"irpj"),dreTax(calc.dre.real,"irpj")],
-    ["Adicional de IRPJ",dreTax(calc.dre.simples,"adicionalIrpj"),dreTax(calc.dre.presumido,"adicionalIrpj"),dreTax(calc.dre.real,"adicionalIrpj")],
-    ["CSLL",dreTax(calc.dre.simples,"csll"),dreTax(calc.dre.presumido,"csll"),dreTax(calc.dre.real,"csll")],
-    ["Total de tributos",`${money(calc.dre.simples.tributos)} (${drePct(calc.dre.simples,calc.dre.simples.tributos)})`,`${money(calc.dre.presumido.tributos)} (${drePct(calc.dre.presumido,calc.dre.presumido.tributos)})`,`${money(calc.dre.real.tributos)} (${drePct(calc.dre.real,calc.dre.real.tributos)})`],
-    ["Lucro liquido",money(calc.dre.simples.lucroLiquido),money(calc.dre.presumido.lucroLiquido),money(calc.dre.real.lucroLiquido)]
+    linhaPdf("Receita bruta",calc.dre.simples.receitaBruta,calc.dre.presumido.receitaBruta,calc.dre.real.receitaBruta),
+    ...dreTributos.map(x=>linhaPdf(x.label,x.simples,x.presumido,x.real)),
+    linhaPdf("Receita liquida",calc.dre.simples.receitaLiquida,calc.dre.presumido.receitaLiquida,calc.dre.real.receitaLiquida),
+    linhaPdf("CPV",calc.dre.simples.cpv,calc.dre.presumido.cpv,calc.dre.real.cpv),
+    linhaPdf("CMV",calc.dre.simples.cmv,calc.dre.presumido.cmv,calc.dre.real.cmv),
+    linhaPdf("CSP",calc.dre.simples.csp,calc.dre.presumido.csp,calc.dre.real.csp),
+    linhaPdf("Despesas",calc.dre.simples.despesas,calc.dre.presumido.despesas,calc.dre.real.despesas),
+    linhaPdf("Lucro/prejuizo antes IRPJ/CSLL",calc.dre.simples.lucroAntesIrCs,calc.dre.presumido.lucroAntesIrCs,calc.dre.real.lucroAntesIrCs),
+    linhaPdf("TOTAL DOS TRIBUTOS",calc.dre.simples.tributos,calc.dre.presumido.tributos,calc.dre.real.tributos),
+    linhaPdf("Lucro liquido",calc.dre.simples.lucroLiquido,calc.dre.presumido.lucroLiquido,calc.dre.real.lucroLiquido)
    ],[51,44,44,43]);
 
    bars("Grafico 3 - Lucro liquido estimado",[
@@ -956,7 +946,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
    // 3 - crescimento
    addPage("Cenarios de crescimento");
-   title("Sensibilidade a crescimento","O objetivo e verificar se a vantagem matematica se mantem com crescimento da receita.");
+   title("Sensibilidade a crescimento","Todos os regimes partem da mesma receita. O crescimento incide no faturamento; custos, despesas, folha e creditos permanecem constantes ate a definicao de premissas especificas.");
    [
     ["Simples","simples",P.blue],
     ["Presumido","presumido",P.coral],
@@ -1240,7 +1230,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    </Card>
   </div>}
 
-  {aba==="base"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Faturamento mensal</h3><Grade><MensalResumo label="SUBTOTAL DECLARADO" mapa={subtotalFaturamento}/>{[["Indústria","industria"],["Comércio","comercio"],["Serviços","servicos"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.faturamento[k]} onChange={(m,v)=>setMes(["faturamento",k],m,v)}/>)}{MESES.some(m=>num(base.faturamento?.declaradoNaoSegregado?.[m])>0)&&<MensalResumo label="PGDAS SEM SEGREGAÇÃO" mapa={base.faturamento.declaradoNaoSegregado}/>}</Grade>{MESES.some(m=>num(base.faturamento?.declaradoNaoSegregado?.[m])>0)&&<div style={{marginTop:8,padding:9,borderRadius:8,background:"#FFF9EE",color:C.amber,fontSize:9}}>Os valores acima constam no histórico do PGDAS, mas o documento não separa comércio, indústria e serviços. Eles integram o subtotal; o Lucro Presumido ficará pendente até a natureza ser confirmada.</div>}</Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Tributos operacionais</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.tributos[k]} onChange={(m,v)=>setMes(["tributos",k],m,v)}/>)}</Grade></Card><Card>
+  {aba==="base"&&<div style={{display:"grid",gap:10}}><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Faturamento mensal</h3><Grade><MensalResumo label="SUBTOTAL DECLARADO" destaque mapa={Object.fromEntries(MESES.map(m=>[m,num(base.faturamento.naoSegregado?.[m])+num(base.faturamento.industria?.[m])+num(base.faturamento.comercio?.[m])+num(base.faturamento.servicos?.[m])]))}/><Mensal label="PGDAS sem segregação" mapa={base.faturamento.naoSegregado} onChange={(m,v)=>setMes(["faturamento","naoSegregado"],m,v)}/>{[["Indústria","industria"],["Comércio","comercio"],["Serviços","servicos"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.faturamento[k]} onChange={(m,v)=>setMes(["faturamento",k],m,v)}/>)}</Grade><div style={{fontSize:9,color:C.amber,marginTop:10}}>Receitas históricas sem detalhamento permanecem em “PGDAS sem segregação”. O sistema não as distribui nem soma novamente em Comércio ou Indústria.</div></Card><Card><h3 style={{fontFamily:DISPLAY,marginTop:0}}>Tributos operacionais</h3><Grade>{[["PIS","pis"],["COFINS","cofins"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([l,k])=><Mensal key={k} label={l} mapa={base.tributos[k]} onChange={(m,v)=>setMes(["tributos",k],m,v)}/>)}</Grade></Card><Card>
  <h3 style={{fontFamily:DISPLAY,marginTop:0}}>Premissas por regime e natureza da receita</h3>
  <div style={{fontSize:8.8,color:C.muted,marginBottom:10}}>Não use uma única presunção para atividades mistas. Comércio/indústria/serviços devem ser segregados e validados pela operação real.</div>
 
@@ -1250,6 +1240,15 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   <label><b style={{fontSize:9}}>INDÚSTRIA · ANEXO</b><select value={base.parametros.simplesAnexos?.industria||"II"} onChange={e=>setParam(["parametros","simplesAnexos","industria"],e.target.value)} style={{...inp,marginTop:4}}><option value="II">Anexo II</option></select></label>
   <label><b style={{fontSize:9}}>SERVIÇOS · ANEXO</b><select value={base.parametros.simplesAnexos?.servicos||""} onChange={e=>setParam(["parametros","simplesAnexos","servicos"],e.target.value)} style={{...inp,marginTop:4}}><option value="">Confirmar</option><option value="III">Anexo III</option><option value="IV">Anexo IV</option><option value="V">Anexo V</option></select></label>
  </div>
+
+ <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:9,marginBottom:12,padding:10,background:"#F7F9FC",borderRadius:10}}>
+  <label><b style={{fontSize:9}}>UF</b><input value={base.parametros.uf||""} onChange={e=>setParam(["parametros","uf"],e.target.value.toUpperCase())} style={{...inp,marginTop:4}}/></label>
+  <label><b style={{fontSize:9}}>ICMS INTERNO (%)</b><input type="number" step="0.01" value={base.parametros.icmsAliquotaInterna||0} onChange={e=>setParam(["parametros","icmsAliquotaInterna"],num(e.target.value))} style={{...inp,marginTop:4}}/></label>
+  <label style={{display:"flex",gap:7,alignItems:"center",marginTop:18}}><input type="checkbox" checked={Boolean(base.parametros.icmsEstimadoAtivo)} onChange={e=>setParam(["parametros","icmsEstimadoAtivo"],e.target.checked)}/><b style={{fontSize:9}}>USAR ICMS ESTIMADO</b></label>
+  <label><b style={{fontSize:9}}>IPI (%)</b><input type="number" step="0.01" value={base.parametros.ipiAliquotaEstimada||0} onChange={e=>setParam(["parametros","ipiAliquotaEstimada"],num(e.target.value))} style={{...inp,marginTop:4}}/></label>
+  <label style={{display:"flex",gap:7,alignItems:"center",marginTop:18}}><input type="checkbox" checked={Boolean(base.parametros.ipiNcmConfirmado)} onChange={e=>setParam(["parametros","ipiNcmConfirmado"],e.target.checked)}/><b style={{fontSize:9}}>NCM/TIPI CONFIRMADO</b></label>
+ </div>
+ <div style={{fontSize:8.8,color:C.amber,margin:"-5px 0 12px"}}>No Paraná, 19,5% pode ser usada como débito interno preliminar. O ICMS líquido depende de créditos, ST, benefícios e destino. IPI somente deve ser ativado após confirmação do NCM/TIPI.</div>
 
  <div style={{display:"grid",gridTemplateColumns:"150px repeat(2,1fr)",gap:6,alignItems:"center",fontSize:9}}>
   <b>Natureza da receita</b><b>Presunção IRPJ</b><b>Presunção CSLL</b>
@@ -1286,7 +1285,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginTop:10}}>
       <div><small>COMPETÊNCIA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.competencia||base.parametros.anoBase||"-"}</b></div>
-      <div><small>RPA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rpa!=null?moeda(extracaoResumo.simplesNacional.rpa):moeda(MESES.reduce((a,m)=>a+num(base.faturamento.industria[m])+num(base.faturamento.comercio[m])+num(base.faturamento.servicos[m]),0)/12)}</b></div>
+      <div><small>RPA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rpa!=null?moeda(extracaoResumo.simplesNacional.rpa):moeda(MESES.reduce((a,m)=>a+num(base.faturamento.naoSegregado?.[m])+num(base.faturamento.industria[m])+num(base.faturamento.comercio[m])+num(base.faturamento.servicos[m]),0)/12)}</b></div>
       <div><small>RBT12</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rbt12!=null?moeda(extracaoResumo.simplesNacional.rbt12):base.parametros.simplesRbt12Base?moeda(base.parametros.simplesRbt12Base):moeda(calc.fatorR.rbt12)}</b></div>
       <div><small>DAS</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.dasTotal!=null?moeda(extracaoResumo.simplesNacional.dasTotal):calc.simples?.completo?moeda(calc.simples.total):"-"}</b></div>
       <div><small>ALÍQUOTA OBSERVADA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.aliquotaEfetivaObservada!=null?pct(extracaoResumo.simplesNacional.aliquotaEfetivaObservada):calc.simples?.completo?pct(calc.simples.carga):"-"}</b></div>
@@ -1306,7 +1305,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
        {extracaoResumo.simplesNacional.receitasHistoricas.filter(x=>x.mercado==="INTERNO").map((x,i)=>
         <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
-         <small>{x.competencia} · {x.natureza||"NATUREZA NÃO IDENTIFICADA"}</small>
+         <small>{x.competencia} · {String(x.natureza||"NAO_IDENTIFICADA").replace("NAO_IDENTIFICADA","SEM SEGREGAÇÃO")}</small>
          <b style={{display:"block",marginTop:3}}>{x.receita!=null?moeda(x.receita):"-"}</b>
         </div>
        )}
@@ -1477,8 +1476,8 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
   {aba==="comparativo"&&<div style={{display:"grid",gap:10}}>
    <Card style={{background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
-     <div style={{fontSize:8,fontWeight:900,color:"#9EBBFF"}}>DECISÃO TÉCNICA DO REGIME</div>
+   <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+     <div style={{fontSize:10,fontWeight:900,color:"#9EBBFF",letterSpacing:1}}>O REGIME MELHOR INDICADO PARA A EMPRESA É</div>
      <span style={{background:recomendacaoMotor.cor,color:"#fff",borderRadius:999,padding:"5px 8px",fontSize:8,fontWeight:900}}>{recomendacaoMotor.status}</span>
     </div>
     <h2 style={{margin:"6px 0",fontFamily:DISPLAY}}>{recomendacaoMotor.titulo}</h2>
@@ -1497,8 +1496,8 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    </div>
 
    <Card>
-    <h3 style={{fontFamily:DISPLAY,margin:"0 0 4px"}}>Gráfico — comparação anual por regime</h3>
-    <div style={{fontSize:8.7,color:C.muted,marginBottom:12}}>Cenários incompletos não entram no gráfico nem na escolha do menor regime.</div>
+    <h3 style={{fontFamily:DISPLAY,margin:"0 0 4px"}}>Gráfico — comparação do período analisado</h3>
+    <div style={{fontSize:8.7,color:C.muted,marginBottom:12}}>O período deve ser idêntico nos três regimes. Cenários incompletos não entram no gráfico nem na escolha do menor regime.</div>
     <div style={{display:"grid",gap:10}}>
      {regimesValidos.map(r=><div key={r.id} style={{display:"grid",gridTemplateColumns:"145px 1fr 115px",gap:8,alignItems:"center",fontSize:9}}>
       <b>{r.label}</b><div style={{height:18,background:"#EEF1F5",borderRadius:6,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(2,(r.dados.total/comparativoMax)*100)}%`,background:r.color,borderRadius:6}}/></div><b style={{textAlign:"right"}}>{moeda(r.dados.total)}</b>
@@ -1507,44 +1506,31 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
     </div>
    </Card>
 
-   <Card style={{background:`linear-gradient(135deg,${C.blue},${C.navy})`,color:C.white,border:0,textAlign:"center",padding:24}}>
-    <div style={{fontSize:12,fontWeight:900,letterSpacing:1.2,color:"#BFD0FF"}}>O REGIME MELHOR INDICADO PARA A EMPRESA É</div>
-    <div style={{fontSize:30,fontWeight:950,marginTop:8,fontFamily:DISPLAY}}>{recomendacaoMotor.status==="RECOMENDADO"?recomendacaoMotor.titulo.replace(/^Regime tecnicamente recomendado:\s*/i,""):recomendacaoMotor.status==="TENDÊNCIA"?recomendacaoMotor.titulo.replace(/^Tendência técnica:\s*/i,""):"PENDENTE DE VALIDAÇÃO TÉCNICA"}</div>
-    <div style={{fontSize:9.5,marginTop:8,color:"#D8DEEA"}}>{recomendacaoMotor.texto}</div>
+   <Card>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+     <div><small>REGIME ATUAL</small><b style={{display:"block"}}>{base.parametros.regimeAtual||"-"}</b></div>
+     <div><small>MENOR CARGA MATEMÁTICA</small><b style={{display:"block"}}>{calc.melhor?.regime||"Pendente"}</b><span style={{fontSize:8,color:C.muted}}>Use o quadro acima para a recomendação técnica.</span></div>
+     <div><small>ECONOMIA POTENCIAL</small><b style={{display:"block",color:C.green}}>{calc.regimeAtual&&calc.melhor?moeda(calc.economia):"Pendente"}</b></div>
+     <div><small>REDUÇÃO</small><b style={{display:"block",color:C.green}}>{calc.regimeAtual&&calc.melhor?pct(calc.economiaPct):"Pendente"}</b></div>
+    </div>
+    <div style={{marginTop:10,padding:9,background:"#FFF9EE",fontSize:9.5,color:C.amber,borderRadius:8}}>Menor carga matemática não é recomendação automática. O motor técnico considera documentação, risco, elegibilidade, folha, créditos, margem e operação real.</div>
    </Card>
 
    <Card>
     <h3 style={{fontFamily:DISPLAY,marginTop:0}}>DRE comparativa por regime e por tributo</h3>
-    <div style={{fontSize:8.8,color:C.muted,marginBottom:10}}>No Simples, a composição é informativa e já está contida no DAS. No Presumido, IRPJ e CSLL usam bases presumidas por atividade. No Real, IRPJ e CSLL usam o lucro fiscal antes desses tributos.</div>
-    <div style={{display:"grid",gridTemplateColumns:"1.4fr repeat(3,1fr)",gap:5,fontSize:9.5,alignItems:"start"}}>
+    <div style={{fontSize:8.6,color:C.muted,marginBottom:9}}>No Simples, a composição é estimada proporcionalmente a partir do DAS documental e já está contida no total do DAS. No Presumido, IRPJ e CSLL usam bases presumidas. No Real, IRPJ e CSLL incidem somente sobre lucro fiscal positivo.</div>
+    <div style={{display:"grid",gridTemplateColumns:"1.4fr repeat(3,1fr)",gap:3,fontSize:9.2,alignItems:"center"}}>
      <b>Indicador</b><b>Simples</b><b>Presumido</b><b>Real</b>
-     {[
-      ["Receita bruta",d=>moeda(d.receitaBruta),d=>moeda(d.receitaBruta),d=>moeda(d.receitaBruta)],
-      ["DAS - todos os tributos englobados",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,()=>"-",()=>"-"],
-      ...[["PIS","pis"],["COFINS","cofins"],["CPP / encargos patronais","cpp"],["ICMS","icms"],["IPI","ipi"],["ISS","iss"]].map(([rotulo,chave])=>[
-       rotulo,
-       d=>d.detalhamentoTributos?.[chave]==null?"Não identificado":`${moeda(d.detalhamentoTributos[chave])} · ${pct(d.receitaBruta?d.detalhamentoTributos[chave]/d.receitaBruta*100:0)} (no DAS)`,
-       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`,
-       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`
-      ]),
-      ["Receita líquida",d=>moeda(d.receitaLiquida),d=>moeda(d.receitaLiquida),d=>moeda(d.receitaLiquida)],
-      ["CPV",d=>moeda(d.cpv),d=>moeda(d.cpv),d=>moeda(d.cpv)],
-      ["CMV",d=>moeda(d.cmv),d=>moeda(d.cmv),d=>moeda(d.cmv)],
-      ["CSP",d=>moeda(d.csp),d=>moeda(d.csp),d=>moeda(d.csp)],
-      ["Despesas",d=>moeda(d.despesas),d=>moeda(d.despesas),d=>moeda(d.despesas)],
-      ["Lucro antes de IRPJ/CSLL",d=>moeda(d.lucroAntesIrCs),d=>moeda(d.lucroAntesIrCs),d=>moeda(d.lucroAntesIrCs)],
-      ...[["IRPJ","irpj"],["Adicional de IRPJ","adicionalIrpj"],["CSLL","csll"]].map(([rotulo,chave])=>[
-       rotulo,
-       d=>d.detalhamentoTributos?.[chave]==null?"Não identificado":`${moeda(d.detalhamentoTributos[chave])} · ${pct(d.receitaBruta?d.detalhamentoTributos[chave]/d.receitaBruta*100:0)} (no DAS)`,
-       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`,
-       d=>`${moeda(d.detalhamentoTributos?.[chave])} · ${pct(d.receitaBruta?num(d.detalhamentoTributos?.[chave])/d.receitaBruta*100:0)}`
-      ]),
-      ["Total de tributos",d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`,d=>`${moeda(d.tributos)} · ${pct(d.receitaBruta?d.tributos/d.receitaBruta*100:0)}`],
-      ["Lucro líquido estimado",d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido),d=>moeda(d.lucroLiquido)]
-     ].flatMap(([l,s,p,r],i)=>{
-      const importante=/^(Receita bruta|Receita líquida|Lucro antes de IRPJ\/CSLL|Total de tributos)$/i.test(l);
-      const estilo={fontWeight:importante?900:i===0||/Total/.test(l)?800:500,background:importante?"#E8F0FF":"transparent",color:importante?C.navy:"inherit",padding:importante?"7px 6px":"2px 0",borderRadius:importante?6:0,borderLeft:importante?`4px solid ${C.blue}`:0};
-      return [<span key={`${i}l`} style={estilo}>{l}</span>,<span key={`${i}s`} style={estilo}>{s(calc.dre.simples)}</span>,<span key={`${i}p`} style={estilo}>{p(calc.dre.presumido)}</span>,<span key={`${i}r`} style={estilo}>{r(calc.dre.real)}</span>];
+     {[["Receita bruta","receitaBruta"],...dreTributos.map(x=>[x.label,x.key,x]),["Receita líquida","receitaLiquida"],["CPV","cpv"],["CMV","cmv"],["CSP","csp"],["Despesas","despesas"],["Lucro ou prejuízo antes de IRPJ/CSLL","lucroAntesIrCs"],["Total de tributos","tributos"],["Lucro líquido estimado","lucroLiquido"]].flatMap(([l,k,tributo])=>{
+      const importante=["receitaBruta","receitaLiquida","lucroAntesIrCs","tributos"].includes(k);
+      const valores=tributo
+       ?[tributo.simples,tributo.presumido,tributo.real]
+       :[calc.dre.simples[k],calc.dre.presumido[k],calc.dre.real[k]];
+      const estilo={padding:importante?"7px 8px":"3px 0",background:importante?"#EAF1FF":"transparent",fontWeight:importante?900:500,borderLeft:importante?`4px solid ${C.blue}`:0};
+      return [
+       <span key={k+"l"} style={estilo}>{l}</span>,
+       ...valores.map((v,i)=><span key={k+i} style={estilo}>{moeda(v)}{tributo&&k!=="das"?` · ${pct(num(calc.dre.simples.receitaBruta)>0?num(v)/num(calc.dre.simples.receitaBruta)*100:0)}`:""}</span>)
+      ];
      })}
     </div>
     <div style={{marginTop:10,padding:9,background:"#F7F9FC",borderRadius:8,fontSize:8.8,color:C.muted}}>
@@ -1575,7 +1561,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
    <Card>
     <h3 style={{fontFamily:DISPLAY,margin:"0 0 4px"}}>Gráfico — sensibilidade por crescimento</h3>
-    <div style={{fontSize:8.7,color:C.muted,marginBottom:12}}>Atual, +10%, +20%, +30% e +50% para os três regimes.</div>
+    <div style={{fontSize:8.7,color:C.muted,marginBottom:12}}>Atual, +10%, +20%, +30% e +50% sobre a mesma base de faturamento para os três regimes. Custos, despesas, folha e créditos permanecem constantes até que o consultor defina premissas específicas.</div>
     <div style={{overflowX:"auto"}}>
      <div style={{minWidth:760,display:"grid",gap:10}}>
       {[
@@ -1583,14 +1569,12 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
        ["Presumido","presumido","#FF6B4A"],
        ["Real","real","#17233D"]
       ].map(([label,key,color])=>{
-       const vals=cenariosPadrao.map(c=>c[key]?.completo?c[key].total:0);
-       const max=Math.max(...vals,1);
        return <div key={key}>
         <div style={{fontSize:9,fontWeight:900,marginBottom:5}}>{label}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
          {cenariosPadrao.map(c=><div key={c.crescimento} style={{padding:8,background:"#F7F9FC",borderRadius:8}}>
           <div style={{fontSize:8,color:C.muted}}>{c.crescimento===0?"Atual":`+${c.crescimento}%`}</div>
-          <div style={{height:42,display:"flex",alignItems:"end",margin:"5px 0"}}><div style={{height:c[key]?.completo?`${Math.max(4,(num(c[key]?.total)/max)*100)}%`:"4%",width:"100%",background:c[key]?.completo?color:"#D8DEEA",borderRadius:"5px 5px 2px 2px"}}/></div>
+          <div style={{height:42,display:"flex",alignItems:"end",margin:"5px 0"}}><div style={{height:c[key]?.completo?`${Math.max(4,(num(c[key]?.total)/maxCenarios)*100)}%`:"4%",width:"100%",background:c[key]?.completo?color:"#D8DEEA",borderRadius:"5px 5px 2px 2px"}}/></div>
           <b style={{fontSize:8.4}}>{c[key]?.completo?moeda(c[key].total):"Pendente"}</b>
          </div>)}
         </div>
