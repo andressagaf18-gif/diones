@@ -2835,13 +2835,14 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
     empresaCadastral&&atividadeSelecionada&&descricaoAtividadeReal.trim().length>=10
   );
 
-  return <div className="sim-reforma-v5" style={{display:"grid",gap:9,minWidth:0}}>
+  return <div className="sim-reforma-v5" style={{display:"grid",gap:9,minWidth:0,width:"100%",maxWidth:"100%",overflow:"hidden"}}>
     <style>{`
-      .sim-reforma-v5 *{box-sizing:border-box}
+      .sim-reforma-v5 *{box-sizing:border-box;min-width:0}
+      .sim-reforma-v5 > *{max-width:100%}
       .sim-reforma-v5 .sr-grid2,.sim-reforma-v5 .sr-grid3{
         display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:8px;min-width:0
       }
-      .sim-reforma-v5 .sr-table-wrap{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-inline:contain}
+      .sim-reforma-v5 .sr-table-wrap{width:100%;max-width:100%;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-inline:contain;contain:inline-size}
       .sim-reforma-v5 .sr-table-wrap table{display:table}
       .sim-reforma-v5 .sr-tabs{
         display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px
@@ -2849,6 +2850,18 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       .sim-reforma-v5 .sr-tabs::-webkit-scrollbar{display:none}
       @media(min-width:760px){
         .sim-reforma-v5 .sr-grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
+      }
+      @media(max-width:600px){
+        .sim-reforma-v5 h1,.sim-reforma-v5 h2,.sim-reforma-v5 h3{overflow-wrap:anywhere}
+        .sim-reforma-v5 .sr-table-wrap{overflow:visible;contain:none}
+        .sim-reforma-v5 .sr-table-wrap table{min-width:0!important;width:100%!important;display:block}
+        .sim-reforma-v5 .sr-table-wrap thead{display:none}
+        .sim-reforma-v5 .sr-table-wrap tbody{display:grid;gap:8px;width:100%}
+        .sim-reforma-v5 .sr-table-wrap tr{display:block;width:100%;border:1px solid #E3E7EF!important;border-radius:10px;overflow:hidden;background:#fff!important}
+        .sim-reforma-v5 .sr-table-wrap td{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;width:100%;padding:7px 8px!important;text-align:right!important;white-space:normal!important;overflow-wrap:anywhere}
+        .sim-reforma-v5 .sr-table-wrap td:before{content:attr(data-label);text-align:left;font-weight:900;color:#5B667A;flex:0 0 43%}
+        .sim-reforma-v5 .sr-table-wrap td:first-child{background:#17233D;color:#fff;font-weight:950}
+        .sim-reforma-v5 .sr-table-wrap td:first-child:before{color:#D8DEEA}
       }
     `}</style>
 
@@ -3603,29 +3616,29 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             </tr></thead>
             <tbody>
               {linhasComparacaoRegimes.map(([nome,realValor,presValor,simplesValor,reformaValor])=><tr key={nome} style={{borderBottom:"1px solid #E8ECF2"}}>
-                <td style={{padding:"7px 6px",fontWeight:800}}>{nome}</td>
-                {[realValor,presValor,simplesValor,reformaValor].map((valor,i)=><td key={i} style={{padding:"7px 6px",textAlign:"right",whiteSpace:"nowrap"}}>{valor==null?'—':moedaSimulador(valor)}</td>)}
+                <td data-label="Tributo" style={{padding:"7px 6px",fontWeight:800}}>{nome}</td>
+                {[realValor,presValor,simplesValor,reformaValor].map((valor,i)=><td data-label={['Lucro Real','Lucro Presumido','Simples','Reforma'][i]} key={i} style={{padding:"7px 6px",textAlign:"right",whiteSpace:"nowrap"}}>{valor==null?'—':moedaSimulador(valor)}</td>)}
               </tr>)}
               <tr style={{background:"#EAF1F5",fontWeight:950}}>
-                <td style={{padding:"8px 6px"}}>CARGA TOTAL ESTIMADA</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{reforma==null?'Pendente':moedaSimulador(reforma)}</td>
+                <td data-label="Indicador" style={{padding:"8px 6px"}}>CARGA TOTAL ESTIMADA</td>
+                <td data-label="Lucro Real" style={{padding:"8px 6px",textAlign:"right"}}>{estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):'Pendente'}</td>
+                <td data-label="Lucro Presumido" style={{padding:"8px 6px",textAlign:"right"}}>{estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):'Pendente'}</td>
+                <td data-label="Simples" style={{padding:"8px 6px",textAlign:"right"}}>{dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):'Pendente'}</td>
+                <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{reforma==null?'Pendente':moedaSimulador(reforma)}</td>
               </tr>
               <tr>
-                <td style={{padding:"8px 6px"}}>Alíquota nominal</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador((estimativaRealComparativo.valor+n(estimativaRealComparativo.creditoPisCofins))/fat*100):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{percentualSimulador(iva)}</td>
+                <td data-label="Indicador" style={{padding:"8px 6px"}}>Alíquota nominal</td>
+                <td data-label="Lucro Real" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador((estimativaRealComparativo.valor+n(estimativaRealComparativo.creditoPisCofins))/fat*100):'Pendente'}</td>
+                <td data-label="Lucro Presumido" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
+                <td data-label="Simples" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
+                <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{percentualSimulador(iva)}</td>
               </tr>
               <tr style={{background:"#EAF1F5",fontWeight:950}}>
-                <td style={{padding:"8px 6px"}}>Alíquota efetiva</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador(estimativaRealComparativo.valor/fat*100):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat?percentualSimulador(ibsCbsLiquido/fat*100):'Pendente'}</td>
+                <td data-label="Indicador" style={{padding:"8px 6px"}}>Alíquota efetiva</td>
+                <td data-label="Lucro Real" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador(estimativaRealComparativo.valor/fat*100):'Pendente'}</td>
+                <td data-label="Lucro Presumido" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
+                <td data-label="Simples" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
+                <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{fat?percentualSimulador(ibsCbsLiquido/fat*100):'Pendente'}</td>
               </tr>
             </tbody>
           </table>
@@ -3648,12 +3661,12 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
               const ivaAnual=ibsAnual+cbsAnual;
               const comparar=item.ano===2026?0:(atualAnual?((ivaAnual/atualAnual)-1)*100:null);
               return <tr key={item.ano} style={{borderBottom:"1px solid #E3E7EF"}}>
-                <td style={{padding:"8px 6px",fontWeight:950}}>{item.ano}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{atual==null?'Pendente':moedaSimulador(atualAnual)}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{moedaSimulador(ibsAnual)}</td>
-                <td style={{padding:"8px 6px",textAlign:"right"}}>{moedaSimulador(cbsAnual)}</td>
-                <td style={{padding:"8px 6px",textAlign:"right",fontWeight:950}}>{moedaSimulador(ivaAnual)}</td>
-                <td style={{padding:"8px 6px",textAlign:"right",fontWeight:900,color:comparar>0?'#B54708':'#176B47'}}>{comparar==null?'Pendente':percentualSimulador(comparar)}</td>
+                <td data-label="Ano" style={{padding:"8px 6px",fontWeight:950}}>{item.ano}</td>
+                <td data-label="Carga atual" style={{padding:"8px 6px",textAlign:"right"}}>{atual==null?'Pendente':moedaSimulador(atualAnual)}</td>
+                <td data-label="IBS líquido" style={{padding:"8px 6px",textAlign:"right"}}>{moedaSimulador(ibsAnual)}</td>
+                <td data-label="CBS líquida" style={{padding:"8px 6px",textAlign:"right"}}>{moedaSimulador(cbsAnual)}</td>
+                <td data-label="IBS + CBS" style={{padding:"8px 6px",textAlign:"right",fontWeight:950}}>{moedaSimulador(ivaAnual)}</td>
+                <td data-label="vs carga atual" style={{padding:"8px 6px",textAlign:"right",fontWeight:900,color:comparar>0?'#B54708':'#176B47'}}>{comparar==null?'Pendente':percentualSimulador(comparar)}</td>
               </tr>})}</tbody>
           </table>
         </div>
