@@ -1524,6 +1524,25 @@ function SimuladorReformaPublico({
   const [naoSeiImpostoAtual,setNaoSeiImpostoAtual]=useState(false);
   const [tributosFora,setTributosFora]=useState("");
 
+  // Composição necessária para demonstrar a carga completa na transição.
+  const [pisAtual,setPisAtual]=useState("");
+  const [cofinsAtual,setCofinsAtual]=useState("");
+  const [icmsAtual,setIcmsAtual]=useState("");
+  const [issAtual,setIssAtual]=useState("");
+  const [ipiAtual,setIpiAtual]=useState("");
+  const [cppAtual,setCppAtual]=useState("");
+  const [irpjAtual,setIrpjAtual]=useState("");
+  const [adicionalIrpjAtual,setAdicionalIrpjAtual]=useState("");
+  const [csllAtual,setCsllAtual]=useState("");
+  const [outrosAtuais,setOutrosAtuais]=useState("");
+  const [impostoSeletivo,setImpostoSeletivo]=useState("");
+  const [descontosIncondicionais,setDescontosIncondicionais]=useState("");
+  const [baseIbsCbsManual,setBaseIbsCbsManual]=useState("");
+  const [manterIpiExcecao,setManterIpiExcecao]=useState(false);
+  const [opcaoSimplesIbsCbs,setOpcaoSimplesIbsCbs]=useState("DENTRO");
+  const [dasDentroProjetado,setDasDentroProjetado]=useState("");
+  const [dasResidualProjetado,setDasResidualProjetado]=useState("");
+
   // Dados para estimar a carga vigente quando o usuário não tiver o imposto real.
   const [rbt12,setRbt12]=useState("");
   const [anexoSimples,setAnexoSimples]=useState("");
@@ -1537,6 +1556,9 @@ function SimuladorReformaPublico({
   const [ibs,setIbs]=useState("0,1");
   const [reducaoCbs,setReducaoCbs]=useState("0");
   const [reducaoIbs,setReducaoIbs]=useState("0");
+  const [tratamentoIbsCbs,setTratamentoIbsCbs]=useState("PADRAO");
+  const [classificacaoFiscal,setClassificacaoFiscal]=useState("");
+  const [tratamentoConfirmado,setTratamentoConfirmado]=useState(false);
   const [crescimento,setCrescimento]=useState("20");
 
   const [relatorioIa,setRelatorioIa]=useState(null);
@@ -1558,7 +1580,7 @@ function SimuladorReformaPublico({
 
   const [despesas,setDespesas]=useState(()=>
     Object.fromEntries(categorias.map(([id,label])=>[
-      id,{id,label,valor:"",creditoAtual:"",considerarNovo:true}
+      id,{id,label,valor:"",creditoAtual:"",considerarNovo:false}
     ]))
   );
 
@@ -1824,20 +1846,30 @@ function SimuladorReformaPublico({
     };
   }
 
+  const anoCenario=/^20(2[6-9]|3[0-3])$/.test(cenarioAliquota)
+    ?Number(cenarioAliquota)
+    :null;
   const cbsNom=n(cbs);
   const ibsNom=n(ibs);
   const redCbs=Math.min(100,Math.max(0,n(reducaoCbs)));
   const redIbs=Math.min(100,Math.max(0,n(reducaoIbs)));
   const cbsEfetiva=cbsNom*(1-redCbs/100);
-  const ibsEfetiva=ibsNom*(1-redIbs/100);
+  const fatorIbsTransicao={2029:.1,2030:.2,2031:.3,2032:.4}[anoCenario]??1;
+  const ibsEfetivaCheia=ibsNom*(1-redIbs/100);
+  const ibsEfetiva=ibsEfetivaCheia*fatorIbsTransicao;
   const iva=cbsEfetiva+ibsEfetiva;
 
   const linhas=Object.values(despesas);
   const despesasTotal=linhas.reduce((a,x)=>a+n(x.valor),0);
   const creditoAtual=linhas.reduce((a,x)=>a+n(x.creditoAtual),0);
-  const creditoNovo=linhas.reduce(
-    (a,x)=>a+(x.considerarNovo?n(x.valor)*iva/100:0),0
+  // O crédito somente entra no cálculo quando o usuário confirma a linha.
+  // Ter documento ou despesa não significa, sozinho, crédito apropriável.
+  const baseCreditosConfirmados=linhas.reduce(
+    (a,x)=>a+(x.considerarNovo?n(x.valor):0),0
   );
+  const creditoCbsNovo=baseCreditosConfirmados*cbsEfetiva/100;
+  const creditoIbsNovo=baseCreditosConfirmados*ibsEfetiva/100;
+  const creditoNovo=creditoCbsNovo+creditoIbsNovo;
 
   const estimativaAtual=useMemo(()=>{
     if(!naoSeiImpostoAtual)return null;
@@ -1853,23 +1885,118 @@ function SimuladorReformaPublico({
 
   const atual=naoSeiImpostoAtual
     ?(estimativaAtual?.valor??null)
-    :n(impostoAtual);
+    :(String(impostoAtual||"").trim()?n(impostoAtual):null);
 
-  const debitoCbs=fat*cbsEfetiva/100;
-  const debitoIbs=fat*ibsEfetiva/100;
+  const faseTeste2026=anoCenario===2026;
+
+  const proporcaoLegados={
+    2026:{pisCofins:1,icmsIss:1,ipi:1},
+    2027:{pisCofins:0,icmsIss:1,ipi:0},
+    2028:{pisCofins:0,icmsIss:1,ipi:0},
+    2029:{pisCofins:0,icmsIss:.9,ipi:0},
+    2030:{pisCofins:0,icmsIss:.8,ipi:0},
+    2031:{pisCofins:0,icmsIss:.7,ipi:0},
+    2032:{pisCofins:0,icmsIss:.6,ipi:0},
+    2033:{pisCofins:0,icmsIss:0,ipi:0},
+  };
+  const proporcao=proporcaoLegados[anoCenario]||
+    {pisCofins:0,icmsIss:0,ipi:0};
+
+  const estimado=estimativaAtual||{};
+  const valorEstimadoLocal=n(estimado.tributoLocalMensal);
+  const tipoLocal=String(estimado.tributoLocalTipo||"").toUpperCase();
+  const pisAtualUsado=n(pisAtual)||n(estimado.pisMensal)||n(estimado.pisLiquido);
+  const cofinsAtualUsado=n(cofinsAtual)||n(estimado.cofinsMensal)||n(estimado.cofinsLiquido);
+  const icmsAtualUsado=n(icmsAtual)||(tipoLocal.includes("ICMS")?valorEstimadoLocal:0);
+  const issAtualUsado=n(issAtual)||(tipoLocal.includes("ISS")?valorEstimadoLocal:0);
+  const ipiAtualUsado=n(ipiAtual);
+  const cppAtualUsado=n(cppAtual);
+  const irpjAtualUsado=n(irpjAtual)||n(estimado.irpjMensalEquivalente)||n(estimado.irpj);
+  const adicionalIrpjAtualUsado=n(adicionalIrpjAtual)||n(estimado.adicionalIrpjMensalEquivalente)||n(estimado.adicionalIrpj);
+  const csllAtualUsado=n(csllAtual)||n(estimado.csllMensalEquivalente)||n(estimado.csll);
+  const outrosAtuaisUsados=n(outrosAtuais)+fora;
+  const isUsado=anoCenario&&anoCenario>=2027?n(impostoSeletivo):0;
+
+  // LC 214/2025, art. 12: cálculo por fora. Excluem-se IBS/CBS,
+  // IPI, descontos incondicionais e, enquanto cobrados, ICMS, ISS,
+  // PIS e Cofins. O Imposto Seletivo integra o valor da operação.
+  const exclusoesBase=
+    n(descontosIncondicionais)+
+    pisAtualUsado*proporcao.pisCofins+
+    cofinsAtualUsado*proporcao.pisCofins+
+    icmsAtualUsado*proporcao.icmsIss+
+    issAtualUsado*proporcao.icmsIss+
+    ipiAtualUsado*(manterIpiExcecao?1:proporcao.ipi);
+  const baseIbsCbs=n(baseIbsCbsManual)>0
+    ?n(baseIbsCbsManual)
+    :Math.max(0,fat-exclusoesBase+isUsado);
+
+  const debitoCbs=baseIbsCbs*cbsEfetiva/100;
+  const debitoIbs=baseIbsCbs*ibsEfetiva/100;
   const debitoNovo=debitoCbs+debitoIbs;
-  const ibsCbsLiquido=Math.max(0,debitoNovo-creditoNovo);
-  const reforma=fat>0&&iva>0?fora+ibsCbsLiquido:null;
+  const cbsLiquida=Math.max(0,debitoCbs-creditoCbsNovo);
+  const ibsLiquido=Math.max(0,debitoIbs-creditoIbsNovo);
+  const ibsCbsLiquido=cbsLiquida+ibsLiquido;
 
-  const diferenca=
-    atual==null||atual<=0||reforma==null
-      ?null
-      :reforma-atual;
+  const pisCofinsRemanescentes=(pisAtualUsado+cofinsAtualUsado)*proporcao.pisCofins;
+  const icmsIssRemanescentes=(icmsAtualUsado+issAtualUsado)*proporcao.icmsIss;
+  const ipiRemanescente=ipiAtualUsado*(manterIpiExcecao?1:proporcao.ipi);
+  const tributosMantidos=
+    irpjAtualUsado+
+    adicionalIrpjAtualUsado+
+    csllAtualUsado+
+    cppAtualUsado+
+    outrosAtuaisUsados+
+    ipiRemanescente+
+    isUsado;
 
-  const variacao=
-    diferenca==null||atual<=0
-      ?null
-      :(diferenca/atual)*100;
+  const cargaDetalhadaInformada=
+    pisAtualUsado+cofinsAtualUsado+icmsAtualUsado+issAtualUsado+
+    ipiAtualUsado+cppAtualUsado+irpjAtualUsado+adicionalIrpjAtualUsado+
+    csllAtualUsado+outrosAtuaisUsados;
+  const temComposicaoAtual=cargaDetalhadaInformada>0||regime==="Simples Nacional";
+  const aliquotasFuturasInformadas=cbsNom>0&&ibsNom>0;
+  const reducaoExigeValidacao=(redCbs>0||redIbs>0)&&!tratamentoConfirmado;
+  const precoFinalNovo=baseIbsCbs+debitoCbs+debitoIbs;
+
+  let reforma=null;
+  let comparacaoPermitida=false;
+  let motivoPendencia="";
+
+  if(faseTeste2026){
+    // O teste não substitui a carga vigente nem autoriza economia matemática.
+    reforma=atual!=null&&atual>0?atual:null;
+    motivoPendencia="2026 é fase de teste: CBS/IBS destacados não representam a carga definitiva e não geram comparação de economia.";
+  }else if(!anoCenario){
+    motivoPendencia="Selecione um ano da transição entre 2026 e 2033.";
+  }else if(!aliquotasFuturasInformadas){
+    motivoPendencia="Informe as alíquotas editáveis de CBS e IBS para o ano selecionado.";
+  }else if(reducaoExigeValidacao){
+    motivoPendencia="Confirme o enquadramento legal da redução ou alíquota zero antes de comparar.";
+  }else if(regime==="Simples Nacional"){
+    if(opcaoSimplesIbsCbs==="DENTRO"){
+      reforma=n(dasDentroProjetado)>0?n(dasDentroProjetado)+outrosAtuaisUsados+isUsado:null;
+      motivoPendencia=reforma==null?"Informe o DAS projetado com IBS/CBS dentro do Simples.":"";
+    }else{
+      reforma=n(dasResidualProjetado)>0
+        ?n(dasResidualProjetado)+ibsCbsLiquido+outrosAtuaisUsados+isUsado
+        :null;
+      motivoPendencia=reforma==null?"Informe o DAS residual projetado sem IBS/CBS.":"";
+    }
+    comparacaoPermitida=reforma!=null&&atual!=null&&atual>0;
+  }else if(!temComposicaoAtual){
+    motivoPendencia="Detalhe os tributos atuais para calcular corretamente os valores remanescentes.";
+  }else{
+    reforma=
+      pisCofinsRemanescentes+
+      icmsIssRemanescentes+
+      tributosMantidos+
+      ibsCbsLiquido;
+    comparacaoPermitida=atual!=null&&atual>0;
+  }
+
+  const diferenca=comparacaoPermitida?reforma-atual:null;
+  const variacao=comparacaoPermitida&&atual>0?(diferenca/atual)*100:null;
 
   const cargaAtual=
     atual!=null&&atual>0&&fat>0
@@ -1888,13 +2015,7 @@ function SimuladorReformaPublico({
   const creditoNovoProjetado=
     creditoNovo*(1+crescimentoPct/100);
   const reformaProjetada=
-    reforma==null
-      ?null
-      :fora*(1+crescimentoPct/100)+
-       Math.max(
-         0,
-         fatProjetado*iva/100-creditoNovoProjetado
-       );
+    reforma==null?null:reforma*(1+crescimentoPct/100);
 
   function aplicarCenario(valor){
     setCenarioAliquota(valor);
@@ -1907,10 +2028,10 @@ function SimuladorReformaPublico({
       return;
     }
 
-    if(valor==="referencia"){
-      // Cenário gerencial editável — NÃO é apresentado como alíquota oficial definitiva.
-      setCbs("9,3");
-      setIbs("18,7");
+    if(/^20(2[7-9]|3[0-3])$/.test(valor)){
+      // As alíquotas posteriores a 2026 não são travadas no código.
+      setCbs("");
+      setIbs(valor==="2027"||valor==="2028"?"0,1":"");
       setReducaoCbs("0");
       setReducaoIbs("0");
       return;
@@ -2051,12 +2172,12 @@ function SimuladorReformaPublico({
       };
     }
 
-    if(cenarioAliquota==="referencia"){
+    if(/^20(2[7-9]|3[0-3])$/.test(cenarioAliquota)){
       return{
-        titulo:"Cenário gerencial de referência",
-        texto:"CBS 9,3% + IBS 18,7% = 28%. Esta combinação é uma hipótese editável do simulador e NÃO é apresentada como a alíquota legal definitiva da empresa.",
+        titulo:`Transição ${cenarioAliquota} — parâmetros editáveis`,
+        texto:"As alíquotas de referência posteriores a 2026 não são constantes definitivas deste sistema. Devem ser preenchidas e validadas conforme a norma vigente, operação, destino e tratamento aplicável.",
         oficial:false,
-        referencia:"Premissa gerencial editável — validar alíquota e tratamento aplicáveis na data da análise.",
+        referencia:"EC 132/2023 e LC 214/2025 — validar atos e resoluções vigentes no ano simulado.",
       };
     }
 
@@ -2069,7 +2190,7 @@ function SimuladorReformaPublico({
   },[cenarioAliquota,cbs,ibs]);
 
   const snapshot={
-    versao:"SIMULADOR_REFORMA_PUBLICO_V5",
+    versao:"SIMULADOR_REFORMA_PUBLICO_V6_CARGA_COMPLETA",
     etapa,
     participante:{nome,email,telefone},
     empresa:{
@@ -2098,13 +2219,31 @@ function SimuladorReformaPublico({
       sugestaoTributoLocal,
       custosDespesasDedutiveis:n(custosDespesasDedutiveis)||null,
       tributosForaIbsCbsMensal:fora,
+      composicaoCargaAtual:{
+        pis:pisAtualUsado,cofins:cofinsAtualUsado,icms:icmsAtualUsado,iss:issAtualUsado,
+        ipi:ipiAtualUsado,cpp:cppAtualUsado,irpj:irpjAtualUsado,
+        adicionalIrpj:adicionalIrpjAtualUsado,csll:csllAtualUsado,outros:outrosAtuaisUsados,
+      },
+      descontosIncondicionais:n(descontosIncondicionais),
+      baseIbsCbs,
+      baseIbsCbsManual:n(baseIbsCbsManual)||null,
+      impostoSeletivo:isUsado,
+      manterIpiExcecao,
+      opcaoSimplesIbsCbs,
+      dasDentroProjetado:n(dasDentroProjetado)||null,
+      dasResidualProjetado:n(dasResidualProjetado)||null,
       cenarioAliquota,
       cbsPct:cbsNom,
       ibsPct:ibsNom,
       reducaoCbsPct:redCbs,
       reducaoIbsPct:redIbs,
+      tratamentoIbsCbs,
+      classificacaoFiscal,
+      tratamentoConfirmado,
       cbsEfetivaPct:cbsEfetiva,
       ibsEfetivaPct:ibsEfetiva,
+      ibsEfetivaCheiaPct:ibsEfetivaCheia,
+      fatorIbsTransicao,
       ivaEfetivoPct:iva,
       fonteAliquota,
       crescimentoPct,
@@ -2113,15 +2252,29 @@ function SimuladorReformaPublico({
       despesasMensais:despesasTotal,
       creditoAtual,
       creditoNovo,
+      creditoCbsNovo,
+      creditoIbsNovo,
+      baseCreditosConfirmados,
       linhas,
     },
     memoria:{
       faturamento:fat,
+      baseIbsCbs,
       debitoCbs,
+      creditoCbs:creditoCbsNovo,
+      cbsLiquida,
       debitoIbs,
+      creditoIbs:creditoIbsNovo,
+      ibsLiquido,
       creditoNovo,
       ibsCbsLiquido,
-      tributosFora:fora,
+      precoFinalComIbsCbs:precoFinalNovo,
+      pisCofinsRemanescentes,
+      icmsIssRemanescentes,
+      ipiRemanescente,
+      tributosMantidos,
+      impostoSeletivo:isUsado,
+      tributosFora:outrosAtuaisUsados,
       totalReforma:reforma,
     },
     resultado:{
@@ -2134,6 +2287,8 @@ function SimuladorReformaPublico({
       fatProjetado,
       atualProjetado,
       reformaProjetada,
+      comparacaoPermitida,
+      motivoPendencia,
     }
   };
 
@@ -2142,8 +2297,12 @@ function SimuladorReformaPublico({
     descricaoAtividadeReal,regime,natureza,faturamento,impostoAtual,
     naoSeiImpostoAtual,rbt12,anexoSimples,fs12,aliquotaLocalAtual,
     aliquotaLocalConfirmada,custosDespesasDedutiveis,tributosFora,
-    cenarioAliquota,cbs,ibs,
-    reducaoCbs,reducaoIbs,crescimento,despesas
+    cenarioAliquota,cbs,ibs,reducaoCbs,reducaoIbs,crescimento,despesas,
+    pisAtual,cofinsAtual,icmsAtual,issAtual,ipiAtual,cppAtual,irpjAtual,
+    adicionalIrpjAtual,csllAtual,outrosAtuais,impostoSeletivo,
+    descontosIncondicionais,baseIbsCbsManual,manterIpiExcecao,
+    opcaoSimplesIbsCbs,dasDentroProjetado,dasResidualProjetado,
+    tratamentoIbsCbs,classificacaoFiscal,tratamentoConfirmado
   ]);
 
   function textoIaSeguroSimulador(valor){
@@ -2390,8 +2549,8 @@ function SimuladorReformaPublico({
   <div class="grid">
     <div class="kpi"><small>FATURAMENTO MENSAL</small><strong>${moedaSimulador(fat)}</strong></div>
     <div class="kpi"><small>CENÁRIO ATUAL</small><strong>${atual==null?"Pendente":moedaSimulador(atual)}</strong></div>
-    <div class="kpi"><small>CENÁRIO REFORMA</small><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
-    <div class="kpi"><small>VARIAÇÃO</small><strong>${variacao==null?"Pendente":percentualSimulador(variacao)}</strong></div>
+    <div class="kpi"><small>${faseTeste2026?"CARGA VIGENTE EM 2026":"CENÁRIO REFORMA"}</small><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
+    <div class="kpi"><small>VARIAÇÃO COMPARÁVEL</small><strong>${variacao==null?"Não comparável":percentualSimulador(variacao)}</strong></div>
   </div>
 
   <h2>Empresa e atividade analisada</h2>
@@ -2417,7 +2576,10 @@ function SimuladorReformaPublico({
     <div class="row"><span>IBS nominal</span><strong>${percentualSimulador(ibsNom)}</strong></div>
     <div class="row"><span>Redução CBS</span><strong>${percentualSimulador(redCbs)}</strong></div>
     <div class="row"><span>Redução IBS</span><strong>${percentualSimulador(redIbs)}</strong></div>
-    <div class="row"><span>IVA efetivo usado</span><strong>${percentualSimulador(iva)}</strong></div>
+    <div class="row"><span>IBS efetivo no ano</span><strong>${percentualSimulador(ibsEfetiva)}</strong></div>
+    <div class="row"><span>Alíquota combinada aplicada</span><strong>${percentualSimulador(iva)}</strong></div>
+    <div class="row"><span>Tratamento</span><strong>${tratamentoIbsCbs}</strong></div>
+    <div class="row"><span>Classificação/fundamento</span><strong>${classificacaoFiscal||"Pendente"}</strong></div>
   </div>
 
   <div class="alert" style="margin-top:14px">
@@ -2427,13 +2589,26 @@ function SimuladorReformaPublico({
 
   <h2>Memória de cálculo</h2>
   <div class="box">
+    <div class="row"><span>Base IBS/CBS — por fora</span><strong>${moedaSimulador(baseIbsCbs)}</strong></div>
     <div class="row"><span>Débito CBS</span><strong>${moedaSimulador(debitoCbs)}</strong></div>
+    <div class="row"><span>(-) Crédito CBS validado</span><strong>${moedaSimulador(creditoCbsNovo)}</strong></div>
+    <div class="row"><span>CBS líquida</span><strong>${moedaSimulador(cbsLiquida)}</strong></div>
     <div class="row"><span>Débito IBS</span><strong>${moedaSimulador(debitoIbs)}</strong></div>
-    <div class="row"><span>(-) Créditos potenciais</span><strong>${moedaSimulador(creditoNovo)}</strong></div>
+    <div class="row"><span>(-) Crédito IBS validado</span><strong>${moedaSimulador(creditoIbsNovo)}</strong></div>
+    <div class="row"><span>IBS líquido</span><strong>${moedaSimulador(ibsLiquido)}</strong></div>
     <div class="row"><span>IBS/CBS líquido</span><strong>${moedaSimulador(ibsCbsLiquido)}</strong></div>
-    <div class="row"><span>(+) Tributos fora do IBS/CBS</span><strong>${moedaSimulador(fora)}</strong></div>
-    <div class="row"><span>Total Reforma</span><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
+    <div class="row"><span>PIS/Cofins remanescentes</span><strong>${moedaSimulador(pisCofinsRemanescentes)}</strong></div>
+    <div class="row"><span>ICMS/ISS remanescentes</span><strong>${moedaSimulador(icmsIssRemanescentes)}</strong></div>
+    <div class="row"><span>IPI remanescente</span><strong>${moedaSimulador(ipiRemanescente)}</strong></div>
+    <div class="row"><span>IRPJ</span><strong>${moedaSimulador(irpjAtualUsado)}</strong></div>
+    <div class="row"><span>Adicional de IRPJ</span><strong>${moedaSimulador(adicionalIrpjAtualUsado)}</strong></div>
+    <div class="row"><span>CSLL</span><strong>${moedaSimulador(csllAtualUsado)}</strong></div>
+    <div class="row"><span>CPP / folha</span><strong>${moedaSimulador(cppAtualUsado)}</strong></div>
+    <div class="row"><span>Imposto Seletivo</span><strong>${moedaSimulador(isUsado)}</strong></div>
+    <div class="row"><span>Outros tributos</span><strong>${moedaSimulador(outrosAtuaisUsados)}</strong></div>
+    <div class="row"><span>${faseTeste2026?"Carga vigente — sem falsa economia":"Total Reforma"}</span><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
   </div>
+  ${motivoPendencia?`<div class="alert" style="margin-top:14px"><strong>Comparação bloqueada:</strong> ${motivoPendencia}</div>`:""}
 
   <h2>Leitura executiva da IA</h2>
   <div class="box">
@@ -2934,17 +3109,48 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           </div>}
         </div>}
 
-        <label style={{...labelStyle,marginTop:8}}>Tributos que permanecerão fora do IBS/CBS
+        <label style={{...labelStyle,marginTop:8}}>Outros tributos/valores não detalhados
           <input
             value={tributosFora}
             onChange={e=>setTributosFora(e.target.value)}
             style={input}
-            placeholder="Ex.: IRPJ, CSLL, CPP que permanecerem"
+            placeholder="Retenções, ST, DIFAL e outros"
           />
           <span style={{...muted,fontSize:7.5}}>
-            Se não houver dado confiável, deixe em branco e valide depois no diagnóstico completo.
+            Não coloque aqui IRPJ, CSLL, CPP, PIS, Cofins, ICMS, ISS ou IPI, pois eles possuem campos próprios abaixo.
           </span>
         </label>
+
+        <div style={{marginTop:10,borderTop:"1px solid #E6EAF0",paddingTop:10}}>
+          <div style={{fontSize:8,fontWeight:900,color:NAVY}}>COMPOSIÇÃO DA CARGA ATUAL</div>
+          <div style={{...muted,fontSize:7.5,marginTop:3,lineHeight:1.45}}>
+            Use valores do mesmo período do faturamento. Essa composição permite manter os tributos que não são substituídos e aplicar corretamente a transição.
+          </div>
+          <div className="sr-grid2" style={{marginTop:8}}>
+            {[
+              ["PIS",pisAtual,setPisAtual],["Cofins",cofinsAtual,setCofinsAtual],
+              ["ICMS",icmsAtual,setIcmsAtual],["ISS",issAtual,setIssAtual],
+              ["IPI",ipiAtual,setIpiAtual],["CPP / folha",cppAtual,setCppAtual],
+              ["IRPJ",irpjAtual,setIrpjAtual],["Adicional de IRPJ",adicionalIrpjAtual,setAdicionalIrpjAtual],
+              ["CSLL",csllAtual,setCsllAtual],["Outros",outrosAtuais,setOutrosAtuais],
+            ].map(([titulo,valor,setter])=><label key={titulo} style={labelStyle}>{titulo}
+              <input value={valor} onChange={e=>setter(e.target.value)} style={input} placeholder="R$"/>
+            </label>)}
+          </div>
+        </div>
+
+        {regime==="Simples Nacional"&&cenarioAliquota!=="2026"&&<div style={{marginTop:10,background:"#F7F9FC",borderRadius:10,padding:9}}>
+          <div style={{fontSize:8,fontWeight:900}}>OPÇÃO DO SIMPLES PARA IBS/CBS</div>
+          <select value={opcaoSimplesIbsCbs} onChange={e=>setOpcaoSimplesIbsCbs(e.target.value)} style={{...input,marginTop:6}}>
+            <option value="DENTRO">IBS/CBS dentro do DAS</option>
+            <option value="FORA">IBS/CBS pelo regime regular — por fora</option>
+          </select>
+          {opcaoSimplesIbsCbs==="DENTRO"?<label style={{...labelStyle,marginTop:7}}>DAS projetado com IBS/CBS dentro
+            <input value={dasDentroProjetado} onChange={e=>setDasDentroProjetado(e.target.value)} style={input} placeholder="R$"/>
+          </label>:<label style={{...labelStyle,marginTop:7}}>DAS residual projetado sem IBS/CBS
+            <input value={dasResidualProjetado} onChange={e=>setDasResidualProjetado(e.target.value)} style={input} placeholder="R$"/>
+          </label>}
+        </div>}
       </div>
 
       <div style={card}>
@@ -2961,13 +3167,16 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             2026 — fase de teste oficial: CBS 0,9% + IBS 0,1%
           </button>
 
-          <button
-            type="button"
-            onClick={()=>aplicarCenario("referencia")}
-            style={{...chipStyle(cenarioAliquota==="referencia"),textAlign:"left"}}
-          >
-            Cenário gerencial de referência — 28% editável
-          </button>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5}}>
+            {["2027","2028","2029","2030","2031","2032","2033"].map(ano=><button
+              key={ano}
+              type="button"
+              onClick={()=>aplicarCenario(ano)}
+              style={{...chipStyle(cenarioAliquota===ano),textAlign:"center",padding:"8px 5px"}}
+            >
+              {ano}
+            </button>)}
+          </div>
 
           <button
             type="button"
@@ -2979,6 +3188,32 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         </div>
 
         <div className="sr-grid2" style={{marginTop:8}}>
+          <label style={labelStyle}>Descontos incondicionais
+            <input value={descontosIncondicionais} onChange={e=>setDescontosIncondicionais(e.target.value)} style={input} placeholder="R$"/>
+          </label>
+          <label style={labelStyle}>Base IBS/CBS confirmada — opcional
+            <input value={baseIbsCbsManual} onChange={e=>setBaseIbsCbsManual(e.target.value)} style={input} placeholder="Se preenchida, substitui a base calculada"/>
+          </label>
+          <label style={labelStyle}>Tratamento da alíquota
+            <select value={tratamentoIbsCbs} onChange={e=>{
+              const valor=e.target.value;
+              setTratamentoIbsCbs(valor);
+              setTratamentoConfirmado(false);
+              if(valor==="PADRAO"){setReducaoCbs("0");setReducaoIbs("0");}
+              if(valor==="REDUCAO_30"){setReducaoCbs("30");setReducaoIbs("30");}
+              if(valor==="REDUCAO_60"){setReducaoCbs("60");setReducaoIbs("60");}
+              if(valor==="ZERO"){setReducaoCbs("100");setReducaoIbs("100");}
+            }} style={input}>
+              <option value="PADRAO">Padrão — sem redução</option>
+              <option value="REDUCAO_30">Redução de 30% — validar atividade</option>
+              <option value="REDUCAO_60">Redução de 60% — validar item/anexo</option>
+              <option value="ZERO">Alíquota zero — validar item/anexo</option>
+              <option value="MANUAL">Redução manual</option>
+            </select>
+          </label>
+          <label style={labelStyle}>NCM, NBS, CNAE ou fundamento
+            <input value={classificacaoFiscal} onChange={e=>{setClassificacaoFiscal(e.target.value);setTratamentoConfirmado(false)}} style={input} placeholder="Classificação que sustenta o tratamento"/>
+          </label>
           <label style={labelStyle}>CBS %
             <input value={cbs} onChange={e=>{setCbs(e.target.value);setCenarioAliquota("manual")}} style={input}/>
           </label>
@@ -2991,6 +3226,21 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           <label style={labelStyle}>Redução IBS %
             <input value={reducaoIbs} onChange={e=>setReducaoIbs(e.target.value)} style={input}/>
           </label>
+          <label style={labelStyle}>Imposto Seletivo do período
+            <input value={impostoSeletivo} onChange={e=>setImpostoSeletivo(e.target.value)} style={input} placeholder="R$ — somente quando aplicável"/>
+          </label>
+          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:7.8,lineHeight:1.35}}>
+            <input type="checkbox" checked={manterIpiExcecao} onChange={e=>setManterIpiExcecao(e.target.checked)}/>
+            Manter IPI após 2026 por exceção validada
+          </label>
+          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:7.8,lineHeight:1.35}}>
+            <input type="checkbox" checked={tratamentoConfirmado} onChange={e=>setTratamentoConfirmado(e.target.checked)}/>
+            Confirmo o enquadramento legal da redução/alíquota zero
+          </label>
+        </div>
+
+        <div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:9,padding:8,fontSize:7.8,lineHeight:1.45}}>
+          <b>Base calculada por fora:</b> {moedaSimulador(baseIbsCbs)}. O sistema exclui descontos incondicionais e os valores remanescentes de IPI, ICMS, ISS, PIS e Cofins; o Imposto Seletivo, quando aplicável, integra a base.
         </div>
 
         <div style={{
@@ -3021,14 +3271,15 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           borderRadius:9,padding:8,
           display:"flex",justifyContent:"space-between",gap:10
         }}>
-          <span style={{fontSize:8,fontWeight:800}}>IVA efetivo usado</span>
+          <span style={{fontSize:8,fontWeight:800}}>Alíquota combinada informada</span>
           <b>{percentualSimulador(iva)}</b>
         </div>
       </div>
 
       <PrimaryButton
         disabled={
-          !regime||!natureza||!fat||iva<=0||
+          !regime||!natureza||!fat||cbsNom<=0||ibsNom<=0||
+          (reducaoExigeValidacao)||
           (naoSeiImpostoAtual&&regime==="Simples Nacional"&&!anexoSimples)||
           (naoSeiImpostoAtual&&regime==="Lucro Real"&&!n(custosDespesasDedutiveis))||
           (
@@ -3088,7 +3339,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
                 checked={item.considerarNovo}
                 onChange={e=>alterarDespesa(item.id,{considerarNovo:e.target.checked})}
               />
-              Considerar como potencial crédito IBS/CBS
+              Crédito validado para apropriação no cenário IBS/CBS
             </label>
           </div>)}
         </div>
@@ -3096,7 +3347,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
       <div className="sr-grid2">
         {kpi("Despesas mapeadas",moedaSimulador(despesasTotal))}
-        {kpi("Crédito novo estimado",moedaSimulador(creditoNovo),"#176B47")}
+        {kpi("Crédito CBS validado",moedaSimulador(creditoCbsNovo),"#176B47")}
+        {kpi("Crédito IBS validado",moedaSimulador(creditoIbsNovo),"#176B47")}
+        {kpi("Crédito total utilizado",moedaSimulador(creditoNovo),"#176B47")}
       </div>
 
       <PrimaryButton onClick={()=>setEtapa("comparar")}>
@@ -3118,7 +3371,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             atual==null?"comparativo preliminar":"valor informado"
           )}
           {kpi(
-            "Cenário Reforma",
+            faseTeste2026?"Carga vigente em 2026":"Cenário Reforma",
             reforma==null?"Pendente":moedaSimulador(reforma),
             reforma!=null&&atual!=null&&reforma>atual?"#B42318":"#176B47"
           )}
@@ -3136,16 +3389,20 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
         <div className="sr-grid2" style={{marginTop:10}}>
           {kpi(
-            "Diferença mensal",
+            faseTeste2026?"Diferença":"Diferença mensal",
             diferenca==null?"Pendente":moedaSimulador(diferenca),
             diferenca!=null&&diferenca>0?"#B42318":"#176B47"
           )}
           {kpi(
-            "Variação",
+            "Variação comparável",
             variacao==null?"Pendente":percentualSimulador(variacao),
             variacao!=null&&variacao>0?"#B42318":"#176B47"
           )}
         </div>
+
+        {motivoPendencia&&<div style={{marginTop:9,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:9,padding:9,fontSize:7.9,lineHeight:1.45,color:"#805B10"}}>
+          <b>Comparação bloqueada:</b> {motivoPendencia}
+        </div>}
       </div>
 
       <div style={card}>
@@ -3155,12 +3412,25 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
         {[
           ["Faturamento",fat],
+          ["Base IBS/CBS — cálculo por fora",baseIbsCbs],
           ["Débito CBS",debitoCbs],
+          ["(-) Crédito CBS validado",creditoCbsNovo],
+          ["CBS líquida",cbsLiquida],
           ["Débito IBS",debitoIbs],
-          ["(-) Créditos potenciais",creditoNovo],
+          ["(-) Crédito IBS validado",creditoIbsNovo],
+          ["IBS líquido",ibsLiquido],
           ["IBS/CBS líquido",ibsCbsLiquido],
-          ["(+) Tributos fora do IBS/CBS",fora],
-          ["Total Reforma",reforma],
+          ["PIS/Cofins remanescentes",pisCofinsRemanescentes],
+          ["ICMS/ISS remanescentes",icmsIssRemanescentes],
+          ["IPI remanescente",ipiRemanescente],
+          ["IRPJ",irpjAtualUsado],
+          ["Adicional de IRPJ",adicionalIrpjAtualUsado],
+          ["CSLL",csllAtualUsado],
+          ["CPP / folha",cppAtualUsado],
+          ["Imposto Seletivo",isUsado],
+          ["Outros tributos",outrosAtuaisUsados],
+          ["Valor da operação + IBS/CBS",precoFinalNovo],
+          [faseTeste2026?"Carga vigente — sem falsa economia":"Total Reforma",reforma],
         ].map(([l,v])=><div key={l} style={{
           display:"flex",justifyContent:"space-between",
           gap:8,borderBottom:"1px solid #EEF0F4",
@@ -3175,6 +3445,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           borderRadius:9,padding:8,fontSize:7.7,lineHeight:1.45
         }}>
           <b>Premissa utilizada:</b> {fonteAliquota.titulo}. {fonteAliquota.texto}
+        </div>
+        <div style={{marginTop:6,background:"#EEF5FF",borderRadius:9,padding:8,fontSize:7.7,lineHeight:1.45}}>
+          <b>Fluxo de caixa:</b> o split payment deve ser projetado separadamente da carga tributária, pois altera o momento da retenção/recolhimento, não a fórmula nominal do tributo.
         </div>
       </div>
 
