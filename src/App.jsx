@@ -1963,12 +1963,22 @@ function SimuladorReformaPublico({
   let reforma=null;
   let comparacaoPermitida=false;
   let motivoPendencia="";
+  // Simples: estimativa automática para triagem. Como a partilha futura do DAS
+  // ainda depende de regulamentação, usa-se o DAS atual como referência e uma
+  // parcela residual gerencial por anexo, sempre identificada como premissa.
+  const dasAtualReferencia=Math.max(0,
+    estimativaAtual?.regime==="Simples Nacional"
+      ?n(estimativaAtual.valor)
+      :n(atual)-fora
+  );
+  const percentualResidualGerencial={I:.42,II:.45,III:.67,IV:.72,V:.67}[anexoSimples]??.60;
+  const dasResidualAutomatico=dasAtualReferencia*percentualResidualGerencial;
   const simplesDentro=n(dasDentroProjetado)>0
     ?n(dasDentroProjetado)+outrosAtuaisUsados+isUsado
-    :null;
+    :dasAtualReferencia>0?dasAtualReferencia+outrosAtuaisUsados+isUsado:null;
   const simplesFora=n(dasResidualProjetado)>0
     ?n(dasResidualProjetado)+ibsCbsLiquido+outrosAtuaisUsados+isUsado
-    :null;
+    :dasAtualReferencia>0?dasResidualAutomatico+ibsCbsLiquido+outrosAtuaisUsados+isUsado:null;
   const melhorSimplesMatematico=simplesDentro!=null&&simplesFora!=null
     ?simplesDentro<simplesFora?"DENTRO":simplesFora<simplesDentro?"FORA":"EMPATE"
     :null;
@@ -1995,7 +2005,7 @@ function SimuladorReformaPublico({
       ?Math.min(simplesDentro,simplesFora)
       :null;
     motivoPendencia=reforma==null
-      ?"Para comparar dentro x fora com segurança, valide o DAS projetado nos dois cenários."
+      ?"Informe o DAS atual ou permita que o sistema o estime pelo RBT12 e Anexo."
       :"";
     comparacaoPermitida=reforma!=null&&atual!=null&&atual>0;
   }else if(!temComposicaoAtual){
@@ -2034,10 +2044,23 @@ function SimuladorReformaPublico({
   const anosTransicao=[2026,2027,2028,2029,2030,2031,2032,2033];
   const comparativoTransicao=anosTransicao.map(ano=>{
     if(ano===2026)return {ano,total:atual,status:"Teste; mantém a carga vigente"};
-    if(regime==="Simples Nacional")return {
-      ano,total:melhorSimplesMatematico?Math.min(simplesDentro,simplesFora):null,
-      status:melhorSimplesMatematico?`Menor estimativa: ${melhorSimplesMatematico}`:"Dentro x fora exige validação"
-    };
+    if(regime==="Simples Nacional"){
+      const fatorIbsSimples={2027:0,2028:0,2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
+      const cbsAno=8.8*(1-redCbs/100);
+      const ibsAno=(ano<=2028?.1:17.7*fatorIbsSimples)*(1-redIbs/100);
+      const novoBrutoAno=baseIbsCbs*(cbsAno+ibsAno)/100;
+      const creditoAno=Math.min(novoBrutoAno,baseCreditosConfirmados*(cbsAno+ibsAno)/100);
+      const foraAno=dasAtualReferencia>0
+        ?dasResidualAutomatico+Math.max(0,novoBrutoAno-creditoAno)+outrosAtuaisUsados+isUsado
+        :null;
+      const dentroAno=dasAtualReferencia>0
+        ?dasAtualReferencia+outrosAtuaisUsados+isUsado
+        :null;
+      const menor=dentroAno!=null&&foraAno!=null
+        ?dentroAno<foraAno?"DENTRO":foraAno<dentroAno?"FORA":"EMPATE"
+        :null;
+      return {ano,total:menor?Math.min(dentroAno,foraAno):null,dentro:dentroAno,fora:foraAno,status:menor?`Tendência matemática: ${menor}`:"Informe DAS/RBT12 e Anexo"};
+    }
     const fatorIbs={2027:0,2028:0,2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
     const fatorLegado={2027:1,2028:1,2029:.9,2030:.8,2031:.7,2032:.6,2033:0}[ano]??1;
     const cbsAno=8.8*(1-redCbs/100);
@@ -3430,7 +3453,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             atual==null?"comparativo preliminar":"valor informado"
           )}
           {kpi(
-            faseTeste2026?"Carga vigente em 2026":"Cenário Reforma",
+            faseTeste2026?"Carga vigente em 2026":regime==="Simples Nacional"?"Menor cenário estimado":"Cenário Reforma",
             reforma==null?"Pendente":moedaSimulador(reforma),
             reforma!=null&&atual!=null&&reforma>atual?"#B42318":"#176B47"
           )}
@@ -3473,6 +3496,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             <b>Tendência inicial:</b> {tendenciaSimples}
           </div>
           <div style={{...muted,fontSize:7.3,lineHeight:1.4,marginTop:6}}>A menor carga matemática não é recomendação automática. Perfil dos clientes, créditos, preço, margem e enquadramento precisam ser validados.</div>
+          <div style={{marginTop:6,fontSize:7.1,lineHeight:1.4,color:"#805B10"}}><b>Premissa automática:</b> DAS atual como referência e parcela residual estimada em {percentualSimulador(percentualResidualGerencial*100)} para o Anexo {anexoSimples||"não informado"}. A partilha futura deverá ser atualizada quando houver regulamentação aplicável.</div>
         </div>}
       </div>
 
@@ -3482,7 +3506,10 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6,marginTop:8}}>
           {comparativoTransicao.map(item=><div key={item.ano} style={{border:"1px solid #E3E7EF",borderRadius:9,padding:8,minWidth:0}}>
             <div style={{fontSize:8,fontWeight:950,color:NAVY}}>{item.ano}</div>
-            <div style={{fontSize:9,fontWeight:900,marginTop:3,color:item.total==null?MUTED:"#31589C"}}>{item.total==null?"A validar":moedaSimulador(item.total)}</div>
+            {regime==="Simples Nacional"&&item.ano!==2026?<>
+              <div style={{fontSize:7.2,marginTop:4}}><b>Dentro:</b> {item.dentro==null?"A validar":moedaSimulador(item.dentro)}</div>
+              <div style={{fontSize:7.2,marginTop:2}}><b>Fora:</b> {item.fora==null?"A validar":moedaSimulador(item.fora)}</div>
+            </>:<div style={{fontSize:9,fontWeight:900,marginTop:3,color:item.total==null?MUTED:"#31589C"}}>{item.total==null?"A validar":moedaSimulador(item.total)}</div>}
             <div style={{...muted,fontSize:6.8,lineHeight:1.3,marginTop:3}}>{item.status}</div>
           </div>)}
         </div>
