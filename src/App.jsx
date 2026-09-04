@@ -2604,6 +2604,19 @@ function SimuladorReformaPublico({
         ?`<ul>${arr.map(x=>`<li>${String(x||"").replace(/[<>]/g,"")}</li>`).join("")}</ul>`
         :"<p>Sem apontamentos adicionais.</p>";
 
+    const valorTabela=(v)=>v==null?"—":moedaSimulador(v);
+    const comparacaoRegimesPdf=linhasComparacaoRegimes.map(([tributo,realValor,presValor,simplesValor,reformaValor])=>`
+      <tr><td>${tributo}</td><td>${valorTabela(realValor)}</td><td>${valorTabela(presValor)}</td><td>${valorTabela(simplesValor)}</td><td>${valorTabela(reformaValor)}</td></tr>
+    `).join("");
+    const transicaoPdf=comparativoTransicao.map(item=>{
+      const atualAnual=(atual||0)*12;
+      const ibsAnual=(item.ibs||0)*12;
+      const cbsAnual=(item.cbs||0)*12;
+      const ivaAnual=ibsAnual+cbsAnual;
+      const variacaoAno=item.ano===2026?0:(atualAnual?((ivaAnual/atualAnual)-1)*100:null);
+      return `<tr><td>${item.ano}</td><td>${atual==null?"Pendente":moedaSimulador(atualAnual)}</td><td>${moedaSimulador(ibsAnual)}</td><td>${moedaSimulador(cbsAnual)}</td><td>${moedaSimulador(ivaAnual)}</td><td>${variacaoAno==null?"Pendente":percentualSimulador(variacaoAno)}</td></tr>`;
+    }).join("");
+
     const html=`<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -2623,6 +2636,12 @@ function SimuladorReformaPublico({
   .kpi small{display:block;color:#5B667A;font-weight:800}
   .kpi strong{display:block;font-size:22px;margin-top:5px}
   .box{border:1px solid #E1E6EE;border-radius:12px;padding:16px;margin-top:10px}
+  table{width:100%;border-collapse:collapse;font-size:10px;margin-top:10px;page-break-inside:auto}
+  th{background:#17233D;color:#fff;padding:8px 6px;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:7px 6px;text-align:right;border-bottom:1px solid #E1E6EE}
+  tr{page-break-inside:avoid}
+  .total{background:#EAF1F5;font-weight:800}
   .row{display:flex;justify-content:space-between;gap:20px;padding:8px 0;border-bottom:1px solid #EEF0F4}
   .alert{background:#FFF8EC;border:1px solid #F3D99B;border-radius:12px;padding:14px;color:#805B10}
   ul{line-height:1.6}
@@ -2678,6 +2697,33 @@ function SimuladorReformaPublico({
     <strong>Origem da alíquota:</strong> ${fonteAliquota.titulo}. ${fonteAliquota.texto}
     <br><br><strong>Referência:</strong> ${fonteAliquota.referencia}
   </div>
+
+  ${regime==="Simples Nacional"?`
+  <h2>Cenário comparativo - Simples Nacional</h2>
+  <div class="grid">
+    <div class="kpi"><small>SIMPLES - MENSAL</small><strong>${atual==null?"Pendente":moedaSimulador(atual)}</strong></div>
+    <div class="kpi"><small>IBS/CBS REGULAR - MENSAL</small><strong>${moedaSimulador(ibsCbsLiquido)}</strong></div>
+    <div class="kpi"><small>DIFERENÇA MENSAL</small><strong>${diferenca==null?"Pendente":moedaSimulador(diferenca)}</strong></div>
+    <div class="kpi"><small>DIFERENÇA ANUAL</small><strong>${diferenca==null?"Pendente":moedaSimulador(diferenca*12)}</strong></div>
+  </div>
+  `:""}
+
+  <h2>Comparação completa por regime e por tributo</h2>
+  <table>
+    <thead><tr><th>Tributo</th><th>Lucro Real</th><th>Lucro Presumido</th><th>Simples</th><th>Reforma</th></tr></thead>
+    <tbody>
+      ${comparacaoRegimesPdf}
+      <tr class="total"><td>Carga total estimada</td><td>${estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):"Pendente"}</td><td>${estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):"Pendente"}</td><td>${dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):"Pendente"}</td><td>${reforma==null?"Pendente":moedaSimulador(reforma)}</td></tr>
+      <tr><td>Alíquota efetiva</td><td>${fat&&estimativaRealComparativo?percentualSimulador(estimativaRealComparativo.valor/fat*100):"Pendente"}</td><td>${fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):"Pendente"}</td><td>${fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):"Pendente"}</td><td>${fat?percentualSimulador(ibsCbsLiquido/fat*100):"Pendente"}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Transição 2026-2033 - valores anuais</h2>
+  <table>
+    <thead><tr><th>Ano</th><th>Carga atual</th><th>IBS líquido</th><th>CBS líquida</th><th>IBS + CBS</th><th>vs atual</th></tr></thead>
+    <tbody>${transicaoPdf}</tbody>
+  </table>
+  <div class="alert" style="margin-top:12px"><strong>Importante:</strong> IBS + CBS não representa automaticamente toda a carga tributária. Devem ser considerados o DAS residual ou IRPJ, CSLL, CPP e demais tributos aplicáveis ao regime.</div>
 
   <h2>Memória de cálculo</h2>
   <div class="box">
@@ -2793,14 +2839,15 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
     <style>{`
       .sim-reforma-v5 *{box-sizing:border-box}
       .sim-reforma-v5 .sr-grid2,.sim-reforma-v5 .sr-grid3{
-        display:grid;grid-template-columns:1fr;gap:8px
+        display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:8px;min-width:0
       }
+      .sim-reforma-v5 .sr-table-wrap{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-inline:contain}
+      .sim-reforma-v5 .sr-table-wrap table{display:table}
       .sim-reforma-v5 .sr-tabs{
         display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px
       }
       .sim-reforma-v5 .sr-tabs::-webkit-scrollbar{display:none}
-      @media(min-width:520px){
-        .sim-reforma-v5 .sr-grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+      @media(min-width:760px){
         .sim-reforma-v5 .sr-grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
       }
     `}</style>
@@ -3526,7 +3573,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         {regime==="Simples Nacional"&&<div style={{marginTop:10,border:"1px solid #DCE4F2",borderRadius:10,padding:10}}>
           <div style={{fontSize:9,fontWeight:950,color:NAVY}}>CENÁRIO COMPARATIVO · SIMPLES NACIONAL</div>
           <div style={{...muted,fontSize:7.4,lineHeight:1.4,marginTop:4}}>Compara o DAS atual com o IBS/CBS líquido no regime regular. A carga total híbrida depende da parcela residual documental do DAS.</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,220px),1fr))",gap:6,marginTop:8}}>
             {kpi("Simples · mensal",atual==null?"A validar":moedaSimulador(atual),"#17233D")}
             {kpi("IVA · CBS + IBS · mensal",moedaSimulador(ibsCbsLiquido),"#008FA3")}
             {kpi("Diferença mensal",diferenca==null?"A validar":moedaSimulador(diferenca),diferenca>0?"#B54708":"#176B47")}
@@ -3549,7 +3596,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       <div style={card}>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Comparação completa por regime e por tributo</h3>
         <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>O DAS é o total englobado. A abertura dos seus componentes só aparece quando identificada no PGDAS ou informada pelo usuário. Não some novamente os componentes ao DAS.</div>
-        <div style={{overflowX:"auto",marginTop:8}}>
+        <div className="sr-table-wrap" style={{marginTop:8}}>
           <table style={{width:"100%",minWidth:610,borderCollapse:"collapse",fontSize:7.5}}>
             <thead><tr style={{background:NAVY,color:"#fff"}}>
               {['Tributo','Lucro Real atual','Lucro Presumido atual','Simples atual','Reforma no regime escolhido'].map(t=><th key={t} style={{padding:8,textAlign:t==='Tributo'?'left':'right'}}>{t}</th>)}
@@ -3589,7 +3636,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       <div style={card}>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Transição 2026–2033</h3>
         <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Valores anuais. A coluna IBS/CBS mostra o novo tributo líquido estimado; a carga atual é mantida apenas como referência comparativa, sem soma indevida.</div>
-        <div style={{overflowX:"auto",marginTop:8}}>
+        <div className="sr-table-wrap" style={{marginTop:8}}>
           <table style={{width:"100%",minWidth:610,borderCollapse:"collapse",fontSize:7.5}}>
             <thead><tr style={{background:NAVY,color:"#fff"}}>
               {['Ano','Carga atual de referência','IBS líquido','CBS líquida','IBS + CBS','vs carga atual'].map(t=><th key={t} style={{padding:8,textAlign:t==='Ano'?'left':'right'}}>{t}</th>)}
