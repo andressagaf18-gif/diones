@@ -1552,9 +1552,9 @@ function SimuladorReformaPublico({
   const [aliquotaLocalConfirmada,setAliquotaLocalConfirmada]=useState(false);
   const [custosDespesasDedutiveis,setCustosDespesasDedutiveis]=useState("");
 
-  const [cenarioAliquota,setCenarioAliquota]=useState("2026");
-  const [cbs,setCbs]=useState("0,9");
-  const [ibs,setIbs]=useState("0,1");
+  const [cenarioAliquota,setCenarioAliquota]=useState("2033");
+  const [cbs,setCbs]=useState("9,3");
+  const [ibs,setIbs]=useState("18,7");
   const [reducaoCbs,setReducaoCbs]=useState("0");
   const [reducaoIbs,setReducaoIbs]=useState("0");
   const [tratamentoIbsCbs,setTratamentoIbsCbs]=useState("PADRAO");
@@ -2009,11 +2009,9 @@ function SimuladorReformaPublico({
   }else if(reducaoExigeValidacao){
     motivoPendencia="Confirme o enquadramento legal da redução ou alíquota zero antes de comparar.";
   }else if(regime==="Simples Nacional"){
-    reforma=melhorSimplesMatematico
-      ?Math.min(simplesDentro,simplesFora)
-      :null;
-    motivoPendencia=reforma==null
-      ?"Informe o DAS atual ou permita que o sistema o estime pelo RBT12 e Anexo."
+    reforma=ibsCbsLiquido;
+    motivoPendencia=!composicaoDasIdentificada
+      ?"Este valor representa somente IBS/CBS líquido. A carga total por fora exige a parcela residual do DAS identificada no PGDAS."
       :"";
     comparacaoPermitida=reforma!=null&&atual!=null&&atual>0;
   }else if(!temComposicaoAtual){
@@ -2051,13 +2049,19 @@ function SimuladorReformaPublico({
 
   const anosTransicao=[2026,2027,2028,2029,2030,2031,2032,2033];
   const comparativoTransicao=anosTransicao.map(ano=>{
-    if(ano===2026)return {ano,total:atual,status:"Teste; mantém a carga vigente"};
+    if(ano===2026){
+      const cbsTeste=Math.max(0,baseIbsCbs*.009-baseCreditosConfirmados*.009);
+      const ibsTeste=Math.max(0,baseIbsCbs*.001-baseCreditosConfirmados*.001);
+      return {ano,total:atual,iva:cbsTeste+ibsTeste,cbs:cbsTeste,ibs:ibsTeste,status:"Teste; sem aumento quando cumpridas as condições legais"};
+    }
     if(regime==="Simples Nacional"){
       const fatorIbsSimples={2027:0,2028:0,2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
-      const cbsAno=8.8*(1-redCbs/100);
-      const ibsAno=(ano<=2028?.1:17.7*fatorIbsSimples)*(1-redIbs/100);
+      const cbsAno=9.3*(1-redCbs/100);
+      const ibsAno=(ano<=2028?.1:18.7*fatorIbsSimples)*(1-redIbs/100);
       const novoBrutoAno=baseIbsCbs*(cbsAno+ibsAno)/100;
       const creditoAno=Math.min(novoBrutoAno,baseCreditosConfirmados*(cbsAno+ibsAno)/100);
+      const cbsLiquidaAno=Math.max(0,baseIbsCbs*cbsAno/100-baseCreditosConfirmados*cbsAno/100);
+      const ibsLiquidoAno=Math.max(0,baseIbsCbs*ibsAno/100-baseCreditosConfirmados*ibsAno/100);
       const foraAno=dasResidualAutomatico!=null
         ?dasResidualAutomatico+Math.max(0,novoBrutoAno-creditoAno)+outrosAtuaisUsados+isUsado
         :null;
@@ -2067,17 +2071,17 @@ function SimuladorReformaPublico({
       const menor=dentroAno!=null&&foraAno!=null
         ?dentroAno<foraAno?"DENTRO":foraAno<dentroAno?"FORA":"EMPATE"
         :null;
-      return {ano,total:menor?Math.min(dentroAno,foraAno):null,dentro:dentroAno,fora:foraAno,status:menor?`Tendência matemática: ${menor}`:"Informe DAS/RBT12 e Anexo"};
+      return {ano,total:menor?Math.min(dentroAno,foraAno):null,iva:Math.max(0,novoBrutoAno-creditoAno),cbs:cbsLiquidaAno,ibs:ibsLiquidoAno,dentro:dentroAno,fora:foraAno,status:menor?`Tendência matemática: ${menor}`:"Carga total por fora exige composição do DAS"};
     }
     const fatorIbs={2027:0,2028:0,2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
     const fatorLegado={2027:1,2028:1,2029:.9,2030:.8,2031:.7,2032:.6,2033:0}[ano]??1;
-    const cbsAno=8.8*(1-redCbs/100);
-    const ibsAno=(ano<=2028?.1:17.7*fatorIbs)*(1-redIbs/100);
+    const cbsAno=9.3*(1-redCbs/100);
+    const ibsAno=(ano<=2028?.1:18.7*fatorIbs)*(1-redIbs/100);
     const debCbsAno=baseIbsCbs*cbsAno/100;
     const debIbsAno=baseIbsCbs*ibsAno/100;
     const novoAno=Math.max(0,debCbsAno-creditoCbsNovo)+Math.max(0,debIbsAno-creditoIbsNovo);
     const mantidosAno=(icmsAtualUsado+issAtualUsado)*fatorLegado+tributosMantidos;
-    return {ano,total:novoAno+mantidosAno,status:ano<2029?"CBS + início do IBS":"Transição ICMS/ISS para IBS"};
+    return {ano,total:novoAno+mantidosAno,iva:novoAno,cbs:Math.max(0,debCbsAno-creditoCbsNovo),ibs:Math.max(0,debIbsAno-creditoIbsNovo),status:ano<2029?"CBS + início do IBS":"Transição ICMS/ISS para IBS"};
   });
 
   const impostoRendaReforma=regime==="Lucro Presumido"
@@ -2118,8 +2122,8 @@ function SimuladorReformaPublico({
 
     if(/^20(2[7-9]|3[0-3])$/.test(valor)){
       // Premissas gerenciais editáveis. Não representam alíquota legal definitiva.
-      setCbs("8,8");
-      setIbs(valor==="2027"||valor==="2028"?"0,1":"17,7");
+      setCbs("9,3");
+      setIbs(valor==="2027"||valor==="2028"?"0,1":"18,7");
       setReducaoCbs("0");
       setReducaoIbs("0");
       return;
@@ -3486,7 +3490,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             atual==null?"comparativo preliminar":"valor informado"
           )}
           {kpi(
-            faseTeste2026?"Carga vigente em 2026":regime==="Simples Nacional"?"Menor cenário estimado":"Cenário Reforma",
+            faseTeste2026?"Carga vigente em 2026":regime==="Simples Nacional"?"IBS/CBS regular líquido":"Cenário Reforma",
             reforma==null?"Pendente":moedaSimulador(reforma),
             reforma!=null&&atual!=null&&reforma>atual?"#B42318":"#176B47"
           )}
@@ -3516,14 +3520,23 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         </div>
 
         {motivoPendencia&&<div style={{marginTop:9,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:9,padding:9,fontSize:7.9,lineHeight:1.45,color:"#805B10"}}>
-          <b>Comparação bloqueada:</b> {motivoPendencia}
+          <b>{comparacaoPermitida?"Escopo do valor:":"Comparação bloqueada:"}</b> {motivoPendencia}
         </div>}
 
         {regime==="Simples Nacional"&&<div style={{marginTop:10,border:"1px solid #DCE4F2",borderRadius:10,padding:10}}>
-          <div style={{fontSize:9,fontWeight:950,color:NAVY}}>COMPARAÇÃO SIMPLES: DENTRO × FORA</div>
-          <div className="sr-grid2" style={{marginTop:8}}>
+          <div style={{fontSize:9,fontWeight:950,color:NAVY}}>CENÁRIO COMPARATIVO · SIMPLES NACIONAL</div>
+          <div style={{...muted,fontSize:7.4,lineHeight:1.4,marginTop:4}}>Compara o DAS atual com o IBS/CBS líquido no regime regular. A carga total híbrida depende da parcela residual documental do DAS.</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:8}}>
+            {kpi("Simples · mensal",atual==null?"A validar":moedaSimulador(atual),"#17233D")}
+            {kpi("IVA · CBS + IBS · mensal",moedaSimulador(ibsCbsLiquido),"#008FA3")}
+            {kpi("Diferença mensal",diferenca==null?"A validar":moedaSimulador(diferenca),diferenca>0?"#B54708":"#176B47")}
+            {kpi("Diferença anual",diferenca==null?"A validar":moedaSimulador(diferenca*12),diferenca>0?"#B54708":"#176B47")}
+          </div>
+          {variacao!=null&&<div style={{marginTop:7,background:variacao>0?"#FFF1EC":"#EEF8F3",borderRadius:9,padding:9,display:"flex",justifyContent:"space-between",gap:8,fontSize:8,fontWeight:900,color:variacao>0?"#B54708":"#176B47"}}><span>{variacao>0?"Migrar para o regime regular elevaria o IBS/CBS comparado ao DAS":"O IBS/CBS regular ficaria abaixo do DAS atual"}</span><span>{percentualSimulador(Math.abs(variacao))}</span></div>}
+          <div style={{fontSize:8.5,fontWeight:950,color:NAVY,marginTop:10}}>DENTRO DO DAS × POR FORA</div>
+          <div className="sr-grid2" style={{marginTop:6}}>
             {kpi("Dentro do DAS",simplesDentro==null?"A validar":moedaSimulador(simplesDentro),"#31589C")}
-            {kpi("IBS/CBS por fora",simplesFora==null?"A validar":moedaSimulador(simplesFora),"#176B47")}
+            {kpi("Carga total por fora",simplesFora==null?"A validar":moedaSimulador(simplesFora),"#176B47")}
           </div>
           <div style={{marginTop:8,background:"#EEF5FF",borderRadius:9,padding:9,fontSize:8,lineHeight:1.45}}>
             <b>Tendência inicial:</b> {tendenciaSimples}
@@ -3553,6 +3566,20 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
                 <td style={{padding:"8px 6px",textAlign:"right"}}>{dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):'Pendente'}</td>
                 <td style={{padding:"8px 6px",textAlign:"right"}}>{reforma==null?'Pendente':moedaSimulador(reforma)}</td>
               </tr>
+              <tr>
+                <td style={{padding:"8px 6px"}}>Alíquota nominal</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador((estimativaRealComparativo.valor+n(estimativaRealComparativo.creditoPisCofins))/fat*100):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{percentualSimulador(iva)}</td>
+              </tr>
+              <tr style={{background:"#EAF1F5",fontWeight:950}}>
+                <td style={{padding:"8px 6px"}}>Alíquota efetiva</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador(estimativaRealComparativo.valor/fat*100):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{fat?percentualSimulador(ibsCbsLiquido/fat*100):'Pendente'}</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -3560,18 +3587,30 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       </div>
 
       <div style={card}>
-        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Estimativa por ano de transição</h3>
-        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Visão gerencial com premissas editáveis; não representa alíquota futura definitiva.</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6,marginTop:8}}>
-          {comparativoTransicao.map(item=><div key={item.ano} style={{border:"1px solid #E3E7EF",borderRadius:9,padding:8,minWidth:0}}>
-            <div style={{fontSize:8,fontWeight:950,color:NAVY}}>{item.ano}</div>
-            {regime==="Simples Nacional"&&item.ano!==2026?<>
-              <div style={{fontSize:7.2,marginTop:4}}><b>Dentro:</b> {item.dentro==null?"A validar":moedaSimulador(item.dentro)}</div>
-              <div style={{fontSize:7.2,marginTop:2}}><b>Fora:</b> {item.fora==null?"A validar":moedaSimulador(item.fora)}</div>
-            </>:<div style={{fontSize:9,fontWeight:900,marginTop:3,color:item.total==null?MUTED:"#31589C"}}>{item.total==null?"A validar":moedaSimulador(item.total)}</div>}
-            <div style={{...muted,fontSize:6.8,lineHeight:1.3,marginTop:3}}>{item.status}</div>
-          </div>)}
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Transição 2026–2033</h3>
+        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Valores anuais. A coluna IBS/CBS mostra o novo tributo líquido estimado; a carga atual é mantida apenas como referência comparativa, sem soma indevida.</div>
+        <div style={{overflowX:"auto",marginTop:8}}>
+          <table style={{width:"100%",minWidth:610,borderCollapse:"collapse",fontSize:7.5}}>
+            <thead><tr style={{background:NAVY,color:"#fff"}}>
+              {['Ano','Carga atual de referência','IBS líquido','CBS líquida','IBS + CBS','vs carga atual'].map(t=><th key={t} style={{padding:8,textAlign:t==='Ano'?'left':'right'}}>{t}</th>)}
+            </tr></thead>
+            <tbody>{comparativoTransicao.map(item=>{
+              const atualAnual=(atual||0)*12;
+              const ibsAnual=(item.ibs||0)*12;
+              const cbsAnual=(item.cbs||0)*12;
+              const ivaAnual=ibsAnual+cbsAnual;
+              const comparar=item.ano===2026?0:(atualAnual?((ivaAnual/atualAnual)-1)*100:null);
+              return <tr key={item.ano} style={{borderBottom:"1px solid #E3E7EF"}}>
+                <td style={{padding:"8px 6px",fontWeight:950}}>{item.ano}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{atual==null?'Pendente':moedaSimulador(atualAnual)}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{moedaSimulador(ibsAnual)}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{moedaSimulador(cbsAnual)}</td>
+                <td style={{padding:"8px 6px",textAlign:"right",fontWeight:950}}>{moedaSimulador(ivaAnual)}</td>
+                <td style={{padding:"8px 6px",textAlign:"right",fontWeight:900,color:comparar>0?'#B54708':'#176B47'}}>{comparar==null?'Pendente':percentualSimulador(comparar)}</td>
+              </tr>})}</tbody>
+          </table>
         </div>
+        <div style={{marginTop:7,background:"#FFF8EC",borderRadius:8,padding:8,fontSize:7.2,color:"#805B10"}}><b>Leitura correta:</b> IBS + CBS não é automaticamente a carga tributária total. No Simples híbrido, some-se a parcela residual documental do DAS; no Presumido e no Real, permanecem IRPJ, adicional, CSLL, CPP e outros tributos aplicáveis.</div>
       </div>
 
       <div style={card}>
