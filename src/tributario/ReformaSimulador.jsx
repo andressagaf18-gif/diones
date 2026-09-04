@@ -1,12 +1,13 @@
 // DESTINO REAL: /src/tributario/ReformaSimulador.jsx
-// Simulador Reforma V2 — carga tributária completa por regime e ano.
+// Simulador Reforma V4 — carga completa + DAS documental + Simples dentro/fora + transição.
 import React,{useEffect,useMemo,useState} from "react";
 import {ANOS_TRANSICAO,calcularCargaCompleta,moeda,numero} from "./reforma-engine.js";
 
 const C={navy:"#17233D",blue:"#31589C",coral:"#FF6B4A",muted:"#687386",border:"#E3E7EF",bg:"#F6F8FC",green:"#0F6E56",amber:"#855A12",red:"#A33A2B"};
 const box={background:"#fff",border:`1px solid ${C.border}`,borderRadius:16,padding:16};
 const inp={width:"100%",boxSizing:"border-box",padding:"9px 10px",border:"1px solid #DDE3EC",borderRadius:8,fontSize:11,color:C.navy,background:"#fff"};
-const grid=(n=3)=>({display:"grid",gridTemplateColumns:`repeat(${n},minmax(0,1fr))`,gap:8});
+// auto-fit evita que cartões e campos sejam cortados em telas estreitas.
+const grid=(n=3)=>({display:"grid",gridTemplateColumns:`repeat(auto-fit,minmax(${n>=5?"125px":"145px"},1fr))`,gap:8});
 const fmtPct=v=>`${numero(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}%`;
 
 function F({t,v,s,help,type="input",children}){
@@ -26,11 +27,14 @@ function K({t,v,sub,tone="default"}){
 function SectionTitle({children,sub}){return <div style={{marginBottom:10}}><h3 style={{margin:"0 0 3px",fontFamily:"Georgia,serif",fontSize:18}}>{children}</h3>{sub&&<div style={{fontSize:9,color:C.muted}}>{sub}</div>}</div>}
 function BarChart({items=[]}){
  const max=Math.max(...items.map(x=>Math.max(0,numero(x.valor))),1);
- return <div style={{display:"grid",gap:8}}>{items.map((x,i)=><div key={`${x.label}-${i}`} style={{display:"grid",gridTemplateColumns:"140px 1fr 115px",gap:8,alignItems:"center",fontSize:9}}>
+ return <div style={{display:"grid",gap:8}}>{items.map((x,i)=><div key={`${x.label}-${i}`} style={{display:"grid",gridTemplateColumns:"minmax(75px,140px) minmax(55px,1fr) minmax(76px,115px)",gap:8,alignItems:"center",fontSize:9,minWidth:0}}>
   <b>{x.label}</b><div style={{height:18,background:"#EEF1F5",borderRadius:6,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(x.valor?2:0,numero(x.valor)/max*100)}%`,background:x.cor||C.navy,borderRadius:6}}/></div><b style={{textAlign:"right"}}>{moeda(x.valor)}</b>
  </div>)}</div>;
 }
-function Linha({nome,valor,nota,destaque=false}){return <div style={{display:"grid",gridTemplateColumns:"1fr 150px",gap:8,padding:"7px 8px",borderTop:`1px solid ${C.border}`,background:destaque?"#EEF4FF":"transparent",fontSize:9.5}}><span>{nome}{nota&&<small style={{display:"block",color:C.muted}}>{nota}</small>}</span><b style={{textAlign:"right"}}>{valor}</b></div>}
+function Linha({nome,valor,nota,destaque=false}){return <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(90px,150px)",gap:8,padding:"7px 8px",borderTop:`1px solid ${C.border}`,background:destaque?"#EEF4FF":"transparent",fontSize:9.5,minWidth:0}}><span style={{minWidth:0,overflowWrap:"anywhere"}}>{nome}{nota&&<small style={{display:"block",color:C.muted}}>{nota}</small>}</span><b style={{textAlign:"right",overflowWrap:"anywhere"}}>{valor}</b></div>}
+function Tabela({children,minWidth=860}){return <div style={{width:"100%",overflowX:"auto",WebkitOverflowScrolling:"touch"}}><table style={{width:"100%",minWidth,borderCollapse:"collapse",fontSize:9.2}}>{children}</table></div>}
+const TH=({children,left=false})=><th style={{background:C.navy,color:"#fff",padding:"8px 7px",textAlign:left?"left":"right",whiteSpace:"nowrap"}}>{children}</th>;
+const TD=({children,left=false,bold=false,tone})=><td style={{padding:"7px",textAlign:left?"left":"right",borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap",fontWeight:bold?900:500,color:tone?C[tone]:C.navy}}>{children}</td>;
 
 export default function ReformaSimulador({dadosIniciais={},onResultado}){
  const inicial=dadosIniciais.componentesDas||{};
@@ -78,6 +82,25 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
  const calc=useMemo(()=>calcularCargaCompleta(parametros),[parametros]);
  const simples=calc.simples||{dentro:0,fora:null,menorCargaMatematica:"NAO_CALCULAVEL"};
 
+ const componentesDas=useMemo(()=>({
+  irpj:numero(trib.irpj),adicionalIrpj:numero(trib.adicionalIrpj),csll:numero(trib.csll),
+  cofins:numero(trib.cofins),pis:numero(trib.pis),cpp:numero(trib.cpp),
+  icms:numero(trib.icms),ipi:numero(trib.ipi),iss:numero(trib.iss),outros:numero(trib.outros)
+ }),[trib]);
+ const somaComponentesDas=useMemo(()=>Object.values(componentesDas).reduce((a,b)=>a+b,0),[componentesDas]);
+ const dasConciliado=numero(das)>0&&somaComponentesDas>0&&Math.abs(numero(das)-somaComponentesDas)<=.05;
+
+ // Usa o mesmo motor da tela para cada ano. Assim tabela e relatório recebem os mesmos números.
+ const transicao=useMemo(()=>ANOS_TRANSICAO.map(anoLinha=>{
+  const carga=calcularCargaCompleta({...parametros,ano:String(anoLinha)});
+  const s=carga.simples||{};
+  const dentro=numero(s.dentro);
+  const fora=s.fora==null?null:numero(s.fora);
+  const diferenca=fora==null?null:fora-dentro;
+  return {ano:numero(anoLinha),carga,dentro,fora,diferenca,
+   menor:fora==null?"PENDENTE":fora<dentro?"POR_FORA":fora>dentro?"POR_DENTRO":"EMPATE"};
+ }),[parametros]);
+
  const escala=1+numero(crescimento)/100;
  const proj=useMemo(()=>calcularCargaCompleta({
   ...parametros,faturamento:numero(fat)*escala,baseTributavel:numero(base||fat)*escala,
@@ -96,7 +119,9 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
   crescimento:{atual:calc,projetado:proj,faturamentoProjetado:numero(fat)*escala,aumentoImposto:proj.totalProjetado-calc.totalProjetado,
    aumentoImpostoPct:calc.totalProjetado?((proj.totalProjetado/calc.totalProjetado)-1)*100:null},
   beneficio:{nome:beneficio,baseLegal,status:statusBeneficio}
- }),[parametros,fat,ano,calc,simples,proj,escala,beneficio,baseLegal,statusBeneficio]);
+  ,composicaoDas:{componentes:componentesDas,total:somaComponentesDas,dasInformado:numero(das),conciliado:dasConciliado}
+  ,transicao
+ }),[parametros,fat,ano,calc,simples,proj,escala,beneficio,baseLegal,statusBeneficio,componentesDas,somaComponentesDas,das,dasConciliado,transicao]);
  useEffect(()=>{onResultado?.(resultado)},[resultado,onResultado]);
 
  const totalNovo=regime==="SIMPLES_NACIONAL"?(foraSimples?simples.fora:simples.dentro):calc.totalProjetado;
@@ -146,7 +171,22 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
    <div style={{marginTop:10,padding:"9px 10px",background:"#F7F9FC",borderRadius:9,fontSize:9}}><b>Menor carga matemática:</b> {simples.menorCargaMatematica==="NAO_CALCULAVEL"?"Pendente":simples.menorCargaMatematica}. Isso não equivale a recomendação automática; devem ser avaliados B2B/B2C, crédito transferido, preço, margem e caixa.</div>
   </div>}
 
-  <div style={box}><SectionTitle sub="IRPJ, adicional, CSLL, folha e outros tributos permanecem visíveis.">{regime==="SIMPLES_NACIONAL"?"6":"6"}. Memória de cálculo</SectionTitle>
+  {regime==="SIMPLES_NACIONAL"&&<div style={box}><SectionTitle sub="Valores extraídos do PGDAS/DAS. A comparação por fora só é liberada como conclusiva quando a soma fecha com a guia.">6. Composição documental do DAS</SectionTitle>
+   <Tabela minWidth={650}><thead><tr><TH left>Tributo</TH><TH>Valor no DAS</TH><TH left>Tratamento na estimativa por fora</TH></tr></thead><tbody>
+    {[["irpj","IRPJ"],["adicionalIrpj","Adicional de IRPJ"],["csll","CSLL"],["cofins","Cofins"],["pis","PIS/Pasep"],["cpp","INSS/CPP"],["icms","ICMS"],["ipi","IPI"],["iss","ISS"],["outros","Outros"]].map(([id,nome])=><tr key={id}><TD left>{nome}</TD><TD>{moeda(componentesDas[id])}</TD><TD left>{["pis","cofins","icms","iss"].includes(id)?"Substituição conforme regras da transição":"Mantido no residual até validação específica"}</TD></tr>)}
+    <tr style={{background:"#EAF0F8"}}><TD left bold>Total dos componentes</TD><TD bold>{moeda(somaComponentesDas)}</TD><TD left bold>{dasConciliado?"CONFERE COM O DAS":"REVISAR COMPOSIÇÃO"}</TD></tr>
+   </tbody></Tabela>
+   <div style={{marginTop:9,padding:"9px 10px",borderRadius:9,background:dasConciliado?"#E9F7EF":"#FFF7E8",border:`1px solid ${dasConciliado?"#BFE3CF":"#F0D49C"}`,fontSize:9,color:dasConciliado?C.green:C.amber}}><b>DAS informado:</b> {moeda(das)} · <b>Soma dos tributos:</b> {moeda(somaComponentesDas)} · <b>Status:</b> {dasConciliado?"conciliado":"não conciliado"}</div>
+  </div>}
+
+  {regime==="SIMPLES_NACIONAL"&&<div style={box}><SectionTitle sub="Comparação mensal calculada pelo mesmo motor da simulação. Alíquotas futuras continuam sendo premissas, não valores definitivos.">7. Simples por dentro × por fora — 2026 a 2033</SectionTitle>
+   <Tabela minWidth={980}><thead><tr><TH left>Ano</TH><TH>DAS por dentro</TH><TH>DAS residual</TH><TH>CBS líquida</TH><TH>IBS líquido</TH><TH>Outros aplicáveis</TH><TH>Total por fora</TH><TH>Diferença</TH><TH left>Menor estimativa</TH></tr></thead><tbody>
+    {transicao.map(x=><tr key={x.ano} style={{background:x.menor==="POR_FORA"?"#E9F7EF":"transparent"}}><TD left bold>{x.ano}</TD><TD>{moeda(x.dentro)}</TD><TD>{x.carga.simples?.dasResidualEstimado?.residual==null?"Pendente":moeda(x.carga.simples.dasResidualEstimado.residual)}</TD><TD>{moeda(x.carga.ibsCbs?.liquidoCBS)}</TD><TD>{moeda(x.carga.ibsCbs?.liquidoIBS)}</TD><TD>{moeda(numero(x.carga.impostoSeletivo)+numero(x.carga.outros)+numero(x.carga.tributosForaDas))}</TD><TD bold>{x.fora==null?"Pendente":moeda(x.fora)}</TD><TD tone={x.diferenca==null?undefined:x.diferenca>0?"red":"green"}>{x.diferenca==null?"Pendente":moeda(x.diferenca)}</TD><TD left bold>{x.menor.replaceAll("_"," ")}</TD></tr>)}
+   </tbody></Tabela>
+   <div style={{marginTop:9,padding:"9px 10px",background:"#FFF7E8",border:"1px solid #F0D49C",borderRadius:9,color:C.amber,fontSize:9,lineHeight:1.45}}><b>Importante:</b> “por dentro” e “por fora” são alternativas do Simples para IBS/CBS; não significam migração automática para Lucro Presumido ou Lucro Real. A decisão exige validação de créditos, clientes B2B/B2C, preço, margem, NCM/CNAE e regulamentação aplicável ao ano.</div>
+  </div>}
+
+  <div style={box}><SectionTitle sub="IRPJ, adicional, CSLL, folha e outros tributos permanecem visíveis.">{regime==="SIMPLES_NACIONAL"?"8":"6"}. Memória de cálculo</SectionTitle>
    <Linha nome="Faturamento" valor={moeda(calc.faturamento)} destaque/>
    {ano==="2026"&&<><Linha nome="CBS de teste — 0,9%" valor={moeda(calc.teste2026.liquidoCBS)} nota="Destaque de teste; não é carga definitiva."/><Linha nome="IBS de teste — 0,1%" valor={moeda(calc.teste2026.liquidoIBS)} nota="Destaque de teste; não é carga definitiva."/></>}
    <Linha nome="CBS líquida regular" valor={moeda(calc.ibsCbs.liquidoCBS)} nota={`${fmtPct(calc.ibsCbs.aliquotaCBSEfetiva)} × fator do ano ${fmtPct(calc.regra.cbsRegular*100)}`}/>
@@ -157,8 +197,8 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
    <Linha nome={tituloNovo} valor={totalNovoExibido==null?"Pendente":moeda(totalNovoExibido)} destaque/>
   </div>
 
-  <div style={box}><SectionTitle sub="A projeção recalcula a carga total e mantém as relações informadas.">7. Sensibilidade de crescimento</SectionTitle><div style={{...grid(3),alignItems:"end"}}><F t="Crescimento do faturamento %" v={crescimento} s={setCrescimento}/><K t="Faturamento projetado" v={moeda(numero(fat)*escala)}/><K t="Carga total projetada" v={moeda(proj.totalProjetado)}/></div></div>
+  <div style={box}><SectionTitle sub="A projeção recalcula a carga total e mantém as relações informadas.">{regime==="SIMPLES_NACIONAL"?"9":"7"}. Sensibilidade de crescimento</SectionTitle><div style={{...grid(3),alignItems:"end"}}><F t="Crescimento do faturamento %" v={crescimento} s={setCrescimento}/><K t="Faturamento projetado" v={moeda(numero(fat)*escala)}/><K t="Carga total projetada" v={moeda(proj.totalProjetado)}/></div></div>
 
-  <div style={box}><SectionTitle>8. Benefício ou tratamento diferenciado</SectionTitle><div style={grid(2)}><F t="Benefício/tratamento" v={beneficio} s={setBeneficio}/><F t="Status" v={statusBeneficio} s={setStatusBeneficio} type="select"><option value="POTENCIAL_VALIDAR">Potencial — validar</option><option value="APLICAVEL">Aplicável após validação</option><option value="NAO_APLICAVEL">Não aplicável</option></F></div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Base legal / fonte oficial<textarea rows={3} value={baseLegal} onChange={e=>setBaseLegal(e.target.value)} style={{...inp,resize:"vertical"}}/></label></div>
+  <div style={box}><SectionTitle>{regime==="SIMPLES_NACIONAL"?"10":"8"}. Benefício ou tratamento diferenciado</SectionTitle><div style={grid(2)}><F t="Benefício/tratamento" v={beneficio} s={setBeneficio}/><F t="Status" v={statusBeneficio} s={setStatusBeneficio} type="select"><option value="POTENCIAL_VALIDAR">Potencial — validar</option><option value="APLICAVEL">Aplicável após validação</option><option value="NAO_APLICAVEL">Não aplicável</option></F></div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Base legal / fonte oficial<textarea rows={3} value={baseLegal} onChange={e=>setBaseLegal(e.target.value)} style={{...inp,resize:"vertical"}}/></label></div>
  </div>;
 }
