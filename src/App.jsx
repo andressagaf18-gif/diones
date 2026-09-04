@@ -1540,6 +1540,7 @@ function SimuladorReformaPublico({
   const [baseIbsCbsManual,setBaseIbsCbsManual]=useState("");
   const [manterIpiExcecao,setManterIpiExcecao]=useState(false);
   const [opcaoSimplesIbsCbs,setOpcaoSimplesIbsCbs]=useState("DENTRO");
+  const [perfilClientes,setPerfilClientes]=useState("");
   const [dasDentroProjetado,setDasDentroProjetado]=useState("");
   const [dasResidualProjetado,setDasResidualProjetado]=useState("");
 
@@ -1962,6 +1963,22 @@ function SimuladorReformaPublico({
   let reforma=null;
   let comparacaoPermitida=false;
   let motivoPendencia="";
+  const simplesDentro=n(dasDentroProjetado)>0
+    ?n(dasDentroProjetado)+outrosAtuaisUsados+isUsado
+    :null;
+  const simplesFora=n(dasResidualProjetado)>0
+    ?n(dasResidualProjetado)+ibsCbsLiquido+outrosAtuaisUsados+isUsado
+    :null;
+  const melhorSimplesMatematico=simplesDentro!=null&&simplesFora!=null
+    ?simplesDentro<simplesFora?"DENTRO":simplesFora<simplesDentro?"FORA":"EMPATE"
+    :null;
+  const tendenciaSimples=melhorSimplesMatematico
+    ?`Menor cenário estimado: ${melhorSimplesMatematico}`
+    :perfilClientes==="B2B"&&creditoNovo>0
+      ?"POR FORA merece análise: clientes empresariais podem valorizar créditos."
+      :perfilClientes==="B2C"
+        ?"DENTRO merece análise: simplicidade e preço final tendem a pesar mais."
+        :"São necessários dados adicionais para indicar dentro ou fora.";
 
   if(faseTeste2026){
     // O teste não substitui a carga vigente nem autoriza economia matemática.
@@ -1974,15 +1991,12 @@ function SimuladorReformaPublico({
   }else if(reducaoExigeValidacao){
     motivoPendencia="Confirme o enquadramento legal da redução ou alíquota zero antes de comparar.";
   }else if(regime==="Simples Nacional"){
-    if(opcaoSimplesIbsCbs==="DENTRO"){
-      reforma=n(dasDentroProjetado)>0?n(dasDentroProjetado)+outrosAtuaisUsados+isUsado:null;
-      motivoPendencia=reforma==null?"Informe o DAS projetado com IBS/CBS dentro do Simples.":"";
-    }else{
-      reforma=n(dasResidualProjetado)>0
-        ?n(dasResidualProjetado)+ibsCbsLiquido+outrosAtuaisUsados+isUsado
-        :null;
-      motivoPendencia=reforma==null?"Informe o DAS residual projetado sem IBS/CBS.":"";
-    }
+    reforma=melhorSimplesMatematico
+      ?Math.min(simplesDentro,simplesFora)
+      :null;
+    motivoPendencia=reforma==null
+      ?"Para comparar dentro x fora com segurança, valide o DAS projetado nos dois cenários."
+      :"";
     comparacaoPermitida=reforma!=null&&atual!=null&&atual>0;
   }else if(!temComposicaoAtual){
     motivoPendencia="Detalhe os tributos atuais para calcular corretamente os valores remanescentes.";
@@ -2017,6 +2031,24 @@ function SimuladorReformaPublico({
   const reformaProjetada=
     reforma==null?null:reforma*(1+crescimentoPct/100);
 
+  const anosTransicao=[2026,2027,2028,2029,2030,2031,2032,2033];
+  const comparativoTransicao=anosTransicao.map(ano=>{
+    if(ano===2026)return {ano,total:atual,status:"Teste; mantém a carga vigente"};
+    if(regime==="Simples Nacional")return {
+      ano,total:melhorSimplesMatematico?Math.min(simplesDentro,simplesFora):null,
+      status:melhorSimplesMatematico?`Menor estimativa: ${melhorSimplesMatematico}`:"Dentro x fora exige validação"
+    };
+    const fatorIbs={2027:0,2028:0,2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
+    const fatorLegado={2027:1,2028:1,2029:.9,2030:.8,2031:.7,2032:.6,2033:0}[ano]??1;
+    const cbsAno=8.8*(1-redCbs/100);
+    const ibsAno=(ano<=2028?.1:17.7*fatorIbs)*(1-redIbs/100);
+    const debCbsAno=baseIbsCbs*cbsAno/100;
+    const debIbsAno=baseIbsCbs*ibsAno/100;
+    const novoAno=Math.max(0,debCbsAno-creditoCbsNovo)+Math.max(0,debIbsAno-creditoIbsNovo);
+    const mantidosAno=(icmsAtualUsado+issAtualUsado)*fatorLegado+tributosMantidos;
+    return {ano,total:novoAno+mantidosAno,status:ano<2029?"CBS + início do IBS":"Transição ICMS/ISS para IBS"};
+  });
+
   function aplicarCenario(valor){
     setCenarioAliquota(valor);
 
@@ -2029,9 +2061,9 @@ function SimuladorReformaPublico({
     }
 
     if(/^20(2[7-9]|3[0-3])$/.test(valor)){
-      // As alíquotas posteriores a 2026 não são travadas no código.
-      setCbs("");
-      setIbs(valor==="2027"||valor==="2028"?"0,1":"");
+      // Premissas gerenciais editáveis. Não representam alíquota legal definitiva.
+      setCbs("8,8");
+      setIbs(valor==="2027"||valor==="2028"?"0,1":"17,7");
       setReducaoCbs("0");
       setReducaoIbs("0");
       return;
@@ -3109,6 +3141,10 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           </div>}
         </div>}
 
+        <details style={{marginTop:10,border:"1px solid #E6EAF0",borderRadius:10,padding:9,background:"#FBFCFE"}}>
+          <summary style={{fontSize:8.5,fontWeight:900,cursor:"pointer",color:NAVY}}>
+            Tenho valores tributários detalhados — opcional
+          </summary>
         <label style={{...labelStyle,marginTop:8}}>Outros tributos/valores não detalhados
           <input
             value={tributosFora}
@@ -3138,18 +3174,33 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             </label>)}
           </div>
         </div>
+        </details>
 
         {regime==="Simples Nacional"&&cenarioAliquota!=="2026"&&<div style={{marginTop:10,background:"#F7F9FC",borderRadius:10,padding:9}}>
-          <div style={{fontSize:8,fontWeight:900}}>OPÇÃO DO SIMPLES PARA IBS/CBS</div>
-          <select value={opcaoSimplesIbsCbs} onChange={e=>setOpcaoSimplesIbsCbs(e.target.value)} style={{...input,marginTop:6}}>
-            <option value="DENTRO">IBS/CBS dentro do DAS</option>
-            <option value="FORA">IBS/CBS pelo regime regular — por fora</option>
-          </select>
-          {opcaoSimplesIbsCbs==="DENTRO"?<label style={{...labelStyle,marginTop:7}}>DAS projetado com IBS/CBS dentro
-            <input value={dasDentroProjetado} onChange={e=>setDasDentroProjetado(e.target.value)} style={input} placeholder="R$"/>
-          </label>:<label style={{...labelStyle,marginTop:7}}>DAS residual projetado sem IBS/CBS
-            <input value={dasResidualProjetado} onChange={e=>setDasResidualProjetado(e.target.value)} style={input} placeholder="R$"/>
-          </label>}
+          <div style={{fontSize:8,fontWeight:900}}>SIMPLES: DENTRO OU FORA DO DAS?</div>
+          <div style={{...muted,fontSize:7.6,lineHeight:1.45,marginTop:4}}>
+            O simulador compara as duas possibilidades. Primeiro, informe para quem a empresa vende principalmente.
+          </div>
+          <label style={{...labelStyle,marginTop:7}}>Perfil dos clientes
+            <select value={perfilClientes} onChange={e=>setPerfilClientes(e.target.value)} style={input}>
+              <option value="">Selecione</option>
+              <option value="B2B">Principalmente empresas (B2B)</option>
+              <option value="B2C">Principalmente consumidor final (B2C)</option>
+              <option value="MISTO">Perfil misto</option>
+            </select>
+          </label>
+          <details style={{marginTop:8}}>
+            <summary style={{fontSize:7.8,fontWeight:900,cursor:"pointer",color:"#31589C"}}>Validar valores técnicos da comparação</summary>
+            <div className="sr-grid2" style={{marginTop:7}}>
+              <label style={labelStyle}>DAS projetado — IBS/CBS dentro
+                <input value={dasDentroProjetado} onChange={e=>setDasDentroProjetado(e.target.value)} style={input} placeholder="R$"/>
+              </label>
+              <label style={labelStyle}>DAS residual — IBS/CBS por fora
+                <input value={dasResidualProjetado} onChange={e=>setDasResidualProjetado(e.target.value)} style={input} placeholder="R$"/>
+              </label>
+            </div>
+            <div style={{...muted,fontSize:7.2,lineHeight:1.4,marginTop:5}}>Esses valores dependem do anexo, faixa, atividade, composição e regras vigentes. Sem ambos, o resultado será apenas uma tendência inicial.</div>
+          </details>
         </div>}
       </div>
 
@@ -3187,32 +3238,43 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           </button>
         </div>
 
+        <label style={{...labelStyle,marginTop:9}}>Tipo de tributação estimada
+          <select value={tratamentoIbsCbs} onChange={e=>{
+            const valor=e.target.value;
+            setTratamentoIbsCbs(valor);
+            setTratamentoConfirmado(valor==="PADRAO");
+            if(valor==="PADRAO"){setReducaoCbs("0");setReducaoIbs("0");}
+            if(valor==="REDUCAO_30"){setReducaoCbs("30");setReducaoIbs("30");}
+            if(valor==="REDUCAO_60"){setReducaoCbs("60");setReducaoIbs("60");}
+            if(valor==="ZERO"){setReducaoCbs("100");setReducaoIbs("100");}
+          }} style={input}>
+            <option value="PADRAO">Regra geral — sem redução</option>
+            <option value="REDUCAO_30">Possível redução de 30%</option>
+            <option value="REDUCAO_60">Possível redução de 60%</option>
+            <option value="ZERO">Possível alíquota zero</option>
+            <option value="MANUAL">Outra situação</option>
+          </select>
+          <span style={{...muted,fontSize:7.5}}>O enquadramento final depende da atividade, produto, NCM/NBS e documentação.</span>
+        </label>
+
+        {tratamentoIbsCbs!=="PADRAO"&&<div style={{marginTop:7,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:9,padding:8}}>
+          <label style={labelStyle}>Atividade, NCM/NBS ou fundamento
+            <input value={classificacaoFiscal} onChange={e=>{setClassificacaoFiscal(e.target.value);setTratamentoConfirmado(false)}} style={input} placeholder="Informe o que sustenta a redução"/>
+          </label>
+          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:7.8,lineHeight:1.35,marginTop:6}}>
+            <input type="checkbox" checked={tratamentoConfirmado} onChange={e=>setTratamentoConfirmado(e.target.checked)}/>
+            Confirmo que essa hipótese será usada somente como estimativa
+          </label>
+        </div>}
+
+        <details style={{marginTop:8,border:"1px solid #E6EAF0",borderRadius:9,padding:8,background:"#FBFCFE"}}>
+          <summary style={{fontSize:8,fontWeight:900,cursor:"pointer"}}>Ajustar premissas técnicas — opcional</summary>
         <div className="sr-grid2" style={{marginTop:8}}>
           <label style={labelStyle}>Descontos incondicionais
             <input value={descontosIncondicionais} onChange={e=>setDescontosIncondicionais(e.target.value)} style={input} placeholder="R$"/>
           </label>
           <label style={labelStyle}>Base IBS/CBS confirmada — opcional
-            <input value={baseIbsCbsManual} onChange={e=>setBaseIbsCbsManual(e.target.value)} style={input} placeholder="Se preenchida, substitui a base calculada"/>
-          </label>
-          <label style={labelStyle}>Tratamento da alíquota
-            <select value={tratamentoIbsCbs} onChange={e=>{
-              const valor=e.target.value;
-              setTratamentoIbsCbs(valor);
-              setTratamentoConfirmado(false);
-              if(valor==="PADRAO"){setReducaoCbs("0");setReducaoIbs("0");}
-              if(valor==="REDUCAO_30"){setReducaoCbs("30");setReducaoIbs("30");}
-              if(valor==="REDUCAO_60"){setReducaoCbs("60");setReducaoIbs("60");}
-              if(valor==="ZERO"){setReducaoCbs("100");setReducaoIbs("100");}
-            }} style={input}>
-              <option value="PADRAO">Padrão — sem redução</option>
-              <option value="REDUCAO_30">Redução de 30% — validar atividade</option>
-              <option value="REDUCAO_60">Redução de 60% — validar item/anexo</option>
-              <option value="ZERO">Alíquota zero — validar item/anexo</option>
-              <option value="MANUAL">Redução manual</option>
-            </select>
-          </label>
-          <label style={labelStyle}>NCM, NBS, CNAE ou fundamento
-            <input value={classificacaoFiscal} onChange={e=>{setClassificacaoFiscal(e.target.value);setTratamentoConfirmado(false)}} style={input} placeholder="Classificação que sustenta o tratamento"/>
+            <input value={baseIbsCbsManual} onChange={e=>setBaseIbsCbsManual(e.target.value)} style={input} placeholder="Substitui a base estimada"/>
           </label>
           <label style={labelStyle}>CBS %
             <input value={cbs} onChange={e=>{setCbs(e.target.value);setCenarioAliquota("manual")}} style={input}/>
@@ -3233,11 +3295,8 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             <input type="checkbox" checked={manterIpiExcecao} onChange={e=>setManterIpiExcecao(e.target.checked)}/>
             Manter IPI após 2026 por exceção validada
           </label>
-          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:7.8,lineHeight:1.35}}>
-            <input type="checkbox" checked={tratamentoConfirmado} onChange={e=>setTratamentoConfirmado(e.target.checked)}/>
-            Confirmo o enquadramento legal da redução/alíquota zero
-          </label>
         </div>
+        </details>
 
         <div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:9,padding:8,fontSize:7.8,lineHeight:1.45}}>
           <b>Base calculada por fora:</b> {moedaSimulador(baseIbsCbs)}. O sistema exclui descontos incondicionais e os valores remanescentes de IPI, ICMS, ISS, PIS e Cofins; o Imposto Seletivo, quando aplicável, integra a base.
@@ -3403,9 +3462,37 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         {motivoPendencia&&<div style={{marginTop:9,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:9,padding:9,fontSize:7.9,lineHeight:1.45,color:"#805B10"}}>
           <b>Comparação bloqueada:</b> {motivoPendencia}
         </div>}
+
+        {regime==="Simples Nacional"&&<div style={{marginTop:10,border:"1px solid #DCE4F2",borderRadius:10,padding:10}}>
+          <div style={{fontSize:9,fontWeight:950,color:NAVY}}>COMPARAÇÃO SIMPLES: DENTRO × FORA</div>
+          <div className="sr-grid2" style={{marginTop:8}}>
+            {kpi("Dentro do DAS",simplesDentro==null?"A validar":moedaSimulador(simplesDentro),"#31589C")}
+            {kpi("IBS/CBS por fora",simplesFora==null?"A validar":moedaSimulador(simplesFora),"#176B47")}
+          </div>
+          <div style={{marginTop:8,background:"#EEF5FF",borderRadius:9,padding:9,fontSize:8,lineHeight:1.45}}>
+            <b>Tendência inicial:</b> {tendenciaSimples}
+          </div>
+          <div style={{...muted,fontSize:7.3,lineHeight:1.4,marginTop:6}}>A menor carga matemática não é recomendação automática. Perfil dos clientes, créditos, preço, margem e enquadramento precisam ser validados.</div>
+        </div>}
       </div>
 
       <div style={card}>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Estimativa por ano de transição</h3>
+        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Visão gerencial com premissas editáveis; não representa alíquota futura definitiva.</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6,marginTop:8}}>
+          {comparativoTransicao.map(item=><div key={item.ano} style={{border:"1px solid #E3E7EF",borderRadius:9,padding:8,minWidth:0}}>
+            <div style={{fontSize:8,fontWeight:950,color:NAVY}}>{item.ano}</div>
+            <div style={{fontSize:9,fontWeight:900,marginTop:3,color:item.total==null?MUTED:"#31589C"}}>{item.total==null?"A validar":moedaSimulador(item.total)}</div>
+            <div style={{...muted,fontSize:6.8,lineHeight:1.3,marginTop:3}}>{item.status}</div>
+          </div>)}
+        </div>
+      </div>
+
+      <div style={card}>
+        <details>
+        <summary style={{fontFamily:DISPLAY_FONT,fontSize:16,fontWeight:800,cursor:"pointer"}}>
+          Ver memória técnica da estimativa
+        </summary>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 7px"}}>
           Memória de cálculo
         </h3>
@@ -3449,6 +3536,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         <div style={{marginTop:6,background:"#EEF5FF",borderRadius:9,padding:8,fontSize:7.7,lineHeight:1.45}}>
           <b>Fluxo de caixa:</b> o split payment deve ser projetado separadamente da carga tributária, pois altera o momento da retenção/recolhimento, não a fórmula nominal do tributo.
         </div>
+        </details>
       </div>
 
       <PrimaryButton onClick={()=>setEtapa("resultado")}>
