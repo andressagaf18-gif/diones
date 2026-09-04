@@ -1888,6 +1888,11 @@ function SimuladorReformaPublico({
     ?(estimativaAtual?.valor??null)
     :(String(impostoAtual||"").trim()?n(impostoAtual):null);
 
+  // Comparação entre regimes: cada total inclui tributos sobre faturamento e
+  // IRPJ/CSLL próprios do regime. Valores locais só entram quando confirmados.
+  const estimativaPresumidoComparativo=calcularPresumidoEstimado();
+  const estimativaRealComparativo=calcularRealEstimado();
+
   const faseTeste2026=anoCenario===2026;
 
   const proporcaoLegados={
@@ -1963,22 +1968,25 @@ function SimuladorReformaPublico({
   let reforma=null;
   let comparacaoPermitida=false;
   let motivoPendencia="";
-  // Simples: estimativa automática para triagem. Como a partilha futura do DAS
-  // ainda depende de regulamentação, usa-se o DAS atual como referência e uma
-  // parcela residual gerencial por anexo, sempre identificada como premissa.
+  // Simples: a parcela residual somente pode ser obtida pela composição
+  // documental do DAS. Não se aplica percentual arbitrário por anexo.
   const dasAtualReferencia=Math.max(0,
     estimativaAtual?.regime==="Simples Nacional"
       ?n(estimativaAtual.valor)
       :n(atual)-fora
   );
-  const percentualResidualGerencial={I:.42,II:.45,III:.67,IV:.72,V:.67}[anexoSimples]??.60;
-  const dasResidualAutomatico=dasAtualReferencia*percentualResidualGerencial;
+  const consumoIdentificadoDas=
+    pisAtualUsado+cofinsAtualUsado+icmsAtualUsado+issAtualUsado;
+  const composicaoDasIdentificada=dasAtualReferencia>0&&consumoIdentificadoDas>0;
+  const dasResidualAutomatico=composicaoDasIdentificada
+    ?Math.max(0,dasAtualReferencia-consumoIdentificadoDas)
+    :null;
   const simplesDentro=n(dasDentroProjetado)>0
     ?n(dasDentroProjetado)+outrosAtuaisUsados+isUsado
     :dasAtualReferencia>0?dasAtualReferencia+outrosAtuaisUsados+isUsado:null;
   const simplesFora=n(dasResidualProjetado)>0
     ?n(dasResidualProjetado)+ibsCbsLiquido+outrosAtuaisUsados+isUsado
-    :dasAtualReferencia>0?dasResidualAutomatico+ibsCbsLiquido+outrosAtuaisUsados+isUsado:null;
+    :dasResidualAutomatico!=null?dasResidualAutomatico+ibsCbsLiquido+outrosAtuaisUsados+isUsado:null;
   const melhorSimplesMatematico=simplesDentro!=null&&simplesFora!=null
     ?simplesDentro<simplesFora?"DENTRO":simplesFora<simplesDentro?"FORA":"EMPATE"
     :null;
@@ -2050,7 +2058,7 @@ function SimuladorReformaPublico({
       const ibsAno=(ano<=2028?.1:17.7*fatorIbsSimples)*(1-redIbs/100);
       const novoBrutoAno=baseIbsCbs*(cbsAno+ibsAno)/100;
       const creditoAno=Math.min(novoBrutoAno,baseCreditosConfirmados*(cbsAno+ibsAno)/100);
-      const foraAno=dasAtualReferencia>0
+      const foraAno=dasResidualAutomatico!=null
         ?dasResidualAutomatico+Math.max(0,novoBrutoAno-creditoAno)+outrosAtuaisUsados+isUsado
         :null;
       const dentroAno=dasAtualReferencia>0
@@ -2071,6 +2079,31 @@ function SimuladorReformaPublico({
     const mantidosAno=(icmsAtualUsado+issAtualUsado)*fatorLegado+tributosMantidos;
     return {ano,total:novoAno+mantidosAno,status:ano<2029?"CBS + início do IBS":"Transição ICMS/ISS para IBS"};
   });
+
+  const impostoRendaReforma=regime==="Lucro Presumido"
+    ?n(estimativaPresumidoComparativo?.irpjMensalEquivalente)
+    :regime==="Lucro Real"?n(estimativaRealComparativo?.irpj):irpjAtualUsado;
+  const adicionalReforma=regime==="Lucro Presumido"
+    ?n(estimativaPresumidoComparativo?.adicionalIrpjMensalEquivalente)
+    :regime==="Lucro Real"?n(estimativaRealComparativo?.adicionalIrpj):adicionalIrpjAtualUsado;
+  const csllReforma=regime==="Lucro Presumido"
+    ?n(estimativaPresumidoComparativo?.csllMensalEquivalente)
+    :regime==="Lucro Real"?n(estimativaRealComparativo?.csll):csllAtualUsado;
+  const linhasComparacaoRegimes=[
+    ["DAS total",null,null,dasAtualReferencia||null,regime==="Simples Nacional"?dasResidualAutomatico:null],
+    ["PIS",estimativaRealComparativo?.pisLiquido,estimativaPresumidoComparativo?.pisMensal,pisAtualUsado||null,pisCofinsRemanescentes?pisAtualUsado*proporcao.pisCofins:null],
+    ["Cofins",estimativaRealComparativo?.cofinsLiquido,estimativaPresumidoComparativo?.cofinsMensal,cofinsAtualUsado||null,pisCofinsRemanescentes?cofinsAtualUsado*proporcao.pisCofins:null],
+    ["ICMS / ISS",estimativaRealComparativo?.tributoLocalMensal,estimativaPresumidoComparativo?.tributoLocalMensal,(icmsAtualUsado+issAtualUsado)||null,icmsIssRemanescentes||null],
+    ["IPI",ipiAtualUsado||null,ipiAtualUsado||null,ipiAtualUsado||null,ipiRemanescente||null],
+    ["IRPJ",estimativaRealComparativo?.irpjNormal,estimativaPresumidoComparativo?.irpjNormalMensalEquivalente,irpjAtualUsado||null,impostoRendaReforma||null],
+    ["Adicional IRPJ",estimativaRealComparativo?.adicionalIrpj,estimativaPresumidoComparativo?.adicionalIrpjMensalEquivalente,adicionalIrpjAtualUsado||null,adicionalReforma||null],
+    ["CSLL",estimativaRealComparativo?.csll,estimativaPresumidoComparativo?.csllMensalEquivalente,csllAtualUsado||null,csllReforma||null],
+    ["CPP / folha",cppAtualUsado||null,cppAtualUsado||null,cppAtualUsado||null,cppAtualUsado||null],
+    ["CBS líquida",null,null,null,cbsLiquida],
+    ["IBS líquido",null,null,null,ibsLiquido],
+    ["Imposto Seletivo",null,null,null,isUsado||null],
+    ["Outros",outrosAtuaisUsados||null,outrosAtuaisUsados||null,outrosAtuaisUsados||null,outrosAtuaisUsados||null],
+  ];
 
   function aplicarCenario(valor){
     setCenarioAliquota(valor);
@@ -3496,8 +3529,34 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             <b>Tendência inicial:</b> {tendenciaSimples}
           </div>
           <div style={{...muted,fontSize:7.3,lineHeight:1.4,marginTop:6}}>A menor carga matemática não é recomendação automática. Perfil dos clientes, créditos, preço, margem e enquadramento precisam ser validados.</div>
-          <div style={{marginTop:6,fontSize:7.1,lineHeight:1.4,color:"#805B10"}}><b>Premissa automática:</b> DAS atual como referência e parcela residual estimada em {percentualSimulador(percentualResidualGerencial*100)} para o Anexo {anexoSimples||"não informado"}. A partilha futura deverá ser atualizada quando houver regulamentação aplicável.</div>
+          <div style={{marginTop:6,fontSize:7.1,lineHeight:1.4,color:"#805B10"}}><b>Regra de segurança:</b> o cenário por fora somente fecha quando PIS, Cofins, ICMS e ISS contidos no DAS forem identificados pelo PGDAS ou informados na composição atual. Nenhum percentual residual é inventado pelo sistema.</div>
         </div>}
+      </div>
+
+      <div style={card}>
+        <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Comparação completa por regime e por tributo</h3>
+        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>O DAS é o total englobado. A abertura dos seus componentes só aparece quando identificada no PGDAS ou informada pelo usuário. Não some novamente os componentes ao DAS.</div>
+        <div style={{overflowX:"auto",marginTop:8}}>
+          <table style={{width:"100%",minWidth:610,borderCollapse:"collapse",fontSize:7.5}}>
+            <thead><tr style={{background:NAVY,color:"#fff"}}>
+              {['Tributo','Lucro Real atual','Lucro Presumido atual','Simples atual','Reforma no regime escolhido'].map(t=><th key={t} style={{padding:8,textAlign:t==='Tributo'?'left':'right'}}>{t}</th>)}
+            </tr></thead>
+            <tbody>
+              {linhasComparacaoRegimes.map(([nome,realValor,presValor,simplesValor,reformaValor])=><tr key={nome} style={{borderBottom:"1px solid #E8ECF2"}}>
+                <td style={{padding:"7px 6px",fontWeight:800}}>{nome}</td>
+                {[realValor,presValor,simplesValor,reformaValor].map((valor,i)=><td key={i} style={{padding:"7px 6px",textAlign:"right",whiteSpace:"nowrap"}}>{valor==null?'—':moedaSimulador(valor)}</td>)}
+              </tr>)}
+              <tr style={{background:"#EAF1F5",fontWeight:950}}>
+                <td style={{padding:"8px 6px"}}>CARGA TOTAL ESTIMADA</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):'Pendente'}</td>
+                <td style={{padding:"8px 6px",textAlign:"right"}}>{reforma==null?'Pendente':moedaSimulador(reforma)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {!aliquotaLocalConfirmada&&natureza&&<div style={{marginTop:7,background:"#FFF8EC",borderRadius:8,padding:8,fontSize:7.2,color:"#805B10"}}><b>Atenção:</b> ICMS/ISS não integra os totais do Real e Presumido enquanto a alíquota efetiva sugerida não for confirmada.</div>}
       </div>
 
       <div style={card}>
