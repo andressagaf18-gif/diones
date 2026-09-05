@@ -219,7 +219,7 @@ function perguntaCompativelComEscala(
     return false;
   }
 
-  // "Sim / Parcial / Não" funciona melhor para uma única
+  // A escala de cinco respostas funciona melhor para uma única
   // prática, controle ou condição verificável.
   const marcadoresAbertos = [
     "quais ",
@@ -249,6 +249,12 @@ function perguntaCompativelComEscala(
         )
     )
   ) {
+    return false;
+  }
+
+  // Rejeita alternativas embutidas que obrigariam o usuário a responder
+  // algo diferente da escala da interface.
+  if (/\bou\s+(?:tudo|apenas|somente|qual|quais|é|são|fica|ficam)\b/.test(valor)) {
     return false;
   }
 
@@ -311,11 +317,13 @@ A interface permite SOMENTE estas respostas:
 - Sim
 - Parcial
 - Não
+- Não sei
+- N/A
 
 REESCREVA as perguntas abaixo para que cada uma avalie UMA ÚNICA prática, controle ou condição objetiva.
 
 REGRAS OBRIGATÓRIAS:
-- A resposta "Sim", "Parcial" ou "Não" deve fazer sentido sem explicação adicional.
+- As cinco respostas devem fazer sentido: Sim = implantado; Parcial = incompleto ou irregular; Não = inexistente; Não sei = ausência de conhecimento; N/A = legitimamente não aplicável.
 - NÃO use: "quais", "qual", "como", "descreva", "explique", "informe", "forneça", "detalhe", "liste", "cite", "envie".
 - NÃO peça números, nomes de sistemas, documentos ou exemplos.
 - NÃO coloque duas perguntas no mesmo item.
@@ -578,7 +586,7 @@ export default async function handler(req, res) {
   }
 
   // Esta rota nunca deve devolver perguntas abertas para uma
-  // interface cuja resposta é somente Sim / Parcial / Não.
+  // interface cuja resposta é somente a escala fechada de cinco opções.
   const fallbackFechado =
     fallback.filter(
       (q) =>
@@ -626,7 +634,7 @@ Você é o motor de perguntas diagnósticas da Finder of Solutions.
 ${instrucoesDoMotor(estrutura)}
 
 OBJETIVO:
-Gerar perguntas específicas para a estrutura escolhida, mas TODAS precisam ser respondíveis exclusivamente pela escala "Sim / Parcial / Não".
+Gerar perguntas específicas para a estrutura escolhida, mas TODAS precisam ser respondíveis exclusivamente pela escala "Sim / Parcial / Não / Não sei / N/A".
 
 ESTRUTURA:
 ${motor.label}
@@ -657,7 +665,11 @@ REGRAS:
 - Nas estruturas especializadas, os eixos obrigatórios podem representar a cobertura estrutural completa definida pelo motor.
 - Não faça perguntas que já estejam respondidas claramente no contexto.
 - CADA ITEM deve avaliar UMA ÚNICA prática, controle ou condição verificável.
-- A resposta "Sim", "Parcial" ou "Não" deve ser suficiente e coerente.
+- As cinco respostas precisam ser coerentes: Sim = implantado e utilizado; Parcial = incompleto, informal ou irregular; Não = inexistente; Não sei = falta de conhecimento ou evidência; N/A = legitimamente não aplicável.
+- Não crie alternativas dentro da pergunta, como "usa sistema ou controle manual?".
+- Não reúna existência, frequência, qualidade e utilização na mesma pergunta.
+- Separe conciliação bancária financeira de conciliação entre financeiro e contabilidade.
+- Para Terceiro Setor, nunca trate despesa como receita e nunca presuma imunidade ou isenção.
 - NÃO use perguntas abertas como "quais", "qual", "como", "por quê", "descreva", "explique", "informe", "forneça", "detalhe", "liste", "cite" ou "envie".
 - NÃO peça nomes de sistemas, valores, documentos, exemplos ou justificativas no checklist.
 - NÃO use "Se sim..." nem faça uma segunda pergunta dentro do mesmo item.
