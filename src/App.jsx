@@ -6826,8 +6826,17 @@ function DiagnosticoPrototipo() {
 
           perguntasAprofundamento:
             listaIaSegura(
-              diagnostico.informacoesFaltantes
+              diagnostico.perguntasAprofundamento
             ),
+
+          evidenciasNecessarias:
+            listaIaSegura(diagnostico.evidenciasNecessarias),
+
+          pontosParaValidacao:
+            listaIaSegura(diagnostico.pontosParaValidacao),
+
+          decisoesBloqueadas:
+            listaIaSegura(diagnostico.decisoesBloqueadas),
 
           visaoConsultor:
             diagnostico.visaoAdministracao ||
@@ -8160,12 +8169,27 @@ function DiagnosticoPrototipo() {
               : []
           ),
           ...lacunasConhecimento.map((item) => ({
-            pergunta: item.pergunta,
-            motivo: item.motivo,
+            pergunta: `Quem pode confirmar e apresentar evidência para: ${item.pergunta}`,
+            motivo: "Obter uma resposta verificável para a lacuna identificada.",
             informacaoValidar: item.impacto,
             origem: "RESPOSTA_NAO_SEI",
           })),
         ],
+
+        evidenciasNecessarias:
+          Array.isArray(resultadoFonte?.evidenciasNecessarias)
+            ? resultadoFonte.evidenciasNecessarias
+            : [],
+
+        pontosParaValidacao:
+          Array.isArray(resultadoFonte?.pontosParaValidacao)
+            ? resultadoFonte.pontosParaValidacao
+            : [],
+
+        decisoesBloqueadas:
+          Array.isArray(resultadoFonte?.decisoesBloqueadas)
+            ? resultadoFonte.decisoesBloqueadas
+            : [],
 
         visaoConsultor:
           resultadoFonte?.visaoConsultor || null,
