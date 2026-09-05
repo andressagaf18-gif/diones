@@ -53,6 +53,7 @@ export const TRANSICAO = {
     cbsTeste: 0,
     ibsTeste: 0,
     cbsRegular: 1,
+    cbsReducaoPontos: 0.1,
     ibsRegular: 1,
     ibsAliquotaFixa: 0.1,
     pisCofins: 0,
@@ -65,6 +66,7 @@ export const TRANSICAO = {
     cbsTeste: 0,
     ibsTeste: 0,
     cbsRegular: 1,
+    cbsReducaoPontos: 0.1,
     ibsRegular: 1,
     ibsAliquotaFixa: 0.1,
     pisCofins: 0,
@@ -475,10 +477,20 @@ export function calcularCargaCompleta(parametros = {}) {
     parametros.tributosForaDas
   );
 
-  const baseIbsCbs =
+  const baseOperacao =
     parametros.baseTributavel == null
       ? faturamento
       : positivo(parametros.baseTributavel);
+
+  // A partir de 2027, quando houver IS, ele integra a base do IBS/CBS.
+  // O campo baseTributavel representa o valor da operação antes do IS.
+  const impostoSeletivoInformado =
+    regra.ano >= 2027
+      ? positivo(parametros.impostoSeletivo)
+      : 0;
+
+  const baseIbsCbs =
+    baseOperacao + impostoSeletivoInformado;
 
   const possuiAliquotasNovas =
     positivo(parametros.aliquotaCBS) +
@@ -489,7 +501,13 @@ export function calcularCargaCompleta(parametros = {}) {
     faturamento,
     baseTributavel: baseIbsCbs,
 
-    aliquotaCBS: parametros.aliquotaCBS,
+    // Em 2027 e 2028 a alíquota de referência da CBS é reduzida em
+    // 0,1 ponto percentual, em contrapartida ao IBS de 0,1%.
+    aliquotaCBS: Math.max(
+      0,
+      positivo(parametros.aliquotaCBS) -
+        positivo(regra.cbsReducaoPontos)
+    ),
 
     aliquotaIBS:
       regra.ibsAliquotaFixa ??
@@ -544,10 +562,7 @@ export function calcularCargaCompleta(parametros = {}) {
   const ipiLegado =
     atuais.ipi * fatorIpi;
 
-  const impostoSeletivo =
-    regra.ano >= 2027
-      ? positivo(parametros.impostoSeletivo)
-      : 0;
+  const impostoSeletivo = impostoSeletivoInformado;
 
   let irpjCsll = {
     irpj: atuais.irpj,
@@ -747,6 +762,9 @@ export function calcularCargaCompleta(parametros = {}) {
 
     ano: regra.ano,
     regra,
+
+    baseOperacao,
+    baseIbsCbs,
 
     cargaAtual,
     totalProjetado,
