@@ -365,6 +365,66 @@ export const EIXOS_PERGUNTAS = {
     },
   },
 
+  terceiro_setor: {
+    governanca_estatutaria: {
+      label: "Governança estatutária",
+      perguntas: [
+        { id:"ts_gov_01", tema:"Estatuto", pergunta:"O estatuto está atualizado e representa as atividades efetivamente realizadas pela entidade?", riscoAvaliado:"Atuação diferente da finalidade ou das regras estatutárias.", importancia:3 },
+        { id:"ts_gov_02", tema:"Mandatos", pergunta:"Os mandatos e poderes dos dirigentes estão formalmente atualizados?", riscoAvaliado:"Atos praticados por representantes sem poderes atualizados.", importancia:3 },
+        { id:"ts_gov_03", tema:"Deliberações", pergunta:"As decisões relevantes são registradas em atas e aprovadas conforme o estatuto?", riscoAvaliado:"Decisões sem suporte formal ou rastreabilidade.", importancia:3 },
+      ],
+    },
+    prestacao_contas: {
+      label: "Prestação de contas",
+      perguntas: [
+        { id:"ts_pc_01", tema:"Fechamento", pergunta:"A entidade realiza fechamento contábil e financeiro com periodicidade definida?", riscoAvaliado:"Prestação de contas baseada em informações atrasadas ou incompletas.", importancia:3 },
+        { id:"ts_pc_02", tema:"Aprovação", pergunta:"As contas são apresentadas e aprovadas pelo órgão competente da entidade?", riscoAvaliado:"Prestação de contas sem aprovação formal.", importancia:3 },
+        { id:"ts_pc_03", tema:"Documentação", pergunta:"Os documentos que sustentam receitas e despesas são organizados e preservados?", riscoAvaliado:"Movimentações sem comprovação documental suficiente.", importancia:3 },
+      ],
+    },
+    financeiro_entidade: {
+      label: "Financeiro da entidade",
+      perguntas: [
+        { id:"ts_fin_01", tema:"Conciliação", pergunta:"Os extratos bancários são conciliados com o controle financeiro?", riscoAvaliado:"Diferenças financeiras não identificadas tempestivamente.", importancia:3 },
+        { id:"ts_fin_02", tema:"Contabilidade", pergunta:"Os saldos do controle financeiro são conciliados com a contabilidade?", riscoAvaliado:"Divergência entre a gestão financeira e os registros contábeis.", importancia:3 },
+        { id:"ts_fin_03", tema:"Previsão", pergunta:"Existe previsão de recebimentos e pagamentos para os próximos 90 dias?", riscoAvaliado:"Baixa previsibilidade de caixa.", importancia:3 },
+        { id:"ts_fin_04", tema:"Orçamento", pergunta:"A entidade possui orçamento anual formalmente aprovado?", riscoAvaliado:"Uso de recursos sem referência orçamentária.", importancia:3 },
+      ],
+    },
+    receitas_entidade: {
+      label: "Receitas e recursos",
+      perguntas: [
+        { id:"ts_rec_01", tema:"Segregação", pergunta:"Mensalidades, doações, subvenções, locações e outras receitas são registradas separadamente?", riscoAvaliado:"Receitas de naturezas diferentes tratadas de forma indistinta.", importancia:3 },
+        { id:"ts_rec_02", tema:"Mensalidades", pergunta:"Existe controle atualizado das mensalidades e da inadimplência dos associados?", riscoAvaliado:"Perda de receita e baixa previsibilidade de recebimento.", importancia:3 },
+        { id:"ts_rec_03", tema:"Aplicação", pergunta:"A aplicação dos recursos é acompanhada de acordo com sua finalidade?", riscoAvaliado:"Recursos aplicados sem vínculo demonstrável com a finalidade institucional.", importancia:3 },
+      ],
+    },
+    contratos_terceiro_setor: {
+      label: "Contratos e instrumentos",
+      perguntas: [
+        { id:"ts_con_01", tema:"Formalização", pergunta:"Os contratos de locação, cessão ou uso dos espaços estão formalizados por escrito?", riscoAvaliado:"Receitas e responsabilidades contratuais sem formalização.", importancia:3 },
+        { id:"ts_con_02", tema:"Vigência", pergunta:"Existe controle de vencimento e renovação dos contratos?", riscoAvaliado:"Perda de prazo ou continuidade contratual sem revisão.", importancia:2 },
+        { id:"ts_con_03", tema:"Parcerias", pergunta:"Parcerias, convênios e repasses possuem instrumentos e prestações de contas definidos?", riscoAvaliado:"Recursos de terceiros sem regras e evidências suficientes.", importancia:3 },
+      ],
+    },
+    tributario_terceiro_setor: {
+      label: "Tributário e conformidade",
+      perguntas: [
+        { id:"ts_tri_01", tema:"Enquadramento", pergunta:"As imunidades e isenções utilizadas foram revisadas conforme as atividades e receitas atuais?", riscoAvaliado:"Benefício tributário aplicado sem atendimento integral dos requisitos.", importancia:3 },
+        { id:"ts_tri_02", tema:"Obrigações", pergunta:"As obrigações fiscais, contábeis e trabalhistas são entregues e conferidas regularmente?", riscoAvaliado:"Inconsistências ou omissões em obrigações acessórias.", importancia:3 },
+        { id:"ts_tri_03", tema:"Receitas próprias", pergunta:"As receitas de locação e outras atividades próprias possuem tratamento tributário validado?", riscoAvaliado:"Receitas acessórias com tratamento fiscal inadequado.", importancia:3 },
+      ],
+    },
+    operacao_entidade: {
+      label: "Operação da entidade",
+      perguntas: [
+        { id:"ts_op_01", tema:"Responsáveis", pergunta:"Os principais processos possuem responsáveis definidos?", riscoAvaliado:"Atividades dependentes de conhecimento informal.", importancia:2 },
+        { id:"ts_op_02", tema:"Procedimentos", pergunta:"Existem orientações documentadas para executar os principais processos?", riscoAvaliado:"Retrabalho e execução inconsistente.", importancia:2 },
+        { id:"ts_op_03", tema:"Espaços", pergunta:"Reservas e utilização dos espaços são registradas em um controle centralizado?", riscoAvaliado:"Conflitos, perda de receita ou ocupação sem rastreabilidade.", importancia:2 },
+      ],
+    },
+  },
+
   pessoa_fisica: {
     organizacao_financeira: {
       label: "Organização financeira",
