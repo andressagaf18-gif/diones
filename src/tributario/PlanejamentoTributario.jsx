@@ -13,11 +13,29 @@ const digits=v=>String(v||"").replace(/\D/g,"");
 const fmtCnpj=v=>{const d=digits(v);return d.length===14?d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,"$1.$2.$3/$4-$5"):v}
 const fileData=file=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error("Falha ao ler arquivo"));r.readAsDataURL(file)});
 
-function Mensal({label,mapa,onChange}){
- const total=MESES.reduce((a,m)=>a+num(mapa[m]),0);
+// Registros criados por versões anteriores podem não possuir todos os mapas
+// mensais atuais. Preserva o conteúdo salvo e recompõe apenas os campos ausentes.
+function mesclarEstrutura(padrao,salvo){
+ if(Array.isArray(padrao))return Array.isArray(salvo)?salvo:[...padrao];
+ if(!padrao||typeof padrao!=="object")return salvo===undefined?padrao:salvo;
+ const fonte=salvo&&typeof salvo==="object"&&!Array.isArray(salvo)?salvo:{};
+ const resultado={};
+ Object.keys({...padrao,...fonte}).forEach(chave=>{
+  const valorPadrao=padrao?.[chave];
+  const valorSalvo=fonte?.[chave];
+  resultado[chave]=valorPadrao&&typeof valorPadrao==="object"&&!Array.isArray(valorPadrao)
+   ?mesclarEstrutura(valorPadrao,valorSalvo)
+   :(valorSalvo===undefined?valorPadrao:valorSalvo);
+ });
+ return resultado;
+}
+
+function Mensal({label,mapa={},onChange}){
+ const mapaSeguro=mapa&&typeof mapa==="object"?mapa:{};
+ const total=MESES.reduce((a,m)=>a+num(mapaSeguro[m]),0);
  return <div style={{display:"grid",gridTemplateColumns:"150px repeat(12,minmax(70px,1fr)) 105px",gap:4,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #F0F2F6"}}>
   <strong style={{fontSize:9.5}}>{label}</strong>
-  {MESES.map(m=><input key={m} type="number" step="0.01" value={mapa[m]??0} onChange={e=>onChange(m,e.target.value)} style={{...inp,padding:"6px 5px"}}/>)}
+  {MESES.map(m=><input key={m} type="number" step="0.01" value={mapaSeguro[m]??0} onChange={e=>onChange(m,e.target.value)} style={{...inp,padding:"6px 5px"}}/>)}
   <strong style={{fontSize:9.5,textAlign:"right"}}>{moeda(total)}</strong>
  </div>
 }
@@ -161,8 +179,8 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   }
  },[cnpj]);
 
- function setMes(path,m,v){setConferenciaDesatualizada(true);setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)][m]=num(v);return c})}
- function setParam(path,v){setConferenciaDesatualizada(true);setBase(a=>{const c=JSON.parse(JSON.stringify(a));let x=c;path.slice(0,-1).forEach(k=>x=x[k]);x[path.at(-1)]=v;return c})}
+ function setMes(path,m,v){setConferenciaDesatualizada(true);setBase(a=>{const c=mesclarEstrutura(baseVazia(),a);let x=c;path.slice(0,-1).forEach(k=>{if(!x[k]||typeof x[k]!=="object")x[k]={};x=x[k]});const chave=path.at(-1);if(!x[chave]||typeof x[chave]!=="object")x[chave]={};x[chave][m]=num(v);return c})}
+ function setParam(path,v){setConferenciaDesatualizada(true);setBase(a=>{const c=mesclarEstrutura(baseVazia(),a);let x=c;path.slice(0,-1).forEach(k=>{if(!x[k]||typeof x[k]!=="object")x[k]={};x=x[k]});x[path.at(-1)]=v;return c})}
  function mergeExtracao(ext){
   setExtracaoResumo(ext||null);
   setConferenciaIa(null);
@@ -346,7 +364,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   if(at.descricaoReal)setDescricao(at.descricaoReal);
 
   if(salvo&&typeof salvo==="object"&&Object.keys(salvo).length){
-   setBase(salvo);
+   setBase(mesclarEstrutura(baseVazia(),salvo));
   }
 
   if(manuais.crescimento!=null)setCrescimento(num(manuais.crescimento));
