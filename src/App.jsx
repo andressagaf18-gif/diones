@@ -232,6 +232,7 @@ const REGIMES = ["Simples Nacional", "Lucro Presumido", "Lucro Real", "Não sei"
 // =========================================================
 const ESTRUTURAS_NEGOCIO = [
   { id: "operacional", label: "Empresa operacional" },
+  { id: "terceiro_setor", label: "Associação / Terceiro Setor" },
   { id: "holding", label: "Holding" },
   { id: "grupo", label: "Grupo empresarial" },
   { id: "spe", label: "SPE" },
@@ -426,6 +427,16 @@ const AREAS_SPE = [
   { id: "governanca", label: "Governança", Icon: ClipboardList },
   { id: "riscos", label: "Riscos do projeto", Icon: AlertTriangle },
   { id: "encerramento", label: "Saída / encerramento", Icon: CalendarCheck },
+];
+
+const AREAS_TERCEIRO_SETOR = [
+  { id:"governanca_estatutaria", label:"Governança estatutária", Icon:ClipboardList },
+  { id:"prestacao_contas", label:"Prestação de contas", Icon:Calculator },
+  { id:"financeiro_entidade", label:"Financeiro da entidade", Icon:Wallet },
+  { id:"receitas_entidade", label:"Receitas e recursos", Icon:TrendingUp },
+  { id:"contratos_terceiro_setor", label:"Contratos e instrumentos", Icon:Scale },
+  { id:"tributario_terceiro_setor", label:"Tributário e conformidade", Icon:Calculator },
+  { id:"operacao_entidade", label:"Operação da entidade", Icon:Settings2 },
 ];
 
 // Estimativa simplificada de carga tributária — referência, não é cálculo fiscal real.
@@ -1050,6 +1061,30 @@ const DORES_SPE = [
   "O cronograma do projeto apresenta riscos",
   "Não existe plano claro para saída ou encerramento da SPE",
   "Outro",
+];
+
+const DORES_TERCEIRO_SETOR = [
+  "Falta de dinheiro em caixa",
+  "Inadimplência de associados",
+  "Prestação de contas desorganizada",
+  "Ausência de orçamento anual",
+  "Contratos de locação ou cessão incompletos",
+  "Dúvidas sobre imunidades, isenções ou obrigações",
+  "Governança, atas ou mandatos desatualizados",
+  "Processos internos desorganizados",
+  "Receitas e recursos sem segregação adequada",
+  "Outro",
+];
+
+const IMPACTOS_TERCEIRO_SETOR = [
+  "Falta de caixa",
+  "Risco fiscal ou jurídico",
+  "Prestação de contas inconsistente",
+  "Perda de receitas",
+  "Retrabalho",
+  "Conflito entre dirigentes ou associados",
+  "Descumprimento estatutário",
+  "Dificuldade para captar ou aplicar recursos",
 ];
 
 const IMPACTOS_GRUPO = [
@@ -3991,6 +4026,7 @@ function DiagnosticoPrototipo() {
   const [dor90Dias, setDor90Dias] = useState("");
   const [impactosDor, setImpactosDor] = useState([]);
   const [respostas, setRespostas] = useState({});
+  const [detalhesRespostas, setDetalhesRespostas] = useState({});
   const [msgIdx, setMsgIdx] = useState(0);
   const [toast, setToast] = useState("");
   const [iaResultado, setIaResultado] = useState(null);
@@ -4040,6 +4076,9 @@ function DiagnosticoPrototipo() {
   const trilhaSPEAtiva =
     estruturaNegocio === "spe";
 
+  const trilhaTerceiroSetorAtiva =
+    estruturaNegocio === "terceiro_setor";
+
   const trilhaReformaAtiva =
     estruturaNegocio === "reforma_tributaria";
 
@@ -4069,6 +4108,8 @@ function DiagnosticoPrototipo() {
       ? AREAS_GRUPO
       : trilhaSPEAtiva
       ? AREAS_SPE
+      : trilhaTerceiroSetorAtiva
+      ? AREAS_TERCEIRO_SETOR
       : trilhaReformaAtiva
       ? AREAS_REFORMA
       : AREAS;
@@ -4082,6 +4123,8 @@ function DiagnosticoPrototipo() {
       ? DORES_GRUPO
       : trilhaSPEAtiva
       ? DORES_SPE
+      : trilhaTerceiroSetorAtiva
+      ? DORES_TERCEIRO_SETOR
       : trilhaReformaAtiva
       ? DORES_REFORMA
       : DORES_EVENTO;
@@ -4095,6 +4138,8 @@ function DiagnosticoPrototipo() {
       ? IMPACTOS_GRUPO
       : trilhaSPEAtiva
       ? IMPACTOS_SPE
+      : trilhaTerceiroSetorAtiva
+      ? IMPACTOS_TERCEIRO_SETOR
       : trilhaReformaAtiva
       ? IMPACTOS_REFORMA
       : IMPACTOS_DOR;
@@ -4110,6 +4155,8 @@ function DiagnosticoPrototipo() {
         )
       : trilhaReformaAtiva
       ? "o impacto da Reforma Tributária na sua empresa"
+      : trilhaTerceiroSetorAtiva
+      ? "sua entidade e sua finalidade institucional"
       : "seu negócio";
 
   const perfilPF = {
@@ -4746,6 +4793,13 @@ function DiagnosticoPrototipo() {
         : {}
     );
 
+    setDetalhesRespostas(
+      rascunho.detalhesRespostas &&
+      typeof rascunho.detalhesRespostas === "object"
+        ? rascunho.detalhesRespostas
+        : {}
+    );
+
     if (
       rascunho.leadId
     ) {
@@ -4928,6 +4982,7 @@ function DiagnosticoPrototipo() {
       dor90Dias,
       impactosDor,
       respostas,
+      detalhesRespostas,
 
       leadId,
       sessionIdLead,
@@ -5022,6 +5077,7 @@ function DiagnosticoPrototipo() {
     dor90Dias,
     impactosDor,
     respostas,
+    detalhesRespostas,
     leadId,
     sessionIdLead,
   ]);
@@ -6502,6 +6558,7 @@ function DiagnosticoPrototipo() {
             riscoAvaliado: q.risco || "",
             importancia: q.importancia || 1,
             resposta: respostas[q.id],
+            detalheResposta: detalhesRespostas[q.id] || "",
           })),
         })),
       })),
@@ -7300,6 +7357,7 @@ function DiagnosticoPrototipo() {
         )
       );
       setRespostas({});
+      setDetalhesRespostas({});
       setStep("confirmarNegocio");
     } catch (error) {
       console.error("Erro ao gerar perguntas:", error);
@@ -7666,6 +7724,9 @@ function DiagnosticoPrototipo() {
 
   function responder(qid, valor) {
     setRespostas((r) => ({ ...r, [qid]: valor }));
+    if (valor === "sim") {
+      setDetalhesRespostas((atuais) => ({ ...atuais, [qid]: "" }));
+    }
   }
 
   function showToast(msg) {
@@ -8668,6 +8729,7 @@ function DiagnosticoPrototipo() {
     setDor90Dias("");
     setImpactosDor([]);
     setRespostas({});
+    setDetalhesRespostas({});
     setIaResultado(null);
     setDiagnosticoIdSalvo("");
     ultimaAtualizacaoLeadRef.current = "";
@@ -8757,18 +8819,41 @@ function DiagnosticoPrototipo() {
   const quantidadeNaoSei = todasPerguntas.filter(
     (q) => respostaNaoSei(respostas[q.id])
   ).length;
+  const quantidadeRespondida = todasPerguntas.filter(
+    (q) => Boolean(respostas[q.id])
+  ).length;
+  const quantidadeComDetalhe = todasPerguntas.filter(
+    (q) => String(detalhesRespostas[q.id] || "").trim().length >= 3
+  ).length;
   const quantidadeAvaliavel = Math.max(0, totalRespostas - quantidadeNaoAplicavel);
+  const coberturaQuestionario = totalRespostas > 0
+    ? Math.round((quantidadeRespondida / totalRespostas) * 100)
+    : 0;
+  const coberturaConhecimento = quantidadeAvaliavel > 0
+    ? Math.round(
+        ((quantidadeAvaliavel - quantidadeNaoSei) / quantidadeAvaliavel) * 100
+      )
+    : 100;
+  const percentualNaoAplicavel = totalRespostas > 0
+    ? Math.round((quantidadeNaoAplicavel / totalRespostas) * 100)
+    : 0;
+  const confiancaDiagnostico =
+    coberturaQuestionario === 100 && coberturaConhecimento >= 85 && percentualNaoAplicavel <= 25
+      ? "ALTA"
+      : coberturaQuestionario >= 80 && coberturaConhecimento >= 65 && percentualNaoAplicavel <= 40
+      ? "MÉDIA"
+      : "BAIXA";
   const qualidadeRespostas = {
     totalPerguntas: totalRespostas,
+    perguntasRespondidas: quantidadeRespondida,
     perguntasAvaliaveis: quantidadeAvaliavel,
     naoAplicaveis: quantidadeNaoAplicavel,
     naoSei: quantidadeNaoSei,
-    coberturaConhecimento:
-      quantidadeAvaliavel > 0
-        ? Math.round(
-            ((quantidadeAvaliavel - quantidadeNaoSei) / quantidadeAvaliavel) * 100
-          )
-        : 100,
+    respostasComDetalhe: quantidadeComDetalhe,
+    coberturaQuestionario,
+    coberturaConhecimento,
+    percentualNaoAplicavel,
+    confianca: confiancaDiagnostico,
   };
   const pontosAtencao = [...perguntasComPeso]
     .filter((q) => q.peso !== null && q.peso < 5)
@@ -11496,6 +11581,38 @@ function DiagnosticoPrototipo() {
                                       </button>
                                     ))}
                                   </div>
+                                  {["parcialmente", "nao", "nao_sei", "nao_aplicavel"].includes(
+                                    respostas[q.id]
+                                  ) && (
+                                    <div style={{ marginTop: 7 }}>
+                                      <label style={{ ...labelStyle, fontSize: 9.5 }}>
+                                        {respostas[q.id] === "nao_sei"
+                                          ? "O que precisa ser confirmado?"
+                                          : respostas[q.id] === "nao_aplicavel"
+                                          ? "Por que não se aplica?"
+                                          : "Conte brevemente o que falta ou como funciona hoje"}
+                                      </label>
+                                      <textarea
+                                        value={detalhesRespostas[q.id] || ""}
+                                        onChange={(e) =>
+                                          setDetalhesRespostas((atuais) => ({
+                                            ...atuais,
+                                            [q.id]: e.target.value,
+                                          }))
+                                        }
+                                        rows={2}
+                                        maxLength={500}
+                                        placeholder="Opcional — esta informação melhora a precisão do diagnóstico."
+                                        style={{
+                                          ...inputStyle,
+                                          resize: "vertical",
+                                          fontFamily: BODY_FONT,
+                                          fontSize: 11,
+                                          marginTop: 4,
+                                        }}
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -11621,6 +11738,40 @@ function DiagnosticoPrototipo() {
                   <span style={{ ...badgeStyle, background: tierGeral.bg, color: tierGeral.color, marginTop: 10, fontWeight: 700 }}>{tierGeral.label}</span>
                 </div>
 
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 7,
+                  marginBottom: 14,
+                }}>
+                  {[
+                    ["CONFIANÇA", qualidadeRespostas.confianca],
+                    ["CONHECIMENTO", `${qualidadeRespostas.coberturaConhecimento}%`],
+                    ["NÃO SEI / N/A", `${qualidadeRespostas.naoSei} / ${qualidadeRespostas.naoAplicaveis}`],
+                  ].map(([rotulo, valor]) => (
+                    <div key={rotulo} style={{
+                      border: "1px solid #E3E7EF",
+                      borderRadius: 10,
+                      padding: 9,
+                      textAlign: "center",
+                      background: "#F7F8FB",
+                    }}>
+                      <p style={{ fontSize: 8.5, color: MUTED, margin: "0 0 3px", fontWeight: 800 }}>
+                        {rotulo}
+                      </p>
+                      <strong style={{ fontSize: 12, color: NAVY }}>{valor}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                {qualidadeRespostas.confianca !== "ALTA" && (
+                  <div style={{ background: "#FFF8E8", border: "1px solid #F1CF83", borderRadius: 10, padding: 10, marginBottom: 14 }}>
+                    <p style={{ fontSize: 10.5, color: "#70410A", margin: 0, lineHeight: 1.45 }}>
+                      <strong>Resultado preliminar:</strong> respostas “Não sei” e “N/A” reduzem a segurança da leitura. Os pontos indicados devem ser confirmados com documentos e evidências antes de uma decisão.
+                    </p>
+                  </div>
+                )}
+
                 <p style={{ fontSize: 12, color: MUTED, textAlign: "center", margin: "0 0 4px", fontWeight: 700 }}>
                   {trilhaPFAtiva
                     ? nome
@@ -11688,6 +11839,33 @@ function DiagnosticoPrototipo() {
                     <div style={{ background: "#FFF3EF", borderLeft: `4px solid ${CORAL}`, borderRadius: 10, padding: 13, marginBottom: 14 }}>
                       <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.6 }}>{resumoExecutivo}</p>
                     </div>
+                  </>
+                )}
+
+                {iaResultado?.plano90Dias && (
+                  <>
+                    <p style={sectionTitleStyle}>Plano inicial 30/60/90 dias</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 7, marginBottom: 14 }}>
+                      {[
+                        ["30 DIAS", iaResultado.plano90Dias.dias30],
+                        ["60 DIAS", iaResultado.plano90Dias.dias60],
+                        ["90 DIAS", iaResultado.plano90Dias.dias90],
+                      ].map(([periodo, itens]) => (
+                        <div key={periodo} style={{ border: "1px solid #E3E7EF", borderRadius: 10, padding: 9, background: "#F7F8FB" }}>
+                          <strong style={{ fontSize: 9, color: CORAL }}>{periodo}</strong>
+                          <ul style={{ paddingLeft: 14, margin: "6px 0 0" }}>
+                            {listaIaSegura(itens).slice(0, 3).map((item, indice) => (
+                              <li key={`${periodo}-${indice}`} style={{ fontSize: 9.5, color: NAVY, lineHeight: 1.4, marginBottom: 4 }}>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ fontSize: 9.2, color: MUTED, margin: "-7px 0 14px", fontStyle: "italic" }}>
+                      Plano orientativo; documentos, responsáveis e prioridades ainda precisam ser validados.
+                    </p>
                   </>
                 )}
 
