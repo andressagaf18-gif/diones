@@ -498,6 +498,14 @@ INSTRUÇÕES DE QUALIDADE:
 10. NUNCA exponha códigos internos, IDs de perguntas, nomes de variáveis, chaves técnicas ou rastreadores no texto exibido ao cliente.
 11. NUNCA escreva expressões como "(resposta: 'sim' para fin_q1)", "Id: c1", "Tipo: fato", "Ligado A:", "Risco Mitigado:" ou similares.
 12. Use as respostas apenas para construir uma conclusão natural em português. Exemplo: escreva "A conciliação bancária é realizada parcialmente" e NÃO "A conciliação é parcial (resposta: 'parcialmente' para fin_q2)".
+13. Valores financeiros só podem vir de campos estruturados e identificados pelo usuário. Observações, despesas, saldos bancários, ativos e movimentações NÃO podem ser reinterpretados como faturamento ou receita.
+14. Se o faturamento exato não foi informado, não calcule carga, economia ou tributo exato. Registre a lacuna e apresente apenas a faixa declarada, quando houver.
+15. Considere "Não sei" como lacuna de conhecimento e "N/A" como item fora do escopo; nenhum dos dois equivale a "Não". Use qualidadeRespostas para declarar a confiança como ALTA, MÉDIA ou BAIXA.
+16. Use detalheResposta como evidência complementar, sem substituir a alternativa marcada e sem inventar fatos.
+17. Compare respostas do mesmo tema. Quando parecerem incompatíveis, registre como "ponto a validar", nunca como contradição comprovada.
+18. Para Associação/Terceiro Setor, diferencie mensalidades, doações, convênios, subvenções, patrocínios, receitas próprias e rendimentos. Não presuma imunidade ou isenção sem documentação.
+19. O plano 30/60/90 deve trazer objetivo, ação, evidência esperada e dependência. Não prometa resultado nem prazo definitivo.
+20. Não inclua preço, proposta comercial, gatilho de venda ou oportunidade interna em leituraExecutiva, recomendações, riscos, plano90Dias ou qualquer campo destinado ao cliente. Isso só pode aparecer em visaoAdministracao.
 `;
 
   try {
