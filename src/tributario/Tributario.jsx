@@ -892,6 +892,19 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   setDasPeriodoFonte(r);
   return r;
  };
+
+ // Mantém o total de tributos do Simples na mesma escala do DAS validado.
+ // Algumas versões antigas salvaram valores monetários multiplicados por 100
+ // (ex.: 14.283,35 como 1.428.335,00). Sem esta sincronização, o topo mostrava
+ // o DAS corrigido, mas recomendação, comparativos e relatório usavam o legado.
+ useEffect(()=>{
+  if(!/simples/i.test(String(regime||"")))return;
+
+  const r=corrigirDasLegado(tributosAtuais);
+  if(r.corrigido&&Math.abs(n(tributosAtuais)-r.valor)>0.005){
+   setTributosAtuais(String(r.valor));
+  }
+ },[regime,tributosAtuais,extracao,receita,faturamentoAnual]);
  const input={width:"100%",border:"1px solid #D9E0EA",borderRadius:12,padding:"11px 12px",fontSize:10.5,boxSizing:"border-box",background:"#FCFDFE",color:"#17233D",outline:"none",transition:"border-color .18s, box-shadow .18s"};
  const card={background:"#fff",border:"1px solid #E5EAF1",borderRadius:18,padding:18,boxShadow:"0 8px 26px rgba(23,35,61,.045)"};
  const digits=v=>String(v||"").replace(/\D/g,"");
