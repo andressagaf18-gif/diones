@@ -1542,9 +1542,18 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
   const residualAtual=estimarDasResidualPorFora({dasAtual,componentes});
   const totalIbsCbs=n(ibsCbs?.total);
-  const fora=residualAtual.residual==null?null:residualAtual.residual+totalIbsCbs;
+  const cargaCompleta=simulacao?.cargaCompleta||{};
+  const tributosForaDas=n(cargaCompleta?.tributosForaDas);
+  const impostoSeletivo=n(cargaCompleta?.impostoSeletivo);
+  const testeExigivel=n(cargaCompleta?.testeExigivel);
+  const dentro=dasAtual+tributosForaDas+impostoSeletivo;
+  const foraOriginal=simulacao?.simples?.fora;
+  const fora=
+   foraOriginal==null||residualAtual.residual==null
+    ?null
+    :residualAtual.residual+totalIbsCbs+tributosForaDas+impostoSeletivo+testeExigivel;
 
-  const dasAnterior=n(simulacao?.simples?.dentro);
+  const dasAnterior=n(simulacao?.parametros?.tributosAtuais?.das)||n(simulacao?.composicaoDas?.dasInformado);
   const residualAnterior=simulacao?.simples?.dasResidualEstimado?.residual;
 
   const mudouDas=dasAnterior>0&&dasAtual>0&&Math.abs(dasAnterior-dasAtual)>0.01;
@@ -1556,14 +1565,14 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    ...simulacao,
    simples:{
     ...(simulacao?.simples||{}),
-    dentro:dasAtual,
+    dentro,
     fora,
     dasResidualEstimado:residualAtual,
-    diferenca:fora==null?null:fora-dasAtual,
+    diferenca:fora==null?null:fora-dentro,
     menorCargaMatematica:
      fora==null?"NAO_CALCULAVEL":
-     fora<dasAtual?"FORA":
-     fora>dasAtual?"DENTRO":"EMPATE"
+     fora<dentro?"FORA":
+     fora>dentro?"DENTRO":"EMPATE"
    },
    reconciliacao:{
     aplicada:mudouDas||mudouResidual,
