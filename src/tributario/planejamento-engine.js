@@ -197,7 +197,8 @@ export function operacional(baseOriginal){
   ]));
   const custos=somaMes(cpv,cmv,csp);
   const despesas=somaGrupo(base.despesas);
-  const massa=somaMes(base.folha.folha13,base.folha.proLabore,base.folha.inssFgts,base.folha.outros);
+  // FS12 inclui remunerações, pró-labore, contribuição patronal e FGTS.
+  const massa=somaMes(base.folha.folha13,base.folha.proLabore,base.folha.inssFgts,base.folha.outros,base.folha.encargosPatronais);
   return {
     receita,cpv,cmv,csp,custos,despesas,massa,
     receitaPorNatureza:{
@@ -235,15 +236,13 @@ export function simples(baseOriginal){
   const aliquotaObservada=o.totalReceita>0&&dasInformado>0?(dasInformado/o.totalReceita)*100:0;
 
   const rbt12Documental=num(p.simplesRbt12Base);
-  const mesesComReceita=MESES.filter(m=>num(o.receita[m])>0).length;
-
   // Se o próprio planejamento contém uma série anual suficientemente preenchida,
   // a receita anual projetada é a melhor aproximação do RBT12 do cenário.
   // Se existe apenas um período pontual, preservamos o RBT12 documental.
+  // RBT12 documental prevalece sobre a soma parcial digitada no planejamento.
+  // Somar 6 a 11 meses como se fossem 12 altera indevidamente a faixa do Simples.
   const rbt12Referencia=
-    mesesComReceita>=6 && o.totalReceita>0
-      ?o.totalReceita
-      :rbt12Documental>0
+    rbt12Documental>0
       ?rbt12Documental*(1+crescimento/100)
       :o.totalReceita;
 
@@ -406,7 +405,9 @@ export function presumido(baseOriginal){
     regime:"LUCRO_PRESUMIDO",
     mensal,total,
     carga:o.totalReceita?total/o.totalReceita*100:0,
-    completo:o.totalReceita>0,
+    // Receita sem natureza não pode ser presumida silenciosamente como
+    // comércio/indústria: serviços podem usar bases de 32%.
+    completo:o.totalReceita>0&&!(o.totalReceitaNaoSegregada>0&&!base.parametros.naturezaNaoSegregada),
     calculavelComRessalvas:
       o.totalReceita>0&&
       (!base.parametros.icmsEstimadoAtivo||num(base.parametros.icmsAliquotaInterna)>0),
@@ -463,10 +464,10 @@ export function real(baseOriginal){
       +num(ajustes.adicoes?.[m])
       -num(ajustes.exclusoes?.[m]);
 
-    const lucroRealBase=Math.max(
-      0,
-      lucroFiscalAntesComp-num(ajustes.compensacoes?.[m])
-    );
+    const lucroPositivoAntesComp=Math.max(0,lucroFiscalAntesComp);
+    const compensacaoDisponivel=Math.max(0,num(ajustes.compensacoes?.[m]));
+    const compensacaoAplicada=Math.min(compensacaoDisponivel,lucroPositivoAntesComp*0.30);
+    const lucroRealBase=Math.max(0,lucroPositivoAntesComp-compensacaoAplicada);
 
     const ir=lucroRealBase*num(p.irpj)/100;
     const ad=adicional(lucroRealBase,p.adicionalIrpj,p.limiteAdicionalMensal);
@@ -477,6 +478,7 @@ export function real(baseOriginal){
       custos:cust,despesas:desp,
       lucroContabilAntesIrCs,
       lucroFiscalAntesComp,
+      compensacaoAplicada,
       lucroRealBase,
       irpj:ir,adicionalIrpj:ad,csll:cs,
       total:pis+cof+iss+icms+ipi+enc+ir+ad+cs
