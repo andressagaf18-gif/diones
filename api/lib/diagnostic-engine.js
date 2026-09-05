@@ -290,6 +290,10 @@ export function contratoSaida(
     },
     indicadores: [],
     informacoesFaltantes: [],
+    perguntasAprofundamento: [],
+    evidenciasNecessarias: [],
+    pontosParaValidacao: [],
+    decisoesBloqueadas: [],
     proximosPassos: [],
     viabilidadeHolding:
       motor.id === "avaliar_holding"
@@ -357,6 +361,12 @@ REGRAS:
 - O relatório precisa ser completo DENTRO DO ESCOPO selecionado, mesmo quando houver lacunas.
 - Não crie eixos/departamentos que não estejam na lista de EIXOS OBRIGATÓRIOS acima.
 - Quando faltar informação, registre em "informacoesFaltantes".
+- "informacoesFaltantes" deve conter afirmações objetivas sobre dados ausentes; não escreva perguntas nessa lista.
+- "perguntasAprofundamento" deve conter somente perguntas diretas, terminadas com ponto de interrogação, que ajudem a preencher as lacunas.
+- "evidenciasNecessarias" deve listar documentos, relatórios ou comprovações a solicitar.
+- "pontosParaValidacao" deve listar inferências ou respostas aparentemente divergentes que ainda precisam ser confirmadas.
+- "decisoesBloqueadas" deve indicar quais recomendações não podem ser concluídas enquanto faltar informação ou evidência.
+- Não repita o mesmo texto em campos diferentes. Cada campo tem uma finalidade distinta.
 - Recomendações devem decorrer das respostas.
 - Preserve rastreabilidade entre resposta, achado, risco e recomendação.
 - Retorne SOMENTE JSON válido.
