@@ -1028,6 +1028,25 @@ export default async function handler(
       ? scoreNumero
       : null;
 
+  const qualidadeRespostas = objetoSeguro(
+    resultado.qualidadeRespostas || diagnostico.qualidadeRespostas
+  );
+  const confiancaDiagnostico = textoSeguro(
+    qualidadeRespostas.confianca,
+    "NÃO INFORMADA"
+  );
+  const coberturaConhecimento = Number(
+    qualidadeRespostas.coberturaConhecimento
+  );
+  const totalNaoSei = Number(qualidadeRespostas.naoSei || 0);
+  const totalNaoAplicavel = Number(qualidadeRespostas.naoAplicaveis || 0);
+  const plano90Dias = objetoSeguro(
+    resultado.plano90Dias || diagnostico.plano90Dias
+  );
+  const plano30 = arraySeguro(plano90Dias.dias30);
+  const plano60 = arraySeguro(plano90Dias.dias60);
+  const plano90 = arraySeguro(plano90Dias.dias90);
+
   // =======================================================
   // 10. DORES
   // =======================================================
@@ -1961,6 +1980,53 @@ td {
 
     </div>
 
+    <h2>Qualidade das respostas</h2>
+
+    <div class="grid">
+      <div class="box">
+        <strong>Confiança do diagnóstico</strong>
+        <p>${escaparHtml(confiancaDiagnostico)}</p>
+      </div>
+      <div class="box">
+        <strong>Cobertura de conhecimento</strong>
+        <p>${Number.isFinite(coberturaConhecimento) ? `${coberturaConhecimento}%` : "-"}</p>
+      </div>
+      <div class="box">
+        <strong>Respostas “Não sei”</strong>
+        <p>${totalNaoSei}</p>
+      </div>
+      <div class="box">
+        <strong>Itens “N/A”</strong>
+        <p>${totalNaoAplicavel}</p>
+      </div>
+    </div>
+
+    ${confiancaDiagnostico !== "ALTA" ? `
+      <div class="alerta">
+        <strong>Leitura preliminar.</strong>
+        Os pontos sem informação ou fora do escopo devem ser confirmados com documentos e evidências antes de decisões administrativas, financeiras ou tributárias.
+      </div>
+    ` : ""}
+
+    ${(plano30.length || plano60.length || plano90.length) ? `
+      <h2>Plano de ação 30/60/90 dias</h2>
+      <div class="grid">
+        <div class="box">
+          <strong>Primeiros 30 dias</strong>
+          <ul>${listaHtml(plano30, "Nenhuma ação indicada.")}</ul>
+        </div>
+        <div class="box">
+          <strong>De 31 a 60 dias</strong>
+          <ul>${listaHtml(plano60, "Nenhuma ação indicada.")}</ul>
+        </div>
+        <div class="box">
+          <strong>De 61 a 90 dias</strong>
+          <ul>${listaHtml(plano90, "Nenhuma ação indicada.")}</ul>
+        </div>
+      </div>
+      <p class="nivel">Cronograma orientativo. A execução depende da validação de documentos, responsáveis e prioridades.</p>
+    ` : ""}
+
     ${
       diagnostico.leituraDasDores ||
       diagnostico.leituraDaDor
@@ -2106,18 +2172,6 @@ td {
     </h2>
 
     ${lacunasHtml}
-
-    ${
-      consultoriaHtml
-        ? `
-          <h2>
-            Oportunidades de aprofundamento profissional
-          </h2>
-
-          ${consultoriaHtml}
-        `
-        : ""
-    }
 
     <h2>
       Observação do participante
