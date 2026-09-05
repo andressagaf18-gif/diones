@@ -252,6 +252,10 @@ function mesclarContrato(base, ia) {
   saida.quickWins = listaTextoIa(saida.quickWins);
   saida.indicadores = listaTextoIa(saida.indicadores);
   saida.informacoesFaltantes = listaTextoIa(saida.informacoesFaltantes);
+  saida.perguntasAprofundamento = listaTextoIa(saida.perguntasAprofundamento);
+  saida.evidenciasNecessarias = listaTextoIa(saida.evidenciasNecessarias);
+  saida.pontosParaValidacao = listaTextoIa(saida.pontosParaValidacao);
+  saida.decisoesBloqueadas = listaTextoIa(saida.decisoesBloqueadas);
   saida.proximosPassos = listaTextoIa(saida.proximosPassos);
 
   saida.plano90Dias = {
@@ -506,6 +510,8 @@ INSTRUÇÕES DE QUALIDADE:
 18. Para Associação/Terceiro Setor, diferencie mensalidades, doações, convênios, subvenções, patrocínios, receitas próprias e rendimentos. Não presuma imunidade ou isenção sem documentação.
 19. O plano 30/60/90 deve trazer objetivo, ação, evidência esperada e dependência. Não prometa resultado nem prazo definitivo.
 20. Não inclua preço, proposta comercial, gatilho de venda ou oportunidade interna em leituraExecutiva, recomendações, riscos, plano90Dias ou qualquer campo destinado ao cliente. Isso só pode aparecer em visaoAdministracao.
+21. Separe rigorosamente as cinco saídas: informacoesFaltantes descreve O QUE falta; perguntasAprofundamento pergunta COMO obter a informação; evidenciasNecessarias informa QUAL documento comprova; pontosParaValidacao registra O QUE parece divergente; decisoesBloqueadas informa QUAL conclusão ainda não pode ser tomada.
+22. Não copie nem parafraseie o mesmo item entre essas cinco listas. Cada pergunta deve terminar com "?" e não pode ser uma afirmação disfarçada.
 `;
 
   try {
