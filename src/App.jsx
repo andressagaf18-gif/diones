@@ -12919,6 +12919,63 @@ function LoginSistema({
 }
 
 export default function App() {
+  function resolverModoPelaUrl() {
+    try {
+      const caminho = String(window.location.pathname || "/")
+        .replace(/\/+$/, "") || "/";
+      const dominio = String(window.location.hostname || "").toLowerCase();
+      const dominioExclusivoDiagnostico =
+        dominio === "diagnosticofinderofsolutions.vercel.app";
+
+      // No domínio exclusivo do cliente, a raiz abre o diagnóstico diretamente.
+      // O domínio antigo continua exibindo a página com as duas opções.
+      if (dominioExclusivoDiagnostico && caminho === "/") {
+        const params = new URLSearchParams(window.location.search);
+        const origem = String(params.get("origem") || "link-direto").trim();
+        sessionStorage.setItem("finder_origem_atual", origem || "link-direto");
+        return "diagnostico";
+      }
+
+      if (
+        caminho === "/diagnosticofinderofsolutions" ||
+        caminho.startsWith("/diagnosticofinderofsolutions/") ||
+        caminho === "/diagnostico" ||
+        caminho.startsWith("/diagnostico/")
+      ) {
+        const params = new URLSearchParams(window.location.search);
+        const origem = String(params.get("origem") || "link-direto").trim();
+        sessionStorage.setItem("finder_origem_atual", origem || "link-direto");
+        return "diagnostico";
+      }
+
+      if (
+        caminho === "/sistema" ||
+        caminho.startsWith("/sistema/") ||
+        caminho === "/admin" ||
+        caminho.startsWith("/admin/")
+      ) {
+        const temToken = Boolean(sessionStorage.getItem("finder_admin_token"));
+        return temToken ? "sistema" : "login-sistema";
+      }
+
+      return "inicio";
+    } catch {
+      return "inicio";
+    }
+  }
+
+  function navegar(caminho, novoModo, substituir = false) {
+    try {
+      if (substituir) {
+        window.history.replaceState({}, "", caminho);
+      } else {
+        window.history.pushState({}, "", caminho);
+      }
+    } catch {}
+
+    setModo(novoModo);
+  }
+
   function iniciarFormulario() {
     try {
       const params =
@@ -12940,7 +12997,8 @@ export default function App() {
           origem.trim()
         );
 
-        setModo(
+        navegar(
+          `/diagnosticofinderofsolutions?origem=${encodeURIComponent(origem.trim())}`,
           "diagnostico"
         );
 
@@ -12948,32 +13006,33 @@ export default function App() {
       }
     } catch {}
 
-    setModo(
-      "origem"
+    try {
+      sessionStorage.setItem(
+        "finder_origem_atual",
+        "link-direto"
+      );
+    } catch {}
+
+    navegar(
+      "/diagnosticofinderofsolutions",
+      "diagnostico"
     );
   }
 
   const [modo, setModo] =
-    useState(() => {
-      try {
-        const temAdmin =
-          Boolean(
-            sessionStorage.getItem(
-              "finder_admin_token"
-            )
-          );
+    useState(() => resolverModoPelaUrl());
 
-        if (
-          temAdmin
-        ) {
-          return "sistema";
-        }
+  useEffect(() => {
+    const atualizarPelaNavegacao = () => {
+      setModo(resolverModoPelaUrl());
+    };
 
-        return "inicio";
-      } catch {
-        return "inicio";
-      }
-    });
+    window.addEventListener("popstate", atualizarPelaNavegacao);
+
+    return () => {
+      window.removeEventListener("popstate", atualizarPelaNavegacao);
+    };
+  }, []);
 
   if (
     modo === "sistema"
@@ -12998,12 +13057,14 @@ export default function App() {
     return (
       <TelaOrigemEvento
         onVoltar={() =>
-          setModo(
+          navegar(
+            "/",
             "inicio"
           )
         }
-        onContinuar={() =>
-          setModo(
+        onContinuar={(origem) =>
+          navegar(
+            `/diagnosticofinderofsolutions?origem=${encodeURIComponent(origem || "link-direto")}`,
             "diagnostico"
           )
         }
@@ -13018,13 +13079,16 @@ export default function App() {
     return (
       <LoginSistema
         onVoltar={() =>
-          setModo(
+          navegar(
+            "/",
             "inicio"
           )
         }
         onLogin={() =>
-          setModo(
-            "sistema"
+          navegar(
+            "/sistema",
+            "sistema",
+            true
           )
         }
       />
@@ -13037,7 +13101,8 @@ export default function App() {
         iniciarFormulario
       }
       onEntrarSistema={() =>
-        setModo(
+        navegar(
+          "/sistema",
           "login-sistema"
         )
       }
