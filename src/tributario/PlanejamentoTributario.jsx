@@ -1303,7 +1303,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
 
      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginTop:10}}>
       <div><small>COMPETÊNCIA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.competencia||base.parametros.anoBase||"-"}</b></div>
-      <div><small>RPA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rpa!=null?moeda(extracaoResumo.simplesNacional.rpa):moeda(MESES.reduce((a,m)=>a+num(base.faturamento.naoSegregado?.[m])+num(base.faturamento.industria[m])+num(base.faturamento.comercio[m])+num(base.faturamento.servicos[m]),0)/12)}</b></div>
+      <div><small>RPA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rpa!=null?moeda(extracaoResumo.simplesNacional.rpa):moeda(MESES.reduce((a,m)=>a+num(base?.faturamento?.naoSegregado?.[m])+num(base?.faturamento?.industria?.[m])+num(base?.faturamento?.comercio?.[m])+num(base?.faturamento?.servicos?.[m]),0)/12)}</b></div>
       <div><small>RBT12</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.rbt12!=null?moeda(extracaoResumo.simplesNacional.rbt12):base.parametros.simplesRbt12Base?moeda(base.parametros.simplesRbt12Base):moeda(calc.fatorR.rbt12)}</b></div>
       <div><small>DAS</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.dasTotal!=null?moeda(extracaoResumo.simplesNacional.dasTotal):calc.simples?.completo?moeda(calc.simples.total):"-"}</b></div>
       <div><small>ALÍQUOTA OBSERVADA</small><b style={{display:"block"}}>{extracaoResumo?.simplesNacional?.aliquotaEfetivaObservada!=null?pct(extracaoResumo.simplesNacional.aliquotaEfetivaObservada):calc.simples?.completo?pct(calc.simples.carga):"-"}</b></div>
