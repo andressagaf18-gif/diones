@@ -1,6 +1,30 @@
 {
   "rewrites": [
     {
+      "source": "/sistema",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/sistema/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/diagnostico",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/diagnostico/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/diagnosticofinderofsolutions",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/diagnosticofinderofsolutions/:path*",
+      "destination": "/index.html"
+    },
+    {
       "source": "/admin",
       "destination": "/index.html"
     },
