@@ -104,6 +104,25 @@ function listaHtml(
     .join("");
 }
 
+function textoItemDiagnostico(item, campos = []) {
+  if (typeof item === "string" || typeof item === "number") {
+    return textoSeguro(item).trim();
+  }
+  const registro = objetoSeguro(item);
+  for (const campo of campos) {
+    const valor = textoSeguro(registro[campo]).trim();
+    if (valor) return valor;
+  }
+  return "";
+}
+
+function listaDiagnosticoHtml(lista, campos, vazio) {
+  const itens = arraySeguro(lista)
+    .map((item) => textoItemDiagnostico(item, campos))
+    .filter(Boolean);
+  return listaHtml(itens, vazio);
+}
+
 function formatarCnae(cnae) {
   if (!cnae) return "-";
 
@@ -938,6 +957,19 @@ export default async function handler(
       resultado.lacunasDiagnostico
     );
 
+  const perguntasAprofundamento = arraySeguro(
+    resultado.perguntasAprofundamento || diagnosticoBruto.perguntasAprofundamento
+  );
+  const evidenciasNecessarias = arraySeguro(
+    resultado.evidenciasNecessarias || diagnosticoBruto.evidenciasNecessarias
+  );
+  const pontosParaValidacao = arraySeguro(
+    resultado.pontosParaValidacao || diagnosticoBruto.pontosParaValidacao
+  );
+  const decisoesBloqueadas = arraySeguro(
+    resultado.decisoesBloqueadas || diagnosticoBruto.decisoesBloqueadas
+  );
+
   const oportunidadesConsultoria =
     arraySeguro(
       resultado.oportunidadesConsultoria
@@ -1560,35 +1592,41 @@ export default async function handler(
     lacunasDiagnostico.length
       ? lacunasDiagnostico
           .map(
-            (item) => `
+            (item) => {
+              const itemObjeto = objetoSeguro(item);
+              const textoLacuna = textoItemDiagnostico(
+                item,
+                ["informacao", "pergunta", "texto", "motivo", "descricao"]
+              );
+              return `
               <div class="box">
 
                 <strong>
                   ${escaparHtml(
-                    item?.tema ||
-                    "Tema"
+                    itemObjeto.tema ||
+                    "Informação faltante"
                   )}
                 </strong>
 
                 <p>
                   ${escaparHtml(
-                    item?.motivo ||
-                    ""
+                    textoLacuna ||
+                    "Informação não detalhada."
                   )}
                 </p>
 
                 ${
                   Array.isArray(
-                    item
+                    itemObjeto
                       ?.perguntasSugeridas
                   ) &&
-                  item
+                  itemObjeto
                     .perguntasSugeridas
                     .length
                     ? `
                       <ul>
                         ${listaHtml(
-                          item.perguntasSugeridas
+                          itemObjeto.perguntasSugeridas
                         )}
                       </ul>
                     `
@@ -1596,7 +1634,8 @@ export default async function handler(
                 }
 
               </div>
-            `
+            `;
+            }
           )
           .join("")
       : `
@@ -1604,6 +1643,30 @@ export default async function handler(
           Nenhuma lacuna adicional relevante foi apontada.
         </p>
       `;
+
+  const perguntasAprofundamentoHtml = listaDiagnosticoHtml(
+    perguntasAprofundamento,
+    ["pergunta", "texto", "descricao"],
+    "Nenhuma pergunta adicional registrada."
+  );
+
+  const evidenciasNecessariasHtml = listaDiagnosticoHtml(
+    evidenciasNecessarias,
+    ["evidencia", "documento", "texto", "descricao"],
+    "Nenhuma evidência adicional registrada."
+  );
+
+  const pontosParaValidacaoHtml = listaDiagnosticoHtml(
+    pontosParaValidacao,
+    ["ponto", "texto", "descricao"],
+    "Nenhum ponto divergente identificado."
+  );
+
+  const decisoesBloqueadasHtml = listaDiagnosticoHtml(
+    decisoesBloqueadas,
+    ["decisao", "texto", "descricao"],
+    "Nenhuma decisão bloqueada registrada."
+  );
 
   // =======================================================
   // 16. OPORTUNIDADES
@@ -2168,10 +2231,30 @@ td {
     </table>
 
     <h2>
-      Pontos para aprofundamento
+      Lacunas do diagnóstico
     </h2>
 
     ${lacunasHtml}
+
+    ${perguntasAprofundamento.length ? `
+      <h2>Perguntas para aprofundamento</h2>
+      <div class="box"><ol>${perguntasAprofundamentoHtml}</ol></div>
+    ` : ""}
+
+    ${evidenciasNecessarias.length ? `
+      <h2>Evidências necessárias</h2>
+      <div class="box"><ul>${evidenciasNecessariasHtml}</ul></div>
+    ` : ""}
+
+    ${pontosParaValidacao.length ? `
+      <h2>Pontos para validação</h2>
+      <div class="alerta"><ul>${pontosParaValidacaoHtml}</ul></div>
+    ` : ""}
+
+    ${decisoesBloqueadas.length ? `
+      <h2>Decisões que dependem de validação</h2>
+      <div class="box"><ul>${decisoesBloqueadasHtml}</ul></div>
+    ` : ""}
 
     <h2>
       Observação do participante
