@@ -553,6 +553,25 @@ function statusAtendimento(valor) {
   return String(valor || "NAO_INICIADO").toUpperCase();
 }
 
+function labelStatusAtendimento(valor) {
+  const status = statusAtendimento(valor);
+  const labels = {
+    NAO_INICIADO: "Não iniciado",
+    EM_ANALISE: "Em análise",
+    REUNIAO_AGENDADA: "Reunião agendada",
+    EM_ATENDIMENTO: "Em atendimento",
+    EM_ANDAMENTO: "Em andamento",
+    AGUARDANDO: "Aguardando",
+    AGUARDANDO_CLIENTE: "Aguardando cliente",
+    AGUARDANDO_INTERNO: "Aguardando equipe",
+    PLANO_APRESENTADO: "Plano apresentado",
+    CONCLUIDO: "Concluído",
+    CONCLUIDA: "Concluído",
+  };
+
+  return labels[status] || status.replaceAll("_", " ");
+}
+
 function statusDiagnostico(valor) {
   return String(valor || "CONCLUIDO").toUpperCase();
 }
@@ -965,7 +984,108 @@ export default function OperacionalBI({
     ehDiagnostico,
   ]);
 
-  const total = listaFiltrada.length;
+  // Na operação, cada linha da fila representa um diagnóstico/caso.
+  // Os atendimentos departamentais permanecem separados no banco para
+  // preservar responsáveis, históricos e propostas individuais.
+  const listaFila = useMemo(() => {
+    if (ehDiagnostico) return listaFiltrada;
+
+    const grupos = new Map();
+
+    listaFiltrada.forEach((item) => {
+      const chave =
+        item.diagnosticoId ||
+        item?.lead?.diagnosticoId ||
+        item.leadId ||
+        item.id;
+
+      if (!grupos.has(chave)) {
+        grupos.set(chave, []);
+      }
+
+      grupos.get(chave).push(item);
+    });
+
+    return Array.from(grupos.entries()).map(([chave, itens]) => {
+      const ordenados = [...itens].sort((a, b) => {
+        const aScore = Number.isFinite(Number(a.scoreArea))
+          ? Number(a.scoreArea)
+          : 101;
+        const bScore = Number.isFinite(Number(b.scoreArea))
+          ? Number(b.scoreArea)
+          : 101;
+        return aScore - bScore;
+      });
+
+      const principal =
+        ordenados.find(
+          (item) =>
+            !["NAO_INICIADO", "CONCLUIDO", "CONCLUIDA"].includes(
+              statusAtendimento(item.statusAtendimento)
+            )
+        ) || ordenados[0];
+
+      const statuses = ordenados.map((item) =>
+        statusAtendimento(item.statusAtendimento)
+      );
+
+      const statusConsolidado = statuses.every((status) =>
+        ["CONCLUIDO", "CONCLUIDA"].includes(status)
+      )
+        ? "CONCLUIDO"
+        : statuses.some((status) =>
+            [
+              "EM_ANALISE",
+              "REUNIAO_AGENDADA",
+              "EM_ATENDIMENTO",
+              "EM_ANDAMENTO",
+              "PLANO_APRESENTADO",
+            ].includes(status)
+          )
+        ? "EM_ANDAMENTO"
+        : statuses.some((status) =>
+            ["AGUARDANDO", "AGUARDANDO_CLIENTE", "AGUARDANDO_INTERNO"].includes(status)
+          )
+        ? "AGUARDANDO"
+        : "NAO_INICIADO";
+
+      const proximosContatos = ordenados
+        .map((item) => item.proximoContato)
+        .filter(Boolean)
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+      const responsaveisDoCaso = [
+        ...new Set(
+          ordenados.map((item) => item.responsavelNome).filter(Boolean)
+        ),
+      ];
+
+      return {
+        ...principal,
+        statusAtendimento: statusConsolidado,
+        proximoContato: proximosContatos[0] || null,
+        responsavelNome:
+          responsaveisDoCaso.length > 1
+            ? `${responsaveisDoCaso.length} responsáveis`
+            : responsaveisDoCaso[0] || "",
+        _casoId: String(chave),
+        _atendimentos: ordenados,
+        _departamentos: ordenados.map((item) => ({
+          id: item.id,
+          area: item.area || "Sem área",
+          score: item.scoreArea,
+          status: item.statusAtendimento,
+          responsavelNome: item.responsavelNome || "",
+        })),
+        _menorScore: ordenados.reduce((menor, item) => {
+          const valor = Number(item.scoreArea);
+          return Number.isFinite(valor) ? Math.min(menor, valor) : menor;
+        }, 101),
+      };
+    });
+  }, [listaFiltrada, ehDiagnostico]);
+
+  const total = listaFila.length;
 
   const resumo = useMemo(() => {
     if (ehDiagnostico) {
@@ -1009,18 +1129,18 @@ export default function OperacionalBI({
       };
     }
 
-    const novos = listaFiltrada.filter((item) =>
+    const novos = listaFila.filter((item) =>
       ["", "NAO_INICIADO"].includes(
         statusAtendimento(item.statusAtendimento)
       )
     ).length;
 
-    const andamento = listaFiltrada.filter(
+    const andamento = listaFila.filter(
       (item) =>
         statusAtendimento(item.statusAtendimento) === "EM_ANDAMENTO"
     ).length;
 
-    const aguardando = listaFiltrada.filter((item) =>
+    const aguardando = listaFila.filter((item) =>
       [
         "AGUARDANDO_CLIENTE",
         "AGUARDANDO_INTERNO",
@@ -1028,13 +1148,13 @@ export default function OperacionalBI({
       ].includes(statusAtendimento(item.statusAtendimento))
     ).length;
 
-    const concluidos = listaFiltrada.filter((item) =>
+    const concluidos = listaFila.filter((item) =>
       ["CONCLUIDO", "CONCLUIDA"].includes(
         statusAtendimento(item.statusAtendimento)
       )
     ).length;
 
-    const atrasados = listaFiltrada.filter(
+    const atrasados = listaFila.filter(
       (item) =>
         atrasado(item.proximoContato) &&
         !["CONCLUIDO", "CONCLUIDA"].includes(
@@ -1042,7 +1162,7 @@ export default function OperacionalBI({
         )
     ).length;
 
-    const prioridadeAlta = listaFiltrada.filter((item) =>
+    const prioridadeAlta = listaFila.filter((item) =>
       ["A", "ALTA", "URGENTE"].includes(
         item.prioridadeComercial ||
           item?.lead?.prioridadeComercial ||
@@ -1060,7 +1180,7 @@ export default function OperacionalBI({
       prioridadeAlta,
       taxa: total ? Math.round((concluidos / total) * 100) : 0,
     };
-  }, [listaFiltrada, ehDiagnostico, total]);
+  }, [listaFiltrada, listaFila, ehDiagnostico, total]);
 
   const porOrigem = useMemo(
     () =>
@@ -1094,8 +1214,8 @@ export default function OperacionalBI({
   );
 
   const todosSelecionados =
-    listaFiltrada.length > 0 &&
-    listaFiltrada.every((item) => selecionados.includes(item.id));
+    listaFila.length > 0 &&
+    listaFila.every((item) => selecionados.includes(item._casoId || item.id));
 
   function alternarTodos() {
     if (todosSelecionados) {
@@ -1103,7 +1223,7 @@ export default function OperacionalBI({
       return;
     }
 
-    setSelecionados(listaFiltrada.map((item) => item.id));
+    setSelecionados(listaFila.map((item) => item._casoId || item.id));
   }
 
   function alternarItem(id) {
@@ -1138,7 +1258,7 @@ export default function OperacionalBI({
           "Próximo contato",
         ];
 
-    const linhas = listaFiltrada.map((item) => {
+    const linhas = listaFila.map((item) => {
       if (ehDiagnostico) {
         return [
           item.razaoSocial || item.nome || "",
@@ -1158,7 +1278,7 @@ export default function OperacionalBI({
         item?.lead?.origem || "direto",
         labelEstrutura(item._estrutura),
         labelTipo(item._tipo),
-        item.area || "",
+        item._departamentos?.map((departamento) => departamento.area).join(", ") || item.area || "",
         item.statusAtendimento || "",
         item.responsavelNome || "",
         item.proximoContato || "",
@@ -1835,11 +1955,11 @@ export default function OperacionalBI({
 
       {carregando ? (
         <Card>Carregando BI...</Card>
-      ) : !listaFiltrada.length ? (
+      ) : !listaFila.length ? (
         <Card>Nenhum registro encontrado para os filtros selecionados.</Card>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {listaFiltrada.map((item) => {
+          {listaFila.map((item) => {
             const lead = item.lead || {};
 
             const empresa = ehDiagnostico
@@ -1858,7 +1978,7 @@ export default function OperacionalBI({
                 "direto"
               : lead.origem || "direto";
 
-            const statusItem = ehDiagnostico
+      const statusItem = ehDiagnostico
               ? statusDiagnostico(
                   item.statusDiagnostico ||
                   item.status ||
@@ -1872,7 +1992,7 @@ export default function OperacionalBI({
 
             return (
               <div
-                key={item.id}
+                key={item._casoId || item.id}
                 style={{
                   background: WHITE,
                   border: "1px solid #E0E5ED",
@@ -1888,8 +2008,8 @@ export default function OperacionalBI({
               >
                 <input
                   type="checkbox"
-                  checked={selecionados.includes(item.id)}
-                  onChange={() => alternarItem(item.id)}
+                  checked={selecionados.includes(item._casoId || item.id)}
+                  onChange={() => alternarItem(item._casoId || item.id)}
                 />
 
                 <div>
@@ -1944,8 +2064,26 @@ export default function OperacionalBI({
                         fontWeight: 800,
                       }}
                     >
-                      {statusItem}
+                      {ehDiagnostico
+                        ? statusItem
+                        : labelStatusAtendimento(statusItem)}
                     </span>
+
+                    {!ehDiagnostico && item._departamentos?.map((departamento) => (
+                      <span
+                        key={departamento.id}
+                        style={{
+                          background: "#EEF3FF",
+                          color: "#31589C",
+                          borderRadius: 999,
+                          padding: "3px 6px",
+                          fontSize: 8,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {departamento.area} · {Number.isFinite(Number(departamento.score)) ? departamento.score : "N/A"}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
@@ -2051,7 +2189,7 @@ export default function OperacionalBI({
                         ÁREA
                       </div>
                       <strong style={{ fontSize: 10 }}>
-                        {item.area || "-"}
+                        {item._departamentos?.length || 1} departamento(s)
                       </strong>
                     </div>
 
@@ -2110,7 +2248,9 @@ export default function OperacionalBI({
                       </div>
 
                       <strong>
-                        {Number.isFinite(score)
+                        {Number.isFinite(Number(item._menorScore)) && item._menorScore <= 100
+                          ? `${item._menorScore}/100`
+                          : Number.isFinite(score)
                           ? `${score}/100`
                           : "-"}
                       </strong>
