@@ -22694,6 +22694,159 @@ function Cliente360({
 }
 
 
+function AsaasFinanceiro({ token }) {
+  const [abaInterna, setAbaInterna] = useState("visao");
+  const [painel, setPainel] = useState({ resumo: {}, pagamentos: [], eventos: [] });
+  const [financeiro, setFinanceiro] = useState({ saldo: null, extrato: { data: [] }, avisos: [] });
+  const [cupons, setCupons] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null);
+  const [filtros, setFiltros] = useState({ status: "", plano: "", busca: "", inicio: "", fim: "" });
+  const [cupomForm, setCupomForm] = useState({
+    codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "",
+    planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "",
+    inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true,
+  });
+
+  const headers = { Authorization: `Bearer ${token}` };
+  const moeda = (valor) => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const statusPago = (status) => ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(status);
+  const statusCor = (status) => statusPago(status) ? ["#E1F5EE", "#0F6E56"]
+    : status === "PENDING" ? ["#FFF4D8", "#8A5800"] : ["#FAECE7", "#993C1D"];
+
+  async function json(url, options = {}) {
+    const resposta = await fetch(url, { ...options, headers: { ...headers, ...(options.headers || {}) } });
+    const data = await resposta.json().catch(() => null);
+    if (!resposta.ok || !data?.ok) throw new Error(data?.error || "Falha ao consultar o Asaas.");
+    return data;
+  }
+
+  async function carregar(silencioso = false) {
+    if (!silencioso) setCarregando(true);
+    setErro("");
+    try {
+      const query = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v));
+      const [dadosPainel, dadosFinanceiros, dadosCupons] = await Promise.all([
+        json(`/api/asaas?acao=admin-painel&${query}`),
+        json(`/api/asaas?acao=admin-financeiro&inicio=${filtros.inicio}&fim=${filtros.fim}`),
+        json("/api/asaas?acao=admin-cupons"),
+      ]);
+      setPainel(dadosPainel);
+      setFinanceiro(dadosFinanceiros);
+      setCupons(dadosCupons.cupons || []);
+      setUltimaAtualizacao(new Date());
+    } catch (e) { setErro(e.message); }
+    finally { if (!silencioso) setCarregando(false); }
+  }
+
+  useEffect(() => { carregar(); }, []);
+  useEffect(() => {
+    const timer = setInterval(() => carregar(true), 15000);
+    return () => clearInterval(timer);
+  }, [filtros]);
+
+  async function sincronizar(paymentId = "") {
+    setErro("");
+    try {
+      await json("/api/asaas?acao=admin-sincronizar", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paymentId }),
+      });
+      await carregar(true);
+    } catch (e) { setErro(e.message); }
+  }
+
+  async function salvarCupom(e) {
+    e.preventDefault(); setErro("");
+    try {
+      await json("/api/asaas?acao=admin-cupons", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cupomForm),
+      });
+      setCupomForm({ codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "", planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "", inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true });
+      await carregar(true);
+    } catch (e2) { setErro(e2.message); }
+  }
+
+  async function alternarCupom(cupom) {
+    try {
+      await json("/api/asaas?acao=admin-cupom-status", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ codigo: cupom.codigo, ativo: !cupom.ativo }),
+      });
+      await carregar(true);
+    } catch (e) { setErro(e.message); }
+  }
+
+  const box = { background: WHITE, border: "1px solid #E3E7EF", borderRadius: 14, padding: 14, boxShadow: "0 5px 18px rgba(23,35,61,.05)" };
+  const input = { border: "1px solid #D8DEEA", borderRadius: 9, padding: "9px 10px", background: WHITE, minHeight: 38, boxSizing: "border-box" };
+  const saldo = financeiro?.saldo?.balance ?? financeiro?.saldo?.availableBalance ?? 0;
+  const resumo = painel.resumo || {};
+
+  return <div>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
+      <div><h2 style={{margin:0,fontFamily:DISPLAY_FONT,fontSize:22}}>Asaas Financeiro</h2>
+        <p style={{margin:"4px 0 0",fontSize:10.5,color:MUTED}}>Saldo e extrato direto do Asaas · cobranças vinculadas aos diagnósticos · atualização automática a cada 15 segundos</p></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <span style={{fontSize:9,color:MUTED}}>Atualizado {ultimaAtualizacao ? ultimaAtualizacao.toLocaleTimeString("pt-BR") : "-"}</span>
+        <Botao secundario onClick={()=>sincronizar()}><RefreshCcw size={14}/> Sincronizar pendentes</Botao>
+        <Botao onClick={()=>carregar()}><RefreshCcw size={14}/> Atualizar</Botao>
+      </div>
+    </div>
+
+    {erro && <div style={{background:"#FAECE7",color:"#993C1D",padding:11,borderRadius:10,marginBottom:12}}>{erro}</div>}
+    {(financeiro.avisos || []).map((aviso,i)=><div key={i} style={{background:"#FFF4D8",color:"#70410A",padding:9,borderRadius:9,marginBottom:8,fontSize:10}}>{aviso}</div>)}
+
+    <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+      {[["visao","Visão geral"],["cobrancas","Cobranças"],["extrato","Extrato da conta"],["cupons","Cupons"],["eventos","Eventos Pix"]].map(([id,label])=><button key={id} onClick={()=>setAbaInterna(id)} style={{border:"1px solid #DDE3EC",borderRadius:10,padding:"9px 12px",cursor:"pointer",fontWeight:800,fontSize:10,background:abaInterna===id?NAVY:WHITE,color:abaInterna===id?WHITE:NAVY}}>{label}</button>)}
+    </div>
+
+    {carregando ? <div style={box}>Carregando dados financeiros...</div> : <>
+      {abaInterna === "visao" && <>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10,marginBottom:14}}>
+          {[["Saldo disponível",moeda(saldo),"#0F6E56"],["Recebido bruto",moeda(resumo.bruto),NAVY],["Recebido líquido",moeda(resumo.liquido),"#0F6E56"],["Taxas",moeda(resumo.taxas),"#993C1D"],["Descontos",moeda(resumo.descontos),CORAL],["Pendentes",String(resumo.pendentes||0),"#8A5800"]].map(([l,v,c])=><div key={l} style={box}><div style={{fontSize:9,color:MUTED,fontWeight:800,textTransform:"uppercase"}}>{l}</div><div style={{fontSize:21,fontWeight:900,color:c,marginTop:5}}>{v}</div></div>)}
+        </div>
+        <div style={{...box,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+          {[["Cobranças geradas",resumo.total],["Recebidas",resumo.recebidos],["Não concluídas",resumo.nao_concluidos],["Estornadas",resumo.estornados]].map(([l,v])=><div key={l}><div style={{fontSize:9,color:MUTED}}>{l}</div><strong style={{fontSize:18}}>{v||0}</strong></div>)}
+        </div>
+      </>}
+
+      {abaInterna === "cobrancas" && <>
+        <div style={{...box,display:"flex",gap:7,flexWrap:"wrap",marginBottom:10}}>
+          <input style={{...input,flex:1,minWidth:220}} placeholder="Cliente, CPF/CNPJ, pagamento ou diagnóstico" value={filtros.busca} onChange={e=>setFiltros({...filtros,busca:e.target.value})}/>
+          <select style={input} value={filtros.status} onChange={e=>setFiltros({...filtros,status:e.target.value})}><option value="">Todos os status</option><option>PENDING</option><option>RECEIVED</option><option>CONFIRMED</option><option>OVERDUE</option><option>REFUNDED</option><option>DELETED</option></select>
+          <select style={input} value={filtros.plano} onChange={e=>setFiltros({...filtros,plano:e.target.value})}><option value="">Todos os planos</option><option>INICIAL</option><option>COMPLETO</option><option>ESPECIALISTA</option></select>
+          <input type="date" style={input} value={filtros.inicio} onChange={e=>setFiltros({...filtros,inicio:e.target.value})}/><input type="date" style={input} value={filtros.fim} onChange={e=>setFiltros({...filtros,fim:e.target.value})}/>
+          <Botao onClick={()=>carregar()}>Filtrar</Botao>
+        </div>
+        <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:1150}}><thead><tr>{["Data","Cliente / documento","Diagnóstico","Plano","Forma","Original","Desconto","Cobrado","Líquido / taxa","Status","Ações"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>
+          {(painel.pagamentos||[]).map(p=>{const [bg,cor]=statusCor(p.status);return <tr key={p.payment_id}><td style={tdStyle}>{formatarData(p.criado_em)}</td><td style={tdStyle}><strong>{p.cliente_nome||"Não registrado"}</strong><br/><span style={{color:MUTED}}>{p.cliente_documento||p.cliente_email||"-"}</span></td><td style={tdStyle}><code>{p.diagnostico_id}</code><br/><span style={{fontSize:9,color:MUTED}}>Pagamento: {p.payment_id}</span></td><td style={tdStyle}>{p.plano}</td><td style={tdStyle}>{p.forma_pagamento||"PIX"}</td><td style={tdStyle}>{moeda(p.valor_original||p.valor)}</td><td style={tdStyle}>{moeda(p.desconto)}{p.cupom_codigo&&<><br/><strong>{p.cupom_codigo}</strong></>}</td><td style={tdStyle}><strong>{moeda(p.valor)}</strong></td><td style={tdStyle}>{moeda(p.valor_liquido)}<br/><span style={{color:MUTED}}>Taxa {moeda(p.taxa)}</span></td><td style={tdStyle}><span style={{background:bg,color:cor,padding:"4px 7px",borderRadius:99,fontWeight:800,fontSize:9}}>{p.status}</span><br/><span style={{fontSize:8.5,color:MUTED}}>{p.pago_em?formatarData(p.pago_em):"Não pago"}</span></td><td style={tdStyle}><button onClick={()=>sincronizar(p.payment_id)} style={{...input,cursor:"pointer",fontSize:9,fontWeight:800}}>Sincronizar</button></td></tr>})}
+          {!painel.pagamentos?.length&&<tr><td colSpan="11" style={{...tdStyle,textAlign:"center"}}>Nenhuma cobrança encontrada.</td></tr>}
+        </tbody></table></div>
+      </>}
+
+      {abaInterna === "extrato" && <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}><thead><tr>{["Data","Tipo","Descrição","Pagamento vinculado","Valor","Saldo após movimento"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>
+        {(financeiro.extrato?.data||[]).map((m,i)=><tr key={m.id||i}><td style={tdStyle}>{formatarData(m.date||m.dateCreated)}</td><td style={tdStyle}>{m.type||"-"}</td><td style={tdStyle}>{m.description||m.observation||"-"}</td><td style={tdStyle}>{m.paymentId||"-"}</td><td style={{...tdStyle,color:Number(m.value)>=0?"#0F6E56":"#993C1D",fontWeight:900}}>{moeda(m.value)}</td><td style={tdStyle}>{moeda(m.balance)}</td></tr>)}
+        {!financeiro.extrato?.data?.length&&<tr><td colSpan="6" style={{...tdStyle,textAlign:"center"}}>Nenhuma movimentação encontrada ou a chave não possui permissão financeira.</td></tr>}
+      </tbody></table></div>}
+
+      {abaInterna === "cupons" && <div style={{display:"grid",gridTemplateColumns:"minmax(300px,420px) 1fr",gap:12,alignItems:"start"}}>
+        <form onSubmit={salvarCupom} style={box}><h3 style={{margin:"0 0 12px"}}>Criar ou atualizar cupom</h3>
+          <div style={{display:"grid",gap:8}}><input required minLength={3} style={input} placeholder="Código do cupom" value={cupomForm.codigo} onChange={e=>setCupomForm({...cupomForm,codigo:e.target.value.toUpperCase()})}/><input style={input} placeholder="Descrição interna" value={cupomForm.descricao} onChange={e=>setCupomForm({...cupomForm,descricao:e.target.value})}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><select style={input} value={cupomForm.tipo} onChange={e=>setCupomForm({...cupomForm,tipo:e.target.value})}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select><input required type="number" min="0.01" step="0.01" style={input} placeholder="Valor" value={cupomForm.valor} onChange={e=>setCupomForm({...cupomForm,valor:e.target.value})}/></div>
+          <strong style={{fontSize:9}}>Planos permitidos</strong><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["INICIAL","COMPLETO","ESPECIALISTA"].map(p=><label key={p} style={{fontSize:9}}><input type="checkbox" checked={cupomForm.planos.includes(p)} onChange={e=>setCupomForm({...cupomForm,planos:e.target.checked?[...cupomForm.planos,p]:cupomForm.planos.filter(x=>x!==p)})}/> {p}</label>)}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><label style={{fontSize:8.5}}>Início<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.inicioEm} onChange={e=>setCupomForm({...cupomForm,inicioEm:e.target.value})}/></label><label style={{fontSize:8.5}}>Fim<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.fimEm} onChange={e=>setCupomForm({...cupomForm,fimEm:e.target.value})}/></label></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7}}><input type="number" min="0" style={input} placeholder="Compra mínima" value={cupomForm.valorMinimo} onChange={e=>setCupomForm({...cupomForm,valorMinimo:e.target.value})}/><input type="number" min="1" style={input} placeholder="Limite total" value={cupomForm.limiteTotal} onChange={e=>setCupomForm({...cupomForm,limiteTotal:e.target.value})}/><input type="number" min="1" style={input} placeholder="Por CPF/CNPJ" value={cupomForm.limiteDocumento} onChange={e=>setCupomForm({...cupomForm,limiteDocumento:e.target.value})}/></div>
+          <Botao type="submit"><Save size={14}/> Salvar cupom</Botao></div>
+        </form>
+        <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr>{["Código","Regra","Planos","Validade","Usos","Desconto concedido","Status"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{cupons.map(c=><tr key={c.codigo}><td style={tdStyle}><strong>{c.codigo}</strong><br/><span style={{color:MUTED}}>{c.descricao}</span></td><td style={tdStyle}>{c.tipo==="PERCENTUAL"?`${c.valor}%`:moeda(c.valor)}</td><td style={tdStyle}>{(c.planos||[]).join(", ")}</td><td style={tdStyle}>{c.inicio_em?formatarData(c.inicio_em):"Imediato"}<br/>{c.fim_em?formatarData(c.fim_em):"Sem término"}</td><td style={tdStyle}>{c.usos||0}{c.limite_total?` / ${c.limite_total}`:""}</td><td style={tdStyle}>{moeda(c.desconto_concedido)}</td><td style={tdStyle}><button onClick={()=>alternarCupom(c)} style={{...input,cursor:"pointer",fontWeight:800,color:c.ativo?"#0F6E56":"#993C1D"}}>{c.ativo?"ATIVO":"INATIVO"}</button></td></tr>)}{!cupons.length&&<tr><td colSpan="7" style={{...tdStyle,textAlign:"center"}}>Nenhum cupom cadastrado.</td></tr>}</tbody></table></div>
+      </div>}
+
+      {abaInterna === "eventos" && <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:780}}><thead><tr>{["Recebido em","Evento","Status","Pagamento","ID do evento"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{(painel.eventos||[]).map(e=><tr key={e.evento_id}><td style={tdStyle}>{formatarData(e.recebido_em)}</td><td style={tdStyle}><strong>{e.evento}</strong></td><td style={tdStyle}>{e.status||"-"}</td><td style={tdStyle}>{e.payment_id||"-"}</td><td style={tdStyle}><code>{e.evento_id}</code></td></tr>)}{!painel.eventos?.length&&<tr><td colSpan="5" style={{...tdStyle,textAlign:"center"}}>Nenhum evento autenticado registrado.</td></tr>}</tbody></table></div>}
+    </>}
+  </div>;
+}
+
 function FinderTechLayout({
   aba,
   setAba,
@@ -22968,6 +23121,10 @@ export default function Admin() {
           <Gauge size={14} />
           Tributário
         </Botao>
+        <Botao secundario={aba !== "asaas"} onClick={() => setAba("asaas")}>
+          <Activity size={14} />
+          Asaas Financeiro
+        </Botao>
       </div>
     );
   }
@@ -23166,6 +23323,10 @@ export default function Admin() {
       titulo: "Inteligência Tributária",
       subtitulo:
         "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
+    },
+    asaas: {
+      titulo: "Asaas Financeiro",
+      subtitulo: "Saldo, extrato, recebimentos, cobranças, cupons e eventos Pix vinculados aos diagnósticos",
     },
   };
 
@@ -23369,6 +23530,22 @@ export default function Admin() {
           <Tributario
             token={token}
           />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "asaas") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.asaas.titulo}
+        subtitulo={paginas.asaas.subtitulo}
+      >
+        <ConteudoPadrao maxWidth="none" padding="18px 18px 44px">
+          <AsaasFinanceiro token={token} />
         </ConteudoPadrao>
       </FinderTechLayout>
     );
