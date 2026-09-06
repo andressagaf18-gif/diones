@@ -5784,6 +5784,31 @@ async function excluirRegistroLead({
       "";
   }
 
+  // Remove primeiro as versões das propostas e as propostas do mesmo caso.
+  // Os registros financeiros do Asaas não são apagados: precisam permanecer
+  // disponíveis para conciliação e auditoria.
+  if (atendimentoIdFinal || leadIdFinal || diagnosticoIdFinal) {
+    await sql`
+      DELETE FROM crm_proposta_versoes
+      WHERE proposta_id IN (
+        SELECT id
+        FROM crm_propostas
+        WHERE
+          (${atendimentoIdFinal} <> '' AND atendimento_id = ${atendimentoIdFinal})
+          OR (${leadIdFinal} <> '' AND lead_id = ${leadIdFinal})
+          OR (${diagnosticoIdFinal} <> '' AND diagnostico_id = ${diagnosticoIdFinal})
+      )
+    `;
+
+    await sql`
+      DELETE FROM crm_propostas
+      WHERE
+        (${atendimentoIdFinal} <> '' AND atendimento_id = ${atendimentoIdFinal})
+        OR (${leadIdFinal} <> '' AND lead_id = ${leadIdFinal})
+        OR (${diagnosticoIdFinal} <> '' AND diagnostico_id = ${diagnosticoIdFinal})
+    `;
+  }
+
   if (atendimentoIdFinal) {
     await sql`
       DELETE FROM crm_atendimento_historico
@@ -5861,6 +5886,11 @@ async function excluirRegistroLead({
       DELETE FROM diagnostico_leads
       WHERE diagnostico_id =
         ${diagnosticoIdFinal}
+    `;
+
+    await sql`
+      DELETE FROM diagnosticos
+      WHERE id::text = ${diagnosticoIdFinal}
     `;
   }
 
@@ -6001,6 +6031,81 @@ async function excluirLeadsLote(
     });
 }
 
+async function excluirAtendimentosLote(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({
+      sucesso: false,
+      error: "Método não permitido.",
+    });
+  }
+
+  if (!exigirAdmin(req, res)) return;
+
+  const ids = [
+    ...new Set(
+      (Array.isArray(req.body?.atendimentoIds)
+        ? req.body.atendimentoIds
+        : []
+      )
+        .map((id) => texto(id, 140))
+        .filter(Boolean)
+    ),
+  ].slice(0, 500);
+
+  if (!ids.length) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "Selecione pelo menos um atendimento.",
+    });
+  }
+
+  let excluidos = 0;
+  const casosProcessados = new Set();
+
+  try {
+    for (const atendimentoId of ids) {
+      const existente = await sql`
+        SELECT id, lead_id, diagnostico_id
+        FROM crm_atendimentos_departamento
+        WHERE id = ${atendimentoId}
+        LIMIT 1
+      `;
+
+      if (!existente?.[0]) continue;
+
+      const chaveCaso =
+        existente[0].diagnostico_id ||
+        existente[0].lead_id ||
+        existente[0].id;
+
+      if (casosProcessados.has(chaveCaso)) continue;
+      casosProcessados.add(chaveCaso);
+
+      await excluirRegistroLead({
+        atendimentoId,
+        leadId: existente[0].lead_id || "",
+        diagnosticoId: existente[0].diagnostico_id || "",
+      });
+
+      excluidos += 1;
+    }
+
+    return res.status(200).json({
+      sucesso: true,
+      excluidos,
+      solicitados: ids.length,
+      casosExcluidos: excluidos,
+    });
+  } catch (error) {
+    console.error("[CRM] Erro ao excluir atendimentos em lote:", error);
+    return res.status(500).json({
+      sucesso: false,
+      error: "Não foi possível excluir os atendimentos selecionados.",
+    });
+  }
+}
+
 
 async function arquivarLead(req, res) {
   if (req.method !== "POST") {
@@ -6052,14 +6157,27 @@ async function arquivarLead(req, res) {
     });
   }
 
-  if (arquivado) {
+  await sql`
+    UPDATE crm_atendimentos_departamento
+    SET
+      arquivado = ${arquivado},
+      arquivado_em = CASE WHEN ${arquivado} THEN NOW() ELSE NULL END,
+      updated_at = NOW()
+    WHERE
+      lead_id = ${leadId}
+      OR (
+        ${lead.diagnostico_id || ""} <> ''
+        AND diagnostico_id = ${lead.diagnostico_id || ""}
+      )
+  `;
+
+  if (lead.diagnostico_id) {
     await sql`
-      UPDATE crm_atendimentos_departamento
+      UPDATE diagnosticos
       SET
-        arquivado = TRUE,
-        arquivado_em = NOW(),
-        updated_at = NOW()
-      WHERE lead_id = ${leadId}
+        arquivado = ${arquivado},
+        arquivado_em = CASE WHEN ${arquivado} THEN NOW() ELSE NULL END
+      WHERE id::text = ${lead.diagnostico_id}
     `;
   }
 
@@ -6096,7 +6214,23 @@ async function arquivarAtendimento(req, res) {
     });
   }
 
-  const rows = await sql`
+  const encontrados = await sql`
+    SELECT id, lead_id, diagnostico_id
+    FROM crm_atendimentos_departamento
+    WHERE id = ${atendimentoId}
+    LIMIT 1
+  `;
+
+  const atendimento = encontrados?.[0];
+
+  if (!atendimento) {
+    return res.status(404).json({
+      sucesso: false,
+      error: "Atendimento não encontrado.",
+    });
+  }
+
+  await sql`
     UPDATE crm_atendimentos_departamento
     SET
       arquivado = ${arquivado},
@@ -6107,15 +6241,39 @@ async function arquivarAtendimento(req, res) {
           ELSE NULL
         END,
       updated_at = NOW()
-    WHERE id = ${atendimentoId}
-    RETURNING id
+    WHERE
+      id = ${atendimentoId}
+      OR (
+        ${atendimento.diagnostico_id || ""} <> ''
+        AND diagnostico_id = ${atendimento.diagnostico_id || ""}
+      )
+      OR (
+        ${atendimento.lead_id || ""} <> ''
+        AND lead_id = ${atendimento.lead_id || ""}
+      )
   `;
 
-  if (!rows?.[0]) {
-    return res.status(404).json({
-      sucesso: false,
-      error: "Atendimento não encontrado.",
-    });
+  if (atendimento.lead_id || atendimento.diagnostico_id) {
+    await sql`
+      UPDATE diagnostico_leads
+      SET
+        arquivado = ${arquivado},
+        arquivado_em = CASE WHEN ${arquivado} THEN NOW() ELSE NULL END,
+        updated_at = NOW()
+      WHERE
+        (${atendimento.lead_id || ""} <> '' AND id = ${atendimento.lead_id || ""})
+        OR (${atendimento.diagnostico_id || ""} <> '' AND diagnostico_id = ${atendimento.diagnostico_id || ""})
+    `;
+  }
+
+  if (atendimento.diagnostico_id) {
+    await sql`
+      UPDATE diagnosticos
+      SET
+        arquivado = ${arquivado},
+        arquivado_em = CASE WHEN ${arquivado} THEN NOW() ELSE NULL END
+      WHERE id::text = ${atendimento.diagnostico_id}
+    `;
   }
 
   return res.status(200).json({
@@ -6585,6 +6743,12 @@ export default async function handler(req, res) {
           res
         );
 
+      case "excluir-atendimentos-lote":
+        return excluirAtendimentosLote(
+          req,
+          res
+        );
+
       case "excluir-responsavel":
         return excluirResponsavel(req, res);
 
@@ -6690,6 +6854,7 @@ export default async function handler(req, res) {
             "salvar-responsavel",
             "atribuir-lead",
             "excluir-lead",
+            "excluir-atendimentos-lote",
             "excluir-responsavel",
             "criar-atendimentos",
             "listar-atendimentos",
