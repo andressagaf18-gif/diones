@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { exigirAutenticacao } from "./lib/auth.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -41,6 +42,74 @@ async function ensureSchema() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS asaas_pagamentos_diagnostico_idx ON asaas_pagamentos (diagnostico_id)`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS valor_original NUMERIC(12,2)`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS desconto NUMERIC(12,2) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS cupom_codigo TEXT`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS cliente_nome TEXT`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS cliente_email TEXT`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS cliente_documento TEXT`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS forma_pagamento TEXT DEFAULT 'PIX'`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS valor_liquido NUMERIC(12,2)`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS taxa NUMERIC(12,2)`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS confirmado_em TIMESTAMPTZ`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS asaas_cupons (
+      codigo TEXT PRIMARY KEY,
+      descricao TEXT,
+      tipo TEXT NOT NULL CHECK (tipo IN ('PERCENTUAL','FIXO')),
+      valor NUMERIC(12,2) NOT NULL,
+      planos TEXT[] NOT NULL DEFAULT ARRAY['INICIAL','COMPLETO','ESPECIALISTA'],
+      valor_minimo NUMERIC(12,2) NOT NULL DEFAULT 0,
+      inicio_em TIMESTAMPTZ,
+      fim_em TIMESTAMPTZ,
+      limite_total INTEGER,
+      limite_documento INTEGER NOT NULL DEFAULT 1,
+      ativo BOOLEAN NOT NULL DEFAULT TRUE,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS asaas_eventos (
+      evento_id TEXT PRIMARY KEY,
+      payment_id TEXT,
+      evento TEXT NOT NULL,
+      status TEXT,
+      payload JSONB,
+      recebido_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS asaas_eventos_payment_idx ON asaas_eventos (payment_id, recebido_em DESC)`;
+}
+
+async function calcularCupom(codigoRecebido, plano, documento) {
+  const codigo = txt(codigoRecebido, 50).toUpperCase();
+  if (!codigo) return { codigo: null, desconto: 0, valorFinal: plano.valor };
+  const rows = await sql`
+    SELECT * FROM asaas_cupons
+    WHERE codigo = ${codigo} AND ativo = TRUE
+      AND (inicio_em IS NULL OR inicio_em <= NOW())
+      AND (fim_em IS NULL OR fim_em >= NOW())
+    LIMIT 1
+  `;
+  if (!rows.length) throw new Error("Cupom inválido, inativo ou vencido.");
+  const cupom = rows[0];
+  if (!Array.isArray(cupom.planos) || !cupom.planos.includes(plano.codigo)) throw new Error("Cupom não permitido para este plano.");
+  if (money(plano.valor) < money(cupom.valor_minimo)) throw new Error("Valor mínimo do cupom não atingido.");
+  const usados = await sql`
+    SELECT
+      COUNT(*) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH'))::int AS total,
+      COUNT(*) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH') AND cliente_documento = ${documento})::int AS documento
+    FROM asaas_pagamentos WHERE cupom_codigo = ${codigo}
+  `;
+  if (cupom.limite_total !== null && usados[0].total >= cupom.limite_total) throw new Error("Limite de utilizações do cupom atingido.");
+  if (cupom.limite_documento !== null && usados[0].documento >= cupom.limite_documento) throw new Error("Este CPF/CNPJ já utilizou o cupom.");
+  const desconto = cupom.tipo === "PERCENTUAL"
+    ? money(plano.valor * Number(cupom.valor) / 100)
+    : money(cupom.valor);
+  const valorFinal = money(plano.valor - desconto);
+  if (desconto <= 0 || valorFinal < 1) throw new Error("Cupom gera um valor de cobrança inválido.");
+  return { codigo, desconto, valorFinal };
 }
 
 function cfg() {
@@ -101,9 +170,9 @@ async function createCharge(req, res) {
   const body = bodyOf(req);
   const diagnosticoId = txt(body.diagnosticoId, 100);
   const planCode = txt(body.plano, 30).toUpperCase();
-  const plan = PLANOS[planCode];
+  const planBase = PLANOS[planCode];
   if (!diagnosticoId) return res.status(400).json({ ok: false, error: "diagnosticoId é obrigatório." });
-  if (!plan) return res.status(400).json({ ok: false, error: "Plano inválido." });
+  if (!planBase) return res.status(400).json({ ok: false, error: "Plano inválido." });
 
   const diagnostic = await sql`SELECT id FROM diagnosticos WHERE id::text = ${diagnosticoId} LIMIT 1`;
   if (!diagnostic?.length) return res.status(404).json({ ok: false, error: "Diagnóstico não encontrado." });
@@ -117,9 +186,15 @@ async function createCharge(req, res) {
   if (existing?.[0]?.payment_id) {
     const payment = await asaas(`/payments/${encodeURIComponent(existing[0].payment_id)}`, { method: "GET" });
     const qr = await asaas(`/payments/${encodeURIComponent(existing[0].payment_id)}/pixQrCode`, { method: "GET" });
-    return res.status(200).json(formatCharge(payment, qr, diagnosticoId, planCode, plan));
+    return res.status(200).json(formatCharge(payment, qr, diagnosticoId, planCode, {
+      ...planBase,
+      valor: money(payment.value),
+    }));
   }
 
+  const documento = digits(body.cliente?.cpfCnpj);
+  const cupom = await calcularCupom(body.cupom, { ...planBase, codigo: planCode }, documento);
+  const plan = { ...planBase, valor: cupom.valorFinal };
   const customer = await customerFor(body.cliente, diagnosticoId);
   const nonce = Date.now().toString(36);
   const externalReference = `${diagnosticoId}:${planCode}:${nonce}`;
@@ -130,7 +205,7 @@ async function createCharge(req, res) {
       billingType: "PIX",
       value: plan.valor,
       dueDate: dueDate(1),
-      description: `${plan.nome} — Finder of Solutions`,
+      description: `${plan.nome} — Finder of Solutions${cupom.codigo ? ` — Cupom ${cupom.codigo}` : ""}`,
       externalReference,
     }),
   });
@@ -138,12 +213,22 @@ async function createCharge(req, res) {
 
   await sql`
     INSERT INTO asaas_pagamentos
-      (payment_id, diagnostico_id, plano, valor, customer_id, status, external_reference)
+      (payment_id, diagnostico_id, plano, valor, valor_original, desconto, cupom_codigo,
+       customer_id, cliente_nome, cliente_email, cliente_documento, forma_pagamento,
+       status, external_reference)
     VALUES
-      (${payment.id}, ${diagnosticoId}, ${planCode}, ${plan.valor}, ${customer.id}, ${payment.status || "PENDING"}, ${externalReference})
+      (${payment.id}, ${diagnosticoId}, ${planCode}, ${plan.valor}, ${planBase.valor},
+       ${cupom.desconto}, ${cupom.codigo}, ${customer.id}, ${txt(body.cliente?.nome)},
+       ${txt(body.cliente?.email)}, ${documento}, 'PIX', ${payment.status || "PENDING"},
+       ${externalReference})
     ON CONFLICT (payment_id) DO NOTHING
   `;
-  return res.status(201).json(formatCharge(payment, qr, diagnosticoId, planCode, plan));
+  return res.status(201).json({
+    ...formatCharge(payment, qr, diagnosticoId, planCode, plan),
+    valorOriginal: planBase.valor,
+    desconto: cupom.desconto,
+    cupom: cupom.codigo,
+  });
 }
 
 function formatCharge(payment, qr, diagnosticoId, planCode, plan) {
@@ -254,15 +339,22 @@ async function webhook(req, res) {
   const stored = rows[0];
   if (stored.evento_id && stored.evento_id === eventId) return res.status(200).json({ ok: true, duplicate: true });
 
+  await sql`
+    INSERT INTO asaas_eventos (evento_id, payment_id, evento, status, payload)
+    VALUES (${eventId}, ${paymentId}, ${event}, ${txt(payment.status, 40)}, ${JSON.stringify(body)}::jsonb)
+    ON CONFLICT (evento_id) DO NOTHING
+  `;
+
   if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
-    const expectedPlan = PLANOS[stored.plano];
-    if (!expectedPlan || money(payment.value) !== money(expectedPlan.valor)) {
-      console.error("Valor do pagamento divergente", { paymentId, recebido: payment.value, esperado: expectedPlan?.valor });
+    if (money(payment.value) !== money(stored.valor)) {
+      console.error("Valor do pagamento divergente", { paymentId, recebido: payment.value, esperado: stored.valor });
       return res.status(200).json({ ok: true, blocked: true, reason: "Valor divergente." });
     }
     await sql`
       UPDATE asaas_pagamentos SET status = ${payment.status || "RECEIVED"}, evento_id = ${eventId},
-        pago_em = COALESCE(pago_em, NOW()), atualizado_em = NOW()
+        pago_em = COALESCE(pago_em, NOW()), confirmado_em = COALESCE(confirmado_em, NOW()),
+        valor_liquido = ${money(payment.netValue)}, taxa = ${money(Number(payment.value || 0) - Number(payment.netValue || 0))},
+        forma_pagamento = ${txt(payment.billingType || "PIX", 40)}, atualizado_em = NOW()
       WHERE payment_id = ${paymentId}
     `;
   } else if (["PAYMENT_OVERDUE", "PAYMENT_REFUNDED", "PAYMENT_DELETED"].includes(event)) {
@@ -275,6 +367,183 @@ async function webhook(req, res) {
   return res.status(200).json({ ok: true, received: true });
 }
 
+async function validateCoupon(req, res) {
+  await ensureSchema();
+  const body = bodyOf(req);
+  const planCode = txt(body.plano, 30).toUpperCase();
+  const plan = PLANOS[planCode];
+  if (!plan) return res.status(400).json({ ok: false, error: "Plano inválido." });
+  const documento = digits(body.cpfCnpj);
+  if (![11, 14].includes(documento.length)) return res.status(400).json({ ok: false, error: "Informe o CPF/CNPJ antes de aplicar o cupom." });
+  const result = await calcularCupom(body.cupom, { ...plan, codigo: planCode }, documento);
+  return res.status(200).json({
+    ok: true,
+    cupom: result.codigo,
+    valorOriginal: plan.valor,
+    desconto: result.desconto,
+    valorFinal: result.valorFinal,
+  });
+}
+
+async function syncPaymentRow(row) {
+  const payment = await asaas(`/payments/${encodeURIComponent(row.payment_id)}`, { method: "GET" });
+  if (txt(payment.externalReference, 500) !== row.external_reference) throw new Error("Referência externa divergente.");
+  if (money(payment.value) !== money(row.valor)) throw new Error("Valor divergente.");
+  const status = txt(payment.status, 40).toUpperCase() || row.status;
+  const paid = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(status);
+  await sql`
+    UPDATE asaas_pagamentos SET
+      status = ${status},
+      forma_pagamento = ${txt(payment.billingType || row.forma_pagamento || "PIX", 40)},
+      valor_liquido = ${payment.netValue == null ? row.valor_liquido : money(payment.netValue)},
+      taxa = ${payment.netValue == null ? row.taxa : money(Number(payment.value) - Number(payment.netValue))},
+      confirmado_em = ${paid ? (payment.confirmedDate || payment.paymentDate || new Date().toISOString()) : row.confirmado_em},
+      pago_em = ${paid ? (row.pago_em || new Date().toISOString()) : row.pago_em},
+      atualizado_em = NOW()
+    WHERE payment_id = ${row.payment_id}
+  `;
+  return status;
+}
+
+async function adminDashboard(req, res) {
+  if (!exigirAutenticacao(req, res, { admin: true })) return;
+  await ensureSchema();
+  const status = txt(req.query?.status, 40).toUpperCase();
+  const plano = txt(req.query?.plano, 30).toUpperCase();
+  const busca = txt(req.query?.busca, 100);
+  const inicio = txt(req.query?.inicio, 20);
+  const fim = txt(req.query?.fim, 20);
+  const pagamentos = await sql`
+    SELECT payment_id, diagnostico_id, plano, valor, valor_original, desconto,
+      cupom_codigo, customer_id, cliente_nome, cliente_email, cliente_documento,
+      forma_pagamento, valor_liquido, taxa, status, external_reference,
+      evento_id, pago_em, confirmado_em, criado_em, atualizado_em
+    FROM asaas_pagamentos
+    WHERE (${status} = '' OR status = ${status})
+      AND (${plano} = '' OR plano = ${plano})
+      AND (${inicio} = '' OR criado_em >= ${inicio || null}::date)
+      AND (${fim} = '' OR criado_em < (${fim || null}::date + INTERVAL '1 day'))
+      AND (${busca} = '' OR payment_id ILIKE ${`%${busca}%`}
+        OR diagnostico_id ILIKE ${`%${busca}%`}
+        OR COALESCE(cliente_nome,'') ILIKE ${`%${busca}%`}
+        OR COALESCE(cliente_documento,'') ILIKE ${`%${busca}%`})
+    ORDER BY criado_em DESC LIMIT 500
+  `;
+  const resumo = await sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH'))::int AS recebidos,
+      COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pendentes,
+      COUNT(*) FILTER (WHERE status IN ('OVERDUE','CANCELLED','DELETED'))::int AS nao_concluidos,
+      COUNT(*) FILTER (WHERE status = 'REFUNDED')::int AS estornados,
+      COALESCE(SUM(valor) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS bruto,
+      COALESCE(SUM(valor_liquido) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS liquido,
+      COALESCE(SUM(taxa) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS taxas,
+      COALESCE(SUM(desconto),0) AS descontos
+    FROM asaas_pagamentos
+  `;
+  const eventos = await sql`
+    SELECT evento_id, payment_id, evento, status, recebido_em
+    FROM asaas_eventos ORDER BY recebido_em DESC LIMIT 100
+  `;
+  return res.status(200).json({ ok: true, resumo: resumo[0], pagamentos, eventos, atualizadoEm: new Date().toISOString() });
+}
+
+async function adminFinance(req, res) {
+  if (!exigirAutenticacao(req, res, { admin: true })) return;
+  const inicio = txt(req.query?.inicio, 10);
+  const fim = txt(req.query?.fim, 10);
+  const offset = Math.max(0, Number(req.query?.offset) || 0);
+  const params = new URLSearchParams({ offset: String(offset), limit: "100" });
+  if (inicio) params.set("date[ge]", inicio);
+  if (fim) params.set("date[le]", fim);
+  const [saldoResult, extratoResult] = await Promise.allSettled([
+    asaas("/finance/balance", { method: "GET" }),
+    asaas(`/financialTransactions?${params.toString()}`, { method: "GET" }),
+  ]);
+  return res.status(200).json({
+    ok: true,
+    saldo: saldoResult.status === "fulfilled" ? saldoResult.value : null,
+    extrato: extratoResult.status === "fulfilled" ? extratoResult.value : { data: [] },
+    avisos: [
+      ...(saldoResult.status === "rejected" ? [`Saldo: ${saldoResult.reason.message}`] : []),
+      ...(extratoResult.status === "rejected" ? [`Extrato: ${extratoResult.reason.message}`] : []),
+    ],
+    atualizadoEm: new Date().toISOString(),
+  });
+}
+
+async function adminSync(req, res) {
+  if (!exigirAutenticacao(req, res, { admin: true })) return;
+  await ensureSchema();
+  const body = bodyOf(req);
+  const paymentId = txt(body.paymentId, 100);
+  const rows = paymentId
+    ? await sql`SELECT * FROM asaas_pagamentos WHERE payment_id = ${paymentId} LIMIT 1`
+    : await sql`SELECT * FROM asaas_pagamentos WHERE status NOT IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH','REFUNDED','DELETED') ORDER BY atualizado_em ASC LIMIT 50`;
+  let atualizados = 0;
+  const erros = [];
+  for (const row of rows) {
+    try { await syncPaymentRow(row); atualizados += 1; }
+    catch (error) { erros.push({ paymentId: row.payment_id, erro: error.message }); }
+  }
+  return res.status(200).json({ ok: true, atualizados, erros });
+}
+
+async function adminCoupons(req, res) {
+  if (!exigirAutenticacao(req, res, { admin: true })) return;
+  await ensureSchema();
+  if (req.method === "GET") {
+    const cupons = await sql`
+      SELECT c.*,
+        COUNT(p.payment_id) FILTER (WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH'))::int AS usos,
+        COALESCE(SUM(p.desconto) FILTER (WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS desconto_concedido
+      FROM asaas_cupons c LEFT JOIN asaas_pagamentos p ON p.cupom_codigo = c.codigo
+      GROUP BY c.codigo ORDER BY c.criado_em DESC
+    `;
+    return res.status(200).json({ ok: true, cupons });
+  }
+  const body = bodyOf(req);
+  const codigo = txt(body.codigo, 50).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+  const tipo = txt(body.tipo, 20).toUpperCase();
+  const valor = money(body.valor);
+  const planos = (Array.isArray(body.planos) ? body.planos : []).map(v => txt(v, 30).toUpperCase()).filter(v => PLANOS[v]);
+  if (codigo.length < 3) return res.status(400).json({ ok: false, error: "Código deve ter pelo menos 3 caracteres." });
+  if (!["PERCENTUAL", "FIXO"].includes(tipo)) return res.status(400).json({ ok: false, error: "Tipo inválido." });
+  if (valor <= 0 || (tipo === "PERCENTUAL" && valor > 90)) return res.status(400).json({ ok: false, error: "Desconto inválido. Percentual máximo: 90%." });
+  if (!planos.length) return res.status(400).json({ ok: false, error: "Selecione ao menos um plano." });
+  await sql`
+    INSERT INTO asaas_cupons
+      (codigo, descricao, tipo, valor, planos, valor_minimo, inicio_em, fim_em,
+       limite_total, limite_documento, ativo, atualizado_em)
+    VALUES (${codigo}, ${txt(body.descricao, 200)}, ${tipo}, ${valor},
+      string_to_array(${planos.join(",")}, ','), ${money(body.valorMinimo)},
+      ${body.inicioEm || null}, ${body.fimEm || null},
+      ${body.limiteTotal === "" || body.limiteTotal == null ? null : Math.max(1, Number(body.limiteTotal))},
+      ${Math.max(1, Number(body.limiteDocumento) || 1)}, ${body.ativo !== false}, NOW())
+    ON CONFLICT (codigo) DO UPDATE SET
+      descricao = EXCLUDED.descricao, tipo = EXCLUDED.tipo, valor = EXCLUDED.valor,
+      planos = EXCLUDED.planos, valor_minimo = EXCLUDED.valor_minimo,
+      inicio_em = EXCLUDED.inicio_em, fim_em = EXCLUDED.fim_em,
+      limite_total = EXCLUDED.limite_total, limite_documento = EXCLUDED.limite_documento,
+      ativo = EXCLUDED.ativo, atualizado_em = NOW()
+  `;
+  return res.status(200).json({ ok: true, codigo });
+}
+
+async function adminToggleCoupon(req, res) {
+  if (!exigirAutenticacao(req, res, { admin: true })) return;
+  await ensureSchema();
+  const body = bodyOf(req);
+  const codigo = txt(body.codigo, 50).toUpperCase();
+  const changed = await sql`
+    UPDATE asaas_cupons SET ativo = ${Boolean(body.ativo)}, atualizado_em = NOW()
+    WHERE codigo = ${codigo} RETURNING codigo, ativo
+  `;
+  if (!changed.length) return res.status(404).json({ ok: false, error: "Cupom não encontrado." });
+  return res.status(200).json({ ok: true, cupom: changed[0] });
+}
+
 export default async function handler(req, res) {
   try {
     const action = txt(req.query?.acao, 30).toLowerCase();
@@ -284,6 +553,12 @@ export default async function handler(req, res) {
     if (req.method === "POST" && action === "criar") return await createCharge(req, res);
     if (req.method === "GET" && action === "consultar") return await consult(req, res);
     if (req.method === "POST" && action === "webhook") return await webhook(req, res);
+    if (req.method === "POST" && action === "validar-cupom") return await validateCoupon(req, res);
+    if (req.method === "GET" && action === "admin-painel") return await adminDashboard(req, res);
+    if (req.method === "GET" && action === "admin-financeiro") return await adminFinance(req, res);
+    if (req.method === "POST" && action === "admin-sincronizar") return await adminSync(req, res);
+    if (["GET","POST"].includes(req.method) && action === "admin-cupons") return await adminCoupons(req, res);
+    if (req.method === "POST" && action === "admin-cupom-status") return await adminToggleCoupon(req, res);
     return res.status(404).json({ ok: false, error: "Operação não encontrada." });
   } catch (error) {
     console.error("[asaas]", error);
