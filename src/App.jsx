@@ -3962,6 +3962,23 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
   const [copiado,setCopiado]=useState(false);
 
   useEffect(()=>{
+    if(!diagnosticoId||cobranca?.paymentId)return;
+    try{
+      const salvo=JSON.parse(localStorage.getItem(`finder_pagamento_${diagnosticoId}`)||"null");
+      if(!salvo?.paymentId)return;
+      const plano=PLANOS_DIAGNOSTICO.find(item=>item.codigo===salvo.plano);
+      setCobranca({
+        paymentId:salvo.paymentId,
+        plano:salvo.plano,
+        nomePlano:plano?.nome||"Diagnóstico Finder",
+        valor:plano?.valor||0,
+        status:"PENDING",
+        pix:{},
+      });
+    }catch{}
+  },[diagnosticoId,cobranca?.paymentId]);
+
+  useEffect(()=>{
     if(!cobranca?.paymentId)return;
     let ativo=true;
     const verificar=async()=>{
@@ -9174,6 +9191,10 @@ function DiagnosticoPrototipo() {
       return;
     }
 
+    const pdfCompleto = ["COMPLETO", "ESPECIALISTA"].includes(
+      planoDiagnosticoLiberado
+    );
+
     const escaparHtml = (valor) =>
       String(valor ?? "")
         .replace(/&/g, "&amp;")
@@ -9409,27 +9430,27 @@ function DiagnosticoPrototipo() {
     </div>
   ` : ""}
 
-  ${leituraDaDorIa ? `
+  ${pdfCompleto && leituraDaDorIa ? `
     <h2>O que suas respostas estão mostrando</h2>
     <div class="box">${escaparHtml(leituraDaDorIa)}</div>
   ` : ""}
 
-  ${conexoesExecutivas.length ? `
+  ${pdfCompleto && conexoesExecutivas.length ? `
     <h2>Conexões que merecem atenção</h2>
     <div class="box"><ul>${listaHtml(conexoesExecutivas)}</ul></div>
   ` : ""}
 
-  ${impactosExecutivos.length ? `
+  ${pdfCompleto && impactosExecutivos.length ? `
     <h2>Onde isso pode estar impactando</h2>
     <div class="box"><ul>${listaHtml(impactosExecutivos)}</ul></div>
   ` : ""}
 
-  ${pontosFortesExecutivos.length ? `
+  ${pdfCompleto && pontosFortesExecutivos.length ? `
     <h2>O que já está funcionando a seu favor</h2>
     <div class="positivo"><ul>${listaHtml(pontosFortesExecutivos)}</ul></div>
   ` : ""}
 
-  ${alertaEstrategicoIa ? `
+  ${pdfCompleto && alertaEstrategicoIa ? `
     <h2>Alerta estratégico</h2>
     <div class="alerta"><strong>${escaparHtml(alertaEstrategicoIa)}</strong></div>
   ` : ""}
@@ -9446,8 +9467,12 @@ function DiagnosticoPrototipo() {
   </div>
 
   <section class="cta">
-    <h3>Seu diagnóstico mostrou onde olhar. Agora precisamos definir como agir.</h3>
-    <p>A análise consultiva da Finder aprofunda as causas, valida os riscos e transforma as prioridades em um plano de ação adequado à realidade da empresa.</p>
+    <h3>${pdfCompleto
+      ? "Seu diagnóstico mostrou onde olhar. Agora precisamos definir como agir."
+      : "Quer aprofundar este diagnóstico?"}</h3>
+    <p>${pdfCompleto
+      ? "A análise consultiva da Finder aprofunda as causas, valida os riscos e transforma as prioridades em um plano de ação adequado à realidade da empresa."
+      : "Desbloqueie o Diagnóstico Completo para acessar a análise aprofundada dos riscos, impactos e conexões identificadas."}</p>
     <a href="${whatsappEspecialista}">Quero falar com um especialista</a>
   </section>
 
@@ -12318,15 +12343,17 @@ function DiagnosticoPrototipo() {
                     <CalendarCheck size={15} /> Quero falar com um especialista
                   </PrimaryButton>
 
-                  {acessoDiagnosticoCompleto && (
+                  {acessoDiagnosticoInicial && (
                     <PrimaryButton onClick={gerarPdf}>
-                      <Download size={15} /> Baixar meu diagnóstico executivo
+                      <Download size={15} /> {acessoDiagnosticoCompleto
+                        ? "Baixar meu diagnóstico executivo"
+                        : "Baixar PDF do Diagnóstico Inicial"}
                     </PrimaryButton>
                   )}
 
                   {planoDiagnosticoLiberado === "INICIAL" && (
                     <p style={{fontSize:9.8,color:MUTED,textAlign:"center",margin:"2px 0 0"}}>
-                      O PDF completo está disponível nos planos Completo e Especialista.
+                      Este PDF contém o resultado do plano Inicial. A análise aprofundada está disponível nos planos Completo e Especialista.
                     </p>
                   )}
 
