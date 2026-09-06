@@ -19086,10 +19086,7 @@ function EventosOrigens({ token }) {
 
   function link(origem) {
     if (!origem) return "";
-    const urlDiagnostico =
-      "https://diagnosticofinderofsolutions.vercel.app/diagnosticofinderofsolutions";
-
-    return `${urlDiagnostico}?origem=${encodeURIComponent(origem)}`;
+    return `https://diagnosticofinderofsolutions.vercel.app/origem=${encodeURIComponent(origem)}`;
   }
 
   async function carregar() {
