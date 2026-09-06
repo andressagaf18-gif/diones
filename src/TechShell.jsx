@@ -67,6 +67,11 @@ const itensPadrao = [
     label: "Inteligência Tributária",
     icon: Gauge,
   },
+  {
+    id: "asaas",
+    label: "Asaas Financeiro",
+    icon: Activity,
+  },
 ];
 
 export function FinderSidebar({
