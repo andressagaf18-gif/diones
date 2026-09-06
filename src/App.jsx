@@ -739,9 +739,9 @@ function montarInteligenciaTributaria({
 }
 
 // Modelo de maturidade:
-// Sim = 5 | Parcialmente = 3 | Não = 0 | Não sei = 1 | N/A = fora do cálculo.
-// "Não sei" reduz a maturidade porque representa ausência de visibilidade.
-// "N/A" é apenas classificatório: não entra no numerador nem no denominador.
+// Sim = 5 | Parcialmente = 3 | Não = 0.
+// "Não sei" reduz a CONFIANÇA, mas não deve ser tratado como falha comprovada.
+// "N/A" é apenas classificatório. Ambos ficam fora da nota de maturidade.
 function respostaNaoAplicavel(r) {
   return ["nao_aplicavel", "n/a", "na"].includes(
     String(r || "").trim().toLowerCase()
@@ -755,8 +755,7 @@ function respostaNaoSei(r) {
 }
 
 function pesoResposta(q, r) {
-  if (!r || respostaNaoAplicavel(r)) return null;
-  if (respostaNaoSei(r)) return 1;
+  if (!r || respostaNaoAplicavel(r) || respostaNaoSei(r)) return null;
 
   if (q.invert) {
     if (r === "sim") return 0;
@@ -8085,7 +8084,8 @@ function DiagnosticoPrototipo() {
             : "AVALIAVEL",
 
         entraNoScore:
-          !respostaNaoAplicavel(resposta),
+          !respostaNaoAplicavel(resposta) &&
+          !respostaNaoSei(resposta),
 
         importancia,
 
@@ -8874,7 +8874,9 @@ function DiagnosticoPrototipo() {
     if (!perguntas.length) return null;
 
     const perguntasValidas = perguntas.filter(
-      (q) => !respostaNaoAplicavel(respostas[q.id])
+      (q) =>
+        !respostaNaoAplicavel(respostas[q.id]) &&
+        !respostaNaoSei(respostas[q.id])
     );
 
     if (!perguntasValidas.length) return null;
