@@ -7,6 +7,8 @@ import {
 
 import {
   Activity,
+  Archive,
+  ArchiveRestore,
   AlertTriangle,
   BarChart3,
   Building2,
@@ -18,6 +20,7 @@ import {
   RefreshCcw,
   Search,
   Target,
+  Trash2,
   TrendingUp,
   Users,
   X,
@@ -610,6 +613,8 @@ export default function OperacionalBI({
   const [selecionados, setSelecionados] = useState([]);
   const [arquivamento, setArquivamento] = useState("ATIVOS");
   const [processandoArquivoId, setProcessandoArquivoId] = useState("");
+  const [excluindoSelecionados, setExcluindoSelecionados] = useState(false);
+  const [arquivandoSelecionados, setArquivandoSelecionados] = useState(false);
 
   async function carregar() {
     setCarregando(true);
@@ -1232,6 +1237,117 @@ export default function OperacionalBI({
         ? atual.filter((x) => x !== id)
         : [...atual, id]
     );
+  }
+
+  async function excluirAtendimentosSelecionados() {
+    if (ehDiagnostico || !selecionados.length) return;
+
+    const casosSelecionados = listaFila.filter((item) =>
+      selecionados.includes(item._casoId || item.id)
+    );
+
+    const atendimentoIds = [
+      ...new Set(
+        casosSelecionados.flatMap((item) =>
+          Array.isArray(item._atendimentos) && item._atendimentos.length
+            ? item._atendimentos.map((atendimento) => atendimento.id)
+            : [item.id]
+        )
+      ),
+    ].filter(Boolean);
+
+    if (!atendimentoIds.length) {
+      setErro("Nenhum atendimento válido foi selecionado.");
+      return;
+    }
+
+    const confirmou = window.confirm(
+      `Excluir definitivamente ${casosSelecionados.length} caso(s) selecionado(s)?\n\nTambém serão excluídos os diagnósticos, leads, atendimentos departamentais, históricos e propostas vinculados. Os registros financeiros do Asaas serão preservados para auditoria.`
+    );
+
+    if (!confirmou) return;
+
+    setExcluindoSelecionados(true);
+    setErro("");
+
+    try {
+      const resposta = await fetch(
+        "/api/crm?action=excluir-atendimentos-lote",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ atendimentoIds }),
+        }
+      );
+
+      const data = await resposta.json().catch(() => null);
+
+      if (!resposta.ok || !data?.sucesso) {
+        throw new Error(
+          data?.error || "Não foi possível excluir os atendimentos selecionados."
+        );
+      }
+
+      setSelecionados([]);
+      await carregar();
+    } catch (error) {
+      setErro(error?.message || "Erro ao excluir atendimentos em lote.");
+    } finally {
+      setExcluindoSelecionados(false);
+    }
+  }
+
+  async function alternarArquivamentoSelecionados() {
+    if (ehDiagnostico || !selecionados.length) return;
+
+    const casosSelecionados = listaFila.filter((item) =>
+      selecionados.includes(item._casoId || item.id)
+    );
+
+    const arquivar = arquivamento !== "ARQUIVADOS";
+    const verbo = arquivar ? "arquivar" : "desarquivar";
+
+    if (
+      !window.confirm(
+        `${arquivar ? "Arquivar" : "Desarquivar"} ${casosSelecionados.length} caso(s)?\n\nA alteração será aplicada ao diagnóstico, ao lead e a todos os atendimentos vinculados.`
+      )
+    ) {
+      return;
+    }
+
+    setArquivandoSelecionados(true);
+    setErro("");
+
+    try {
+      for (const caso of casosSelecionados) {
+        const resposta = await fetch("/api/crm?action=arquivar-atendimento", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            atendimentoId: caso.id,
+            arquivado: arquivar,
+          }),
+        });
+
+        const data = await resposta.json().catch(() => null);
+        if (!resposta.ok || !data?.sucesso) {
+          throw new Error(data?.error || `Não foi possível ${verbo} o caso.`);
+        }
+      }
+
+      setSelecionados([]);
+      await carregar();
+    } catch (error) {
+      setErro(error?.message || `Erro ao ${verbo} os casos selecionados.`);
+    } finally {
+      setArquivandoSelecionados(false);
+    }
   }
 
   function exportarCsv() {
@@ -1922,6 +2038,64 @@ export default function OperacionalBI({
           >
             {selecionados.length} selecionado(s)
           </span>
+
+          {!ehDiagnostico && selecionados.length > 0 && (
+            <button
+              type="button"
+              disabled={arquivandoSelecionados || excluindoSelecionados}
+              onClick={alternarArquivamentoSelecionados}
+              style={{
+                border: "1px solid #D8DEEA",
+                background: WHITE,
+                color: NAVY,
+                borderRadius: 9,
+                padding: "7px 10px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: arquivandoSelecionados ? "not-allowed" : "pointer",
+                opacity: arquivandoSelecionados ? 0.6 : 1,
+                fontSize: 9.5,
+                fontWeight: 900,
+              }}
+            >
+              {arquivamento === "ARQUIVADOS" ? (
+                <ArchiveRestore size={13} />
+              ) : (
+                <Archive size={13} />
+              )}
+              {arquivandoSelecionados
+                ? "Salvando..."
+                : arquivamento === "ARQUIVADOS"
+                ? "Desarquivar selecionados"
+                : "Arquivar selecionados"}
+            </button>
+          )}
+
+          {!ehDiagnostico && selecionados.length > 0 && (
+            <button
+              type="button"
+              disabled={excluindoSelecionados}
+              onClick={excluirAtendimentosSelecionados}
+              style={{
+                border: "1px solid #E2B8B8",
+                background: "#FFF0EF",
+                color: "#A12B2B",
+                borderRadius: 9,
+                padding: "7px 10px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: excluindoSelecionados ? "not-allowed" : "pointer",
+                opacity: excluindoSelecionados ? 0.6 : 1,
+                fontSize: 9.5,
+                fontWeight: 900,
+              }}
+            >
+              <Trash2 size={13} />
+              {excluindoSelecionados ? "Excluindo..." : "Excluir selecionados"}
+            </button>
+          )}
 
           <span
             style={{
