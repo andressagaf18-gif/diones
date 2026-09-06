@@ -1559,6 +1559,24 @@ async function excluirDiagnostico(
     try {
       await sql`
         DELETE FROM
+          crm_proposta_versoes
+        WHERE
+          proposta_id IN (
+            SELECT id
+            FROM crm_propostas
+            WHERE diagnostico_id = ${diagnosticoId}
+          )
+      `;
+    } catch (error) {
+      console.warn(
+        "[diagnosticos] versões das propostas CRM:",
+        error?.message || error
+      );
+    }
+
+    try {
+      await sql`
+        DELETE FROM
           crm_propostas
         WHERE
           diagnostico_id =
@@ -1582,6 +1600,24 @@ async function excluirDiagnostico(
     } catch (error) {
       console.warn(
         "[diagnosticos] atendimentos CRM:",
+        error?.message || error
+      );
+    }
+
+    try {
+      await sql`
+        DELETE FROM
+          crm_atribuicoes
+        WHERE
+          lead_id IN (
+            SELECT id
+            FROM diagnostico_leads
+            WHERE diagnostico_id = ${diagnosticoId}
+          )
+      `;
+    } catch (error) {
+      console.warn(
+        "[diagnosticos] atribuições CRM:",
         error?.message || error
       );
     }
