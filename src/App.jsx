@@ -3960,6 +3960,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
   const [erro,setErro]=useState("");
   const [cobranca,setCobranca]=useState(null);
   const [copiado,setCopiado]=useState(false);
+  const [cupom,setCupom]=useState("");
 
   useEffect(()=>{
     if(!diagnosticoId||cobranca?.paymentId)return;
@@ -4004,7 +4005,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
     try{
       const r=await fetch("/api/asaas?acao=criar",{
         method:"POST",headers:{"content-type":"application/json"},
-        body:JSON.stringify({diagnosticoId,plano:plano.codigo,cliente:{nome,email,telefone,cpfCnpj:doc}}),
+        body:JSON.stringify({diagnosticoId,plano:plano.codigo,cupom:cupom.trim().toUpperCase(),cliente:{nome,email,telefone,cpfCnpj:doc}}),
       });
       const data=await r.json().catch(()=>null);
       if(!r.ok||!data?.ok)throw new Error(data?.error||"Não foi possível gerar a cobrança.");
@@ -4024,6 +4025,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
     return <div style={{border:"1px solid #DDE2EA",borderRadius:14,padding:15,background:WHITE,marginBottom:16,textAlign:"center"}}>
       <p style={{fontFamily:DISPLAY_FONT,fontSize:18,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>{pago?"Pagamento confirmado":"Finalize o pagamento por Pix"}</p>
       <p style={{fontSize:11,color:MUTED,margin:"0 0 12px"}}>{cobranca.nomePlano} · {Number(cobranca.valor).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
+      {Number(cobranca.desconto)>0&&<p style={{fontSize:10,color:"#0F6E56",fontWeight:800,margin:"-7px 0 10px"}}>Cupom {cobranca.cupom} aplicado · economia de {Number(cobranca.desconto).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>}
       {pago?<div style={{background:"#E1F5EE",color:"#0F6E56",padding:12,borderRadius:10,fontWeight:800}}>Relatório liberado com sucesso.</div>:<>
         {cobranca.pix?.encodedImage&&<img alt="QR Code Pix" src={`data:image/png;base64,${cobranca.pix.encodedImage}`} style={{width:210,maxWidth:"80%",display:"block",margin:"0 auto 10px"}}/>}
         {cobranca.pix?.payload&&<button type="button" onClick={copiarPix} style={{width:"100%",border:0,borderRadius:9,padding:"12px 14px",background:NAVY,color:WHITE,fontWeight:800,cursor:"pointer"}}>{copiado?"Código copiado":"Copiar Pix Copia e Cola"}</button>}
@@ -4037,6 +4039,9 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
     <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar.</p>
     <label style={{fontSize:9.5,fontWeight:800,color:NAVY}}>CPF ou CNPJ do pagador
       <input value={documento} onChange={e=>setDocumento(e.target.value)} placeholder="Somente números" inputMode="numeric" style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
+    </label>
+    <label style={{fontSize:9.5,fontWeight:800,color:NAVY,display:"block",marginTop:10}}>Cupom de desconto
+      <input value={cupom} onChange={e=>setCupom(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g,""))} placeholder="Se possuir, informe aqui" maxLength={50} style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
     </label>
     <div style={{display:"grid",gap:9,marginTop:12}}>{PLANOS_DIAGNOSTICO.map(plano=><div key={plano.codigo} style={{border:plano.destaque?`2px solid ${CORAL}`:"1px solid #DDE2EA",borderRadius:12,padding:12,background:WHITE}}>
       {plano.destaque&&<span style={{fontSize:8,fontWeight:900,color:CORAL}}>MAIS ESCOLHIDO</span>}
