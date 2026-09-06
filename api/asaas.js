@@ -1,100 +1,144 @@
-// DESTINO: /api/asaas.js
-// Integração unificada Asaas: saúde, cobrança Pix, consulta e webhook.
+import { neon } from "@neondatabase/serverless";
+
+const sql = neon(process.env.DATABASE_URL);
 
 const PLANOS = Object.freeze({
   INICIAL: {
     nome: "Diagnóstico Inicial",
-    valor: 29.90
+    valor: 29.90,
   },
   COMPLETO: {
     nome: "Diagnóstico Completo",
-    valor: 299.90
+    valor: 299.90,
   },
   ESPECIALISTA: {
     nome: "Diagnóstico com Visão Especialista",
-    valor: 799.90
-  }
+    valor: 799.90,
+  },
 });
 
-function somenteNumeros(valor) {
-  return String(valor ?? "").replace(/\D/g, "");
-}
+const txt = (valor, limite = 500) =>
+  String(valor ?? "").trim().slice(0, limite);
 
-function texto(valor) {
-  return String(valor ?? "").trim();
-}
+const somenteNumeros = (valor) =>
+  String(valor ?? "").replace(/\D/g, "");
 
-function dataVencimento(dias = 1) {
-  const data = new Date();
-  data.setUTCDate(data.getUTCDate() + dias);
-  return data.toISOString().slice(0, 10);
-}
+const normalizarValor = (valor) =>
+  Math.round(Number(valor || 0) * 100) / 100;
 
 function obterBody(req) {
   if (!req.body) return {};
 
-  if (typeof req.body === "string") {
-    try {
-      return JSON.parse(req.body);
-    } catch {
-      return {};
-    }
+  if (typeof req.body === "object") {
+    return req.body;
   }
 
-  return req.body;
+  try {
+    return JSON.parse(req.body);
+  } catch {
+    return {};
+  }
 }
 
-function configuracaoAsaas() {
+function calcularVencimento(dias = 1) {
+  const data = new Date();
+  data.setUTCDate(data.getUTCDate() + dias);
+
+  return data.toISOString().slice(0, 10);
+}
+
+async function garantirTabela() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS asaas_pagamentos (
+      payment_id TEXT PRIMARY KEY,
+      diagnostico_id TEXT NOT NULL,
+      plano TEXT NOT NULL,
+      valor NUMERIC(12,2) NOT NULL,
+      customer_id TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      external_reference TEXT NOT NULL UNIQUE,
+      evento_id TEXT,
+      pago_em TIMESTAMPTZ,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS
+      asaas_pagamentos_diagnostico_idx
+    ON asaas_pagamentos (diagnostico_id)
+  `;
+}
+
+function obterConfiguracao() {
   const apiKey = process.env.ASAAS_API_KEY;
-  const apiUrl =
-    process.env.ASAAS_API_URL || "https://api.asaas.com/v3";
+
+  const apiUrl = (
+    process.env.ASAAS_API_URL ||
+    "https://api.asaas.com/v3"
+  ).replace(/\/+$/, "");
 
   if (!apiKey) {
-    throw new Error("ASAAS_API_KEY não configurada na Vercel.");
+    throw new Error(
+      "ASAAS_API_KEY não configurada."
+    );
+  }
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL não configurada."
+    );
   }
 
   return {
     apiKey,
-    apiUrl: apiUrl.replace(/\/+$/, "")
+    apiUrl,
   };
 }
 
-async function requisicaoAsaas(caminho, opcoes = {}) {
-  const { apiKey, apiUrl } = configuracaoAsaas();
+async function chamarAsaas(caminho, opcoes = {}) {
+  const {
+    apiKey,
+    apiUrl,
+  } = obterConfiguracao();
 
-  const resposta = await fetch(`${apiUrl}${caminho}`, {
-    ...opcoes,
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent": "FinderDiagnostico/1.0",
-      access_token: apiKey,
-      ...(opcoes.headers || {})
+  const resposta = await fetch(
+    `${apiUrl}${caminho}`,
+    {
+      ...opcoes,
+
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "FinderDiagnostico/1.0",
+        access_token: apiKey,
+        ...(opcoes.headers || {}),
+      },
     }
-  });
+  );
 
   const conteudo = await resposta.text();
 
   let dados = {};
 
-  if (conteudo) {
-    try {
-      dados = JSON.parse(conteudo);
-    } catch {
-      dados = {
-        message: conteudo
-      };
-    }
+  try {
+    dados = conteudo
+      ? JSON.parse(conteudo)
+      : {};
+  } catch {
+    dados = {
+      message: conteudo,
+    };
   }
 
   if (!resposta.ok) {
     const erro = new Error(
       dados?.errors?.[0]?.description ||
-        dados?.message ||
-        `Erro ${resposta.status} na API do Asaas.`
+      dados?.message ||
+      `Erro ${resposta.status} no Asaas.`
     );
 
     erro.status = resposta.status;
-    erro.dados = dados;
 
     throw erro;
   }
@@ -102,330 +146,622 @@ async function requisicaoAsaas(caminho, opcoes = {}) {
   return dados;
 }
 
-async function localizarOuCriarCliente(cliente, diagnosticoId) {
-  const nome = texto(cliente?.nome);
-  const email = texto(cliente?.email);
-  const cpfCnpj = somenteNumeros(cliente?.cpfCnpj);
-  const telefone = somenteNumeros(cliente?.telefone);
+async function localizarOuCriarCliente(
+  cliente,
+  diagnosticoId
+) {
+  const nome = txt(cliente?.nome);
+  const cpfCnpj = somenteNumeros(
+    cliente?.cpfCnpj
+  );
+  const email = txt(cliente?.email);
+  const telefone = somenteNumeros(
+    cliente?.telefone
+  );
 
   if (!nome) {
-    throw new Error("Informe o nome do cliente.");
+    throw new Error(
+      "Informe o nome do pagador."
+    );
   }
 
   if (![11, 14].includes(cpfCnpj.length)) {
-    throw new Error("Informe um CPF ou CNPJ válido.");
+    throw new Error(
+      "Informe um CPF ou CNPJ válido."
+    );
   }
 
-  const busca = await requisicaoAsaas(
-    `/customers?cpfCnpj=${encodeURIComponent(cpfCnpj)}&limit=1`,
+  const busca = await chamarAsaas(
+    `/customers?cpfCnpj=${encodeURIComponent(
+      cpfCnpj
+    )}&limit=1`,
     {
-      method: "GET"
+      method: "GET",
     }
   );
 
-  if (Array.isArray(busca.data) && busca.data.length > 0) {
+  if (
+    Array.isArray(busca?.data) &&
+    busca.data[0]
+  ) {
     return busca.data[0];
   }
 
-  const novoCliente = {
-    name: nome,
-    cpfCnpj,
-    externalReference: texto(diagnosticoId),
-    notificationDisabled: false
+  return chamarAsaas(
+    "/customers",
+    {
+      method: "POST",
+
+      body: JSON.stringify({
+        name: nome,
+        cpfCnpj,
+
+        ...(email
+          ? {
+              email,
+            }
+          : {}),
+
+        ...(telefone
+          ? {
+              mobilePhone: telefone,
+            }
+          : {}),
+
+        externalReference:
+          `diagnostico:${diagnosticoId}`,
+      }),
+    }
+  );
+}
+
+function formatarCobranca(
+  pagamento,
+  qrCode,
+  diagnosticoId,
+  codigoPlano,
+  plano
+) {
+  return {
+    ok: true,
+    diagnosticoId,
+
+    plano: codigoPlano,
+    nomePlano: plano.nome,
+    valor: plano.valor,
+
+    paymentId: pagamento.id,
+    status: pagamento.status,
+
+    invoiceUrl:
+      pagamento.invoiceUrl || null,
+
+    pix: {
+      payload:
+        qrCode.payload || null,
+
+      encodedImage:
+        qrCode.encodedImage || null,
+
+      expirationDate:
+        qrCode.expirationDate || null,
+    },
   };
-
-  if (email) {
-    novoCliente.email = email;
-  }
-
-  if (telefone) {
-    novoCliente.mobilePhone = telefone;
-  }
-
-  return requisicaoAsaas("/customers", {
-    method: "POST",
-    body: JSON.stringify(novoCliente)
-  });
 }
 
 async function criarCobranca(req, res) {
+  await garantirTabela();
+
   const body = obterBody(req);
 
-  const planoCodigo = texto(body.plano).toUpperCase();
-  const diagnosticoId = texto(body.diagnosticoId);
-  const plano = PLANOS[planoCodigo];
+  const diagnosticoId = txt(
+    body.diagnosticoId,
+    100
+  );
 
-  if (!plano) {
-    return res.status(400).json({
-      ok: false,
-      message: "Plano inválido.",
-      planosPermitidos: Object.keys(PLANOS)
-    });
-  }
+  const codigoPlano = txt(
+    body.plano,
+    30
+  ).toUpperCase();
+
+  const plano = PLANOS[codigoPlano];
 
   if (!diagnosticoId) {
     return res.status(400).json({
       ok: false,
-      message: "diagnosticoId é obrigatório."
+      error:
+        "diagnosticoId é obrigatório.",
     });
   }
 
-  /*
-   * O preço não é recebido do frontend.
-   * Ele é definido exclusivamente pela tabela PLANOS do servidor.
-   */
-  const cliente = await localizarOuCriarCliente(
-    body.cliente,
-    diagnosticoId
-  );
-
-  const referencia = `${diagnosticoId}:${planoCodigo}`;
-
-  const cobranca = await requisicaoAsaas("/payments", {
-    method: "POST",
-    body: JSON.stringify({
-      customer: cliente.id,
-      billingType: "PIX",
-      value: plano.valor,
-      dueDate: dataVencimento(1),
-      description: `${plano.nome} — Finder of Solutions`,
-      externalReference: referencia
-    })
-  });
-
-  const qrCode = await requisicaoAsaas(
-    `/payments/${encodeURIComponent(cobranca.id)}/pixQrCode`,
-    {
-      method: "GET"
-    }
-  );
-
-  /*
-   * IMPORTANTE:
-   * Aqui o sistema deve salvar no banco:
-   *
-   * diagnosticoId
-   * planoCodigo
-   * plano.valor
-   * cliente.id
-   * cobranca.id
-   * referencia
-   * statusPagamento: "PENDENTE"
-   * relatorioLiberado: false
-   */
-
-  return res.status(201).json({
-    ok: true,
-    diagnosticoId,
-    plano: planoCodigo,
-    nomePlano: plano.nome,
-    valor: plano.valor,
-    customerId: cliente.id,
-    paymentId: cobranca.id,
-    status: cobranca.status,
-    dueDate: cobranca.dueDate,
-    externalReference: referencia,
-    invoiceUrl: cobranca.invoiceUrl || null,
-    pix: {
-      payload: qrCode.payload || null,
-      encodedImage: qrCode.encodedImage || null,
-      expirationDate: qrCode.expirationDate || null
-    }
-  });
-}
-
-async function consultarPagamento(req, res) {
-  const paymentId = texto(req.query?.id);
-
-  if (!paymentId || !paymentId.startsWith("pay_")) {
+  if (!plano) {
     return res.status(400).json({
       ok: false,
-      message: "Informe um ID de pagamento válido."
+      error: "Plano inválido.",
     });
   }
 
-  const pagamento = await requisicaoAsaas(
-    `/payments/${encodeURIComponent(paymentId)}`,
-    {
-      method: "GET"
-    }
+  const diagnostico = await sql`
+    SELECT id
+    FROM diagnosticos
+    WHERE id::text = ${diagnosticoId}
+    LIMIT 1
+  `;
+
+  if (!diagnostico?.length) {
+    return res.status(404).json({
+      ok: false,
+      error:
+        "Diagnóstico não encontrado.",
+    });
+  }
+
+  const cobrancaExistente = await sql`
+    SELECT
+      payment_id,
+      status
+    FROM asaas_pagamentos
+    WHERE
+      diagnostico_id = ${diagnosticoId}
+      AND plano = ${codigoPlano}
+      AND status NOT IN (
+        'REFUNDED',
+        'DELETED',
+        'OVERDUE'
+      )
+    ORDER BY criado_em DESC
+    LIMIT 1
+  `;
+
+  if (
+    cobrancaExistente?.[0]?.payment_id
+  ) {
+    const paymentId =
+      cobrancaExistente[0].payment_id;
+
+    const pagamento =
+      await chamarAsaas(
+        `/payments/${encodeURIComponent(
+          paymentId
+        )}`,
+        {
+          method: "GET",
+        }
+      );
+
+    const qrCode =
+      await chamarAsaas(
+        `/payments/${encodeURIComponent(
+          paymentId
+        )}/pixQrCode`,
+        {
+          method: "GET",
+        }
+      );
+
+    return res.status(200).json(
+      formatarCobranca(
+        pagamento,
+        qrCode,
+        diagnosticoId,
+        codigoPlano,
+        plano
+      )
+    );
+  }
+
+  const cliente =
+    await localizarOuCriarCliente(
+      body.cliente,
+      diagnosticoId
+    );
+
+  const identificador =
+    Date.now().toString(36);
+
+  const referencia =
+    `${diagnosticoId}:${codigoPlano}:${identificador}`;
+
+  const pagamento =
+    await chamarAsaas(
+      "/payments",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          customer:
+            cliente.id,
+
+          billingType:
+            "PIX",
+
+          value:
+            plano.valor,
+
+          dueDate:
+            calcularVencimento(1),
+
+          description:
+            `${plano.nome} — Finder of Solutions`,
+
+          externalReference:
+            referencia,
+        }),
+      }
+    );
+
+  const qrCode =
+    await chamarAsaas(
+      `/payments/${encodeURIComponent(
+        pagamento.id
+      )}/pixQrCode`,
+      {
+        method: "GET",
+      }
+    );
+
+  await sql`
+    INSERT INTO asaas_pagamentos (
+      payment_id,
+      diagnostico_id,
+      plano,
+      valor,
+      customer_id,
+      status,
+      external_reference
+    )
+    VALUES (
+      ${pagamento.id},
+      ${diagnosticoId},
+      ${codigoPlano},
+      ${plano.valor},
+      ${cliente.id},
+      ${pagamento.status || "PENDING"},
+      ${referencia}
+    )
+    ON CONFLICT (payment_id)
+    DO NOTHING
+  `;
+
+  return res.status(201).json(
+    formatarCobranca(
+      pagamento,
+      qrCode,
+      diagnosticoId,
+      codigoPlano,
+      plano
+    )
+  );
+}
+
+async function consultarPagamento(
+  req,
+  res
+) {
+  await garantirTabela();
+
+  const paymentId = txt(
+    req.query?.id,
+    100
   );
 
-  const pago = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(
-    pagamento.status
-  );
+  if (
+    !paymentId.startsWith("pay_")
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error:
+        "Pagamento inválido.",
+    });
+  }
+
+  const rows = await sql`
+    SELECT
+      payment_id,
+      diagnostico_id,
+      plano,
+      valor,
+      status,
+      pago_em
+    FROM asaas_pagamentos
+    WHERE payment_id = ${paymentId}
+    LIMIT 1
+  `;
+
+  if (!rows?.length) {
+    return res.status(404).json({
+      ok: false,
+      error:
+        "Pagamento não encontrado.",
+    });
+  }
+
+  const pagamento = rows[0];
+
+  const pago = [
+    "RECEIVED",
+    "CONFIRMED",
+    "RECEIVED_IN_CASH",
+  ].includes(pagamento.status);
 
   return res.status(200).json({
     ok: true,
-    paymentId: pagamento.id,
-    status: pagamento.status,
+
+    paymentId:
+      pagamento.payment_id,
+
+    diagnosticoId:
+      pagamento.diagnostico_id,
+
+    plano:
+      pagamento.plano,
+
+    valor:
+      Number(pagamento.valor),
+
+    status:
+      pagamento.status,
+
     pago,
-    valor: pagamento.value,
-    descricao: pagamento.description,
-    externalReference: pagamento.externalReference,
-    dueDate: pagamento.dueDate,
-    paymentDate: pagamento.paymentDate || null,
-    clientPaymentDate: pagamento.clientPaymentDate || null
+
+    relatorioLiberado:
+      pago,
+
+    pagoEm:
+      pagamento.pago_em,
   });
 }
 
-async function receberWebhook(req, res) {
-  const tokenEsperado = process.env.ASAAS_WEBHOOK_TOKEN;
-  const tokenRecebido = req.headers["asaas-access-token"];
+async function receberWebhook(
+  req,
+  res
+) {
+  const tokenEsperado =
+    process.env.ASAAS_WEBHOOK_TOKEN;
+
+  const tokenRecebido =
+    req.headers["asaas-access-token"];
 
   if (!tokenEsperado) {
-    console.error("ASAAS_WEBHOOK_TOKEN não configurado.");
-
     return res.status(500).json({
       ok: false,
-      message: "Token do webhook não configurado."
+      error:
+        "Webhook sem token configurado.",
     });
   }
 
-  if (!tokenRecebido || tokenRecebido !== tokenEsperado) {
-    console.warn("Webhook Asaas recusado: token inválido.");
-
+  if (
+    !tokenRecebido ||
+    tokenRecebido !== tokenEsperado
+  ) {
     return res.status(401).json({
       ok: false,
-      message: "Token inválido."
+      error: "Token inválido.",
     });
   }
+
+  await garantirTabela();
 
   const body = obterBody(req);
-  const eventoId = texto(body.id);
-  const evento = texto(body.event);
-  const pagamento = body.payment || {};
 
-  if (!evento) {
-    return res.status(400).json({
-      ok: false,
-      message: "Evento não informado."
+  const eventoId = txt(
+    body.id,
+    180
+  );
+
+  const evento = txt(
+    body.event,
+    80
+  ).toUpperCase();
+
+  const pagamento =
+    body.payment || {};
+
+  const paymentId = txt(
+    pagamento.id,
+    100
+  );
+
+  if (!evento || !paymentId) {
+    return res.status(200).json({
+      ok: true,
+      ignored: true,
     });
   }
 
-  console.log("Webhook Asaas:", {
-    eventoId: eventoId || null,
-    evento,
-    paymentId: pagamento.id || null,
-    status: pagamento.status || null,
-    valor: pagamento.value ?? null,
-    externalReference: pagamento.externalReference || null
-  });
+  const rows = await sql`
+    SELECT *
+    FROM asaas_pagamentos
+    WHERE payment_id = ${paymentId}
+    LIMIT 1
+  `;
 
-  switch (evento) {
-    case "PAYMENT_RECEIVED":
-      /*
-       * LIBERAR RELATÓRIO:
-       *
-       * 1. Verificar se eventoId já foi processado;
-       * 2. Separar diagnosticoId e plano:
-       *
-       * const [diagnosticoId, plano] =
-       *   pagamento.externalReference.split(":");
-       *
-       * 3. Localizar o diagnóstico no banco;
-       * 4. Confirmar paymentId, plano e valor;
-       * 5. Salvar:
-       *
-       * statusPagamento: "PAGO"
-       * relatorioLiberado: true
-       * asaasPaymentId: pagamento.id
-       * dataPagamento: new Date().toISOString()
-       * webhookEventoId: eventoId
-       */
-      break;
-
-    case "PAYMENT_OVERDUE":
-      /*
-       * Manter bloqueado:
-       *
-       * statusPagamento: "VENCIDO"
-       * relatorioLiberado: false
-       */
-      break;
-
-    case "PAYMENT_REFUNDED":
-      /*
-       * Revogar acesso:
-       *
-       * statusPagamento: "ESTORNADO"
-       * relatorioLiberado: false
-       */
-      break;
-
-    case "PAYMENT_DELETED":
-      /*
-       * Cancelar:
-       *
-       * statusPagamento: "CANCELADO"
-       * relatorioLiberado: false
-       */
-      break;
-
-    default:
-      console.log(`Evento ignorado: ${evento}`);
+  if (!rows?.length) {
+    return res.status(200).json({
+      ok: true,
+      ignored: true,
+      reason:
+        "Pagamento externo.",
+    });
   }
 
-  return res.status(200).json({
-    ok: true,
-    received: true
-  });
-}
+  const pagamentoSalvo =
+    rows[0];
 
-export default async function handler(req, res) {
-  try {
-    const acao = texto(req.query?.acao).toLowerCase();
+  if (
+    pagamentoSalvo.evento_id &&
+    pagamentoSalvo.evento_id === eventoId
+  ) {
+    return res.status(200).json({
+      ok: true,
+      duplicate: true,
+    });
+  }
 
-    // Teste pelo navegador:
-    // GET /api/asaas
-    if (req.method === "GET" && !acao) {
+  if (
+    evento === "PAYMENT_RECEIVED" ||
+    evento === "PAYMENT_CONFIRMED"
+  ) {
+    const plano =
+      PLANOS[pagamentoSalvo.plano];
+
+    const valorRecebido =
+      normalizarValor(
+        pagamento.value
+      );
+
+    const valorEsperado =
+      normalizarValor(
+        plano?.valor
+      );
+
+    if (
+      !plano ||
+      valorRecebido !== valorEsperado
+    ) {
+      console.error(
+        "Valor do pagamento divergente",
+        {
+          paymentId,
+          recebido:
+            pagamento.value,
+
+          esperado:
+            plano?.valor,
+        }
+      );
+
       return res.status(200).json({
         ok: true,
-        service: "Finder Diagnóstico + Asaas",
-        environment:
-          process.env.ASAAS_API_URL?.includes("sandbox")
-            ? "sandbox"
-            : "production",
-        actions: {
-          criar: "POST /api/asaas?acao=criar",
-          consultar: "GET /api/asaas?acao=consultar&id=pay_xxx",
-          webhook: "POST /api/asaas?acao=webhook"
-        }
+        blocked: true,
+        reason:
+          "Valor divergente.",
       });
     }
 
-    if (req.method === "POST" && acao === "criar") {
-      return await criarCobranca(req, res);
+    await sql`
+      UPDATE asaas_pagamentos
+      SET
+        status = ${
+          pagamento.status ||
+          "RECEIVED"
+        },
+        evento_id = ${eventoId},
+        pago_em = COALESCE(
+          pago_em,
+          NOW()
+        ),
+        atualizado_em = NOW()
+      WHERE payment_id = ${paymentId}
+    `;
+  } else if (
+    [
+      "PAYMENT_OVERDUE",
+      "PAYMENT_REFUNDED",
+      "PAYMENT_DELETED",
+    ].includes(evento)
+  ) {
+    const status =
+      pagamento.status ||
+      evento.replace(
+        "PAYMENT_",
+        ""
+      );
+
+    await sql`
+      UPDATE asaas_pagamentos
+      SET
+        status = ${status},
+        evento_id = ${eventoId},
+        atualizado_em = NOW()
+      WHERE payment_id = ${paymentId}
+    `;
+  }
+
+  return res.status(200).json({
+    ok: true,
+    received: true,
+  });
+}
+
+export default async function handler(
+  req,
+  res
+) {
+  try {
+    const acao = txt(
+      req.query?.acao,
+      30
+    ).toLowerCase();
+
+    if (
+      req.method === "GET" &&
+      !acao
+    ) {
+      return res.status(200).json({
+        ok: true,
+
+        service:
+          "Finder Diagnóstico + Asaas",
+
+        environment:
+          process.env.ASAAS_API_URL
+            ?.includes("sandbox")
+            ? "sandbox"
+            : "production",
+      });
     }
 
-    if (req.method === "GET" && acao === "consultar") {
-      return await consultarPagamento(req, res);
+    if (
+      req.method === "POST" &&
+      acao === "criar"
+    ) {
+      return await criarCobranca(
+        req,
+        res
+      );
     }
 
-    if (req.method === "POST" && acao === "webhook") {
-      return await receberWebhook(req, res);
+    if (
+      req.method === "GET" &&
+      acao === "consultar"
+    ) {
+      return await consultarPagamento(
+        req,
+        res
+      );
+    }
+
+    if (
+      req.method === "POST" &&
+      acao === "webhook"
+    ) {
+      return await receberWebhook(
+        req,
+        res
+      );
     }
 
     return res.status(404).json({
       ok: false,
-      message: "Operação não encontrada."
+      error:
+        "Operação não encontrada.",
     });
   } catch (error) {
-    console.error("Erro na integração Asaas:", {
-      message: error?.message,
-      status: error?.status,
-      dados: error?.dados
-    });
+    console.error(
+      "[asaas]",
+      error
+    );
 
-    return res.status(
-      Number.isInteger(error?.status) &&
-        error.status >= 400 &&
-        error.status <= 599
-        ? error.status
-        : 500
-    ).json({
-      ok: false,
-      message: error?.message || "Erro interno na integração com o Asaas."
-    });
+    return res
+      .status(
+        error?.status || 500
+      )
+      .json({
+        ok: false,
+        error:
+          error?.message ||
+          "Erro interno.",
+      });
   }
 }
