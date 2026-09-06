@@ -228,6 +228,16 @@ function mesclarContrato(base, ia) {
         listaTextoIa(
           encontrado.recomendacoes
         ),
+      possiveisImpactos:
+        listaTextoIa(
+          encontrado.possiveisImpactos
+        ),
+      confianca:
+        ["ALTA", "MÉDIA", "MEDIA", "BAIXA"].includes(
+          String(encontrado.confianca || "").toUpperCase()
+        )
+          ? String(encontrado.confianca).toUpperCase().replace("MEDIA", "MÉDIA")
+          : "BAIXA",
     };
   });
 
@@ -255,7 +265,22 @@ function mesclarContrato(base, ia) {
   saida.perguntasAprofundamento = listaTextoIa(saida.perguntasAprofundamento);
   saida.evidenciasNecessarias = listaTextoIa(saida.evidenciasNecessarias);
   saida.pontosParaValidacao = listaTextoIa(saida.pontosParaValidacao);
+  saida.inconsistenciasPossiveis = listaTextoIa(saida.inconsistenciasPossiveis);
   saida.decisoesBloqueadas = listaTextoIa(saida.decisoesBloqueadas);
+  saida.rastreabilidade = lista(saida.rastreabilidade)
+    .map((item) => {
+      if (typeof item === "string") {
+        return { resposta: "", achado: textoSeguroIa(item), risco: "", recomendacao: "" };
+      }
+
+      return {
+        resposta: textoSeguroIa(item?.resposta),
+        achado: textoSeguroIa(item?.achado),
+        risco: textoSeguroIa(item?.risco),
+        recomendacao: textoSeguroIa(item?.recomendacao),
+      };
+    })
+    .filter((item) => item.resposta || item.achado || item.risco || item.recomendacao);
   saida.proximosPassos = listaTextoIa(saida.proximosPassos);
 
   saida.plano90Dias = {
@@ -290,6 +315,20 @@ function mesclarContrato(base, ia) {
       listaTextoIa(
         saida?.visaoAdministracao?.departamentosSugeridos
       ),
+    triagemDepartamentos:
+      lista(saida?.visaoAdministracao?.triagemDepartamentos)
+        .map((item) => ({
+          area: textoSeguroIa(item?.area),
+          decisao: ["ACIONAR", "ACOMPANHAR", "NAO_ACIONAR"].includes(
+            String(item?.decisao || "").toUpperCase()
+          )
+            ? String(item.decisao).toUpperCase()
+            : "ACOMPANHAR",
+          motivo: textoSeguroIa(item?.motivo),
+          urgencia: textoSeguroIa(item?.urgencia),
+          servicoPossivel: textoSeguroIa(item?.servicoPossivel),
+        }))
+        .filter((item) => item.area),
   };
 
   return saida;
@@ -512,6 +551,12 @@ INSTRUÇÕES DE QUALIDADE:
 20. Não inclua preço, proposta comercial, gatilho de venda ou oportunidade interna em leituraExecutiva, recomendações, riscos, plano90Dias ou qualquer campo destinado ao cliente. Isso só pode aparecer em visaoAdministracao.
 21. Separe rigorosamente as cinco saídas: informacoesFaltantes descreve O QUE falta; perguntasAprofundamento pergunta COMO obter a informação; evidenciasNecessarias informa QUAL documento comprova; pontosParaValidacao registra O QUE parece divergente; decisoesBloqueadas informa QUAL conclusão ainda não pode ser tomada.
 22. Não copie nem parafraseie o mesmo item entre essas cinco listas. Cada pergunta deve terminar com "?" e não pode ser uma afirmação disfarçada.
+23. "Não sei" reduz a confiança, mas não reduz diretamente o score. "N/A" fica totalmente fora do cálculo.
+24. Se um eixo não tiver respostas avaliáveis, use score nulo, nível "NÃO AVALIADO" e explique o motivo.
+25. Preencha confiança por eixo e confiança geral usando qualidadeRespostas. Não use confiança ALTA quando houver muitas respostas "Não sei" ou pouca cobertura.
+26. Liste possíveis impactos separadamente dos achados e riscos. Não entregue procedimentos completos, modelos, cronogramas ou estratégia de implantação no conteúdo do cliente.
+27. Registre aparentes incompatibilidades em inconsistenciasPossiveis e pontosParaValidacao, sem afirmar fraude, erro ou contradição como fato.
+28. Preencha visaoAdministracao.triagemDepartamentos com ACIONAR, ACOMPANHAR ou NAO_ACIONAR. Essa triagem é interna e não deve aparecer no relatório do cliente.
 `;
 
   try {
