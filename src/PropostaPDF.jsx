@@ -114,6 +114,26 @@ function campo(doc, label, valor, x, y, largura = 80) {
   doc.text(linhas, x, y + 5);
 }
 
+function departamentosDaProposta(proposta, atendimento) {
+  const departamentos = Array.isArray(proposta?.departamentos)
+    ? proposta.departamentos.filter(Boolean)
+    : [];
+
+  if (departamentos.length) return departamentos;
+
+  return [
+    {
+      area: proposta?.area || atendimento?.area || "-",
+      servico: proposta?.servico || "",
+      responsavelNome:
+        proposta?.responsavelNome ||
+        atendimento?.responsavelNome ||
+        "",
+      valor: proposta?.valorTotal || 0,
+    },
+  ];
+}
+
 export async function gerarPropostaPDF({
   proposta,
   atendimento,
@@ -163,6 +183,12 @@ export async function gerarPropostaPDF({
     proposta.versaoAtual ||
     proposta.versao ||
     1;
+
+  const departamentos =
+    departamentosDaProposta(
+      proposta,
+      atendimento
+    );
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
@@ -218,9 +244,10 @@ export async function gerarPropostaPDF({
   campo(
     doc,
     "Área / atendimento",
-    proposta.area ||
-      atendimento?.area ||
-      "-",
+    departamentos
+      .map((item) => item.area)
+      .filter(Boolean)
+      .join(", ") || "-",
     20,
     y + 17,
     75
@@ -237,6 +264,37 @@ export async function gerarPropostaPDF({
   );
 
   y += 39;
+
+  if (departamentos.length > 1) {
+    y = tituloSecao(
+      doc,
+      "Departamentos incluídos",
+      y
+    );
+
+    for (const [indice, item] of departamentos.entries()) {
+      const complemento = [
+        texto(item.servico),
+        texto(item.responsavelNome),
+        Number(item.valor || 0) > 0
+          ? dinheiro(item.valor)
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      y = paragrafo(
+        doc,
+        `${indice + 1}. ${texto(item.area) || "Área"}${
+          complemento ? ` — ${complemento}` : ""
+        }`,
+        y,
+        { tamanho: 9.5 }
+      );
+    }
+
+    y += 2;
+  }
 
   y = tituloSecao(doc, "Solução proposta", y);
 
