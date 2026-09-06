@@ -8861,6 +8861,7 @@ function DiagnosticoPrototipo() {
     setDetalhesRespostas({});
     setIaResultado(null);
     setDiagnosticoIdSalvo("");
+    setPlanoDiagnosticoLiberado("");
     ultimaAtualizacaoLeadRef.current = "";
   }
 
