@@ -261,6 +261,8 @@ export function contratoSaida(
     estruturaLabel: motor.label,
     scoreGeral: 0,
     nivelGeral: "",
+    confiancaDiagnostico: "BAIXA",
+    justificativaConfianca: "",
     leituraExecutiva: "",
     objetivosDeclarados: [],
     doresPrincipais: [],
@@ -272,6 +274,8 @@ export function contratoSaida(
         id,
       score: 0,
       nivel: "",
+      confianca: "BAIXA",
+      possiveisImpactos: [],
       achados: [],
       riscos: [],
       pontosFortes: [],
@@ -293,7 +297,9 @@ export function contratoSaida(
     perguntasAprofundamento: [],
     evidenciasNecessarias: [],
     pontosParaValidacao: [],
+    inconsistenciasPossiveis: [],
     decisoesBloqueadas: [],
+    rastreabilidade: [],
     proximosPassos: [],
     viabilidadeHolding:
       motor.id === "avaliar_holding"
@@ -310,6 +316,7 @@ export function contratoSaida(
       aprofundamentos: [],
       riscosComerciais: [],
       departamentosSugeridos: [],
+      triagemDepartamentos: [],
     },
   };
 }
@@ -369,6 +376,13 @@ REGRAS:
 - Não repita o mesmo texto em campos diferentes. Cada campo tem uma finalidade distinta.
 - Recomendações devem decorrer das respostas.
 - Preserve rastreabilidade entre resposta, achado, risco e recomendação.
+- "Não sei" reduz a confiança, mas não comprova falha e não deve reduzir diretamente o score.
+- "N/A" fica fora do numerador e do denominador do score.
+- Quando não houver respostas avaliáveis, use score nulo e nível "NÃO AVALIADO"; nunca transforme ausência de dados em 0/100.
+- Para cada eixo, informe confiança ALTA, MÉDIA ou BAIXA e possíveis impactos sem entregar o passo a passo de implantação ao cliente.
+- Registre aparentes incompatibilidades em "inconsistenciasPossiveis", com linguagem de validação, sem acusar contradição definitiva.
+- Em "rastreabilidade", relacione de forma interna e objetiva a resposta, o achado, o risco e a recomendação correspondentes.
+- Em "visaoAdministracao.triagemDepartamentos", sugira ACIONAR, ACOMPANHAR ou NAO_ACIONAR, com área, motivo, urgência e serviço possível.
 - Retorne SOMENTE JSON válido.
 `;
 }
