@@ -6814,6 +6814,13 @@ function AtendimentosDepartamento({
     setAtendimentoAberto,
   ] = useState(null);
 
+  // Um caso representa um diagnóstico. Os registros departamentais continuam
+  // separados no banco para preservar responsável, histórico e proposta.
+  const [
+    atendimentosDoCaso,
+    setAtendimentosDoCaso,
+  ] = useState([]);
+
   const [
     atendimentoInicialProcessado,
     setAtendimentoInicialProcessado,
@@ -7518,6 +7525,17 @@ async function salvarPropostaCaso() {
 
     setAtendimentoAberto(
       atendimento
+    );
+
+    const chaveCaso =
+      atendimento.diagnosticoId ||
+      atendimento.leadId ||
+      atendimento.id;
+
+    setAtendimentosDoCaso(
+      atendimentos.filter((item) =>
+        (item.diagnosticoId || item.leadId || item.id) === chaveCaso
+      )
     );
 
     setStatusCaso(
@@ -8608,12 +8626,52 @@ async function salvarPropostaCaso() {
       }
     );
 
+  const gruposFiltrados = useMemo(() => {
+    const mapa = new Map();
+
+    filtrados.forEach((atendimento) => {
+      const chave =
+        atendimento.diagnosticoId ||
+        atendimento.leadId ||
+        atendimento.id;
+
+      if (!mapa.has(chave)) {
+        mapa.set(chave, {
+          chave,
+          principal: atendimento,
+          atendimentos: [],
+        });
+      }
+
+      mapa.get(chave).atendimentos.push(atendimento);
+    });
+
+    return Array.from(mapa.values()).map((grupo) => {
+      const ordenados = [...grupo.atendimentos].sort((a, b) => {
+        const scoreA = Number.isFinite(Number(a.scoreArea)) ? Number(a.scoreArea) : 101;
+        const scoreB = Number.isFinite(Number(b.scoreArea)) ? Number(b.scoreArea) : 101;
+        return scoreA - scoreB;
+      });
+
+      return {
+        ...grupo,
+        principal: ordenados[0],
+        atendimentos: ordenados,
+        areas: ordenados.map((item) => item.area).filter(Boolean),
+      };
+    });
+  }, [filtrados]);
+
   const agoraAtendimentos =
     new Date();
 
   const resumo = {
     total:
-      atendimentos.length,
+      new Set(
+        atendimentos.map((item) =>
+          item.diagnosticoId || item.leadId || item.id
+        )
+      ).size,
 
     naoIniciado:
       atendimentos.filter(
@@ -9188,13 +9246,13 @@ async function salvarPropostaCaso() {
       >
         Exibindo{" "}
         <strong>
-          {filtrados.length}
+          {gruposFiltrados.length}
         </strong>{" "}
         de{" "}
         <strong>
-          {atendimentos.length}
+          {resumo.total}
         </strong>{" "}
-        atendimentos
+        casos consolidados · {filtrados.length} departamento(s) no filtro
       </div>
         </>
       )}
@@ -11153,6 +11211,59 @@ async function salvarPropostaCaso() {
                 padding: 16,
               }}
             >
+              {atendimentosDoCaso.length > 1 && (
+                <Card
+                  style={{
+                    marginBottom: 12,
+                    borderLeft: `4px solid ${CORAL}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: MUTED,
+                      fontWeight: 900,
+                      marginBottom: 7,
+                    }}
+                  >
+                    DEPARTAMENTO PARA ACIONAMENTO E PROPOSTA
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                    {atendimentosDoCaso.map((item) => {
+                      const ativo = item.id === atendimentoAberto.id;
+
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => abrirAtendimento(item)}
+                          style={{
+                            border: ativo
+                              ? `1px solid ${CORAL}`
+                              : "1px solid #D8DEEA",
+                            background: ativo ? "#FFF3EF" : WHITE,
+                            color: ativo ? "#993C1D" : NAVY,
+                            borderRadius: 999,
+                            padding: "8px 11px",
+                            cursor: "pointer",
+                            fontSize: 9.5,
+                            fontWeight: 900,
+                          }}
+                        >
+                          {item.area} · {item.scoreArea ?? "N/A"}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 7, color: MUTED, fontSize: 9.5 }}>
+                    O acionamento, o responsável, o histórico e a proposta serão
+                    registrados somente no departamento selecionado.
+                  </div>
+                </Card>
+              )}
+
               <DocumentosAtendimento
                 token={token}
                 atendimento={atendimentoAberto}
@@ -12822,7 +12933,7 @@ async function salvarPropostaCaso() {
         <Card>
           Carregando atendimentos...
         </Card>
-      ) : filtrados.length === 0 ? (
+      ) : gruposFiltrados.length === 0 ? (
         <Card
           style={{
             borderLeft:
@@ -12858,8 +12969,9 @@ async function salvarPropostaCaso() {
             gap: 12,
           }}
         >
-          {filtrados.map(
-            (atendimento) => {
+          {gruposFiltrados.map(
+            (grupo) => {
+              const atendimento = grupo.principal;
               const lead =
                 leadDoAtendimento(
                   atendimento
@@ -12892,9 +13004,7 @@ async function salvarPropostaCaso() {
 
               return (
                 <Card
-                  key={
-                    atendimento.id
-                  }
+                  key={grupo.chave}
                 >
                   <div
                     style={{
@@ -12915,9 +13025,32 @@ async function salvarPropostaCaso() {
                           marginBottom: 4,
                         }}
                       >
-                        {
-                          atendimento.area
-                        }
+                        {grupo.areas.length} DEPARTAMENTO(S)
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 5,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {grupo.atendimentos.map((item) => (
+                          <span
+                            key={item.id}
+                            style={{
+                              background: "#EEF3FF",
+                              color: "#31589C",
+                              borderRadius: 999,
+                              padding: "4px 7px",
+                              fontSize: 8.5,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {item.area} · {item.scoreArea ?? "N/A"}
+                          </span>
+                        ))}
                       </div>
 
                       <strong
