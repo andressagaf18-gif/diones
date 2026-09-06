@@ -3948,6 +3948,90 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
   </div>;
 }
 
+const PLANOS_DIAGNOSTICO = [
+  { codigo:"INICIAL", nome:"Diagnóstico Inicial", valor:29.90, descricao:"Score, leitura executiva e principais sinais de atenção." },
+  { codigo:"COMPLETO", nome:"Diagnóstico Completo", valor:299.90, descricao:"Análise completa do cliente, riscos, impactos, prioridades e PDF executivo.", destaque:true },
+  { codigo:"ESPECIALISTA", nome:"Diagnóstico + Especialista", valor:799.90, descricao:"Diagnóstico completo e análise individual com especialista Finder." },
+];
+
+function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado}){
+  const [documento,setDocumento]=useState(cnpj||"");
+  const [carregando,setCarregando]=useState("");
+  const [erro,setErro]=useState("");
+  const [cobranca,setCobranca]=useState(null);
+  const [copiado,setCopiado]=useState(false);
+
+  useEffect(()=>{
+    if(!cobranca?.paymentId)return;
+    let ativo=true;
+    const verificar=async()=>{
+      try{
+        const r=await fetch(`/api/asaas?acao=consultar&id=${encodeURIComponent(cobranca.paymentId)}`);
+        const data=await r.json().catch(()=>null);
+        if(ativo&&r.ok&&data?.pago){
+          onLiberado?.(data.plano,data);
+          setCobranca(prev=>({...prev,status:"RECEIVED"}));
+        }
+      }catch{}
+    };
+    verificar();
+    const timer=setInterval(verificar,3500);
+    return()=>{ativo=false;clearInterval(timer)};
+  },[cobranca?.paymentId,onLiberado]);
+
+  async function contratar(plano){
+    if(!diagnosticoId){setErro("Aguarde alguns segundos: estamos concluindo o registro do diagnóstico.");return}
+    const doc=String(documento||"").replace(/\D/g,"");
+    if(![11,14].includes(doc.length)){setErro("Informe um CPF ou CNPJ válido para gerar o Pix.");return}
+    setCarregando(plano.codigo);setErro("");
+    try{
+      const r=await fetch("/api/asaas?acao=criar",{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({diagnosticoId,plano:plano.codigo,cliente:{nome,email,telefone,cpfCnpj:doc}}),
+      });
+      const data=await r.json().catch(()=>null);
+      if(!r.ok||!data?.ok)throw new Error(data?.error||"Não foi possível gerar a cobrança.");
+      setCobranca(data);
+      try{localStorage.setItem(`finder_pagamento_${diagnosticoId}`,JSON.stringify({paymentId:data.paymentId,plano:data.plano}))}catch{}
+    }catch(e){setErro(e?.message||"Falha ao gerar o Pix.")}
+    finally{setCarregando("")}
+  }
+
+  async function copiarPix(){
+    if(!cobranca?.pix?.payload)return;
+    try{await navigator.clipboard.writeText(cobranca.pix.payload);setCopiado(true);setTimeout(()=>setCopiado(false),1800)}catch{setErro("Não foi possível copiar. Selecione o código manualmente.")}
+  }
+
+  if(cobranca){
+    const pago=["RECEIVED","CONFIRMED","RECEIVED_IN_CASH"].includes(cobranca.status);
+    return <div style={{border:"1px solid #DDE2EA",borderRadius:14,padding:15,background:WHITE,marginBottom:16,textAlign:"center"}}>
+      <p style={{fontFamily:DISPLAY_FONT,fontSize:18,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>{pago?"Pagamento confirmado":"Finalize o pagamento por Pix"}</p>
+      <p style={{fontSize:11,color:MUTED,margin:"0 0 12px"}}>{cobranca.nomePlano} · {Number(cobranca.valor).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
+      {pago?<div style={{background:"#E1F5EE",color:"#0F6E56",padding:12,borderRadius:10,fontWeight:800}}>Relatório liberado com sucesso.</div>:<>
+        {cobranca.pix?.encodedImage&&<img alt="QR Code Pix" src={`data:image/png;base64,${cobranca.pix.encodedImage}`} style={{width:210,maxWidth:"80%",display:"block",margin:"0 auto 10px"}}/>}
+        {cobranca.pix?.payload&&<button type="button" onClick={copiarPix} style={{width:"100%",border:0,borderRadius:9,padding:"12px 14px",background:NAVY,color:WHITE,fontWeight:800,cursor:"pointer"}}>{copiado?"Código copiado":"Copiar Pix Copia e Cola"}</button>}
+        <p style={{fontSize:9.5,color:MUTED,lineHeight:1.4}}>A confirmação é automática. Esta tela será atualizada após o recebimento.</p>
+      </>}
+    </div>;
+  }
+
+  return <div style={{border:"1px solid #DDE2EA",borderRadius:14,padding:15,background:"#F7F8FB",marginBottom:16}}>
+    <p style={{fontFamily:DISPLAY_FONT,fontSize:19,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>Escolha como deseja receber sua análise</p>
+    <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar.</p>
+    <label style={{fontSize:9.5,fontWeight:800,color:NAVY}}>CPF ou CNPJ do pagador
+      <input value={documento} onChange={e=>setDocumento(e.target.value)} placeholder="Somente números" inputMode="numeric" style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
+    </label>
+    <div style={{display:"grid",gap:9,marginTop:12}}>{PLANOS_DIAGNOSTICO.map(plano=><div key={plano.codigo} style={{border:plano.destaque?`2px solid ${CORAL}`:"1px solid #DDE2EA",borderRadius:12,padding:12,background:WHITE}}>
+      {plano.destaque&&<span style={{fontSize:8,fontWeight:900,color:CORAL}}>MAIS ESCOLHIDO</span>}
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}><strong style={{color:NAVY,fontSize:13}}>{plano.nome}</strong><strong style={{color:plano.destaque?CORAL:NAVY,fontSize:17}}>{plano.valor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</strong></div>
+      <p style={{fontSize:9.8,color:MUTED,lineHeight:1.4,margin:"6px 0 10px"}}>{plano.descricao}</p>
+      <button type="button" disabled={Boolean(carregando)} onClick={()=>contratar(plano)} style={{width:"100%",border:0,borderRadius:8,padding:"10px",background:plano.destaque?CORAL:NAVY,color:WHITE,fontWeight:800,cursor:"pointer",opacity:carregando?.7:1}}>{carregando===plano.codigo?"Gerando Pix...":"Escolher e pagar por Pix"}</button>
+    </div>)}</div>
+    {erro&&<p style={{fontSize:10,color:"#993C1D",background:"#FAECE7",padding:9,borderRadius:8,margin:"10px 0 0"}}>{erro}</p>}
+    <p style={{fontSize:8.8,color:"#8A93A3",lineHeight:1.4,margin:"10px 0 0"}}>Pagamento processado pelo Asaas. O conteúdo é uma estimativa diagnóstica e não substitui análise técnica individualizada.</p>
+  </div>;
+}
+
 function DiagnosticoPrototipo() {
   const [step, setStep] = useState("intro");
   const [nome, setNome] = useState("");
@@ -4055,10 +4139,14 @@ function DiagnosticoPrototipo() {
   const [leadId, setLeadId] = useState("");
   const [sessionIdLead, setSessionIdLead] = useState("");
   const [diagnosticoIdSalvo, setDiagnosticoIdSalvo] = useState("");
+  const [planoDiagnosticoLiberado, setPlanoDiagnosticoLiberado] = useState("");
   const leadInicializadoRef = useRef(false);
   const ultimaAtualizacaoLeadRef = useRef("");
 
   const empresaPrincipal = empresas[0] || null;
+
+  const acessoDiagnosticoInicial = ["INICIAL","COMPLETO","ESPECIALISTA"].includes(planoDiagnosticoLiberado);
+  const acessoDiagnosticoCompleto = ["COMPLETO","ESPECIALISTA"].includes(planoDiagnosticoLiberado);
 
   const avaliarHoldingAtiva =
     estruturaNegocio === "avaliar_holding";
@@ -11811,6 +11899,29 @@ function DiagnosticoPrototipo() {
                     : `${categoriaPrincipal} · ${colaboradores} colaboradores · ${gruposSelecionados.map((g) => g.label).join(", ")}`}
                 </p>
 
+                {!acessoDiagnosticoInicial && (
+                  <PagamentoDiagnostico
+                    diagnosticoId={diagnosticoIdSalvo}
+                    nome={nome}
+                    email={email}
+                    telefone={telefone}
+                    cnpj={empresaPrincipal?.cnpjDigits || ""}
+                    onLiberado={setPlanoDiagnosticoLiberado}
+                  />
+                )}
+
+                {acessoDiagnosticoInicial && (
+                  <div style={{background:"#E1F5EE",border:"1px solid #B7E2D3",borderRadius:10,padding:10,marginBottom:14}}>
+                    <p style={{fontSize:10.5,color:"#0F6E56",margin:0,fontWeight:800}}>
+                      {acessoDiagnosticoCompleto
+                        ? "Diagnóstico completo liberado"
+                        : "Diagnóstico inicial liberado"}
+                    </p>
+                  </div>
+                )}
+
+                {acessoDiagnosticoInicial && <>
+
                 <p style={sectionTitleStyle}>
                   {trilhaPFAtiva
                     ? "O que entendemos sobre sua vida financeira"
@@ -11866,7 +11977,7 @@ function DiagnosticoPrototipo() {
                   </>
                 )}
 
-                {iaResultado?.plano90Dias && (
+                {false && iaResultado?.plano90Dias && (
                   <>
                     <p style={sectionTitleStyle}>Plano inicial 30/60/90 dias</p>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 7, marginBottom: 14 }}>
@@ -12085,7 +12196,7 @@ function DiagnosticoPrototipo() {
                   </>
                 )}
 
-                {leituraDaDorIa && (
+                {acessoDiagnosticoCompleto && leituraDaDorIa && (
                   <>
                     <p style={sectionTitleStyle}>O que suas respostas estão mostrando</p>
                     <div style={{ background: WHITE, border: "1px solid #DDE2EA", borderRadius: 12, padding: 13, marginBottom: 14 }}>
@@ -12094,7 +12205,7 @@ function DiagnosticoPrototipo() {
                   </>
                 )}
 
-                {causasProvaveisIa.length > 0 && (
+                {acessoDiagnosticoCompleto && causasProvaveisIa.length > 0 && (
                   <>
                     <p style={sectionTitleStyle}>Conexões que merecem atenção</p>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 15 }}>
@@ -12108,7 +12219,7 @@ function DiagnosticoPrototipo() {
                   </>
                 )}
 
-                {impactosIa.length > 0 && (
+                {acessoDiagnosticoCompleto && impactosIa.length > 0 && (
                   <>
                     <p style={sectionTitleStyle}>Onde isso pode estar impactando</p>
                     <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 15 }}>
@@ -12122,7 +12233,7 @@ function DiagnosticoPrototipo() {
                   </>
                 )}
 
-                {pontosFortesIa.length > 0 && (
+                {acessoDiagnosticoCompleto && pontosFortesIa.length > 0 && (
                   <>
                     <p style={sectionTitleStyle}>O que já está funcionando a seu favor</p>
                     <div style={{ background: "#E1F5EE", borderRadius: 11, padding: 12, marginBottom: 15 }}>
@@ -12136,7 +12247,7 @@ function DiagnosticoPrototipo() {
                   </>
                 )}
 
-                {alertaEstrategicoIa && (
+                {acessoDiagnosticoCompleto && alertaEstrategicoIa && (
                   <>
                     <p style={sectionTitleStyle}>Alerta estratégico</p>
                     <div style={{ background: "#FAEEDA", borderRadius: 11, padding: 13, marginBottom: 15 }}>
@@ -12144,6 +12255,8 @@ function DiagnosticoPrototipo() {
                     </div>
                   </>
                 )}
+
+                </>}
 
                 <p style={sectionTitleStyle}>Prioridades identificadas</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 17 }}>
@@ -12205,9 +12318,17 @@ function DiagnosticoPrototipo() {
                     <CalendarCheck size={15} /> Quero falar com um especialista
                   </PrimaryButton>
 
-                  <PrimaryButton onClick={gerarPdf}>
-                    <Download size={15} /> Baixar meu diagnóstico executivo
-                  </PrimaryButton>
+                  {acessoDiagnosticoCompleto && (
+                    <PrimaryButton onClick={gerarPdf}>
+                      <Download size={15} /> Baixar meu diagnóstico executivo
+                    </PrimaryButton>
+                  )}
+
+                  {planoDiagnosticoLiberado === "INICIAL" && (
+                    <p style={{fontSize:9.8,color:MUTED,textAlign:"center",margin:"2px 0 0"}}>
+                      O PDF completo está disponível nos planos Completo e Especialista.
+                    </p>
+                  )}
 
                   <button onClick={reiniciar} style={{ background: "none", border: "none", color: MUTED, fontSize: 11.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 7, cursor: "pointer" }}>
                     <RotateCcw size={12} /> Fazer um novo diagnóstico
