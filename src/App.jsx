@@ -17,6 +17,26 @@ const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const MAX_DORES = 3;
 
+function lerOrigemDaUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const origemQuery = params.get("origem") || params.get("utm_source");
+
+    if (origemQuery) return String(origemQuery).trim();
+
+    const caminho = String(window.location.pathname || "");
+    const encontrado = caminho.match(/^\/origem=([^/?#]+)/i);
+
+    if (encontrado?.[1]) {
+      return decodeURIComponent(encontrado[1]).trim();
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
+}
+
 const finderIaInflight =
   new Map();
 
@@ -4055,6 +4075,17 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
 
 function DiagnosticoPrototipo() {
   const [step, setStep] = useState("intro");
+  const [origemAtual] = useState(() => {
+    try {
+      return String(
+        lerOrigemDaUrl() ||
+        sessionStorage.getItem("finder_origem_atual") ||
+        "direto"
+      ).trim();
+    } catch {
+      return "direto";
+    }
+  });
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -4161,6 +4192,12 @@ function DiagnosticoPrototipo() {
   const [sessionIdLead, setSessionIdLead] = useState("");
   const [diagnosticoIdSalvo, setDiagnosticoIdSalvo] = useState("");
   const [planoDiagnosticoLiberado, setPlanoDiagnosticoLiberado] = useState("");
+  const [agendaData, setAgendaData] = useState("");
+  const [agendaHora, setAgendaHora] = useState("");
+  const [agendaHorarios, setAgendaHorarios] = useState([]);
+  const [agendaObservacao, setAgendaObservacao] = useState("");
+  const [agendaStatus, setAgendaStatus] = useState("idle");
+  const [agendaMensagem, setAgendaMensagem] = useState("");
   const leadInicializadoRef = useRef(false);
   const ultimaAtualizacaoLeadRef = useRef("");
 
@@ -4168,6 +4205,93 @@ function DiagnosticoPrototipo() {
 
   const acessoDiagnosticoInicial = ["INICIAL","COMPLETO","ESPECIALISTA"].includes(planoDiagnosticoLiberado);
   const acessoDiagnosticoCompleto = ["COMPLETO","ESPECIALISTA"].includes(planoDiagnosticoLiberado);
+
+  const hojeAgenda = useMemo(() => {
+    const agora = new Date();
+    const deslocamento = agora.getTimezoneOffset() * 60000;
+    return new Date(agora.getTime() - deslocamento).toISOString().slice(0, 10);
+  }, []);
+
+  const limiteAgenda = useMemo(() => {
+    const data = new Date();
+    data.setDate(data.getDate() + 60);
+    const deslocamento = data.getTimezoneOffset() * 60000;
+    return new Date(data.getTime() - deslocamento).toISOString().slice(0, 10);
+  }, []);
+
+  useEffect(() => {
+    if (!agendaData) {
+      setAgendaHorarios([]);
+      setAgendaHora("");
+      return;
+    }
+
+    let cancelado = false;
+    setAgendaStatus("loading");
+    setAgendaMensagem("");
+
+    fetch(`/api/crm?action=agenda-disponibilidade&data=${encodeURIComponent(agendaData)}`)
+      .then(async (resposta) => {
+        const dados = await resposta.json().catch(() => ({}));
+        if (!resposta.ok || !dados?.sucesso) {
+          throw new Error(dados?.error || "Não foi possível consultar a agenda.");
+        }
+        if (!cancelado) {
+          setAgendaHorarios(dados.horarios || []);
+          setAgendaStatus("idle");
+        }
+      })
+      .catch((error) => {
+        if (!cancelado) {
+          setAgendaHorarios([]);
+          setAgendaHora("");
+          setAgendaStatus("error");
+          setAgendaMensagem(error?.message || "Não foi possível consultar a agenda.");
+        }
+      });
+
+    return () => { cancelado = true; };
+  }, [agendaData]);
+
+  async function confirmarAgendamento() {
+    if (!diagnosticoIdSalvo) {
+      setAgendaMensagem("Aguarde o diagnóstico terminar de ser salvo.");
+      return;
+    }
+
+    if (!agendaData || !agendaHora) {
+      setAgendaMensagem("Escolha o dia e o horário da reunião.");
+      return;
+    }
+
+    setAgendaStatus("saving");
+    setAgendaMensagem("");
+
+    try {
+      const resposta = await fetch("/api/crm?action=agendar-reuniao", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          diagnosticoId: diagnosticoIdSalvo,
+          leadId,
+          data: agendaData,
+          hora: agendaHora,
+          observacao: agendaObservacao,
+        }),
+      });
+
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok || !dados?.sucesso) {
+        throw new Error(dados?.error || "Não foi possível confirmar o agendamento.");
+      }
+
+      setAgendaStatus("success");
+      setAgendaMensagem(`Reunião confirmada para ${agendaData.split("-").reverse().join("/")} às ${agendaHora}.`);
+    } catch (error) {
+      setAgendaStatus("error");
+      setAgendaMensagem(error?.message || "Não foi possível confirmar o agendamento.");
+    }
+  }
 
   const avaliarHoldingAtiva =
     estruturaNegocio === "avaliar_holding";
@@ -5239,10 +5363,7 @@ function DiagnosticoPrototipo() {
           window.location.search
         );
 
-        const origem =
-          params.get("origem") ||
-          params.get("utm_source") ||
-          "direto";
+        const origem = lerOrigemDaUrl() || "direto";
 
         const campanha =
           params.get("campanha") ||
@@ -5273,8 +5394,14 @@ function DiagnosticoPrototipo() {
           params.get("utm_term") ||
           "";
 
+        // Cada origem possui sua própria sessão. Isso impede que um aparelho
+        // que já respondeu outro evento reutilize o lead e mantenha a origem antiga.
+        const chaveOrigem = encodeURIComponent(
+          String(origem || "direto").trim().toLowerCase()
+        );
+
         const chaveSessao =
-          "finder_diagnostico_session_id";
+          `finder_diagnostico_session_id_${chaveOrigem}`;
 
         let sessionId =
           sessionStorage.getItem(
@@ -9833,6 +9960,25 @@ function DiagnosticoPrototipo() {
                   </p>
                 </div>
 
+                {origemAtual && origemAtual !== "direto" && origemAtual !== "link-direto" && (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      borderRadius: 999,
+                      padding: "7px 12px",
+                      background: "#EEF4FF",
+                      border: "1px solid #C9D8FF",
+                      color: NAVY,
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                    }}
+                  >
+                    Origem: {origemAtual}
+                  </div>
+                )}
+
                 <div
                   style={{
                     background: "#FFFFFF",
@@ -12337,6 +12483,49 @@ function DiagnosticoPrototipo() {
                   </div>
                 )}
 
+                <div style={{ background: "#F7F9FD", border: "1px solid #DDE3EC", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+                  <div style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 12 }}>
+                    <CalendarCheck size={19} color={CORAL} style={{ flexShrink: 0 }} />
+                    <div>
+                      <p style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 700, color: NAVY, margin: 0 }}>Agende uma conversa com a Finder</p>
+                      <p style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.45, margin: "4px 0 0" }}>Escolha um horário disponível de segunda a sexta, das 9h às 17h. A reunião dura até 60 minutos.</p>
+                    </div>
+                  </div>
+
+                  {agendaStatus === "success" ? (
+                    <div style={{ background: "#E1F5EE", color: "#0F6E56", borderRadius: 10, padding: 11, fontSize: 11.5, fontWeight: 800 }}>{agendaMensagem}</div>
+                  ) : (
+                    <>
+                      <label style={labelStyle}>Melhor dia</label>
+                      <input type="date" min={hojeAgenda} max={limiteAgenda} value={agendaData} onChange={(e) => { setAgendaData(e.target.value); setAgendaHora(""); }} style={{ ...inputStyle, marginBottom: 10 }} />
+
+                      {agendaStatus === "loading" && <p style={{ fontSize: 10.5, color: MUTED }}>Consultando horários...</p>}
+
+                      {agendaHorarios.length > 0 && (
+                        <>
+                          <label style={labelStyle}>Melhor horário</label>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 7, marginBottom: 10 }}>
+                            {agendaHorarios.map((item) => (
+                              <button key={item.hora} type="button" disabled={!item.disponivel} onClick={() => setAgendaHora(item.hora)} style={{ border: agendaHora === item.hora ? `2px solid ${CORAL}` : "1px solid #D8DEEA", borderRadius: 9, padding: "9px 4px", background: agendaHora === item.hora ? "#FFF3EF" : item.disponivel ? WHITE : "#EEF1F5", color: item.disponivel ? NAVY : "#A8B0BE", cursor: item.disponivel ? "pointer" : "not-allowed", fontSize: 11, fontWeight: 800 }}>
+                                {item.hora}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      <label style={labelStyle}>Assunto ou observação (opcional)</label>
+                      <textarea value={agendaObservacao} onChange={(e) => setAgendaObservacao(e.target.value)} maxLength={1000} placeholder="Conte brevemente o que gostaria de tratar na reunião." style={{ ...inputStyle, minHeight: 72, resize: "vertical", marginBottom: 10 }} />
+
+                      {agendaMensagem && <p style={{ fontSize: 10.5, color: agendaStatus === "error" ? "#993C1D" : MUTED, margin: "0 0 9px" }}>{agendaMensagem}</p>}
+
+                      <PrimaryButton onClick={confirmarAgendamento} disabled={agendaStatus === "saving" || !agendaData || !agendaHora || !diagnosticoIdSalvo}>
+                        <CalendarCheck size={15} /> {agendaStatus === "saving" ? "Confirmando..." : "Confirmar agendamento"}
+                      </PrimaryButton>
+                    </>
+                  )}
+                </div>
+
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <PrimaryButton
                     style={{ background: NAVY, padding: "14px 16px" }}
@@ -13284,6 +13473,12 @@ export default function App() {
       const dominio = String(window.location.hostname || "").toLowerCase();
       const dominioExclusivoDiagnostico =
         dominio === "diagnosticofinderofsolutions.vercel.app";
+
+      if (caminho.startsWith("/origem=")) {
+        const origem = lerOrigemDaUrl() || "link-direto";
+        sessionStorage.setItem("finder_origem_atual", origem);
+        return "diagnostico";
+      }
 
       // No domínio exclusivo do cliente, a raiz abre o diagnóstico diretamente.
       // O domínio antigo continua exibindo a página com as duas opções.
