@@ -36,6 +36,7 @@ import {
   UserCog,
   Pencil,
   Sparkles,
+  CalendarDays,
 } from "lucide-react";
 import Dashboard from "./Dashboard";
 import OperacionalBI from "./OperacionalBI";
@@ -22827,6 +22828,100 @@ function Cliente360({
 }
 
 
+function AgendaDiagnosticos({ token, onAbrirDiagnostico }) {
+  const [agendamentos, setAgendamentos] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [busca, setBusca] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const resposta = await fetch("/api/crm?action=listar-agendamentos", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok || !dados?.sucesso) throw new Error(dados?.error || "Erro ao carregar agenda.");
+      setAgendamentos(dados.agendamentos || []);
+    } catch (error) {
+      setErro(error?.message || "Erro ao carregar agenda.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  async function alterarStatus(id, status) {
+    try {
+      const resposta = await fetch("/api/crm?action=atualizar-agendamento", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id, status }),
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok || !dados?.sucesso) throw new Error(dados?.error || "Erro ao atualizar agendamento.");
+      await carregar();
+    } catch (error) {
+      setErro(error?.message || "Erro ao atualizar agendamento.");
+    }
+  }
+
+  const termo = busca.trim().toLowerCase();
+  const visiveis = agendamentos.filter((item) => !termo || [item.nome, item.empresa, item.email, item.telefone, item.cnpj, item.origem, item.diagnostico_id].some((valor) => String(valor || "").toLowerCase().includes(termo)));
+  const futuros = visiveis.filter((item) => item.status === "AGENDADO" && String(item.data_agenda).slice(0, 10) >= new Date().toISOString().slice(0, 10)).length;
+
+  const box = { background: WHITE, border: "1px solid #E3E7EF", borderRadius: 14, padding: 14, boxShadow: "0 5px 18px rgba(23,35,61,.05)" };
+  const statusCores = { AGENDADO: ["#EAF1FF", "#2453A6"], REALIZADO: ["#E1F5EE", "#0F6E56"], CANCELADO: ["#FAECE7", "#993C1D"], NAO_COMPARECEU: ["#FFF4D8", "#8A5800"] };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <h2 style={{ margin: 0, fontFamily: DISPLAY_FONT, fontSize: 22 }}>Agenda dos diagnósticos</h2>
+          <p style={{ margin: "4px 0 0", fontSize: 10.5, color: MUTED }}>Reuniões solicitadas pelos clientes e vinculadas ao diagnóstico completo.</p>
+        </div>
+        <Botao secundario onClick={carregar}><RefreshCcw size={14} /> Atualizar</Botao>
+      </div>
+
+      {erro && <div style={{ background: "#FAECE7", color: "#993C1D", padding: 11, borderRadius: 10, marginBottom: 12 }}>{erro}</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 14 }}>
+        <div style={box}><div style={{ fontSize: 9, color: MUTED, fontWeight: 800 }}>PRÓXIMAS REUNIÕES</div><strong style={{ fontSize: 22 }}>{futuros}</strong></div>
+        <div style={box}><div style={{ fontSize: 9, color: MUTED, fontWeight: 800 }}>TOTAL DE AGENDAMENTOS</div><strong style={{ fontSize: 22 }}>{agendamentos.length}</strong></div>
+      </div>
+
+      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, empresa, origem ou diagnóstico..." style={{ width: "100%", boxSizing: "border-box", border: "1px solid #D8DEEA", borderRadius: 10, padding: "11px 12px", marginBottom: 12 }} />
+
+      {carregando ? <div style={box}>Carregando agenda...</div> : (
+        <div style={{ ...box, overflowX: "auto", padding: 0 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+            <thead><tr>{["Data / hora", "Cliente", "Empresa / documento", "Origem", "Diagnóstico", "Score", "Observação", "Status", "Ações"].map((item) => <th key={item} style={thStyle}>{item}</th>)}</tr></thead>
+            <tbody>
+              {visiveis.map((item) => {
+                const [fundo, cor] = statusCores[item.status] || ["#EEF1F5", MUTED];
+                return <tr key={item.id}>
+                  <td style={tdStyle}><strong>{String(item.data_agenda || "").slice(0, 10).split("-").reverse().join("/")}</strong><br />{item.hora_agenda}–{String(Number(String(item.hora_agenda).slice(0, 2)) + 1).padStart(2, "0")}:00</td>
+                  <td style={tdStyle}><strong>{item.nome || "Não informado"}</strong><br /><span style={{ color: MUTED }}>{item.email || item.telefone || "-"}</span></td>
+                  <td style={tdStyle}>{item.empresa || "-"}<br /><span style={{ color: MUTED }}>{formatarCnpj(item.cnpj)}</span></td>
+                  <td style={tdStyle}>{item.origem || "direto"}</td>
+                  <td style={tdStyle}><button type="button" onClick={() => onAbrirDiagnostico(item.diagnostico_id)} style={{ border: 0, background: "transparent", color: "#2453A6", cursor: "pointer", fontWeight: 800, padding: 0 }}>{item.diagnostico_id}</button></td>
+                  <td style={tdStyle}><strong>{Number(item.score || 0)}/100</strong></td>
+                  <td style={{ ...tdStyle, maxWidth: 220 }}>{item.observacao || "-"}</td>
+                  <td style={tdStyle}><span style={{ background: fundo, color: cor, borderRadius: 99, padding: "5px 8px", fontSize: 9, fontWeight: 900 }}>{item.status}</span></td>
+                  <td style={tdStyle}><select value={item.status} onChange={(e) => alterarStatus(item.id, e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: 7, fontSize: 9, fontWeight: 800 }}><option value="AGENDADO">Agendado</option><option value="REALIZADO">Realizado</option><option value="CANCELADO">Cancelado</option><option value="NAO_COMPARECEU">Não compareceu</option></select></td>
+                </tr>;
+              })}
+              {!visiveis.length && <tr><td colSpan="9" style={{ ...tdStyle, textAlign: "center" }}>Nenhum agendamento encontrado.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AsaasFinanceiro({ token }) {
   const [abaInterna, setAbaInterna] = useState("visao");
   const [painel, setPainel] = useState({ resumo: {}, pagamentos: [], eventos: [] });
@@ -23258,6 +23353,10 @@ export default function Admin() {
           <Activity size={14} />
           Asaas Financeiro
         </Botao>
+        <Botao secundario={aba !== "agenda"} onClick={() => setAba("agenda")}>
+          <CalendarDays size={14} />
+          Agenda
+        </Botao>
       </div>
     );
   }
@@ -23460,6 +23559,10 @@ export default function Admin() {
     asaas: {
       titulo: "Asaas Financeiro",
       subtitulo: "Saldo, extrato, recebimentos, cobranças, cupons e eventos Pix vinculados aos diagnósticos",
+    },
+    agenda: {
+      titulo: "Agenda compartilhada",
+      subtitulo: "Reuniões solicitadas no final dos diagnósticos e vinculadas a cada cliente",
     },
   };
 
@@ -23679,6 +23782,22 @@ export default function Admin() {
       >
         <ConteudoPadrao maxWidth="none" padding="18px 18px 44px">
           <AsaasFinanceiro token={token} />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "agenda") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.agenda.titulo}
+        subtitulo={paginas.agenda.subtitulo}
+      >
+        <ConteudoPadrao maxWidth="none" padding="18px 18px 44px">
+          <AgendaDiagnosticos token={token} onAbrirDiagnostico={setDiagnosticoId} />
         </ConteudoPadrao>
       </FinderTechLayout>
     );
