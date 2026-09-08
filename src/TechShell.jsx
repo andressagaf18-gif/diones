@@ -12,6 +12,7 @@ import {
   Sparkles,
   Target,
   Users,
+  CalendarDays,
 } from "lucide-react";
 
 import {
@@ -71,6 +72,11 @@ const itensPadrao = [
     id: "asaas",
     label: "Asaas Financeiro",
     icon: Activity,
+  },
+  {
+    id: "agenda",
+    label: "Agenda",
+    icon: CalendarDays,
   },
 ];
 
