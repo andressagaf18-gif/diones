@@ -614,6 +614,38 @@ async function prepararSchema() {
     CREATE INDEX IF NOT EXISTS idx_crm_atribuicoes_responsavel_data
     ON crm_atribuicoes (responsavel_id, atribuido_em DESC)
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS crm_agendamentos (
+      id TEXT PRIMARY KEY,
+      diagnostico_id TEXT NOT NULL UNIQUE,
+      lead_id TEXT NOT NULL DEFAULT '',
+      data_agenda DATE NOT NULL,
+      hora_agenda TEXT NOT NULL,
+      duracao_minutos INTEGER NOT NULL DEFAULT 60,
+      status TEXT NOT NULL DEFAULT 'AGENDADO',
+      nome TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      telefone TEXT NOT NULL DEFAULT '',
+      empresa TEXT NOT NULL DEFAULT '',
+      cnpj TEXT NOT NULL DEFAULT '',
+      origem TEXT NOT NULL DEFAULT 'direto',
+      observacao TEXT NOT NULL DEFAULT '',
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_agendamentos_horario
+    ON crm_agendamentos (data_agenda, hora_agenda)
+    WHERE status = 'AGENDADO'
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_crm_agendamentos_data
+    ON crm_agendamentos (data_agenda, hora_agenda)
+  `;
 }
 
 async function garantirSchema() {
@@ -6656,6 +6688,212 @@ async function atribuirLead(req, res) {
 }
 
 // =========================================================
+// AGENDA COMPARTILHADA DO DIAGNÓSTICO
+// Segunda a sexta, das 09h às 17h, reuniões de 60 minutos.
+// =========================================================
+
+const HORARIOS_AGENDA = [
+  "09:00", "10:00", "11:00", "12:00",
+  "13:00", "14:00", "15:00", "16:00",
+];
+
+function dataAtualSaoPaulo() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function validarDataAgenda(data) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return false;
+  if (data < dataAtualSaoPaulo()) return false;
+
+  const dia = new Date(`${data}T12:00:00-03:00`).getUTCDay();
+  return dia >= 1 && dia <= 5;
+}
+
+async function disponibilidadeAgenda(req, res) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ sucesso: false, error: "Método não permitido." });
+  }
+
+  const data = texto(req.query?.data, 10);
+
+  if (!validarDataAgenda(data)) {
+    return res.status(400).json({
+      sucesso: false,
+      error: "Escolha uma data útil a partir de hoje.",
+    });
+  }
+
+  const ocupados = await sql`
+    SELECT hora_agenda
+    FROM crm_agendamentos
+    WHERE data_agenda = ${data}::date
+      AND status = 'AGENDADO'
+  `;
+
+  const indisponiveis = new Set(ocupados.map((item) => item.hora_agenda));
+
+  return res.status(200).json({
+    sucesso: true,
+    data,
+    duracaoMinutos: 60,
+    horarios: HORARIOS_AGENDA.map((hora) => ({
+      hora,
+      disponivel: !indisponiveis.has(hora),
+    })),
+  });
+}
+
+async function agendarReuniao(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ sucesso: false, error: "Método não permitido." });
+  }
+
+  const body = req.body || {};
+  const diagnosticoId = texto(body.diagnosticoId, 140);
+  const leadId = texto(body.leadId, 140);
+  const data = texto(body.data, 10);
+  const hora = texto(body.hora, 5);
+  const observacao = texto(body.observacao, 1000);
+
+  if (!diagnosticoId) {
+    return res.status(400).json({ sucesso: false, error: "Diagnóstico não identificado." });
+  }
+
+  if (!validarDataAgenda(data) || !HORARIOS_AGENDA.includes(hora)) {
+    return res.status(400).json({ sucesso: false, error: "Data ou horário inválido." });
+  }
+
+  const diagnosticos = await sql`
+    SELECT id::text AS id, nome, email, telefone, cnpj, razao_social
+    FROM diagnosticos
+    WHERE id::text = ${diagnosticoId}
+    LIMIT 1
+  `;
+
+  const diagnostico = diagnosticos?.[0];
+
+  if (!diagnostico) {
+    return res.status(404).json({ sucesso: false, error: "Diagnóstico não encontrado." });
+  }
+
+  const leads = leadId
+    ? await sql`
+        SELECT id, origem
+        FROM diagnostico_leads
+        WHERE id = ${leadId}
+        LIMIT 1
+      `
+    : await sql`
+        SELECT id, origem
+        FROM diagnostico_leads
+        WHERE diagnostico_id = ${diagnosticoId}
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `;
+
+  const lead = leads?.[0] || {};
+
+  try {
+    const id = gerarId("agenda");
+    const linhas = await sql`
+      INSERT INTO crm_agendamentos (
+        id, diagnostico_id, lead_id, data_agenda, hora_agenda,
+        nome, email, telefone, empresa, cnpj, origem, observacao
+      ) VALUES (
+        ${id}, ${diagnosticoId}, ${lead.id || leadId || ""},
+        ${data}::date, ${hora}, ${diagnostico.nome || ""},
+        ${diagnostico.email || ""}, ${diagnostico.telefone || ""},
+        ${diagnostico.razao_social || ""}, ${diagnostico.cnpj || ""},
+        ${lead.origem || "direto"}, ${observacao}
+      )
+      ON CONFLICT (diagnostico_id) DO UPDATE SET
+        data_agenda = EXCLUDED.data_agenda,
+        hora_agenda = EXCLUDED.hora_agenda,
+        observacao = EXCLUDED.observacao,
+        status = 'AGENDADO',
+        atualizado_em = NOW()
+      RETURNING *
+    `;
+
+    await sql`
+      UPDATE diagnostico_leads
+      SET status_comercial = 'REUNIAO_AGENDADA',
+          proxima_acao = ${`Reunião em ${data} às ${hora}`},
+          updated_at = NOW()
+      WHERE diagnostico_id = ${diagnosticoId}
+         OR id = ${lead.id || leadId || ""}
+    `;
+
+    return res.status(200).json({ sucesso: true, agendamento: linhas?.[0] });
+  } catch (error) {
+    if (String(error?.message || "").toLowerCase().includes("unique")) {
+      return res.status(409).json({
+        sucesso: false,
+        error: "Este horário acabou de ser reservado. Escolha outro horário.",
+      });
+    }
+    throw error;
+  }
+}
+
+async function listarAgendamentos(req, res) {
+  if (!exigirAdmin(req, res)) return;
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ sucesso: false, error: "Método não permitido." });
+  }
+
+  const linhas = await sql`
+    SELECT
+      a.*,
+      d.score,
+      d.segmento,
+      d.dores,
+      d.areas_selecionadas
+    FROM crm_agendamentos a
+    LEFT JOIN diagnosticos d ON d.id::text = a.diagnostico_id
+    ORDER BY
+      CASE WHEN a.data_agenda >= CURRENT_DATE THEN 0 ELSE 1 END,
+      a.data_agenda ASC,
+      a.hora_agenda ASC
+  `;
+
+  return res.status(200).json({ sucesso: true, agendamentos: linhas });
+}
+
+async function atualizarAgendamento(req, res) {
+  if (!exigirAdmin(req, res)) return;
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ sucesso: false, error: "Método não permitido." });
+  }
+
+  const id = texto(req.body?.id, 140);
+  const status = texto(req.body?.status, 30).toUpperCase();
+  const permitidos = ["AGENDADO", "REALIZADO", "CANCELADO", "NAO_COMPARECEU"];
+
+  if (!id || !permitidos.includes(status)) {
+    return res.status(400).json({ sucesso: false, error: "Agendamento ou status inválido." });
+  }
+
+  const linhas = await sql`
+    UPDATE crm_agendamentos
+    SET status = ${status}, atualizado_em = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+
+  return res.status(200).json({ sucesso: true, agendamento: linhas?.[0] || null });
+}
+
+// =========================================================
 // HANDLER ÚNICO
 // =========================================================
 
@@ -6817,6 +7055,18 @@ export default async function handler(req, res) {
           req,
           res
         );
+
+      case "agenda-disponibilidade":
+        return disponibilidadeAgenda(req, res);
+
+      case "agendar-reuniao":
+        return agendarReuniao(req, res);
+
+      case "listar-agendamentos":
+        return listarAgendamentos(req, res);
+
+      case "atualizar-agendamento":
+        return atualizarAgendamento(req, res);
 
       case "listar-documentos":
       case "upload-documento":
