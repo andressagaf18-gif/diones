@@ -1035,10 +1035,11 @@ function Botao({
   disabled = false,
   secundario = false,
   style = {},
+  type = "button",
 }) {
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
       disabled={disabled}
       style={{
@@ -22955,6 +22956,7 @@ function AsaasFinanceiro({ token }) {
   const [cupons, setCupons] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
+  const [sucessoCupom, setSucessoCupom] = useState("");
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null);
   const [filtros, setFiltros] = useState({ status: "", plano: "", busca: "", inicio: "", fim: "" });
   const [cupomForm, setCupomForm] = useState({
@@ -23012,11 +23014,21 @@ function AsaasFinanceiro({ token }) {
   }
 
   async function salvarCupom(e) {
-    e.preventDefault(); setErro("");
+    e.preventDefault();
+    setErro("");
+    setSucessoCupom("");
+
+    const valorCupom = Number(cupomForm.valor);
+    if (cupomForm.tipo === "PERCENTUAL" && valorCupom > 90) {
+      setErro("O desconto percentual máximo permitido é 90%.");
+      return;
+    }
+
     try {
       await json("/api/asaas?acao=admin-cupons", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cupomForm),
       });
+      setSucessoCupom(`Cupom ${cupomForm.codigo.trim().toUpperCase()} salvo com sucesso.`);
       setCupomForm({ codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "", planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "", inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true });
       await carregar(true);
     } catch (e2) { setErro(e2.message); }
@@ -23087,10 +23099,11 @@ function AsaasFinanceiro({ token }) {
       {abaInterna === "cupons" && <div style={{display:"grid",gridTemplateColumns:"minmax(300px,420px) 1fr",gap:12,alignItems:"start"}}>
         <form onSubmit={salvarCupom} style={box}><h3 style={{margin:"0 0 12px"}}>Criar ou atualizar cupom</h3>
           <div style={{display:"grid",gap:8}}><input required minLength={3} style={input} placeholder="Código do cupom" value={cupomForm.codigo} onChange={e=>setCupomForm({...cupomForm,codigo:e.target.value.toUpperCase()})}/><input style={input} placeholder="Descrição interna" value={cupomForm.descricao} onChange={e=>setCupomForm({...cupomForm,descricao:e.target.value})}/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><select style={input} value={cupomForm.tipo} onChange={e=>setCupomForm({...cupomForm,tipo:e.target.value})}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select><input required type="number" min="0.01" step="0.01" style={input} placeholder="Valor" value={cupomForm.valor} onChange={e=>setCupomForm({...cupomForm,valor:e.target.value})}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><select style={input} value={cupomForm.tipo} onChange={e=>setCupomForm({...cupomForm,tipo:e.target.value})}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select><input required type="number" min="0.01" max={cupomForm.tipo === "PERCENTUAL" ? 90 : undefined} step="0.01" style={input} placeholder={cupomForm.tipo === "PERCENTUAL" ? "Percentual (máx. 90)" : "Valor em reais"} value={cupomForm.valor} onChange={e=>setCupomForm({...cupomForm,valor:e.target.value})}/></div>
           <strong style={{fontSize:9}}>Planos permitidos</strong><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["INICIAL","COMPLETO","ESPECIALISTA"].map(p=><label key={p} style={{fontSize:9}}><input type="checkbox" checked={cupomForm.planos.includes(p)} onChange={e=>setCupomForm({...cupomForm,planos:e.target.checked?[...cupomForm.planos,p]:cupomForm.planos.filter(x=>x!==p)})}/> {p}</label>)}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><label style={{fontSize:8.5}}>Início<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.inicioEm} onChange={e=>setCupomForm({...cupomForm,inicioEm:e.target.value})}/></label><label style={{fontSize:8.5}}>Fim<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.fimEm} onChange={e=>setCupomForm({...cupomForm,fimEm:e.target.value})}/></label></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7}}><input type="number" min="0" style={input} placeholder="Compra mínima" value={cupomForm.valorMinimo} onChange={e=>setCupomForm({...cupomForm,valorMinimo:e.target.value})}/><input type="number" min="1" style={input} placeholder="Limite total" value={cupomForm.limiteTotal} onChange={e=>setCupomForm({...cupomForm,limiteTotal:e.target.value})}/><input type="number" min="1" style={input} placeholder="Por CPF/CNPJ" value={cupomForm.limiteDocumento} onChange={e=>setCupomForm({...cupomForm,limiteDocumento:e.target.value})}/></div>
+          {sucessoCupom&&<div style={{background:"#E1F5EE",color:"#0F6E56",padding:9,borderRadius:8,fontSize:10,fontWeight:800}}>{sucessoCupom}</div>}
           <Botao type="submit"><Save size={14}/> Salvar cupom</Botao></div>
         </form>
         <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr>{["Código","Regra","Planos","Validade","Usos","Desconto concedido","Status"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{cupons.map(c=><tr key={c.codigo}><td style={tdStyle}><strong>{c.codigo}</strong><br/><span style={{color:MUTED}}>{c.descricao}</span></td><td style={tdStyle}>{c.tipo==="PERCENTUAL"?`${c.valor}%`:moeda(c.valor)}</td><td style={tdStyle}>{(c.planos||[]).join(", ")}</td><td style={tdStyle}>{c.inicio_em?formatarData(c.inicio_em):"Imediato"}<br/>{c.fim_em?formatarData(c.fim_em):"Sem término"}</td><td style={tdStyle}>{c.usos||0}{c.limite_total?` / ${c.limite_total}`:""}</td><td style={tdStyle}>{moeda(c.desconto_concedido)}</td><td style={tdStyle}><button onClick={()=>alternarCupom(c)} style={{...input,cursor:"pointer",fontWeight:800,color:c.ativo?"#0F6E56":"#993C1D"}}>{c.ativo?"ATIVO":"INATIVO"}</button></td></tr>)}{!cupons.length&&<tr><td colSpan="7" style={{...tdStyle,textAlign:"center"}}>Nenhum cupom cadastrado.</td></tr>}</tbody></table></div>
