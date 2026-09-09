@@ -369,6 +369,10 @@ async function schema() {
           ALTER TABLE finder_eventos_origens
           ADD COLUMN IF NOT EXISTS meta_leads INTEGER
         `;
+        await sql`
+          ALTER TABLE finder_eventos_origens
+          ADD COLUMN IF NOT EXISTS diagnostico_inicial_gratuito BOOLEAN NOT NULL DEFAULT FALSE
+        `;
       })();
   }
 
@@ -586,6 +590,9 @@ function eventoPublico(
 
     metaLeads:
       Number(row.meta_leads || 0),
+
+    diagnosticoInicialGratuito:
+      Boolean(row.diagnostico_inicial_gratuito),
 
     dataInicio:
       row.data_inicio ||
@@ -1496,6 +1503,7 @@ export default async function handler(
             tipo_origem,
             local_evento,
             meta_leads,
+            diagnostico_inicial_gratuito,
             data_inicio,
             data_fim,
             ativo,
@@ -1595,6 +1603,8 @@ export default async function handler(
           ) || 0
         );
 
+      const diagnosticoInicialGratuito = Boolean(req.body?.diagnosticoInicialGratuito);
+
       const dataInicio =
         dataOuNull(
           req.body?.dataInicio
@@ -1658,6 +1668,7 @@ export default async function handler(
             tipo_origem,
             local_evento,
             meta_leads,
+            diagnostico_inicial_gratuito,
             data_inicio,
             data_fim,
             ativo,
@@ -1676,6 +1687,7 @@ export default async function handler(
           ${tipoOrigem},
           ${localEvento},
           ${metaLeads},
+          ${diagnosticoInicialGratuito},
           ${dataInicio},
           ${dataFim},
           TRUE,
@@ -1858,6 +1870,10 @@ export default async function handler(
               req.body.ativo
             );
 
+      const diagnosticoInicialGratuito = req.body?.diagnosticoInicialGratuito === undefined
+        ? Boolean(anterior.diagnostico_inicial_gratuito)
+        : Boolean(req.body.diagnosticoInicialGratuito);
+
       const dataInicio =
         req.body?.dataInicio ===
         undefined
@@ -1932,6 +1948,7 @@ export default async function handler(
           tipo_origem = ${tipoOrigem},
           local_evento = ${localEvento},
           meta_leads = ${metaLeads},
+          diagnostico_inicial_gratuito = ${diagnosticoInicialGratuito},
           data_inicio = ${dataInicio},
           data_fim = ${dataFim},
           ativo = ${ativo},
@@ -1971,6 +1988,8 @@ export default async function handler(
               anterior.local_evento,
             metaLeads:
               anterior.meta_leads,
+            diagnosticoInicialGratuito:
+              anterior.diagnostico_inicial_gratuito,
             dataInicio:
               anterior.data_inicio,
             dataFim:
@@ -1988,6 +2007,7 @@ export default async function handler(
             tipoOrigem,
             localEvento,
             metaLeads,
+            diagnosticoInicialGratuito,
             dataInicio,
             dataFim,
             ativo,
@@ -2241,6 +2261,7 @@ export default async function handler(
             tipo_origem,
             local_evento,
             meta_leads,
+            diagnostico_inicial_gratuito,
             data_inicio,
             data_fim,
             ativo,
