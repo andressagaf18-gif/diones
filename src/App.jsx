@@ -3973,7 +3973,7 @@ const PLANOS_DIAGNOSTICO = [
   { codigo:"ESPECIALISTA", nome:"Diagnóstico + Especialista", valor:799.90, descricao:"Diagnóstico completo e análise individual com especialista Finder." },
 ];
 
-function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado}){
+function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado,somenteUpgrade=false}){
   const [documento,setDocumento]=useState(cnpj||"");
   const [carregando,setCarregando]=useState("");
   const [erro,setErro]=useState("");
@@ -3986,6 +3986,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
     try{
       const salvo=JSON.parse(localStorage.getItem(`finder_pagamento_${diagnosticoId}`)||"null");
       if(!salvo?.paymentId)return;
+      if(somenteUpgrade&&salvo.plano==="INICIAL")return;
       const plano=PLANOS_DIAGNOSTICO.find(item=>item.codigo===salvo.plano);
       setCobranca({
         paymentId:salvo.paymentId,
@@ -3996,7 +3997,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
         pix:{},
       });
     }catch{}
-  },[diagnosticoId,cobranca?.paymentId]);
+  },[diagnosticoId,cobranca?.paymentId,somenteUpgrade]);
 
   useEffect(()=>{
     if(!cobranca?.paymentId)return;
@@ -4055,15 +4056,15 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
   }
 
   return <div style={{border:"1px solid #DDE2EA",borderRadius:14,padding:15,background:"#F7F8FB",marginBottom:16}}>
-    <p style={{fontFamily:DISPLAY_FONT,fontSize:19,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>Escolha como deseja receber sua análise</p>
-    <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar.</p>
+    <p style={{fontFamily:DISPLAY_FONT,fontSize:19,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>{somenteUpgrade?"Aprofunde seu diagnóstico":"Escolha como deseja receber sua análise"}</p>
+    <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>{somenteUpgrade?"Seu resultado inicial está liberado. Se desejar, adquira a análise completa ou o acompanhamento de um especialista.":"Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar."}</p>
     <label style={{fontSize:9.5,fontWeight:800,color:NAVY}}>CPF ou CNPJ do pagador
       <input value={documento} onChange={e=>setDocumento(e.target.value)} placeholder="Somente números" inputMode="numeric" style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
     </label>
     <label style={{fontSize:9.5,fontWeight:800,color:NAVY,display:"block",marginTop:10}}>Cupom de desconto
       <input value={cupom} onChange={e=>setCupom(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g,""))} placeholder="Se possuir, informe aqui" maxLength={50} style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
     </label>
-    <div style={{display:"grid",gap:9,marginTop:12}}>{PLANOS_DIAGNOSTICO.map(plano=><div key={plano.codigo} style={{border:plano.destaque?`2px solid ${CORAL}`:"1px solid #DDE2EA",borderRadius:12,padding:12,background:WHITE}}>
+    <div style={{display:"grid",gap:9,marginTop:12}}>{PLANOS_DIAGNOSTICO.filter(plano=>!somenteUpgrade||plano.codigo!=="INICIAL").map(plano=><div key={plano.codigo} style={{border:plano.destaque?`2px solid ${CORAL}`:"1px solid #DDE2EA",borderRadius:12,padding:12,background:WHITE}}>
       {plano.destaque&&<span style={{fontSize:8,fontWeight:900,color:CORAL}}>MAIS ESCOLHIDO</span>}
       <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}><strong style={{color:NAVY,fontSize:13}}>{plano.nome}</strong><strong style={{color:plano.destaque?CORAL:NAVY,fontSize:17}}>{plano.valor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</strong></div>
       <p style={{fontSize:9.8,color:MUTED,lineHeight:1.4,margin:"6px 0 10px"}}>{plano.descricao}</p>
@@ -4193,6 +4194,7 @@ function DiagnosticoPrototipo() {
   const [sessionIdLead, setSessionIdLead] = useState("");
   const [diagnosticoIdSalvo, setDiagnosticoIdSalvo] = useState("");
   const [planoDiagnosticoLiberado, setPlanoDiagnosticoLiberado] = useState("");
+  const [diagnosticoInicialGratuito, setDiagnosticoInicialGratuito] = useState(false);
   const [agendaData, setAgendaData] = useState("");
   const [agendaHora, setAgendaHora] = useState("");
   const [agendaHorarios, setAgendaHorarios] = useState([]);
@@ -4206,6 +4208,16 @@ function DiagnosticoPrototipo() {
 
   const acessoDiagnosticoInicial = ["INICIAL","COMPLETO","ESPECIALISTA"].includes(planoDiagnosticoLiberado);
   const acessoDiagnosticoCompleto = ["COMPLETO","ESPECIALISTA"].includes(planoDiagnosticoLiberado);
+
+  useEffect(()=>{
+    if(!origemAtual||["direto","link-direto"].includes(origemAtual))return;
+    let ativo=true;
+    fetch(`/api/acessos?action=evento-publico&origem=${encodeURIComponent(origemAtual)}`)
+      .then(r=>r.json().then(d=>({ok:r.ok,d})))
+      .then(({ok,d})=>{if(ativo&&ok&&d?.evento?.diagnosticoInicialGratuito){setDiagnosticoInicialGratuito(true);setPlanoDiagnosticoLiberado(p=>p||"INICIAL");}})
+      .catch(()=>null);
+    return()=>{ativo=false};
+  },[origemAtual]);
 
   const hojeAgenda = useMemo(() => {
     const agora = new Date();
@@ -12093,12 +12105,16 @@ function DiagnosticoPrototipo() {
                 {acessoDiagnosticoInicial && (
                   <div style={{background:"#E1F5EE",border:"1px solid #B7E2D3",borderRadius:10,padding:10,marginBottom:14}}>
                     <p style={{fontSize:10.5,color:"#0F6E56",margin:0,fontWeight:800}}>
-                      {acessoDiagnosticoCompleto
+                      {diagnosticoInicialGratuito&&!acessoDiagnosticoCompleto
+                        ? "Diagnóstico Inicial gratuito liberado pelo evento"
+                        : acessoDiagnosticoCompleto
                         ? "Diagnóstico completo liberado"
                         : "Diagnóstico inicial liberado"}
                     </p>
                   </div>
                 )}
+
+                {planoDiagnosticoLiberado === "INICIAL" && <PagamentoDiagnostico diagnosticoId={diagnosticoIdSalvo} nome={nome} email={email} telefone={telefone} cnpj={empresaPrincipal?.cnpjDigits||""} onLiberado={setPlanoDiagnosticoLiberado} somenteUpgrade />}
 
                 {acessoDiagnosticoInicial && <>
 
