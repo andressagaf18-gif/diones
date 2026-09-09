@@ -19078,6 +19078,7 @@ function EventosOrigens({ token }) {
     dataFim: "",
     metaLeads: "",
     descricao: "",
+    diagnosticoInicialGratuito: false,
     ativo: true,
   };
 
@@ -19172,6 +19173,7 @@ function EventosOrigens({ token }) {
         : "",
       metaLeads: e?.metaLeads || "",
       descricao: e?.descricao || "",
+      diagnosticoInicialGratuito: Boolean(e?.diagnosticoInicialGratuito),
       ativo: e?.ativo !== false,
     });
 
@@ -19216,6 +19218,7 @@ function EventosOrigens({ token }) {
         dataFim: form.dataFim || null,
         metaLeads: Number(form.metaLeads || 0),
         descricao: String(form.descricao || "").trim(),
+        diagnosticoInicialGratuito: Boolean(form.diagnosticoInicialGratuito),
         ativo: Boolean(form.ativo),
       };
 
@@ -19542,6 +19545,7 @@ function EventosOrigens({ token }) {
               style={{ ...input, resize: "vertical" }}
             />
           </div>
+          <label style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:8,fontSize:11,fontWeight:800,color:NAVY,background:"#E1F5EE",padding:11,borderRadius:9}}><input type="checkbox" checked={Boolean(form.diagnosticoInicialGratuito)} onChange={ev=>setForm({...form,diagnosticoInicialGratuito:ev.target.checked})}/> Liberar gratuitamente o Diagnóstico Inicial para esta origem</label>
         </div>
 
         {form.origem && (
@@ -19655,6 +19659,7 @@ function EventosOrigens({ token }) {
               <div>Local: {e.localEvento || "-"}</div>
               <div>Meta: {e.metaLeads || 0} leads</div>
             </div>
+            {e.diagnosticoInicialGratuito&&<div style={{display:"inline-block",marginTop:8,background:"#E1F5EE",color:"#0F6E56",borderRadius:99,padding:"5px 8px",fontSize:8.5,fontWeight:900}}>DIAGNÓSTICO INICIAL GRATUITO</div>}
 
             <div
               style={{
