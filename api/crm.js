@@ -6880,15 +6880,43 @@ async function atualizarAgendamento(req, res) {
 
   const id = texto(req.body?.id, 140);
   const status = texto(req.body?.status, 30).toUpperCase();
+  const data = texto(req.body?.data, 10);
+  const hora = texto(req.body?.hora, 5);
+  const duracao = Math.max(30, Math.min(480, Number(req.body?.duracaoMinutos) || 60));
+  const observacao = texto(req.body?.observacao, 1000);
   const permitidos = ["AGENDADO", "REALIZADO", "CANCELADO", "NAO_COMPARECEU"];
 
   if (!id || !permitidos.includes(status)) {
     return res.status(400).json({ sucesso: false, error: "Agendamento ou status inválido." });
   }
 
+  if ((data || hora) && (!validarDataAgenda(data) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora))) {
+    return res.status(400).json({ sucesso: false, error: "Data ou horário inválido." });
+  }
+
+  if (status === "AGENDADO" && data && hora) {
+    const inicioMinutos = Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3));
+    if (inicioMinutos < 540 || inicioMinutos + duracao > 1020) {
+      return res.status(400).json({ sucesso: false, error: "O período deve ficar entre 09:00 e 17:00." });
+    }
+    const conflitos = await sql`
+      SELECT id FROM crm_agendamentos
+      WHERE id <> ${id} AND data_agenda = ${data}::date AND status = 'AGENDADO'
+        AND (${hora}::time < hora_agenda::time + (duracao_minutos || ' minutes')::interval)
+        AND (${hora}::time + (${duracao} || ' minutes')::interval > hora_agenda::time)
+      LIMIT 1
+    `;
+    if (conflitos.length) return res.status(409).json({ sucesso: false, error: "O período escolhido conflita com outro agendamento." });
+  }
+
   const linhas = await sql`
     UPDATE crm_agendamentos
-    SET status = ${status}, atualizado_em = NOW()
+    SET status = ${status},
+        data_agenda = COALESCE(${data || null}::date, data_agenda),
+        hora_agenda = COALESCE(${hora || null}, hora_agenda),
+        duracao_minutos = CASE WHEN ${Boolean(data || hora)} THEN ${duracao} ELSE duracao_minutos END,
+        observacao = CASE WHEN ${req.body?.observacao !== undefined} THEN ${observacao} ELSE observacao END,
+        atualizado_em = NOW()
     WHERE id = ${id}
     RETURNING *
   `;
