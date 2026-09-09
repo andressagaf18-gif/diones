@@ -22860,6 +22860,9 @@ function AgendaDiagnosticos({ token, onAbrirDiagnostico }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
+  const [modoAgenda, setModoAgenda] = useState("calendario");
+  const [mesAgenda, setMesAgenda] = useState(new Date().toISOString().slice(0, 7));
+  const [editando, setEditando] = useState(null);
 
   async function carregar() {
     setCarregando(true);
@@ -22880,24 +22883,32 @@ function AgendaDiagnosticos({ token, onAbrirDiagnostico }) {
 
   useEffect(() => { carregar(); }, []);
 
-  async function alterarStatus(id, status) {
+  async function atualizarAgenda(payload) {
     try {
       const resposta = await fetch("/api/crm?action=atualizar-agendamento", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify(payload),
       });
       const dados = await resposta.json().catch(() => ({}));
       if (!resposta.ok || !dados?.sucesso) throw new Error(dados?.error || "Erro ao atualizar agendamento.");
+      setEditando(null);
       await carregar();
     } catch (error) {
       setErro(error?.message || "Erro ao atualizar agendamento.");
     }
   }
 
+  const alterarStatus = (id, status) => atualizarAgenda({ id, status });
+
   const termo = busca.trim().toLowerCase();
-  const visiveis = agendamentos.filter((item) => !termo || [item.nome, item.empresa, item.email, item.telefone, item.cnpj, item.origem, item.diagnostico_id].some((valor) => String(valor || "").toLowerCase().includes(termo)));
+  const visiveis = agendamentos.filter((item) => String(item.data_agenda||"").slice(0,7)===mesAgenda && (!termo || [item.nome, item.empresa, item.email, item.telefone, item.cnpj, item.origem, item.diagnostico_id].some((valor) => String(valor || "").toLowerCase().includes(termo))));
   const futuros = visiveis.filter((item) => item.status === "AGENDADO" && String(item.data_agenda).slice(0, 10) >= new Date().toISOString().slice(0, 10)).length;
+  const contagemStatus = (status) => visiveis.filter(item=>item.status===status).length;
+  const diasDoMes = useMemo(()=>{
+    const [ano,mes]=mesAgenda.split("-").map(Number); const ultimo=new Date(ano,mes,0).getDate();
+    return Array.from({length:ultimo},(_,i)=>`${mesAgenda}-${String(i+1).padStart(2,"0")}`);
+  },[mesAgenda]);
 
   const box = { background: WHITE, border: "1px solid #E3E7EF", borderRadius: 14, padding: 14, boxShadow: "0 5px 18px rgba(23,35,61,.05)" };
   const statusCores = { AGENDADO: ["#EAF1FF", "#2453A6"], REALIZADO: ["#E1F5EE", "#0F6E56"], CANCELADO: ["#FAECE7", "#993C1D"], NAO_COMPARECEU: ["#FFF4D8", "#8A5800"] };
@@ -22917,11 +22928,14 @@ function AgendaDiagnosticos({ token, onAbrirDiagnostico }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 14 }}>
         <div style={box}><div style={{ fontSize: 9, color: MUTED, fontWeight: 800 }}>PRÓXIMAS REUNIÕES</div><strong style={{ fontSize: 22 }}>{futuros}</strong></div>
         <div style={box}><div style={{ fontSize: 9, color: MUTED, fontWeight: 800 }}>TOTAL DE AGENDAMENTOS</div><strong style={{ fontSize: 22 }}>{agendamentos.length}</strong></div>
+        <div style={box}><div style={{fontSize:9,color:MUTED,fontWeight:800}}>REALIZADOS NO MÊS</div><strong style={{fontSize:22,color:"#0F6E56"}}>{contagemStatus("REALIZADO")}</strong></div>
+        <div style={box}><div style={{fontSize:9,color:MUTED,fontWeight:800}}>CANCELADOS / AUSENTES</div><strong style={{fontSize:22,color:"#993C1D"}}>{contagemStatus("CANCELADO")+contagemStatus("NAO_COMPARECEU")}</strong></div>
       </div>
 
-      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, empresa, origem ou diagnóstico..." style={{ width: "100%", boxSizing: "border-box", border: "1px solid #D8DEEA", borderRadius: 10, padding: "11px 12px", marginBottom: 12 }} />
+      <div style={{...box,display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}><input type="month" value={mesAgenda} onChange={e=>setMesAgenda(e.target.value)} style={{border:"1px solid #D8DEEA",borderRadius:9,padding:9}}/><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, empresa, origem ou diagnóstico..." style={{ flex:1,minWidth:240,boxSizing:"border-box",border:"1px solid #D8DEEA",borderRadius:10,padding:"11px 12px" }}/><Botao secundario={modoAgenda!=="calendario"} onClick={()=>setModoAgenda("calendario")}><CalendarDays size={14}/> Calendário</Botao><Botao secundario={modoAgenda!=="lista"} onClick={()=>setModoAgenda("lista")}><LayoutDashboard size={14}/> Lista</Botao></div>
 
       {carregando ? <div style={box}>Carregando agenda...</div> : (
+        modoAgenda === "calendario" ? <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(130px,1fr))",gap:7,overflowX:"auto"}}>{diasDoMes.map(dia=>{const itens=visiveis.filter(a=>String(a.data_agenda).slice(0,10)===dia);return <div key={dia} style={{...box,minHeight:115,padding:9,background:itens.length?WHITE:"#F8FAFD"}}><strong style={{fontSize:10}}>{dia.slice(8,10)}/{dia.slice(5,7)}</strong><div style={{display:"grid",gap:5,marginTop:7}}>{itens.map(a=>{const cores=statusCores[a.status]||["#EEF1F5",MUTED];return <button key={a.id} type="button" onClick={()=>setEditando({...a,data:String(a.data_agenda).slice(0,10),hora:a.hora_agenda,duracaoMinutos:a.duracao_minutos||60})} style={{border:0,borderRadius:7,padding:6,textAlign:"left",cursor:"pointer",background:cores[0],color:cores[1],fontSize:8.5}}><strong>{a.hora_agenda} · {a.nome||a.empresa}</strong><br/>{a.status}</button>})}{!itens.length&&<span style={{fontSize:8,color:MUTED}}>Livre</span>}</div></div>})}</div> :
         <div style={{ ...box, overflowX: "auto", padding: 0 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
             <thead><tr>{["Data / hora", "Cliente", "Empresa / documento", "Origem", "Diagnóstico", "Score", "Observação", "Status", "Ações"].map((item) => <th key={item} style={thStyle}>{item}</th>)}</tr></thead>
@@ -22937,7 +22951,7 @@ function AgendaDiagnosticos({ token, onAbrirDiagnostico }) {
                   <td style={tdStyle}><strong>{Number(item.score || 0)}/100</strong></td>
                   <td style={{ ...tdStyle, maxWidth: 220 }}>{item.observacao || "-"}</td>
                   <td style={tdStyle}><span style={{ background: fundo, color: cor, borderRadius: 99, padding: "5px 8px", fontSize: 9, fontWeight: 900 }}>{item.status}</span></td>
-                  <td style={tdStyle}><select value={item.status} onChange={(e) => alterarStatus(item.id, e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: 7, fontSize: 9, fontWeight: 800 }}><option value="AGENDADO">Agendado</option><option value="REALIZADO">Realizado</option><option value="CANCELADO">Cancelado</option><option value="NAO_COMPARECEU">Não compareceu</option></select></td>
+                  <td style={tdStyle}><div style={{display:"flex",gap:6}}><select value={item.status} onChange={(e) => alterarStatus(item.id, e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: 7, fontSize: 9, fontWeight: 800 }}><option value="AGENDADO">Agendado</option><option value="REALIZADO">Realizado</option><option value="CANCELADO">Cancelado</option><option value="NAO_COMPARECEU">Não compareceu</option></select><button type="button" onClick={()=>setEditando({...item,data:String(item.data_agenda).slice(0,10),hora:item.hora_agenda,duracaoMinutos:item.duracao_minutos||60})} style={{border:"1px solid #D8DEEA",background:WHITE,borderRadius:8,cursor:"pointer"}}><Pencil size={14}/></button></div></td>
                 </tr>;
               })}
               {!visiveis.length && <tr><td colSpan="9" style={{ ...tdStyle, textAlign: "center" }}>Nenhum agendamento encontrado.</td></tr>}
@@ -22945,6 +22959,7 @@ function AgendaDiagnosticos({ token, onAbrirDiagnostico }) {
           </table>
         </div>
       )}
+      {editando&&<div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(8,17,31,.55)",display:"grid",placeItems:"center",padding:20}}><form onSubmit={e=>{e.preventDefault();atualizarAgenda({id:editando.id,status:editando.status,data:editando.data,hora:editando.hora,duracaoMinutos:editando.duracaoMinutos,observacao:editando.observacao})}} style={{...box,width:"min(520px,100%)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><h3 style={{margin:0}}>Editar agendamento</h3><button type="button" onClick={()=>setEditando(null)} style={{border:0,background:"transparent",cursor:"pointer"}}><X/></button></div><p style={{fontSize:10,color:MUTED}}>{editando.nome} · {editando.empresa||editando.diagnostico_id}</p><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><label style={{fontSize:9}}>Data<input required type="date" value={editando.data} onChange={e=>setEditando({...editando,data:e.target.value})} style={{width:"100%",boxSizing:"border-box",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}/></label><label style={{fontSize:9}}>Horário<input required type="time" min="09:00" max="16:30" step="1800" value={editando.hora} onChange={e=>setEditando({...editando,hora:e.target.value})} style={{width:"100%",boxSizing:"border-box",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}/></label><label style={{fontSize:9}}>Duração<select value={editando.duracaoMinutos} onChange={e=>setEditando({...editando,duracaoMinutos:Number(e.target.value)})} style={{width:"100%",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}>{[30,60,90,120,180,240,360,480].map(v=><option key={v} value={v}>{v<60?`${v} min`:`${v/60} hora${v>60?"s":""}`}</option>)}</select></label><label style={{fontSize:9}}>Status<select value={editando.status} onChange={e=>setEditando({...editando,status:e.target.value})} style={{width:"100%",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}><option value="AGENDADO">Agendado</option><option value="REALIZADO">Realizado</option><option value="CANCELADO">Cancelado</option><option value="NAO_COMPARECEU">Não compareceu</option></select></label></div><textarea value={editando.observacao||""} onChange={e=>setEditando({...editando,observacao:e.target.value})} placeholder="Observação" style={{width:"100%",boxSizing:"border-box",minHeight:80,marginTop:10,padding:9,border:"1px solid #D8DEEA",borderRadius:8}}/><div style={{display:"flex",gap:8,marginTop:10}}><Botao type="submit"><Save size={14}/> Salvar</Botao><Botao secundario onClick={()=>atualizarAgenda({id:editando.id,status:"CANCELADO"})}>Cancelar agendamento</Botao></div></form></div>}
     </div>
   );
 }
@@ -22957,13 +22972,23 @@ function AsaasFinanceiro({ token }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [sucessoCupom, setSucessoCupom] = useState("");
+  const [editandoCupom, setEditandoCupom] = useState("");
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null);
   const [filtros, setFiltros] = useState({ status: "", plano: "", busca: "", inicio: "", fim: "" });
   const [cupomForm, setCupomForm] = useState({
     codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "",
+    descontosPlanos: { INICIAL: "", COMPLETO: "", ESPECIALISTA: "" },
     planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "",
     inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true,
   });
+
+  const cupomVazio = () => ({
+    codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "",
+    descontosPlanos: { INICIAL: "", COMPLETO: "", ESPECIALISTA: "" },
+    planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "",
+    inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true,
+  });
+  const dataFormulario = (valor) => valor ? new Date(valor).toISOString().slice(0, 16) : "";
 
   const headers = { Authorization: `Bearer ${token}` };
   const moeda = (valor) => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -23018,8 +23043,8 @@ function AsaasFinanceiro({ token }) {
     setErro("");
     setSucessoCupom("");
 
-    const valorCupom = Number(cupomForm.valor);
-    if (cupomForm.tipo === "PERCENTUAL" && valorCupom > 90) {
+    const valores = cupomForm.planos.map(p => Number(cupomForm.descontosPlanos?.[p] || cupomForm.valor));
+    if (cupomForm.tipo === "PERCENTUAL" && valores.some(v => v > 90)) {
       setErro("O desconto percentual máximo permitido é 90%.");
       return;
     }
@@ -23029,7 +23054,8 @@ function AsaasFinanceiro({ token }) {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cupomForm),
       });
       setSucessoCupom(`Cupom ${cupomForm.codigo.trim().toUpperCase()} salvo com sucesso.`);
-      setCupomForm({ codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "", planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "", inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true });
+      setCupomForm(cupomVazio());
+      setEditandoCupom("");
       await carregar(true);
     } catch (e2) { setErro(e2.message); }
   }
@@ -23040,6 +23066,31 @@ function AsaasFinanceiro({ token }) {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ codigo: cupom.codigo, ativo: !cupom.ativo }),
       });
+      await carregar(true);
+    } catch (e) { setErro(e.message); }
+  }
+
+  function editarCupom(cupom) {
+    const regras = cupom.descontos_planos || {};
+    setCupomForm({ codigo: cupom.codigo, descricao: cupom.descricao || "", tipo: cupom.tipo,
+      valor: String(cupom.valor ?? ""), descontosPlanos: {
+        INICIAL: String(regras.INICIAL ?? cupom.valor ?? ""),
+        COMPLETO: String(regras.COMPLETO ?? cupom.valor ?? ""),
+        ESPECIALISTA: String(regras.ESPECIALISTA ?? cupom.valor ?? ""),
+      }, planos: cupom.planos || [], valorMinimo: String(cupom.valor_minimo ?? ""),
+      inicioEm: dataFormulario(cupom.inicio_em), fimEm: dataFormulario(cupom.fim_em),
+      limiteTotal: cupom.limite_total == null ? "" : String(cupom.limite_total),
+      limiteDocumento: cupom.limite_documento || 1, ativo: cupom.ativo !== false });
+    setEditandoCupom(cupom.codigo); setErro(""); setSucessoCupom("");
+  }
+
+  async function excluirCupom(cupom) {
+    if (!window.confirm(`Excluir definitivamente o cupom ${cupom.codigo}?`)) return;
+    try {
+      await json("/api/asaas?acao=admin-cupom", { method: "DELETE",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ codigo: cupom.codigo }) });
+      if (editandoCupom === cupom.codigo) { setCupomForm(cupomVazio()); setEditandoCupom(""); }
+      setSucessoCupom(`Cupom ${cupom.codigo} excluído com sucesso.`);
       await carregar(true);
     } catch (e) { setErro(e.message); }
   }
@@ -23097,16 +23148,17 @@ function AsaasFinanceiro({ token }) {
       </tbody></table></div>}
 
       {abaInterna === "cupons" && <div style={{display:"grid",gridTemplateColumns:"minmax(300px,420px) 1fr",gap:12,alignItems:"start"}}>
-        <form onSubmit={salvarCupom} style={box}><h3 style={{margin:"0 0 12px"}}>Criar ou atualizar cupom</h3>
-          <div style={{display:"grid",gap:8}}><input required minLength={3} style={input} placeholder="Código do cupom" value={cupomForm.codigo} onChange={e=>setCupomForm({...cupomForm,codigo:e.target.value.toUpperCase()})}/><input style={input} placeholder="Descrição interna" value={cupomForm.descricao} onChange={e=>setCupomForm({...cupomForm,descricao:e.target.value})}/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><select style={input} value={cupomForm.tipo} onChange={e=>setCupomForm({...cupomForm,tipo:e.target.value})}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select><input required type="number" min="0.01" max={cupomForm.tipo === "PERCENTUAL" ? 90 : undefined} step="0.01" style={input} placeholder={cupomForm.tipo === "PERCENTUAL" ? "Percentual (máx. 90)" : "Valor em reais"} value={cupomForm.valor} onChange={e=>setCupomForm({...cupomForm,valor:e.target.value})}/></div>
+        <form onSubmit={salvarCupom} style={box}><h3 style={{margin:"0 0 12px"}}>{editandoCupom?`Editar cupom ${editandoCupom}`:"Criar cupom"}</h3>
+          <div style={{display:"grid",gap:8}}><input required minLength={3} disabled={Boolean(editandoCupom)} style={input} placeholder="Código do cupom" value={cupomForm.codigo} onChange={e=>setCupomForm({...cupomForm,codigo:e.target.value.toUpperCase()})}/><input style={input} placeholder="Descrição interna" value={cupomForm.descricao} onChange={e=>setCupomForm({...cupomForm,descricao:e.target.value})}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><select style={input} value={cupomForm.tipo} onChange={e=>setCupomForm({...cupomForm,tipo:e.target.value})}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select><input required type="number" min="0.01" max={cupomForm.tipo === "PERCENTUAL" ? 90 : undefined} step="0.01" style={input} placeholder="Desconto padrão" value={cupomForm.valor} onChange={e=>setCupomForm({...cupomForm,valor:e.target.value})}/></div>
           <strong style={{fontSize:9}}>Planos permitidos</strong><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["INICIAL","COMPLETO","ESPECIALISTA"].map(p=><label key={p} style={{fontSize:9}}><input type="checkbox" checked={cupomForm.planos.includes(p)} onChange={e=>setCupomForm({...cupomForm,planos:e.target.checked?[...cupomForm.planos,p]:cupomForm.planos.filter(x=>x!==p)})}/> {p}</label>)}</div>
+          <strong style={{fontSize:9}}>Desconto específico por plano</strong><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}>{["INICIAL","COMPLETO","ESPECIALISTA"].map(p=><label key={p} style={{fontSize:8,fontWeight:800}}>{p}<input required={cupomForm.planos.includes(p)} disabled={!cupomForm.planos.includes(p)} type="number" min="0.01" max={cupomForm.tipo==="PERCENTUAL"?90:undefined} step="0.01" style={{...input,width:"100%",marginTop:4}} placeholder={cupomForm.tipo==="PERCENTUAL"?"%":"R$"} value={cupomForm.descontosPlanos?.[p]||""} onChange={e=>setCupomForm({...cupomForm,descontosPlanos:{...cupomForm.descontosPlanos,[p]:e.target.value}})}/></label>)}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><label style={{fontSize:8.5}}>Início<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.inicioEm} onChange={e=>setCupomForm({...cupomForm,inicioEm:e.target.value})}/></label><label style={{fontSize:8.5}}>Fim<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.fimEm} onChange={e=>setCupomForm({...cupomForm,fimEm:e.target.value})}/></label></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7}}><input type="number" min="0" style={input} placeholder="Compra mínima" value={cupomForm.valorMinimo} onChange={e=>setCupomForm({...cupomForm,valorMinimo:e.target.value})}/><input type="number" min="1" style={input} placeholder="Limite total" value={cupomForm.limiteTotal} onChange={e=>setCupomForm({...cupomForm,limiteTotal:e.target.value})}/><input type="number" min="1" style={input} placeholder="Por CPF/CNPJ" value={cupomForm.limiteDocumento} onChange={e=>setCupomForm({...cupomForm,limiteDocumento:e.target.value})}/></div>
           {sucessoCupom&&<div style={{background:"#E1F5EE",color:"#0F6E56",padding:9,borderRadius:8,fontSize:10,fontWeight:800}}>{sucessoCupom}</div>}
-          <Botao type="submit"><Save size={14}/> Salvar cupom</Botao></div>
+          <div style={{display:"flex",gap:7}}><Botao type="submit"><Save size={14}/> {editandoCupom?"Salvar alterações":"Salvar cupom"}</Botao>{editandoCupom&&<Botao secundario onClick={()=>{setCupomForm(cupomVazio());setEditandoCupom("");}}><X size={14}/> Cancelar</Botao>}</div></div>
         </form>
-        <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr>{["Código","Regra","Planos","Validade","Usos","Desconto concedido","Status"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{cupons.map(c=><tr key={c.codigo}><td style={tdStyle}><strong>{c.codigo}</strong><br/><span style={{color:MUTED}}>{c.descricao}</span></td><td style={tdStyle}>{c.tipo==="PERCENTUAL"?`${c.valor}%`:moeda(c.valor)}</td><td style={tdStyle}>{(c.planos||[]).join(", ")}</td><td style={tdStyle}>{c.inicio_em?formatarData(c.inicio_em):"Imediato"}<br/>{c.fim_em?formatarData(c.fim_em):"Sem término"}</td><td style={tdStyle}>{c.usos||0}{c.limite_total?` / ${c.limite_total}`:""}</td><td style={tdStyle}>{moeda(c.desconto_concedido)}</td><td style={tdStyle}><button onClick={()=>alternarCupom(c)} style={{...input,cursor:"pointer",fontWeight:800,color:c.ativo?"#0F6E56":"#993C1D"}}>{c.ativo?"ATIVO":"INATIVO"}</button></td></tr>)}{!cupons.length&&<tr><td colSpan="7" style={{...tdStyle,textAlign:"center"}}>Nenhum cupom cadastrado.</td></tr>}</tbody></table></div>
+        <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:850}}><thead><tr>{["Código","Regra por plano","Validade","Usos","Desconto concedido","Status","Ações"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{cupons.map(c=>{const regras=c.descontos_planos||{};return <tr key={c.codigo}><td style={tdStyle}><strong>{c.codigo}</strong><br/><span style={{color:MUTED}}>{c.descricao}</span></td><td style={tdStyle}>{(c.planos||[]).map(p=><div key={p}><strong>{p}:</strong> {c.tipo==="PERCENTUAL"?`${regras[p]??c.valor}%`:moeda(regras[p]??c.valor)}</div>)}</td><td style={tdStyle}>{c.inicio_em?formatarData(c.inicio_em):"Imediato"}<br/>{c.fim_em?formatarData(c.fim_em):"Sem término"}</td><td style={tdStyle}>{c.usos||0}{c.limite_total?` / ${c.limite_total}`:""}</td><td style={tdStyle}>{moeda(c.desconto_concedido)}</td><td style={tdStyle}><button onClick={()=>alternarCupom(c)} style={{...input,cursor:"pointer",fontWeight:800,color:c.ativo?"#0F6E56":"#993C1D"}}>{c.ativo?"ATIVO":"INATIVO"}</button></td><td style={tdStyle}><div style={{display:"flex",gap:6}}><button type="button" onClick={()=>editarCupom(c)} title="Editar" style={{...input,cursor:"pointer",color:"#2453A6"}}><Pencil size={14}/></button><button type="button" onClick={()=>excluirCupom(c)} title="Excluir" style={{...input,cursor:"pointer",color:"#B42318"}}><Trash2 size={14}/></button></div></td></tr>})}{!cupons.length&&<tr><td colSpan="7" style={{...tdStyle,textAlign:"center"}}>Nenhum cupom cadastrado.</td></tr>}</tbody></table></div>
       </div>}
 
       {abaInterna === "eventos" && <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:780}}><thead><tr>{["Recebido em","Evento","Status","Pagamento","ID do evento"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{(painel.eventos||[]).map(e=><tr key={e.evento_id}><td style={tdStyle}>{formatarData(e.recebido_em)}</td><td style={tdStyle}><strong>{e.evento}</strong></td><td style={tdStyle}>{e.status||"-"}</td><td style={tdStyle}>{e.payment_id||"-"}</td><td style={tdStyle}><code>{e.evento_id}</code></td></tr>)}{!painel.eventos?.length&&<tr><td colSpan="5" style={{...tdStyle,textAlign:"center"}}>Nenhum evento autenticado registrado.</td></tr>}</tbody></table></div>}
