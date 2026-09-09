@@ -8280,6 +8280,15 @@ async function salvarPropostaCaso() {
       EM_ATENDIMENTO:
         "Em tratativa",
 
+      EM_ANDAMENTO:
+        "Em andamento",
+
+      AGUARDANDO_CLIENTE:
+        "Aguardando cliente",
+
+      AGUARDANDO_INTERNO:
+        "Aguardando retorno interno",
+
       PLANO_APRESENTADO:
         "Proposta / plano apresentado",
 
@@ -8324,10 +8333,18 @@ async function salvarPropostaCaso() {
   function indiceEtapaAtendimento(
     status
   ) {
+    const statusEtapa = [
+      "EM_ANDAMENTO",
+      "AGUARDANDO_CLIENTE",
+      "AGUARDANDO_INTERNO",
+    ].includes(status)
+      ? "EM_ATENDIMENTO"
+      : status;
+
     const indice =
       etapasAtendimento.findIndex(
         (item) =>
-          item.id === status
+          item.id === statusEtapa
       );
 
     return indice >= 0
@@ -8353,6 +8370,12 @@ async function salvarPropostaCaso() {
         "Preparar a reunião usando as respostas e riscos do diagnóstico.",
       EM_ATENDIMENTO:
         "Registrar o resultado da tratativa e definir o próximo passo.",
+      EM_ANDAMENTO:
+        "Registrar o andamento e definir o próximo contato.",
+      AGUARDANDO_CLIENTE:
+        "Realizar o follow-up na data combinada com o cliente.",
+      AGUARDANDO_INTERNO:
+        "Cobrar o retorno da equipe responsável e atualizar o cliente.",
       PLANO_APRESENTADO:
         "Realizar follow-up da proposta ou plano apresentado.",
       CONCLUIDO:
@@ -8381,6 +8404,9 @@ async function salvarPropostaCaso() {
 
     if (
       status === "EM_ATENDIMENTO" ||
+      status === "EM_ANDAMENTO" ||
+      status === "AGUARDANDO_CLIENTE" ||
+      status === "AGUARDANDO_INTERNO" ||
       status === "EM_ANALISE"
     ) {
       return {
