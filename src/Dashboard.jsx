@@ -56,10 +56,10 @@ function Card({ children, style = {} }) {
   );
 }
 
-function Kpi({ titulo, valor, subtitulo, Icon, destaque = false }) {
+function Kpi({ titulo, valor, subtitulo, Icon, destaque = false, onClick }) {
   return (
     <Card style={{ borderTop: `4px solid ${destaque ? CORAL : "#D8DEEA"}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <div onClick={onClick} style={{ display: "flex", justifyContent: "space-between", gap: 10, cursor:onClick?"pointer":"default" }}>
         <div>
           <div style={{ fontSize: 9, fontWeight: 900, color: MUTED }}>
             {titulo}
@@ -100,6 +100,8 @@ export default function Dashboard({
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [origem, setOrigem] = useState("TODAS");
+  const [financeiro, setFinanceiro] = useState({ resumo:{}, pagamentos:[] });
+  const [agenda, setAgenda] = useState([]);
 
   // Complemento isolado: não altera os dados comerciais já existentes.
   const [tributario, setTributario] = useState({ projetos: [] });
@@ -148,6 +150,13 @@ export default function Dashboard({
       }
 
       setDados(d?.dashboard || d?.dados || d || {});
+
+      const [rf, ra] = await Promise.allSettled([
+        fetch("/api/asaas?acao=admin-painel", { headers:{Authorization:`Bearer ${token}`} }).then(x=>x.json()),
+        fetch("/api/crm?action=listar-agendamentos", { headers:{Authorization:`Bearer ${token}`} }).then(x=>x.json()),
+      ]);
+      if(rf.status==="fulfilled"&&rf.value?.ok)setFinanceiro(rf.value);
+      if(ra.status==="fulfilled"&&ra.value?.sucesso)setAgenda(ra.value.agendamentos||[]);
 
       // INTELIGÊNCIA TRIBUTÁRIA — consulta separada.
       // Se falhar, NÃO derruba o Dashboard comercial.
@@ -251,6 +260,17 @@ export default function Dashboard({
     n.totalLeads > 0
       ? Math.round((n.convertidos / n.totalLeads) * 100)
       : 0;
+  const moeda=(v)=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  const hoje=new Date().toISOString().slice(0,10);
+  const alertas=useMemo(()=>{
+    const pagamentos=financeiro.pagamentos||[];
+    return [
+      {label:"Cobranças pendentes",valor:pagamentos.filter(p=>p.status==="PENDING").length,cor:"#8A5800"},
+      {label:"Pagamentos com falha/atraso",valor:pagamentos.filter(p=>["OVERDUE","CANCELLED","DELETED"].includes(p.status)).length,cor:"#A12B2B"},
+      {label:"Reuniões futuras",valor:agenda.filter(a=>a.status==="AGENDADO"&&String(a.data_agenda).slice(0,10)>=hoje).length,cor:"#2453A6"},
+      {label:"Atendimentos em aberto",valor:n.atendimentos,cor:CORAL},
+    ];
+  },[financeiro,agenda,n.atendimentos,hoje]);
 
   const leads = origem === "TODAS"
     ? n.leads
@@ -437,6 +457,22 @@ export default function Dashboard({
         <Kpi titulo="CRÍTICOS" valor={n.criticos} subtitulo="Prioridade comercial" Icon={AlertTriangle} />
         <Kpi titulo="REFORMA TRIBUTÁRIA" valor={n.reforma} subtitulo="Interesse consultivo" Icon={Zap} destaque />
       </div>
+
+      <Card style={{marginBottom:14,borderTop:`4px solid ${CORAL}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:12}}><div><strong>Funil comercial consolidado</strong><div style={{fontSize:10,color:MUTED,marginTop:3}}>Clique nas etapas operacionais para abrir os registros correspondentes.</div></div><TrendingUp size={19} color={CORAL}/></div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(130px,1fr))",gap:7,overflowX:"auto"}}>{[
+          ["Leads",n.totalLeads],["Diagnósticos",n.diagnosticos],["Oportunidades",n.oportunidades],["Atendimentos",n.atendimentos],["Propostas",n.propostas],["Convertidos",n.convertidos]
+        ].map(([label,valor],i,arr)=>{const anterior=i?num(arr[i-1][1]):valor;const taxa=i&&anterior?Math.round(num(valor)/anterior*100):100;return <div key={label} style={{background:i===arr.length-1?"#E1F5EE":"#F7F8FB",borderRadius:11,padding:11,minWidth:120}}><div style={{fontSize:9,color:MUTED,fontWeight:900}}>{label.toUpperCase()}</div><strong style={{fontSize:24}}>{valor}</strong><div style={{fontSize:9,color:i===0?MUTED:taxa>=50?"#0F6E56":"#993C1D",marginTop:3}}>{i===0?"Base captada":`${taxa}% da etapa anterior`}</div></div>})}</div>
+      </Card>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:14}}>
+        <Kpi titulo="RECEITA BRUTA" valor={moeda(financeiro.resumo?.bruto)} subtitulo={`${financeiro.resumo?.recebidos||0} pagamentos recebidos`} Icon={TrendingUp} destaque />
+        <Kpi titulo="RECEITA LÍQUIDA" valor={moeda(financeiro.resumo?.liquido)} subtitulo={`Taxas: ${moeda(financeiro.resumo?.taxas)}`} Icon={CheckCircle2}/>
+        <Kpi titulo="DESCONTOS" valor={moeda(financeiro.resumo?.descontos)} subtitulo="Cupons concedidos" Icon={Calculator}/>
+        <Kpi titulo="PENDENTES" valor={financeiro.resumo?.pendentes||0} subtitulo="Cobranças não concluídas" Icon={Clock3} destaque/>
+      </div>
+
+      <Card style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><strong>Central de atenção</strong><AlertTriangle size={18} color={CORAL}/></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>{alertas.map(a=><div key={a.label} style={{border:"1px solid #E3E7EF",borderLeft:`4px solid ${a.cor}`,borderRadius:9,padding:10}}><strong style={{fontSize:20,color:a.cor}}>{a.valor}</strong><div style={{fontSize:9.5,color:MUTED,marginTop:3}}>{a.label}</div></div>)}</div></Card>
 
       <Card
         style={{
