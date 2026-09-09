@@ -79,6 +79,7 @@ async function ensureSchema() {
       recebido_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE asaas_cupons ADD COLUMN IF NOT EXISTS descontos_planos JSONB NOT NULL DEFAULT '{}'::jsonb`;
   await sql`CREATE INDEX IF NOT EXISTS asaas_eventos_payment_idx ON asaas_eventos (payment_id, recebido_em DESC)`;
 }
 
@@ -104,9 +105,11 @@ async function calcularCupom(codigoRecebido, plano, documento) {
   `;
   if (cupom.limite_total !== null && usados[0].total >= cupom.limite_total) throw new Error("Limite de utilizações do cupom atingido.");
   if (cupom.limite_documento !== null && usados[0].documento >= cupom.limite_documento) throw new Error("Este CPF/CNPJ já utilizou o cupom.");
+  const regraPlano = Number(cupom.descontos_planos?.[plano.codigo]);
+  const valorRegra = Number.isFinite(regraPlano) && regraPlano > 0 ? regraPlano : Number(cupom.valor);
   const desconto = cupom.tipo === "PERCENTUAL"
-    ? money(plano.valor * Number(cupom.valor) / 100)
-    : money(cupom.valor);
+    ? money(plano.valor * valorRegra / 100)
+    : money(valorRegra);
   const valorFinal = money(plano.valor - desconto);
   if (desconto <= 0 || valorFinal < 1) throw new Error("Cupom gera um valor de cobrança inválido.");
   return { codigo, desconto, valorFinal };
@@ -535,27 +538,43 @@ async function adminCoupons(req, res) {
   const tipo = txt(body.tipo, 20).toUpperCase();
   const valor = money(body.valor);
   const planos = (Array.isArray(body.planos) ? body.planos : []).map(v => txt(v, 30).toUpperCase()).filter(v => PLANOS[v]);
+  const descontosPlanos = Object.fromEntries(planos.map((plano) => [
+    plano,
+    body.descontosPlanos?.[plano] === "" || body.descontosPlanos?.[plano] == null
+      ? valor
+      : money(body.descontosPlanos[plano]),
+  ]));
   if (codigo.length < 3) return res.status(400).json({ ok: false, error: "Código deve ter pelo menos 3 caracteres." });
   if (!["PERCENTUAL", "FIXO"].includes(tipo)) return res.status(400).json({ ok: false, error: "Tipo inválido." });
   if (valor <= 0 || (tipo === "PERCENTUAL" && valor > 90)) return res.status(400).json({ ok: false, error: "Desconto inválido. Percentual máximo: 90%." });
   if (!planos.length) return res.status(400).json({ ok: false, error: "Selecione ao menos um plano." });
+  if (Object.values(descontosPlanos).some(v => v <= 0 || (tipo === "PERCENTUAL" && v > 90))) return res.status(400).json({ ok: false, error: "Informe descontos válidos por plano. Percentual máximo: 90%." });
   await sql`
     INSERT INTO asaas_cupons
-      (codigo, descricao, tipo, valor, planos, valor_minimo, inicio_em, fim_em,
+      (codigo, descricao, tipo, valor, planos, descontos_planos, valor_minimo, inicio_em, fim_em,
        limite_total, limite_documento, ativo, atualizado_em)
     VALUES (${codigo}, ${txt(body.descricao, 200)}, ${tipo}, ${valor},
-      string_to_array(${planos.join(",")}, ','), ${money(body.valorMinimo)},
+      string_to_array(${planos.join(",")}, ','), ${JSON.stringify(descontosPlanos)}::jsonb, ${money(body.valorMinimo)},
       ${body.inicioEm || null}, ${body.fimEm || null},
       ${body.limiteTotal === "" || body.limiteTotal == null ? null : Math.max(1, Number(body.limiteTotal))},
       ${Math.max(1, Number(body.limiteDocumento) || 1)}, ${body.ativo !== false}, NOW())
     ON CONFLICT (codigo) DO UPDATE SET
       descricao = EXCLUDED.descricao, tipo = EXCLUDED.tipo, valor = EXCLUDED.valor,
-      planos = EXCLUDED.planos, valor_minimo = EXCLUDED.valor_minimo,
+      planos = EXCLUDED.planos, descontos_planos = EXCLUDED.descontos_planos, valor_minimo = EXCLUDED.valor_minimo,
       inicio_em = EXCLUDED.inicio_em, fim_em = EXCLUDED.fim_em,
       limite_total = EXCLUDED.limite_total, limite_documento = EXCLUDED.limite_documento,
       ativo = EXCLUDED.ativo, atualizado_em = NOW()
   `;
   return res.status(200).json({ ok: true, codigo });
+}
+
+async function adminDeleteCoupon(req, res) {
+  if (!exigirAutenticacao(req, res, { admin: true })) return;
+  await ensureSchema();
+  const codigo = txt(bodyOf(req).codigo, 50).toUpperCase();
+  const removidos = await sql`DELETE FROM asaas_cupons WHERE codigo = ${codigo} RETURNING codigo`;
+  if (!removidos.length) return res.status(404).json({ ok: false, error: "Cupom não encontrado." });
+  return res.status(200).json({ ok: true, codigo: removidos[0].codigo });
 }
 
 async function adminToggleCoupon(req, res) {
@@ -586,6 +605,7 @@ export default async function handler(req, res) {
     if (req.method === "POST" && action === "admin-sincronizar") return await adminSync(req, res);
     if (["GET","POST"].includes(req.method) && action === "admin-cupons") return await adminCoupons(req, res);
     if (req.method === "POST" && action === "admin-cupom-status") return await adminToggleCoupon(req, res);
+    if (req.method === "DELETE" && action === "admin-cupom") return await adminDeleteCoupon(req, res);
     return res.status(404).json({ ok: false, error: "Operação não encontrada." });
   } catch (error) {
     console.error("[asaas]", error);
