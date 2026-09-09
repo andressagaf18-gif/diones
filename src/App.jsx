@@ -4029,7 +4029,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
       const data=await r.json().catch(()=>null);
       if(!r.ok||!data?.ok)throw new Error(data?.error||"Não foi possível gerar a cobrança.");
       setCobranca(data);
-      try{localStorage.setItem(`finder_pagamento_${diagnosticoId}`,JSON.stringify({paymentId:data.paymentId,plano:data.plano}))}catch{}
+      try{localStorage.setItem(`finder_pagamento_${diagnosticoId}`,JSON.stringify({paymentId:data.paymentId,plano:data.plano,cupom:data.cupom||null,desconto:Number(data.desconto||0),valor:Number(data.valor||0)}))}catch{}
     }catch(e){setErro(e?.message||"Falha ao gerar o Pix.")}
     finally{setCarregando("")}
   }
@@ -4048,6 +4048,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
       {pago?<div style={{background:"#E1F5EE",color:"#0F6E56",padding:12,borderRadius:10,fontWeight:800}}>Relatório liberado com sucesso.</div>:<>
         {cobranca.pix?.encodedImage&&<img alt="QR Code Pix" src={`data:image/png;base64,${cobranca.pix.encodedImage}`} style={{width:210,maxWidth:"80%",display:"block",margin:"0 auto 10px"}}/>}
         {cobranca.pix?.payload&&<button type="button" onClick={copiarPix} style={{width:"100%",border:0,borderRadius:9,padding:"12px 14px",background:NAVY,color:WHITE,fontWeight:800,cursor:"pointer"}}>{copiado?"Código copiado":"Copiar Pix Copia e Cola"}</button>}
+        <button type="button" onClick={()=>{try{localStorage.removeItem(`finder_pagamento_${diagnosticoId}`)}catch{} setCobranca(null);setErro("");}} style={{width:"100%",border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 12px",marginTop:8,background:WHITE,color:NAVY,fontWeight:800,cursor:"pointer",fontSize:10.5}}>Alterar plano ou aplicar outro cupom</button>
         <p style={{fontSize:9.5,color:MUTED,lineHeight:1.4}}>A confirmação é automática. Esta tela será atualizada após o recebimento.</p>
       </>}
     </div>;
@@ -4066,7 +4067,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
       {plano.destaque&&<span style={{fontSize:8,fontWeight:900,color:CORAL}}>MAIS ESCOLHIDO</span>}
       <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}><strong style={{color:NAVY,fontSize:13}}>{plano.nome}</strong><strong style={{color:plano.destaque?CORAL:NAVY,fontSize:17}}>{plano.valor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</strong></div>
       <p style={{fontSize:9.8,color:MUTED,lineHeight:1.4,margin:"6px 0 10px"}}>{plano.descricao}</p>
-      <button type="button" disabled={Boolean(carregando)} onClick={()=>contratar(plano)} style={{width:"100%",border:0,borderRadius:8,padding:"10px",background:plano.destaque?CORAL:NAVY,color:WHITE,fontWeight:800,cursor:"pointer",opacity:carregando?.7:1}}>{carregando===plano.codigo?"Gerando Pix...":"Escolher e pagar por Pix"}</button>
+      <button type="button" disabled={Boolean(carregando)} onClick={()=>contratar(plano)} style={{width:"100%",border:0,borderRadius:8,padding:"10px",background:plano.destaque?CORAL:NAVY,color:WHITE,fontWeight:800,cursor:"pointer",opacity:carregando?.7:1}}>{carregando===plano.codigo?"Validando cupom e gerando Pix...":cupom.trim()?"Aplicar cupom e pagar por Pix":"Escolher e pagar por Pix"}</button>
     </div>)}</div>
     {erro&&<p style={{fontSize:10,color:"#993C1D",background:"#FAECE7",padding:9,borderRadius:8,margin:"10px 0 0"}}>{erro}</p>}
     <p style={{fontSize:8.8,color:"#8A93A3",lineHeight:1.4,margin:"10px 0 0"}}>Pagamento processado pelo Asaas. O conteúdo é uma estimativa diagnóstica e não substitui análise técnica individualizada.</p>
