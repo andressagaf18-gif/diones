@@ -177,24 +177,51 @@ async function createCharge(req, res) {
   const diagnostic = await sql`SELECT id FROM diagnosticos WHERE id::text = ${diagnosticoId} LIMIT 1`;
   if (!diagnostic?.length) return res.status(404).json({ ok: false, error: "Diagnóstico não encontrado." });
 
+  const documento = digits(body.cliente?.cpfCnpj);
+  if (![11, 14].includes(documento.length)) {
+    return res.status(400).json({ ok: false, error: "Informe um CPF ou CNPJ válido." });
+  }
+
+  // O cupom precisa ser validado antes da busca por cobrança existente.
+  // Caso contrário, um Pix antigo sem desconto sempre seria reutilizado.
+  const cupom = await calcularCupom(body.cupom, { ...planBase, codigo: planCode }, documento);
+  const plan = { ...planBase, valor: cupom.valorFinal };
+
   const existing = await sql`
-    SELECT payment_id, status FROM asaas_pagamentos
+    SELECT payment_id, status, valor, valor_original, desconto, cupom_codigo
+    FROM asaas_pagamentos
     WHERE diagnostico_id = ${diagnosticoId} AND plano = ${planCode}
       AND status NOT IN ('REFUNDED','DELETED','OVERDUE')
     ORDER BY criado_em DESC LIMIT 1
   `;
   if (existing?.[0]?.payment_id) {
-    const payment = await asaas(`/payments/${encodeURIComponent(existing[0].payment_id)}`, { method: "GET" });
-    const qr = await asaas(`/payments/${encodeURIComponent(existing[0].payment_id)}/pixQrCode`, { method: "GET" });
-    return res.status(200).json(formatCharge(payment, qr, diagnosticoId, planCode, {
-      ...planBase,
-      valor: money(payment.value),
-    }));
+    const anterior = existing[0];
+    const payment = await asaas(`/payments/${encodeURIComponent(anterior.payment_id)}`, { method: "GET" });
+    const statusRemoto = txt(payment.status, 40).toUpperCase();
+    const pago = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(statusRemoto);
+    const mesmoCupom = txt(anterior.cupom_codigo, 50).toUpperCase() === txt(cupom.codigo, 50).toUpperCase();
+    const mesmoValor = money(payment.value) === money(plan.valor);
+
+    if (pago || (mesmoCupom && mesmoValor)) {
+      const qr = pago ? {} : await asaas(`/payments/${encodeURIComponent(anterior.payment_id)}/pixQrCode`, { method: "GET" });
+      return res.status(200).json({
+        ...formatCharge(payment, qr, diagnosticoId, planCode, { ...planBase, valor: money(payment.value) }),
+        valorOriginal: money(anterior.valor_original || planBase.valor),
+        desconto: money(anterior.desconto),
+        cupom: anterior.cupom_codigo || null,
+      });
+    }
+
+    // A cobrança ainda não foi paga e o cupom/valor mudou: cancela o Pix
+    // anterior antes de gerar outro, evitando duas cobranças abertas.
+    await asaas(`/payments/${encodeURIComponent(anterior.payment_id)}`, { method: "DELETE" });
+    await sql`
+      UPDATE asaas_pagamentos
+      SET status = 'DELETED', atualizado_em = NOW()
+      WHERE payment_id = ${anterior.payment_id}
+    `;
   }
 
-  const documento = digits(body.cliente?.cpfCnpj);
-  const cupom = await calcularCupom(body.cupom, { ...planBase, codigo: planCode }, documento);
-  const plan = { ...planBase, valor: cupom.valorFinal };
   const customer = await customerFor(body.cliente, diagnosticoId);
   const nonce = Date.now().toString(36);
   const externalReference = `${diagnosticoId}:${planCode}:${nonce}`;
