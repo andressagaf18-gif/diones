@@ -19830,6 +19830,7 @@ function Cliente360({
     erro,
     setErro,
   ] = useState("");
+  const [pagamentosCliente, setPagamentosCliente] = useState([]);
 
   const [
     abaCliente,
@@ -20077,6 +20078,12 @@ function Cliente360({
       setClienteAberto(
         data
       );
+      const documento = String(data?.cliente?.cnpj || cliente?.cnpj || "").replace(/\D/g, "");
+      try {
+        const rp = await fetch(`/api/asaas?acao=admin-painel&busca=${encodeURIComponent(documento)}`, { headers:{Authorization:`Bearer ${token}`} });
+        const dp = await rp.json().catch(()=>null);
+        setPagamentosCliente(rp.ok&&dp?.ok?(dp.pagamentos||[]):[]);
+      } catch { setPagamentosCliente([]); }
     } catch (error) {
       setErro(
         error?.message ||
@@ -20489,6 +20496,7 @@ function Cliente360({
         "propostas",
         `Propostas (${clienteAberto.propostas?.length || 0})`,
       ],
+      ["financeiro", `Financeiro (${pagamentosCliente.length})`],
       [
         "historico",
         "Histórico",
@@ -20702,6 +20710,7 @@ function Cliente360({
                 r.receitaGanha
               ),
             ],
+            ["PAGO NO ASAAS", moeda(pagamentosCliente.filter(p=>["RECEIVED","CONFIRMED","RECEIVED_IN_CASH"].includes(p.status)).reduce((s,p)=>s+Number(p.valor||0),0))],
           ].map(
             (
               [
@@ -22267,6 +22276,8 @@ function Cliente360({
             </div>
           </Card>
         )}
+
+        {abaCliente === "financeiro" && <Card><strong>Pagamentos vinculados ao cliente</strong><div style={{overflowX:"auto",marginTop:10}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:760}}><thead><tr>{["Data","Diagnóstico","Plano","Forma","Valor original","Desconto","Valor pago","Status"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{pagamentosCliente.map(p=><tr key={p.payment_id}><td style={tdStyle}>{dataHora(p.criado_em)}</td><td style={tdStyle}><button type="button" onClick={()=>onAbrirDiagnostico?.(p.diagnostico_id)} style={{border:0,background:"transparent",color:"#2453A6",cursor:"pointer"}}>{p.diagnostico_id}</button></td><td style={tdStyle}>{p.plano}</td><td style={tdStyle}>{p.forma_pagamento||"PIX"}</td><td style={tdStyle}>{moeda(p.valor_original||p.valor)}</td><td style={tdStyle}>{moeda(p.desconto)}{p.cupom_codigo&&<><br/><strong>{p.cupom_codigo}</strong></>}</td><td style={tdStyle}><strong>{moeda(p.valor)}</strong></td><td style={tdStyle}>{p.status}</td></tr>)}{!pagamentosCliente.length&&<tr><td colSpan="8" style={{...tdStyle,textAlign:"center"}}>Nenhum pagamento encontrado para o CPF/CNPJ deste cliente.</td></tr>}</tbody></table></div></Card>}
 
         {abaCliente ===
           "historico" && (
