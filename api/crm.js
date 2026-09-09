@@ -2143,6 +2143,9 @@ function statusAtendimentoValido(valor) {
     "EM_ANALISE",
     "REUNIAO_AGENDADA",
     "EM_ATENDIMENTO",
+    "EM_ANDAMENTO",
+    "AGUARDANDO_CLIENTE",
+    "AGUARDANDO_INTERNO",
     "PLANO_APRESENTADO",
     "CONCLUIDO",
   ];
