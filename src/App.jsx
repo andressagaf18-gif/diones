@@ -2425,8 +2425,80 @@ function SimuladorReformaPublico({
     };
   },[cenarioAliquota,cbs,ibs]);
 
+  const decisaoRecomendada=useMemo(()=>{
+    const pendencias=[];
+    if(naoSeiImpostoAtual)pendencias.push("Confirmar a carga atual nos documentos fiscais e no PGDAS.");
+    if(!tratamentoConfirmado&&(redCbs>0||redIbs>0))pendencias.push("Validar o enquadramento legal da redução aplicada.");
+    if(regime==="Simples Nacional"&&origemDasResidual.includes("Estimativa gerencial")){
+      pendencias.push("Substituir o DAS residual estimado pela composição documental do PGDAS.");
+    }
+
+    if(faseTeste2026||!comparacaoPermitida){
+      return{
+        codigo:"VALIDAR_DADOS",
+        titulo:"Validar dados antes da decisão",
+        destaque:"A melhor opção ainda não pode ser concluída com segurança.",
+        opcao:null,valorMensal:null,economiaMensal:null,economiaAnual:null,
+        confianca:"PRELIMINAR",
+        justificativas:[motivoPendencia||"A comparação tributária ainda não está completa."],
+        pendencias,
+      };
+    }
+
+    if(regime==="Simples Nacional"&&simplesDentro!=null&&simplesFora!=null){
+      const dentro=simplesDentro<=simplesFora;
+      const melhorValor=Math.min(simplesDentro,simplesFora);
+      const maiorValor=Math.max(simplesDentro,simplesFora);
+      const economiaMensal=maiorValor-melhorValor;
+      const opcao=dentro?"DENTRO_DO_DAS":"IBS_CBS_POR_FORA";
+      return{
+        codigo:opcao,
+        titulo:dentro?"Manter IBS/CBS dentro do DAS":"Avaliar IBS/CBS pelo regime regular, por fora do DAS",
+        destaque:dentro
+          ?"Melhor opção financeira no cenário simulado: IBS/CBS dentro do DAS."
+          :"Melhor opção financeira no cenário simulado: IBS/CBS por fora do DAS.",
+        opcao,valorMensal:melhorValor,economiaMensal,economiaAnual:economiaMensal*12,
+        confianca:pendencias.length?"PRELIMINAR":"MAIOR",
+        justificativas:[
+          `Dentro do DAS: ${moedaSimulador(simplesDentro)} por mês.`,
+          `Por fora do DAS: ${moedaSimulador(simplesFora)} por mês.`,
+          perfilClientes==="B2B"
+            ?"Perfil B2B: além do custo, valide o efeito dos créditos para os clientes."
+            :perfilClientes==="B2C"
+              ?"Perfil B2C: preço final e simplicidade operacional têm maior peso."
+              :"O perfil dos clientes deve ser confirmado na decisão final.",
+        ],
+        pendencias,
+      };
+    }
+
+    const economiaMensal=Math.abs(n(diferenca));
+    const reformaMenor=n(totalReformaExibido)<=n(atual);
+    return{
+      codigo:reformaMenor?"CENARIO_REFORMA_MENOR":"CARGA_ATUAL_MENOR",
+      titulo:reformaMenor?"Preparar a operação para o cenário IBS/CBS":"Preservar a eficiência atual e revisar créditos e preços",
+      destaque:reformaMenor
+        ?"O cenário da reforma apresentou a menor carga mensal na simulação."
+        :"A carga atual apresentou o menor valor na comparação simulada.",
+      opcao:reformaMenor?"REFORMA":"ATUAL",
+      valorMensal:Math.min(n(totalReformaExibido),n(atual)),
+      economiaMensal,economiaAnual:economiaMensal*12,
+      confianca:pendencias.length?"PRELIMINAR":"MAIOR",
+      justificativas:[
+        `Carga atual: ${moedaSimulador(atual)} por mês.`,
+        `Cenário da reforma: ${moedaSimulador(totalReformaExibido)} por mês.`,
+        "A decisão definitiva depende da validação fiscal, contratual e operacional.",
+      ],
+      pendencias,
+    };
+  },[
+    naoSeiImpostoAtual,tratamentoConfirmado,redCbs,redIbs,regime,
+    origemDasResidual,faseTeste2026,comparacaoPermitida,motivoPendencia,
+    simplesDentro,simplesFora,perfilClientes,diferenca,totalReformaExibido,atual
+  ]);
+
   const snapshot={
-    versao:"SIMULADOR_REFORMA_PUBLICO_V6_CARGA_COMPLETA",
+    versao:"SIMULADOR_REFORMA_PUBLICO_V7_RELATORIOS_SEGMENTADOS",
     etapa,
     participante:{nome,email,telefone},
     empresa:{
@@ -2443,6 +2515,7 @@ function SimuladorReformaPublico({
     configuracao:{
       regime,
       natureza,
+      perfilClientes,
       faturamentoMensal:fat,
       impostoAtualMensal:atual,
       naoSeiImpostoAtual,
@@ -2497,6 +2570,9 @@ function SimuladorReformaPublico({
       baseCreditosConfirmados,
       linhas,
     },
+    decisao:decisaoRecomendada,
+    transicao:comparativoTransicao,
+    cronogramaLegal:cronogramaLegalTransicao,
     memoria:{
       faturamento:fat,
       baseIbsCbs,
@@ -2751,6 +2827,38 @@ function SimuladorReformaPublico({
       gerarRelatorioIa();
     }
   },[etapa]);
+
+  function gerarRelatorioExecutivoCliente(){
+    const empresaNome=empresaCadastral?.razaoSocial||empresaCadastral?.nomeFantasia||"Empresa";
+    const escapar=(valor="")=>String(valor??"").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+    const lista=(itens=[])=>(itens||[]).filter(Boolean).slice(0,3).map(item=>`<li>${escapar(item)}</li>`).join("");
+    const decisao=decisaoRecomendada||{};
+    const corDecisao=decisao.codigo==="VALIDAR_DADOS"?"#9A6700":"#176B47";
+    const fundoDecisao=decisao.codigo==="VALIDAR_DADOS"?"#FFF8E8":"#EAF8F1";
+    const melhorValor=decisao.valorMensal==null?"A validar":moedaSimulador(decisao.valorMensal);
+    const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Resumo tributário - ${escapar(empresaNome)}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#EEF1F6;color:#17233D;font-family:Arial,sans-serif}.page{width:210mm;min-height:297mm;margin:auto;background:#fff;padding:18mm}.hero{background:#17233D;color:#fff;border-radius:16px;padding:22px}.eyebrow{font-size:10px;font-weight:900;letter-spacing:.8px;color:#FFB7A7}h1{font-size:27px;margin:7px 0 5px}.sub{font-size:11px;color:#D8DEEA}.decision{margin-top:16px;padding:20px;border:2px solid ${corDecisao};background:${fundoDecisao};border-radius:15px}.decision small{font-weight:900;color:${corDecisao};letter-spacing:.7px}.decision h2{font-size:23px;line-height:1.2;margin:8px 0;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:5px}.decision p{margin:10px 0 0;line-height:1.5}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}.kpi,.box{border:1px solid #DDE3EC;border-radius:12px;padding:13px}.kpi small{display:block;color:#5B667A;font-size:9px;font-weight:900}.kpi strong{display:block;font-size:19px;margin-top:5px}.section{font-size:16px;margin:21px 0 8px}.box{font-size:11px;line-height:1.55}.box ul{margin:0;padding-left:18px}.box li{margin:5px 0}.warning{background:#FFF8E8;border-color:#EACB82}.footer{margin-top:22px;border-top:1px solid #DDE3EC;padding-top:10px;color:#687386;font-size:9px;line-height:1.45}@media print{body{background:#fff}.page{margin:0;box-shadow:none;print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+</style></head><body><main class="page">
+<section class="hero"><div class="eyebrow">FINDER INTELLIGENCE · RESUMO EXECUTIVO</div><h1>${escapar(empresaNome)}</h1><div class="sub">${escapar(atividadeSelecionada||"Atividade a validar")} · Cenário ${escapar(cenarioAliquota||"não definido")}</div></section>
+<section class="decision"><small>MELHOR OPÇÃO NO CENÁRIO SIMULADO</small><h2>${escapar(decisao.titulo||"Validar dados antes da decisão")}</h2><p><strong>${escapar(decisao.destaque||"")}</strong></p></section>
+<section class="grid"><div class="kpi"><small>CARGA ATUAL / MÊS</small><strong>${atual==null?"A validar":moedaSimulador(atual)}</strong></div><div class="kpi"><small>MELHOR CENÁRIO / MÊS</small><strong>${melhorValor}</strong></div><div class="kpi"><small>DIFERENÇA MENSAL</small><strong>${decisao.economiaMensal==null?"A validar":moedaSimulador(decisao.economiaMensal)}</strong></div><div class="kpi"><small>IMPACTO EM 12 MESES</small><strong>${decisao.economiaAnual==null?"A validar":moedaSimulador(decisao.economiaAnual)}</strong></div></section>
+<h2 class="section">Por que esta opção?</h2><section class="box"><ul>${lista(decisao.justificativas)}</ul></section>
+${decisao.pendencias?.length?`<h2 class="section">O que precisa ser confirmado</h2><section class="box warning"><ul>${lista(decisao.pendencias)}</ul></section>`:""}
+<h2 class="section">Próximos passos</h2><section class="box"><ul>${lista(relatorioIa?.proximosPassos?.length?relatorioIa.proximosPassos:["Validar documentos fiscais e premissas utilizadas.","Revisar créditos, contratos e formação de preço.","Confirmar a decisão com o responsável tributário."])}</ul></section>
+<div class="footer"><strong>Importante:</strong> esta é uma recomendação gerencial baseada no cenário informado, e não um parecer fiscal ou jurídico. A escolha definitiva exige validação documental e da legislação aplicável na data da decisão. Confiança da simulação: ${escapar(decisao.confianca||"PRELIMINAR")}.</div>
+</main><script>window.onload=function(){setTimeout(function(){window.print()},400)}</script></body></html>`;
+    try{
+      const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+      const url=URL.createObjectURL(blob);
+      const janela=window.open(url,"_blank");
+      if(!janela){URL.revokeObjectURL(url);alert("Permita pop-ups para abrir o relatório em PDF.");return;}
+      setTimeout(()=>URL.revokeObjectURL(url),15000);
+    }catch(e){
+      console.error("[simulador-reforma][relatorio-cliente]",e);
+      alert("Não foi possível gerar o relatório executivo.");
+    }
+  }
 
   function gerarPdfSimulador(){
     const empresaNome=
@@ -4094,7 +4202,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
       <button
         type="button"
-        onClick={gerarPdfSimulador}
+        onClick={gerarRelatorioExecutivoCliente}
         disabled={!relatorioIa}
         style={{
           minHeight:44,border:0,borderRadius:11,
@@ -5861,13 +5969,21 @@ function DiagnosticoPrototipo() {
         titulo:tipo==="simulador_reforma"
           ?"Simulação da Reforma Tributária — Relatório do Cliente"
           :"Diagnóstico da Reforma Tributária — Relatório do Cliente",
-        leituraExecutiva:leitura,
-        resultadoSimulacao:snapshot?.resultado||null,
+        leituraExecutiva:snapshot?.decisao?.destaque||leitura,
+        decisaoRecomendada:snapshot?.decisao||null,
+        resumoNumerico:{
+          cargaAtualMensal:snapshot?.resultado?.atual??null,
+          melhorOpcaoMensal:snapshot?.decisao?.valorMensal??null,
+          economiaMensal:snapshot?.decisao?.economiaMensal??null,
+          economiaAnual:snapshot?.decisao?.economiaAnual??null,
+          perfilClientes:snapshot?.configuracao?.perfilClientes||null,
+        },
         empresa:snapshot?.empresa||null,
-        premissas:snapshot?.configuracao||null,
-        riscos:riscos.slice(0,6),
-        recomendacoes:recomendacoes.slice(0,6),
-        proximosPassos:proximos.slice(0,6),
+        justificativas:(snapshot?.decisao?.justificativas||[]).slice(0,3),
+        ressalvas:(snapshot?.decisao?.pendencias||[]).slice(0,3),
+        riscos:riscos.slice(0,3),
+        recomendacoes:recomendacoes.slice(0,3),
+        proximosPassos:proximos.slice(0,3),
       },
 
       equipe:{
@@ -5901,6 +6017,10 @@ function DiagnosticoPrototipo() {
         configuracao:snapshot?.configuracao||null,
         creditos:snapshot?.creditos||null,
         baseLegalPremissas:snapshot?.configuracao?.fonteAliquota||null,
+        decisaoRecomendada:snapshot?.decisao||null,
+        transicao:snapshot?.transicao||[],
+        cronogramaLegal:snapshot?.cronogramaLegal||[],
+        snapshotCompleto:snapshot||null,
         riscos,
         recomendacoes,
         proximosPassos:proximos,
