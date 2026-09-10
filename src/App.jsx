@@ -1908,10 +1908,22 @@ function SimuladorReformaPublico({
   const ibsNom=n(ibs);
   const redCbs=Math.min(100,Math.max(0,n(reducaoCbs)));
   const redIbs=Math.min(100,Math.max(0,n(reducaoIbs)));
-  const cbsEfetiva=cbsNom*(1-redCbs/100);
-  const fatorIbsTransicao={2029:.1,2030:.2,2031:.3,2032:.4}[anoCenario]??1;
+  // EC 132/2023, arts. 125 e 127 do ADCT:
+  // em 2027 e 2028 o IBS total e fixo em 0,1% (0,05% estadual +
+  // 0,05% municipal) e a CBS usa a referencia do ano menos 0,1 p.p.
+  // De 2029 a 2032, o IBS corresponde a 10%, 20%, 30% e 40% da
+  // aliquota de referencia. A aliquota nominal de referencia sera fixada
+  // pelo Senado; os valores editaveis abaixo sao premissas de simulacao.
+  const cbsBaseTransicao=
+    anoCenario===2026?.9:
+    anoCenario===2027||anoCenario===2028?Math.max(0,cbsNom-.1):cbsNom;
+  const cbsEfetiva=cbsBaseTransicao*(1-redCbs/100);
+  const fatorIbsTransicao={2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[anoCenario];
   const ibsEfetivaCheia=ibsNom*(1-redIbs/100);
-  const ibsEfetiva=ibsEfetivaCheia*fatorIbsTransicao;
+  const ibsEfetiva=
+    anoCenario===2026||anoCenario===2027||anoCenario===2028
+      ?.1*(1-redIbs/100)
+      :ibsEfetivaCheia*(fatorIbsTransicao??1);
   const iva=cbsEfetiva+ibsEfetiva;
 
   const linhas=Object.values(despesas);
@@ -2067,7 +2079,9 @@ function SimuladorReformaPublico({
     motivoPendencia=!composicaoDasIdentificada
       ?"Este valor representa somente IBS/CBS líquido. A carga total por fora exige a parcela residual do DAS identificada no PGDAS."
       :"";
-    comparacaoPermitida=reforma!=null&&atual!=null&&atual>0;
+    // IBS/CBS isolado nao pode ser comparado com o DAS total. A comparacao
+    // somente fecha quando a carga hibrida por fora estiver completa.
+    comparacaoPermitida=simplesFora!=null&&atual!=null&&atual>0;
   }else if(!temComposicaoAtual){
     motivoPendencia="Detalhe os tributos atuais para calcular corretamente os valores remanescentes.";
   }else{
@@ -2079,7 +2093,8 @@ function SimuladorReformaPublico({
     comparacaoPermitida=atual!=null&&atual>0;
   }
 
-  const diferenca=comparacaoPermitida?reforma-atual:null;
+  const valorReformaComparavel=regime==="Simples Nacional"?simplesFora:reforma;
+  const diferenca=comparacaoPermitida?valorReformaComparavel-atual:null;
   const variacao=comparacaoPermitida&&atual>0?(diferenca/atual)*100:null;
 
   const cargaAtual=
@@ -2102,6 +2117,16 @@ function SimuladorReformaPublico({
     reforma==null?null:reforma*(1+crescimentoPct/100);
 
   const anosTransicao=[2026,2027,2028,2029,2030,2031,2032,2033];
+  const cronogramaLegalTransicao=[
+    {ano:2026,cbs:"0,90% (teste)",ibs:"0,10% (teste)",legados:"PIS/Cofins, ICMS e ISS mantidos",publicacao:"Alíquotas de teste publicadas"},
+    {ano:2027,cbs:"Referência − 0,10 p.p.",ibs:"0,10%: 0,05% estadual + 0,05% municipal",legados:"ICMS/ISS: 100% · PIS/Cofins: extintos",publicacao:"IBS exato; CBS de referência a fixar"},
+    {ano:2028,cbs:"Referência − 0,10 p.p.",ibs:"0,10%: 0,05% estadual + 0,05% municipal",legados:"ICMS/ISS: 100% · PIS/Cofins: extintos",publicacao:"IBS exato; CBS de referência a fixar"},
+    {ano:2029,cbs:"100% da referência",ibs:"10% da referência",legados:"ICMS/ISS: 90%",publicacao:"Percentual da transição exato; referência a fixar"},
+    {ano:2030,cbs:"100% da referência",ibs:"20% da referência",legados:"ICMS/ISS: 80%",publicacao:"Percentual da transição exato; referência a fixar"},
+    {ano:2031,cbs:"100% da referência",ibs:"30% da referência",legados:"ICMS/ISS: 70%",publicacao:"Percentual da transição exato; referência a fixar"},
+    {ano:2032,cbs:"100% da referência",ibs:"40% da referência",legados:"ICMS/ISS: 60%",publicacao:"Percentual da transição exato; referência a fixar"},
+    {ano:2033,cbs:"100% da referência",ibs:"100% da referência",legados:"ICMS/ISS: extintos",publicacao:"Referências nominais a fixar pelo Senado"},
+  ];
   const comparativoTransicao=anosTransicao.map(ano=>{
     if(ano===2026){
       const cbsTeste=Math.max(0,baseIbsCbs*.009-baseCreditosConfirmados*.009);
@@ -2109,9 +2134,9 @@ function SimuladorReformaPublico({
       return {ano,total:atual,iva:cbsTeste+ibsTeste,cbs:cbsTeste,ibs:ibsTeste,status:"Teste; sem aumento quando cumpridas as condições legais"};
     }
     if(regime==="Simples Nacional"){
-      const fatorIbsSimples={2027:0,2028:0,2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
-      const cbsAno=9.3*(1-redCbs/100);
-      const ibsAno=(ano<=2028?.1:18.7*fatorIbsSimples)*(1-redIbs/100);
+      const fatorIbsSimples={2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
+      const cbsAno=(ano<=2028?Math.max(0,cbsNom-.1):cbsNom)*(1-redCbs/100);
+      const ibsAno=(ano<=2028?.1:ibsNom*fatorIbsSimples)*(1-redIbs/100);
       const novoBrutoAno=baseIbsCbs*(cbsAno+ibsAno)/100;
       const creditoAno=Math.min(novoBrutoAno,baseCreditosConfirmados*(cbsAno+ibsAno)/100);
       const cbsLiquidaAno=Math.max(0,baseIbsCbs*cbsAno/100-baseCreditosConfirmados*cbsAno/100);
@@ -2127,10 +2152,10 @@ function SimuladorReformaPublico({
         :null;
       return {ano,total:menor?Math.min(dentroAno,foraAno):null,iva:Math.max(0,novoBrutoAno-creditoAno),cbs:cbsLiquidaAno,ibs:ibsLiquidoAno,dentro:dentroAno,fora:foraAno,status:menor?`Tendência matemática: ${menor}`:"Carga total por fora exige composição do DAS"};
     }
-    const fatorIbs={2027:0,2028:0,2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
+    const fatorIbs={2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[ano]??0;
     const fatorLegado={2027:1,2028:1,2029:.9,2030:.8,2031:.7,2032:.6,2033:0}[ano]??1;
-    const cbsAno=9.3*(1-redCbs/100);
-    const ibsAno=(ano<=2028?.1:18.7*fatorIbs)*(1-redIbs/100);
+    const cbsAno=(ano<=2028?Math.max(0,cbsNom-.1):cbsNom)*(1-redCbs/100);
+    const ibsAno=(ano<=2028?.1:ibsNom*fatorIbs)*(1-redIbs/100);
     const debCbsAno=baseIbsCbs*cbsAno/100;
     const debIbsAno=baseIbsCbs*ibsAno/100;
     const novoAno=Math.max(0,debCbsAno-creditoCbsNovo)+Math.max(0,debIbsAno-creditoIbsNovo);
@@ -2319,11 +2344,12 @@ function SimuladorReformaPublico({
     }
 
     if(/^20(2[7-9]|3[0-3])$/.test(cenarioAliquota)){
+      const item=cronogramaLegalTransicao.find(x=>String(x.ano)===cenarioAliquota);
       return{
-        titulo:`Transição ${cenarioAliquota} — parâmetros editáveis`,
-        texto:"As alíquotas de referência posteriores a 2026 não são constantes definitivas deste sistema. Devem ser preenchidas e validadas conforme a norma vigente, operação, destino e tratamento aplicável.",
+        titulo:`Transição legal de ${cenarioAliquota} · alíquotas nominais ainda editáveis`,
+        texto:`CBS: ${item?.cbs||"referência a fixar"}. IBS: ${item?.ibs||"referência a fixar"}. Os percentuais da transição são legais; os valores nominais digitados são apenas premissas até a resolução aplicável do Senado.`,
         oficial:false,
-        referencia:"EC 132/2023 e LC 214/2025 — validar atos e resoluções vigentes no ano simulado.",
+        referencia:"EC 132/2023, arts. 125, 127 e 130 do ADCT; LC 214/2025; Receita Federal.",
       };
     }
 
@@ -2596,6 +2622,12 @@ function SimuladorReformaPublico({
           naoSeiImpostoAtual
             ?["Valor real dos tributos pagos atualmente não foi informado."]
             :[],
+        instrucoesEspeciais:[
+          "Não apresentar a soma CBS/IBS digitada no simulador como alíquota oficial definitiva.",
+          "Quando citar percentual posterior a 2026, identificar expressamente como premissa editável do cenário.",
+          "Distinguir os percentuais legais da transição das alíquotas nominais de referência, que dependem de resolução do Senado.",
+          "No Simples Nacional, não comparar IBS/CBS isolado com o DAS total nem concluir carga por fora sem o DAS residual.",
+        ],
       };
 
       const r=await fetch("/api/diagnostico",{
@@ -3702,7 +3734,30 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
       <div style={card}>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Transição 2026–2033</h3>
-        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Valores anuais. A coluna IBS/CBS mostra o novo tributo líquido estimado; a carga atual é mantida apenas como referência comparativa, sem soma indevida.</div>
+        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Primeiro, confira o cronograma definido na legislação. Os percentuais de implantação são exatos; as alíquotas nominais de referência posteriores a 2026 ainda serão fixadas por resolução do Senado.</div>
+        <div className="sr-table-wrap" style={{marginTop:8}}>
+          <table style={{width:"100%",minWidth:760,borderCollapse:"collapse",fontSize:7.35}}>
+            <thead><tr style={{background:NAVY,color:"#fff"}}>
+              {['Ano','CBS prevista em lei','IBS previsto em lei','Tributos anteriores','Situação da publicação'].map(t=><th key={t} style={{padding:8,textAlign:t==='Ano'?'left':'center'}}>{t}</th>)}
+            </tr></thead>
+            <tbody>{cronogramaLegalTransicao.map(item=><tr key={item.ano} style={{borderBottom:"1px solid #E3E7EF",background:item.ano===anoCenario?"#EEF5FF":"transparent"}}>
+              <td data-label="Ano" style={{padding:"8px 6px",fontWeight:950}}>{item.ano}</td>
+              <td data-label="CBS" style={{padding:"8px 6px",textAlign:"center",fontWeight:800}}>{item.cbs}</td>
+              <td data-label="IBS" style={{padding:"8px 6px",textAlign:"center",fontWeight:800}}>{item.ibs}</td>
+              <td data-label="Tributos anteriores" style={{padding:"8px 6px",textAlign:"center"}}>{item.legados}</td>
+              <td data-label="Publicação" style={{padding:"8px 6px",textAlign:"center",color:item.publicacao.includes("a fixar")?"#805B10":"#176B47"}}>{item.publicacao}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <div style={{marginTop:7,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:8,padding:8,fontSize:7.25,lineHeight:1.45,color:"#31589C"}}>
+          <b>Fontes oficiais:</b>{' '}
+          <a href="https://www.planalto.gov.br/ccivil_03/constituicao/emendas/emc/emc132.htm" target="_blank" rel="noreferrer">EC 132/2023</a>, arts. 125, 127 e 130 do ADCT ·{' '}
+          <a href="https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp214.htm" target="_blank" rel="noreferrer">LC 214/2025</a> ·{' '}
+          <a href="https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/acoes-e-programas/programas-e-atividades/reforma-tributaria-do-consumo/entenda" target="_blank" rel="noreferrer">Receita Federal — Entenda a Reforma Tributária do Consumo</a>.
+        </div>
+
+        <h4 style={{fontFamily:DISPLAY_FONT,fontSize:13,margin:"14px 0 3px"}}>Projeção financeira com as premissas informadas</h4>
+        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Valores anuais simulados, não alíquotas oficiais. A coluna IBS/CBS mostra o novo tributo líquido estimado; a carga atual é mantida apenas como referência comparativa, sem soma indevida.</div>
         <div className="sr-table-wrap" style={{marginTop:8}}>
           <table style={{width:"100%",minWidth:610,borderCollapse:"collapse",fontSize:7.5}}>
             <thead><tr style={{background:NAVY,color:"#fff"}}>
