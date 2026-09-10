@@ -13863,6 +13863,12 @@ function ResumoEstruturaSelecionada({
     const configSim=simuladorReforma?.configuracao||{};
     const resultadoSim=simuladorReforma?.resultado||{};
     const memoriaSim=simuladorReforma?.memoria||{};
+    const creditosSim=simuladorReforma?.creditos||{};
+    const decisaoSim=simuladorReforma?.decisao||{};
+    const transicaoSim=Array.isArray(simuladorReforma?.transicao)?simuladorReforma.transicao:[];
+    const cronogramaSim=Array.isArray(simuladorReforma?.cronogramaLegal)?simuladorReforma.cronogramaLegal:[];
+    const moedaSim=(valor)=>valor==null?"-":Number(valor||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    const percentualSim=(valor)=>valor==null?"-":`${Number(valor||0).toLocaleString("pt-BR",{maximumFractionDigits:2})}%`;
 
     return (
       <Card style={{marginBottom:16,borderLeft:"4px solid #176B47"}}>
@@ -13871,8 +13877,18 @@ function ResumoEstruturaSelecionada({
         </h3>
 
         <p style={{margin:"0 0 12px",color:MUTED,fontSize:10.5}}>
-          Simulação tributária salva no CRM com atividade analisada, premissas, carga atual e cenário IBS/CBS.
+          Diagnóstico administrativo completo: decisão, premissas, memória de cálculo, créditos e transição vinculados ao cliente.
         </p>
+
+        <div style={{
+          marginBottom:12,padding:14,borderRadius:12,
+          background:decisaoSim.codigo==="VALIDAR_DADOS"?"#FFF8E8":"#EAF8F1",
+          border:`1px solid ${decisaoSim.codigo==="VALIDAR_DADOS"?"#EACB82":"#A9DCC4"}`,
+        }}>
+          <div style={{fontSize:8,fontWeight:900,color:MUTED}}>DECISÃO RECOMENDADA · CONFIANÇA {decisaoSim.confianca||"PRELIMINAR"}</div>
+          <div style={{fontSize:16,fontWeight:950,color:NAVY,marginTop:4}}>{decisaoSim.titulo||"Validação pendente"}</div>
+          <div style={{fontSize:10.5,color:NAVY,marginTop:5,lineHeight:1.45}}>{decisaoSim.destaque||resultadoSim.motivoPendencia}</div>
+        </div>
 
         <div style={{
           display:"grid",
@@ -13884,14 +13900,51 @@ function ResumoEstruturaSelecionada({
           <Linha titulo="ATIVIDADE DE FATO" valor={empresaSim.descricaoAtividadeReal} />
           <Linha titulo="REGIME ATUAL" valor={configSim.regime} />
           <Linha titulo="NATUREZA" valor={configSim.natureza} />
-          <Linha titulo="FATURAMENTO MENSAL" valor={configSim.faturamentoMensal} />
-          <Linha titulo="CARGA ATUAL" valor={resultadoSim.atual} />
-          <Linha titulo="CENÁRIO REFORMA" valor={resultadoSim.reforma} />
-          <Linha titulo="DIFERENÇA" valor={resultadoSim.diferenca} />
-          <Linha titulo="VARIAÇÃO %" valor={resultadoSim.variacaoPct} />
-          <Linha titulo="IBS/CBS LÍQUIDO" valor={memoriaSim.ibsCbsLiquido} />
-          <Linha titulo="CRÉDITOS ESTIMADOS" valor={memoriaSim.creditoNovo} />
+          <Linha titulo="FATURAMENTO MENSAL" valor={moedaSim(configSim.faturamentoMensal)} />
+          <Linha titulo="RBT12" valor={moedaSim(configSim.rbt12)} />
+          <Linha titulo="ANEXO DO SIMPLES" valor={configSim.anexoSimples} />
+          <Linha titulo="PERFIL DOS CLIENTES" valor={configSim.perfilClientes} />
+          <Linha titulo="ANO DO CENÁRIO" valor={configSim.cenarioAliquota} />
+          <Linha titulo="CARGA ATUAL" valor={moedaSim(resultadoSim.atual)} />
+          <Linha titulo="CENÁRIO REFORMA" valor={moedaSim(resultadoSim.reforma)} />
+          <Linha titulo="DIFERENÇA MENSAL" valor={resultadoSim.diferenca==null?"Pendente":moedaSim(resultadoSim.diferenca)} />
+          <Linha titulo="DIFERENÇA ANUAL" valor={decisaoSim.economiaAnual==null?"Pendente":moedaSim(decisaoSim.economiaAnual)} />
+          <Linha titulo="VARIAÇÃO" valor={resultadoSim.variacaoPct==null?"Pendente":percentualSim(resultadoSim.variacaoPct)} />
+          <Linha titulo="CBS EFETIVA" valor={percentualSim(configSim.cbsEfetivaPct)} />
+          <Linha titulo="IBS EFETIVO" valor={percentualSim(configSim.ibsEfetivaPct)} />
+          <Linha titulo="BASE IBS/CBS" valor={moedaSim(memoriaSim.baseIbsCbs)} />
+          <Linha titulo="DÉBITO CBS" valor={moedaSim(memoriaSim.debitoCbs)} />
+          <Linha titulo="CRÉDITO CBS" valor={moedaSim(memoriaSim.creditoCbs)} />
+          <Linha titulo="CBS LÍQUIDA" valor={moedaSim(memoriaSim.cbsLiquida)} />
+          <Linha titulo="DÉBITO IBS" valor={moedaSim(memoriaSim.debitoIbs)} />
+          <Linha titulo="CRÉDITO IBS" valor={moedaSim(memoriaSim.creditoIbs)} />
+          <Linha titulo="IBS LÍQUIDO" valor={moedaSim(memoriaSim.ibsLiquido)} />
+          <Linha titulo="IBS/CBS LÍQUIDO" valor={moedaSim(memoriaSim.ibsCbsLiquido)} />
+          <Linha titulo="DAS RESIDUAL" valor={moedaSim(memoriaSim.dasResidual)} />
+          <Linha titulo="CARGA TOTAL POR FORA" valor={moedaSim(memoriaSim.cargaTotalPorFora)} />
+          <Linha titulo="TRIBUTOS MANTIDOS" valor={moedaSim(memoriaSim.tributosMantidos)} />
+          <Linha titulo="CRÉDITOS ESTIMADOS" valor={moedaSim(creditosSim.creditoNovo)} />
+          <Linha titulo="BASE DE CRÉDITOS CONFIRMADA" valor={moedaSim(creditosSim.baseCreditosConfirmados)} />
+          <Linha titulo="ORIGEM DO DAS RESIDUAL" valor={configSim.origemDasResidual} />
+          <Linha titulo="STATUS DA COMPARAÇÃO" valor={resultadoSim.comparacaoPermitida?"Comparável":"Validação pendente"} />
         </div>
+
+        {decisaoSim.justificativas?.length>0&&<div style={{marginTop:12}}>
+          <h4 style={{margin:"0 0 7px"}}>Justificativas da recomendação</h4>
+          <ul style={{margin:0,paddingLeft:18,fontSize:10.5,lineHeight:1.6}}>{decisaoSim.justificativas.map((item,i)=><li key={i}>{item}</li>)}</ul>
+        </div>}
+
+        {decisaoSim.pendencias?.length>0&&<div style={{marginTop:12,padding:12,borderRadius:10,background:"#FFF8E8",border:"1px solid #EACB82"}}>
+          <b style={{fontSize:10}}>PENDÊNCIAS PARA FECHAR O PARECER</b>
+          <ul style={{margin:"6px 0 0",paddingLeft:18,fontSize:10,lineHeight:1.55}}>{decisaoSim.pendencias.map((item,i)=><li key={i}>{item}</li>)}</ul>
+        </div>}
+
+        {transicaoSim.length>0&&<div style={{marginTop:15,overflowX:"auto"}}>
+          <h4 style={{margin:"0 0 7px"}}>Projeção anual da transição</h4>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:9.5}}><thead><tr style={{background:NAVY,color:"#fff"}}><th style={{padding:7,textAlign:"left"}}>Ano</th><th>Total</th><th>CBS</th><th>IBS</th><th style={{textAlign:"left"}}>Leitura</th></tr></thead><tbody>{transicaoSim.map(item=><tr key={item.ano} style={{borderBottom:"1px solid #E4E8EF"}}><td style={{padding:7,fontWeight:900}}>{item.ano}</td><td style={{textAlign:"center"}}>{moedaSim(item.total)}</td><td style={{textAlign:"center"}}>{moedaSim(item.cbs)}</td><td style={{textAlign:"center"}}>{moedaSim(item.ibs)}</td><td style={{padding:7}}>{item.status}</td></tr>)}</tbody></table>
+        </div>}
+
+        {cronogramaSim.length>0&&<details style={{marginTop:12}}><summary style={{cursor:"pointer",fontWeight:900,fontSize:10.5}}>Ver cronograma legal e premissas publicadas</summary><div style={{marginTop:8,display:"grid",gap:6}}>{cronogramaSim.map(item=><Linha key={item.ano} titulo={`${item.ano} · CBS ${item.cbs} · IBS ${item.ibs}`} valor={`${item.legados} · ${item.publicacao}`} />)}</div></details>}
       </Card>
     );
   }
