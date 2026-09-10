@@ -1666,6 +1666,23 @@ function SimuladorReformaPublico({
     ],
   };
 
+  // Percentual do DAS atual que corresponde aos tributos que permanecem
+  // quando IBS/CBS sao apurados por fora: IRPJ + CSLL + CPP. No Anexo IV,
+  // a CPP nao integra o DAS. O IPI nao entra por padrao e somente e somado
+  // quando a excecao for confirmada pelo usuario.
+  // Fonte: tabelas de partilha dos Anexos I a V da LC 123/2006.
+  const PARTILHA_RESIDUAL_SIMPLES={
+    I:[50.50,50.50,51.00,51.00,51.00,65.60],
+    II:[46.50,46.50,46.50,46.50,46.50,39.50],
+    III:[50.90,50.90,50.90,50.90,50.90,80.50],
+    IV:[34.00,35.00,36.00,37.00,38.00,75.00],
+    V:[68.85,65.85,62.85,59.85,59.35,80.00],
+  };
+
+  const PARTILHA_IPI_SIMPLES={
+    II:[7.50,7.50,7.50,7.50,7.50,35.00],
+  };
+
   function calcularSimplesEstimado(){
     const rbt=n(rbt12)||fat*12;
     if(!fat||!rbt||!anexoSimples)return null;
@@ -1673,7 +1690,9 @@ function SimuladorReformaPublico({
     const tabela=TABELAS_SIMPLES[anexoSimples];
     if(!tabela)return null;
 
-    const faixa=tabela.find(([limite])=>rbt<=limite)||tabela[tabela.length-1];
+    const faixaEncontrada=tabela.findIndex(([limite])=>rbt<=limite);
+    const faixaIndice=faixaEncontrada>=0?faixaEncontrada:tabela.length-1;
+    const faixa=tabela[faixaIndice];
     const [,aliquotaNominal,pd]=faixa;
     const aliquotaEfetiva=((rbt*(aliquotaNominal/100))-pd)/rbt*100;
     const das=fat*Math.max(0,aliquotaEfetiva)/100;
@@ -1687,6 +1706,7 @@ function SimuladorReformaPublico({
       parcelaDeduzir:pd,
       rbt12:rbt,
       anexo:anexoSimples,
+      faixaNumero:faixaIndice+1,
       fatorR,
       fonte:"LC 123/2006 e Resolução CGSN 140/2018 — fórmula da alíquota efetiva: (RBT12 × alíquota nominal − parcela a deduzir) ÷ RBT12.",
       observacao:!n(rbt12)
@@ -2044,15 +2064,56 @@ function SimuladorReformaPublico({
   const consumoIdentificadoDas=
     pisAtualUsado+cofinsAtualUsado+icmsAtualUsado+issAtualUsado;
   const composicaoDasIdentificada=dasAtualReferencia>0&&consumoIdentificadoDas>0;
+  const tabelaSimplesSelecionada=TABELAS_SIMPLES[anexoSimples]||[];
+  const rbt12Referencia=n(rbt12)||fat*12;
+  const faixaSimplesEncontrada=tabelaSimplesSelecionada.findIndex(([limite])=>rbt12Referencia<=limite);
+  const faixaSimplesIndice=faixaSimplesEncontrada>=0
+    ?faixaSimplesEncontrada
+    :Math.max(0,tabelaSimplesSelecionada.length-1);
+  const residualPartilhaPctBase=
+    PARTILHA_RESIDUAL_SIMPLES[anexoSimples]?.[faixaSimplesIndice]??null;
+  const aliquotaEfetivaSimples=n(estimativaAtual?.aliquotaEfetivaPct)||
+    (fat>0&&dasAtualReferencia>0?dasAtualReferencia/fat*100:0);
+  let dasResidualPorPartilha=
+    dasAtualReferencia>0&&residualPartilhaPctBase!=null
+      ?dasAtualReferencia*residualPartilhaPctBase/100
+      :null;
+  // Limite efetivo do ISS nas quintas faixas dos Anexos III e IV.
+  if(anexoSimples==="III"&&faixaSimplesIndice===4&&aliquotaEfetivaSimples>14.92537){
+    dasResidualPorPartilha=fat*Math.max(0,aliquotaEfetivaSimples-5)*.7654/100;
+  }
+  if(anexoSimples==="IV"&&faixaSimplesIndice===4&&aliquotaEfetivaSimples>12.5){
+    dasResidualPorPartilha=fat*Math.max(0,aliquotaEfetivaSimples-5)*.6333/100;
+  }
+  if(dasResidualPorPartilha!=null&&manterIpiExcecao){
+    dasResidualPorPartilha+=dasAtualReferencia*(PARTILHA_IPI_SIMPLES[anexoSimples]?.[faixaSimplesIndice]||0)/100;
+  }
+  const residualPartilhaPct=
+    dasResidualPorPartilha!=null&&dasAtualReferencia>0
+      ?dasResidualPorPartilha/dasAtualReferencia*100
+      :null;
   const dasResidualAutomatico=composicaoDasIdentificada
     ?Math.max(0,dasAtualReferencia-consumoIdentificadoDas)
-    :null;
+    :dasResidualPorPartilha;
+  const dasResidualManual=n(dasResidualProjetado)>0?n(dasResidualProjetado):null;
+  const dasResidualUsado=dasResidualManual??dasResidualAutomatico;
+  const parcelaConsumoDasEstimada=
+    dasResidualUsado!=null&&dasAtualReferencia>0
+      ?Math.max(0,dasAtualReferencia-dasResidualUsado)
+      :null;
+  const origemDasResidual=dasResidualManual!=null
+    ?"Valor documental/manual informado pelo usuário"
+    :composicaoDasIdentificada
+      ?"Calculado pela composição de PIS, Cofins, ICMS e ISS informada"
+      :dasResidualPorPartilha!=null
+        ?`Estimativa gerencial pela partilha do Anexo ${anexoSimples}, faixa ${faixaSimplesIndice+1}, da LC 123/2006`
+        :"Não calculado";
   const simplesDentro=n(dasDentroProjetado)>0
     ?n(dasDentroProjetado)+outrosAtuaisUsados+isUsado
     :dasAtualReferencia>0?dasAtualReferencia+outrosAtuaisUsados+isUsado:null;
-  const simplesFora=n(dasResidualProjetado)>0
-    ?n(dasResidualProjetado)+ibsCbsLiquido+outrosAtuaisUsados+isUsado
-    :dasResidualAutomatico!=null?dasResidualAutomatico+ibsCbsLiquido+outrosAtuaisUsados+isUsado:null;
+  const simplesFora=dasResidualUsado!=null
+    ?dasResidualUsado+ibsCbsLiquido+outrosAtuaisUsados+isUsado
+    :null;
   const melhorSimplesMatematico=simplesDentro!=null&&simplesFora!=null
     ?simplesDentro<simplesFora?"DENTRO":simplesFora<simplesDentro?"FORA":"EMPATE"
     :null;
@@ -2076,9 +2137,11 @@ function SimuladorReformaPublico({
     motivoPendencia="Confirme o enquadramento legal da redução ou alíquota zero antes de comparar.";
   }else if(regime==="Simples Nacional"){
     reforma=ibsCbsLiquido;
-    motivoPendencia=!composicaoDasIdentificada
-      ?"Este valor representa somente IBS/CBS líquido. A carga total por fora exige a parcela residual do DAS identificada no PGDAS."
-      :"";
+    motivoPendencia=simplesFora==null
+      ?"A carga total por fora exige o DAS residual. Informe o anexo e o RBT12 ou digite o valor documental apurado no PGDAS."
+      :dasResidualManual!=null||composicaoDasIdentificada
+        ?"A carga total por fora utiliza o DAS residual informado ou conciliado documentalmente."
+        :"A carga total por fora utiliza uma estimativa do DAS residual pela partilha vigente do anexo e da faixa. Substitua pelo PGDAS para fechar o parecer tributário.";
     // IBS/CBS isolado nao pode ser comparado com o DAS total. A comparacao
     // somente fecha quando a carga hibrida por fora estiver completa.
     comparacaoPermitida=simplesFora!=null&&atual!=null&&atual>0;
@@ -2094,6 +2157,7 @@ function SimuladorReformaPublico({
   }
 
   const valorReformaComparavel=regime==="Simples Nacional"?simplesFora:reforma;
+  const totalReformaExibido=valorReformaComparavel;
   const diferenca=comparacaoPermitida?valorReformaComparavel-atual:null;
   const variacao=comparacaoPermitida&&atual>0?(diferenca/atual)*100:null;
 
@@ -2103,8 +2167,8 @@ function SimuladorReformaPublico({
       :null;
 
   const cargaReforma=
-    reforma!=null&&fat>0
-      ?reforma/fat*100
+    totalReformaExibido!=null&&fat>0
+      ?totalReformaExibido/fat*100
       :null;
 
   const crescimentoPct=n(crescimento);
@@ -2114,7 +2178,7 @@ function SimuladorReformaPublico({
   const creditoNovoProjetado=
     creditoNovo*(1+crescimentoPct/100);
   const reformaProjetada=
-    reforma==null?null:reforma*(1+crescimentoPct/100);
+    totalReformaExibido==null?null:totalReformaExibido*(1+crescimentoPct/100);
 
   const anosTransicao=[2026,2027,2028,2029,2030,2031,2032,2033];
   const cronogramaLegalTransicao=[
@@ -2404,6 +2468,10 @@ function SimuladorReformaPublico({
       opcaoSimplesIbsCbs,
       dasDentroProjetado:n(dasDentroProjetado)||null,
       dasResidualProjetado:n(dasResidualProjetado)||null,
+      dasResidualUsado,
+      parcelaConsumoDasEstimada,
+      residualPartilhaPct,
+      origemDasResidual,
       cenarioAliquota,
       cbsPct:cbsNom,
       ibsPct:ibsNom,
@@ -2447,11 +2515,16 @@ function SimuladorReformaPublico({
       tributosMantidos,
       impostoSeletivo:isUsado,
       tributosFora:outrosAtuaisUsados,
-      totalReforma:reforma,
+      totalReforma:totalReformaExibido,
+      ibsCbsIsolado:ibsCbsLiquido,
+      dasResidual:dasResidualUsado,
+      cargaTotalPorFora:simplesFora,
     },
     resultado:{
       atual,
-      reforma,
+      reforma:totalReformaExibido,
+      ibsCbsIsolado:ibsCbsLiquido,
+      cargaTotalPorFora:simplesFora,
       diferenca,
       variacaoPct:variacao,
       cargaAtualPct:cargaAtual,
@@ -2702,6 +2775,9 @@ function SimuladorReformaPublico({
       const variacaoAno=item.ano===2026?0:(atualAnual?((ivaAnual/atualAnual)-1)*100:null);
       return `<tr><td>${item.ano}</td><td>${atual==null?"Pendente":moedaSimulador(atualAnual)}</td><td>${moedaSimulador(ibsAnual)}</td><td>${moedaSimulador(cbsAnual)}</td><td>${moedaSimulador(ivaAnual)}</td><td>${variacaoAno==null?"Pendente":percentualSimulador(variacaoAno)}</td></tr>`;
     }).join("");
+    const cronogramaLegalPdf=cronogramaLegalTransicao.map(item=>`
+      <tr><td>${item.ano}</td><td>${item.cbs}</td><td>${item.ibs}</td><td>${item.legados}</td><td>${item.publicacao}</td></tr>
+    `).join("");
 
     const html=`<!doctype html>
 <html lang="pt-BR">
@@ -2746,7 +2822,7 @@ function SimuladorReformaPublico({
   <div class="grid">
     <div class="kpi"><small>FATURAMENTO MENSAL</small><strong>${moedaSimulador(fat)}</strong></div>
     <div class="kpi"><small>CENÁRIO ATUAL</small><strong>${atual==null?"Pendente":moedaSimulador(atual)}</strong></div>
-    <div class="kpi"><small>${faseTeste2026?"CARGA VIGENTE EM 2026":"CENÁRIO REFORMA"}</small><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
+    <div class="kpi"><small>${faseTeste2026?"CARGA VIGENTE EM 2026":regime==="Simples Nacional"?"CARGA TOTAL POR FORA":"CENÁRIO REFORMA"}</small><strong>${totalReformaExibido==null?"Pendente":moedaSimulador(totalReformaExibido)}</strong></div>
     <div class="kpi"><small>VARIAÇÃO COMPARÁVEL</small><strong>${variacao==null?"Não comparável":percentualSimulador(variacao)}</strong></div>
   </div>
 
@@ -2769,12 +2845,12 @@ function SimuladorReformaPublico({
 
   <h2>Premissas tributárias</h2>
   <div class="box">
-    <div class="row"><span>CBS nominal</span><strong>${percentualSimulador(cbsNom)}</strong></div>
-    <div class="row"><span>IBS nominal</span><strong>${percentualSimulador(ibsNom)}</strong></div>
+    <div class="row"><span>CBS de referência informada - premissa</span><strong>${percentualSimulador(cbsNom)}</strong></div>
+    <div class="row"><span>IBS de referência informada - premissa</span><strong>${percentualSimulador(ibsNom)}</strong></div>
     <div class="row"><span>Redução CBS</span><strong>${percentualSimulador(redCbs)}</strong></div>
     <div class="row"><span>Redução IBS</span><strong>${percentualSimulador(redIbs)}</strong></div>
     <div class="row"><span>IBS efetivo no ano</span><strong>${percentualSimulador(ibsEfetiva)}</strong></div>
-    <div class="row"><span>Alíquota combinada aplicada</span><strong>${percentualSimulador(iva)}</strong></div>
+    <div class="row"><span>Alíquota combinada do cenário</span><strong>${percentualSimulador(iva)}</strong></div>
     <div class="row"><span>Tratamento</span><strong>${tratamentoIbsCbs}</strong></div>
     <div class="row"><span>Classificação/fundamento</span><strong>${classificacaoFiscal||"Pendente"}</strong></div>
   </div>
@@ -2792,6 +2868,14 @@ function SimuladorReformaPublico({
     <div class="kpi"><small>DIFERENÇA MENSAL</small><strong>${diferenca==null?"Pendente":moedaSimulador(diferenca)}</strong></div>
     <div class="kpi"><small>DIFERENÇA ANUAL</small><strong>${diferenca==null?"Pendente":moedaSimulador(diferenca*12)}</strong></div>
   </div>
+  <div class="box">
+    <div class="row"><span>DAS residual que permanece</span><strong>${dasResidualUsado==null?"Pendente":moedaSimulador(dasResidualUsado)}</strong></div>
+    <div class="row"><span>Parcela atual sobre consumo substituída</span><strong>${parcelaConsumoDasEstimada==null?"Pendente":moedaSimulador(parcelaConsumoDasEstimada)}</strong></div>
+    <div class="row"><span>IBS/CBS líquido por fora</span><strong>${moedaSimulador(ibsCbsLiquido)}</strong></div>
+    <div class="row"><span>Demais tributos informados</span><strong>${moedaSimulador(outrosAtuaisUsados+isUsado)}</strong></div>
+    <div class="row"><span>CARGA TOTAL POR FORA</span><strong>${simplesFora==null?"Pendente":moedaSimulador(simplesFora)}</strong></div>
+    <div class="muted" style="margin-top:10px"><strong>Origem do DAS residual:</strong> ${origemDasResidual}. ${dasResidualManual==null?"Estimativa substituível pelo valor documental do PGDAS.":"Valor manual/documental priorizado pelo sistema."}</div>
+  </div>
   `:""}
 
   <h2>Comparação completa por regime e por tributo</h2>
@@ -2799,12 +2883,19 @@ function SimuladorReformaPublico({
     <thead><tr><th>Tributo</th><th>Lucro Real</th><th>Lucro Presumido</th><th>Simples</th><th>Reforma</th></tr></thead>
     <tbody>
       ${comparacaoRegimesPdf}
-      <tr class="total"><td>Carga total estimada</td><td>${estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):"Pendente"}</td><td>${estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):"Pendente"}</td><td>${dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):"Pendente"}</td><td>${reforma==null?"Pendente":moedaSimulador(reforma)}</td></tr>
-      <tr><td>Alíquota efetiva</td><td>${fat&&estimativaRealComparativo?percentualSimulador(estimativaRealComparativo.valor/fat*100):"Pendente"}</td><td>${fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):"Pendente"}</td><td>${fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):"Pendente"}</td><td>${fat?percentualSimulador(ibsCbsLiquido/fat*100):"Pendente"}</td></tr>
+      <tr class="total"><td>Carga total estimada</td><td>${estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):"Pendente"}</td><td>${estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):"Pendente"}</td><td>${dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):"Pendente"}</td><td>${totalReformaExibido==null?"Pendente":moedaSimulador(totalReformaExibido)}</td></tr>
+      <tr><td>Alíquota efetiva</td><td>${fat&&estimativaRealComparativo?percentualSimulador(estimativaRealComparativo.valor/fat*100):"Pendente"}</td><td>${fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):"Pendente"}</td><td>${fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):"Pendente"}</td><td>${fat&&totalReformaExibido!=null?percentualSimulador(totalReformaExibido/fat*100):"Pendente"}</td></tr>
     </tbody>
   </table>
 
-  <h2>Transição 2026-2033 - valores anuais</h2>
+  <h2>Cronograma legal da transição 2026-2033</h2>
+  <table>
+    <thead><tr><th>Ano</th><th>CBS prevista</th><th>IBS previsto</th><th>Tributos anteriores</th><th>Publicação</th></tr></thead>
+    <tbody>${cronogramaLegalPdf}</tbody>
+  </table>
+  <div class="muted" style="margin-top:8px">Fontes: EC 132/2023, arts. 125, 127 e 130 do ADCT; LC 214/2025; Receita Federal. Os percentuais da transição são legais. As alíquotas nominais de referência posteriores a 2026 ainda dependem dos atos competentes.</div>
+
+  <h2>Projeção financeira 2026-2033 - valores anuais</h2>
   <table>
     <thead><tr><th>Ano</th><th>Carga atual</th><th>IBS líquido</th><th>CBS líquida</th><th>IBS + CBS</th><th>vs atual</th></tr></thead>
     <tbody>${transicaoPdf}</tbody>
@@ -2821,6 +2912,7 @@ function SimuladorReformaPublico({
     <div class="row"><span>(-) Crédito IBS validado</span><strong>${moedaSimulador(creditoIbsNovo)}</strong></div>
     <div class="row"><span>IBS líquido</span><strong>${moedaSimulador(ibsLiquido)}</strong></div>
     <div class="row"><span>IBS/CBS líquido</span><strong>${moedaSimulador(ibsCbsLiquido)}</strong></div>
+    ${regime==="Simples Nacional"?`<div class="row"><span>DAS residual utilizado</span><strong>${dasResidualUsado==null?"Pendente":moedaSimulador(dasResidualUsado)}</strong></div>`:""}
     <div class="row"><span>PIS/Cofins remanescentes</span><strong>${moedaSimulador(pisCofinsRemanescentes)}</strong></div>
     <div class="row"><span>ICMS/ISS remanescentes</span><strong>${moedaSimulador(icmsIssRemanescentes)}</strong></div>
     <div class="row"><span>IPI remanescente</span><strong>${moedaSimulador(ipiRemanescente)}</strong></div>
@@ -2830,11 +2922,12 @@ function SimuladorReformaPublico({
     <div class="row"><span>CPP / folha</span><strong>${moedaSimulador(cppAtualUsado)}</strong></div>
     <div class="row"><span>Imposto Seletivo</span><strong>${moedaSimulador(isUsado)}</strong></div>
     <div class="row"><span>Outros tributos</span><strong>${moedaSimulador(outrosAtuaisUsados)}</strong></div>
-    <div class="row"><span>${faseTeste2026?"Carga vigente — sem falsa economia":"Total Reforma"}</span><strong>${reforma==null?"Pendente":moedaSimulador(reforma)}</strong></div>
+    <div class="row"><span>${faseTeste2026?"Carga vigente - sem falsa economia":regime==="Simples Nacional"?"CARGA TOTAL POR FORA":"Total Reforma"}</span><strong>${totalReformaExibido==null?"Pendente":moedaSimulador(totalReformaExibido)}</strong></div>
   </div>
-  ${motivoPendencia?`<div class="alert" style="margin-top:14px"><strong>Comparação bloqueada:</strong> ${motivoPendencia}</div>`:""}
+  ${motivoPendencia?`<div class="alert" style="margin-top:14px"><strong>${comparacaoPermitida?"Critério da comparação:":"Comparação bloqueada:"}</strong> ${motivoPendencia}</div>`:""}
 
   <h2>Leitura executiva da IA</h2>
+  <div class="alert"><strong>Critério de interpretação:</strong> ${percentualSimulador(iva)} corresponde à premissa combinada do cenário, não a uma alíquota oficial definitiva.${regime==="Simples Nacional"&&simplesFora!=null?` A carga total por fora utilizada na comparação é ${moedaSimulador(simplesFora)}, já incluindo o DAS residual.`:""}</div>
   <div class="box">
     <p>${String(relatorioIa?.leituraExecutiva||"Relatório de IA ainda não disponível.").replace(/[<>]/g,"")}</p>
   </div>
@@ -3407,6 +3500,10 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             </div>
             <div style={{...muted,fontSize:7.2,lineHeight:1.4,marginTop:5}}>Esses valores dependem do anexo, faixa, atividade, composição e regras vigentes. Sem ambos, o resultado será apenas uma tendência inicial.</div>
           </details>
+          {dasResidualUsado!=null&&<div style={{marginTop:8,background:"#EEF8F3",border:"1px solid #CDE8DA",borderRadius:9,padding:9,fontSize:7.6,lineHeight:1.45,color:"#176B47"}}>
+            <b>DAS residual usado:</b> {moedaSimulador(dasResidualUsado)} · {origemDasResidual}.
+            {dasResidualManual==null&&<div style={{marginTop:3,color:"#5B667A"}}>Para máxima precisão, abra “Validar valores técnicos” e substitua pela parcela residual apurada no PGDAS.</div>}
+          </div>}
         </div>}
       </div>
 
@@ -3636,19 +3733,19 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             atual==null?"comparativo preliminar":"valor informado"
           )}
           {kpi(
-            faseTeste2026?"Carga vigente em 2026":regime==="Simples Nacional"?"IBS/CBS regular líquido":"Cenário Reforma",
-            reforma==null?"Pendente":moedaSimulador(reforma),
-            reforma!=null&&atual!=null&&reforma>atual?"#B42318":"#176B47"
+            faseTeste2026?"Carga vigente em 2026":regime==="Simples Nacional"?"Carga total por fora":"Cenário Reforma",
+            totalReformaExibido==null?"Pendente":moedaSimulador(totalReformaExibido),
+            totalReformaExibido!=null&&atual!=null&&totalReformaExibido>atual?"#B42318":"#176B47"
           )}
         </div>
 
-        {atual!=null&&reforma!=null&&<div style={{display:"grid",gap:9,marginTop:11}}>
-          {barra("Hoje",atual,Math.max(atual,reforma,1),"#31589C")}
+        {atual!=null&&totalReformaExibido!=null&&<div style={{display:"grid",gap:9,marginTop:11}}>
+          {barra("Hoje",atual,Math.max(atual,totalReformaExibido,1),"#31589C")}
           {barra(
-            "Reforma",
-            reforma,
-            Math.max(atual,reforma,1),
-            reforma>atual?"#FF6B4A":"#176B47"
+            regime==="Simples Nacional"?"Carga total por fora":"Reforma",
+            totalReformaExibido,
+            Math.max(atual,totalReformaExibido,1),
+            totalReformaExibido>atual?"#FF6B4A":"#176B47"
           )}
         </div>}
 
@@ -3684,6 +3781,11 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             {kpi("Dentro do DAS",simplesDentro==null?"A validar":moedaSimulador(simplesDentro),"#31589C")}
             {kpi("Carga total por fora",simplesFora==null?"A validar":moedaSimulador(simplesFora),"#176B47")}
           </div>
+          {simplesFora!=null&&<div style={{marginTop:7,background:"#F7F9FC",borderRadius:9,padding:9,fontSize:7.6,lineHeight:1.45}}>
+            <b>Composição por fora:</b> DAS residual {moedaSimulador(dasResidualUsado)} + IBS/CBS líquido {moedaSimulador(ibsCbsLiquido)} + demais tributos {moedaSimulador(outrosAtuaisUsados+isUsado)} = <b>{moedaSimulador(simplesFora)}</b>.<br/>
+            <span style={{color:MUTED}}>Origem do residual: {origemDasResidual}.</span>
+          </div>}
+          {parcelaConsumoDasEstimada!=null&&<div style={{...muted,fontSize:7.2,lineHeight:1.4,marginTop:5}}>Do DAS atual de {moedaSimulador(dasAtualReferencia)}, o sistema separou {moedaSimulador(parcelaConsumoDasEstimada)} como parcela de tributos sobre consumo substituída e {moedaSimulador(dasResidualUsado)} como parcela remanescente.</div>}
           <div style={{marginTop:8,background:"#EEF5FF",borderRadius:9,padding:9,fontSize:8,lineHeight:1.45}}>
             <b>Tendência inicial:</b> {tendenciaSimples}
           </div>
@@ -3710,7 +3812,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
                 <td data-label="Lucro Real" style={{padding:"8px 6px",textAlign:"right"}}>{estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):'Pendente'}</td>
                 <td data-label="Lucro Presumido" style={{padding:"8px 6px",textAlign:"right"}}>{estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):'Pendente'}</td>
                 <td data-label="Simples" style={{padding:"8px 6px",textAlign:"right"}}>{dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):'Pendente'}</td>
-                <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{reforma==null?'Pendente':moedaSimulador(reforma)}</td>
+                <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{totalReformaExibido==null?'Pendente':moedaSimulador(totalReformaExibido)}</td>
               </tr>
               <tr>
                 <td data-label="Indicador" style={{padding:"8px 6px"}}>Alíquota nominal</td>
@@ -3724,7 +3826,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
                 <td data-label="Lucro Real" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador(estimativaRealComparativo.valor/fat*100):'Pendente'}</td>
                 <td data-label="Lucro Presumido" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
                 <td data-label="Simples" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
-                <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{fat?percentualSimulador(ibsCbsLiquido/fat*100):'Pendente'}</td>
+                <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&totalReformaExibido!=null?percentualSimulador(totalReformaExibido/fat*100):'Pendente'}</td>
               </tr>
             </tbody>
           </table>
@@ -3811,7 +3913,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           ["Imposto Seletivo",isUsado],
           ["Outros tributos",outrosAtuaisUsados],
           ["Valor da operação + IBS/CBS",precoFinalNovo],
-          [faseTeste2026?"Carga vigente — sem falsa economia":"Total Reforma",reforma],
+          [faseTeste2026?"Carga vigente - sem falsa economia":regime==="Simples Nacional"?"Carga total por fora":"Total Reforma",totalReformaExibido],
         ].map(([l,v])=><div key={l} style={{
           display:"flex",justifyContent:"space-between",
           gap:8,borderBottom:"1px solid #EEF0F4",
@@ -3861,9 +3963,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         {kpi("Faturamento",moedaSimulador(fat))}
         {kpi("Hoje",atual==null?"Pendente":moedaSimulador(atual),"#31589C")}
         {kpi(
-          "Reforma",
-          reforma==null?"Pendente":moedaSimulador(reforma),
-          reforma!=null&&atual!=null&&reforma>atual?"#B42318":"#176B47"
+          regime==="Simples Nacional"?"Carga total por fora":"Reforma",
+          totalReformaExibido==null?"Pendente":moedaSimulador(totalReformaExibido),
+          totalReformaExibido!=null&&atual!=null&&totalReformaExibido>atual?"#B42318":"#176B47"
         )}
         {kpi(
           "Diferença anual",
@@ -3892,6 +3994,10 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           </h3>
 
           {gerandoRelatorioIa&&<Loader2 size={16} className="spin"/>}
+        </div>
+
+        <div style={{marginTop:8,background:"#EEF5FF",border:"1px solid #CADAF2",borderRadius:9,padding:8,fontSize:7.6,lineHeight:1.45,color:"#31589C"}}>
+          <b>Critério da leitura:</b> {percentualSimulador(iva)} é a alíquota combinada da premissa selecionada, não uma alíquota oficial definitiva. {regime==="Simples Nacional"&&simplesFora!=null?`A comparação considera a carga total por fora de ${moedaSimulador(simplesFora)}, incluindo DAS residual de ${moedaSimulador(dasResidualUsado)}.`:""}
         </div>
 
         {gerandoRelatorioIa&&<div style={{...muted,marginTop:8}}>
