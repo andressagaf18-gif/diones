@@ -10,9 +10,9 @@ const inp={width:"100%",boxSizing:"border-box",padding:"9px 10px",border:"1px so
 const grid=(n=3)=>({display:"grid",gridTemplateColumns:`repeat(auto-fit,minmax(${n>=5?"125px":"145px"},1fr))`,gap:8});
 const fmtPct=v=>`${numero(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}%`;
 
-function F({t,v,s,help,type="input",children}){
+function F({t,v,s,help,type="input",children,disabled=false}){
  return <label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,color:C.navy}}>{t}
-  {type==="select"?<select value={v} onChange={e=>s(e.target.value)} style={inp}>{children}</select>:<input value={v} onChange={e=>s(e.target.value)} style={inp}/>} 
+  {type==="select"?<select value={v} disabled={disabled} onChange={e=>s(e.target.value)} style={{...inp,opacity:disabled ? .7 : 1}}>{children}</select>:<input value={v} disabled={disabled} onChange={e=>s(e.target.value)} style={{...inp,opacity:disabled ? .7 : 1}}/>} 
   {help&&<small style={{fontWeight:500,color:C.muted,lineHeight:1.35}}>{help}</small>}
  </label>;
 }
@@ -39,11 +39,11 @@ const TD=({children,left=false,bold=false,tone})=><td style={{padding:"7px",text
 export default function ReformaSimulador({dadosIniciais={},onResultado}){
  const inicial=dadosIniciais.componentesDas||{};
  const [regime,setRegime]=useState(dadosIniciais.regime||"SIMPLES_NACIONAL");
- const [ano,setAno]=useState("2026");
+ const [ano,setAno]=useState(String(dadosIniciais.ano||"2027"));
  const [fat,setFat]=useState("");
  const [base,setBase]=useState("");
  const [meses,setMeses]=useState("1");
- const [cbs,setCbs]=useState(""),[ibs,setIbs]=useState("");
+ const [cbs,setCbs]=useState(String(dadosIniciais.aliquotaCBS??"")),[ibs,setIbs]=useState(String(dadosIniciais.aliquotaIBS??""));
  const [redCbs,setRedCbs]=useState(String(dadosIniciais.reducaoCBS||0));
  const [redIbs,setRedIbs]=useState(String(dadosIniciais.reducaoIBS||0));
  const [credCbs,setCredCbs]=useState(String(dadosIniciais.creditoCBS||""));
@@ -57,7 +57,7 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
  const [crescimento,setCrescimento]=useState("20");
  const [presIrpj,setPresIrpj]=useState("8"),[presCsll,setPresCsll]=useState("12");
  const [lucro,setLucro]=useState(""),[adicoes,setAdicoes]=useState(""),[exclusoes,setExclusoes]=useState(""),[prejuizo,setPrejuizo]=useState("");
- const [beneficio,setBeneficio]=useState(""),[baseLegal,setBaseLegal]=useState(""),[statusBeneficio,setStatusBeneficio]=useState("POTENCIAL_VALIDAR");
+ const [beneficio,setBeneficio]=useState(dadosIniciais.tratamentoValidado||""),[baseLegal,setBaseLegal]=useState(dadosIniciais.baseLegalValidada||""),[statusBeneficio,setStatusBeneficio]=useState(dadosIniciais.validacaoTributariaStatus==="VALIDADO"?"APLICAVEL":"POTENCIAL_VALIDAR");
  const [trib,setTrib]=useState({
   pis:String(inicial.pis||""),cofins:String(inicial.cofins||""),icms:String(inicial.icms||""),iss:String(inicial.iss||""),
   ipi:String(inicial.ipi||""),cpp:String(inicial.cpp||""),irpj:String(inicial.irpj||""),adicionalIrpj:"",
@@ -70,6 +70,35 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
    setFat(String(dadosIniciais.faturamento));setBase(String(dadosIniciais.faturamento));
   }
  },[dadosIniciais.faturamento]);
+
+ useEffect(()=>{
+  if(dadosIniciais.regime)setRegime(dadosIniciais.regime);
+ },[dadosIniciais.regime]);
+
+ useEffect(()=>{
+  if(dadosIniciais.ano)setAno(String(dadosIniciais.ano));
+ },[dadosIniciais.ano]);
+
+ useEffect(()=>{
+  if(dadosIniciais.validacaoTributariaStatus!=="VALIDADO")return;
+  setCbs(String(dadosIniciais.aliquotaCBS??""));
+  setIbs(String(dadosIniciais.aliquotaIBS??""));
+  setRedCbs(String(dadosIniciais.reducaoCBS??0));
+  setRedIbs(String(dadosIniciais.reducaoIBS??0));
+  setBeneficio(dadosIniciais.tratamentoValidado||"");
+  setBaseLegal(dadosIniciais.baseLegalValidada||"");
+  setStatusBeneficio("APLICAVEL");
+ },[
+  dadosIniciais.validacaoTributariaStatus,
+  dadosIniciais.aliquotaCBS,
+  dadosIniciais.aliquotaIBS,
+  dadosIniciais.reducaoCBS,
+  dadosIniciais.reducaoIBS,
+  dadosIniciais.tratamentoValidado,
+  dadosIniciais.baseLegalValidada
+ ]);
+
+ const premissasBloqueadas=dadosIniciais.validacaoTributariaStatus==="VALIDADO";
 
  const parametros=useMemo(()=>({
   regime,ano,faturamento:fat,baseTributavel:base||fat,mesesPeriodo:meses,
@@ -119,9 +148,14 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
   crescimento:{atual:calc,projetado:proj,faturamentoProjetado:numero(fat)*escala,aumentoImposto:proj.totalProjetado-calc.totalProjetado,
    aumentoImpostoPct:calc.totalProjetado?((proj.totalProjetado/calc.totalProjetado)-1)*100:null},
   beneficio:{nome:beneficio,baseLegal,status:statusBeneficio}
+  ,validacaoTributaria:{
+   status:dadosIniciais.validacaoTributariaStatus||"NAO_PESQUISADO",
+   pesquisaId:dadosIniciais.pesquisaTributariaId||"",
+   aplicada:premissasBloqueadas
+  }
   ,composicaoDas:{componentes:componentesDas,total:somaComponentesDas,dasInformado:numero(das),conciliado:dasConciliado}
   ,transicao
- }),[parametros,fat,ano,calc,simples,proj,escala,beneficio,baseLegal,statusBeneficio,componentesDas,somaComponentesDas,das,dasConciliado,transicao]);
+  }),[parametros,fat,ano,calc,simples,proj,escala,beneficio,baseLegal,statusBeneficio,componentesDas,somaComponentesDas,das,dasConciliado,transicao,dadosIniciais.validacaoTributariaStatus,dadosIniciais.pesquisaTributariaId,premissasBloqueadas]);
  useEffect(()=>{onResultado?.(resultado)},[resultado,onResultado]);
 
  const totalNovo=regime==="SIMPLES_NACIONAL"?(foraSimples?simples.fora:simples.dentro):calc.totalProjetado;
@@ -157,7 +191,8 @@ export default function ReformaSimulador({dadosIniciais={},onResultado}){
   {regime==="LUCRO_REAL"&&<div style={box}><SectionTitle sub="IRPJ e CSLL incidem sobre o lucro fiscal positivo. Prejuízo no período zera esses tributos.">3. Particularidades do Lucro Real</SectionTitle><div style={grid(4)}><F t="Lucro/prejuízo antes de IRPJ/CSLL" v={lucro} s={setLucro}/><F t="Adições fiscais" v={adicoes} s={setAdicoes}/><F t="Exclusões fiscais" v={exclusoes} s={setExclusoes}/><F t="Prejuízo fiscal compensável" v={prejuizo} s={setPrejuizo} help="O motor limita a compensação a 30% da base positiva."/></div></div>}
 
   <div style={box}><SectionTitle sub="As alíquotas cheias futuras devem ser preenchidas com premissa validada. O ano define a parcela aplicável na transição.">{regime==="SIMPLES_NACIONAL"?"3":"4"}. IBS/CBS e créditos</SectionTitle>
-   <div style={grid(4)}><F t="Valor da operação antes do IS" v={base} s={setBase} help="O motor soma o Imposto Seletivo a esta base quando aplicável."/><F t="CBS cheia %" v={cbs} s={setCbs}/><F t="IBS cheio %" v={ibs} s={setIbs}/><F t="Redução CBS %" v={redCbs} s={setRedCbs}/><F t="Redução IBS %" v={redIbs} s={setRedIbs}/><F t="Crédito CBS" v={credCbs} s={setCredCbs}/><F t="Crédito IBS" v={credIbs} s={setCredIbs}/><F t="Imposto Seletivo do período" v={seletivo} s={setSeletivo} help="Quando aplicável, é somado à base do IBS/CBS e também à carga total."/>{ano==="2026"&&<label style={{display:"flex",gap:7,alignItems:"center",fontSize:9,fontWeight:800}}><input type="checkbox" checked={dispensa2026} onChange={e=>setDispensa2026(e.target.checked)}/>Considerar dispensa/compensação do teste de 2026</label>}{numero(ano)>=2027&&<label style={{display:"flex",gap:7,alignItems:"center",fontSize:9,fontWeight:800}}><input type="checkbox" checked={manterIpi} onChange={e=>setManterIpi(e.target.checked)}/>Manter IPI por exceção validada</label>}</div>
+   <div style={{marginBottom:9,padding:"8px 10px",borderRadius:9,background:premissasBloqueadas?"#E9F7EF":"#FFF7E8",border:`1px solid ${premissasBloqueadas?"#BFE3CF":"#F0D49C"}`,fontSize:9,color:premissasBloqueadas?C.green:C.amber}}><b>{premissasBloqueadas?"Premissas validadas aplicadas ao motor":"Premissas tributárias não validadas"}</b>{dadosIniciais.pesquisaTributariaId?` · Pesquisa ${dadosIniciais.pesquisaTributariaId}`:""}. {premissasBloqueadas?"CBS, IBS e reduções ficam bloqueadas para manter a trilha de auditoria.":"Pesquise e valide o tratamento na etapa IBS/CBS antes de finalizar."}</div>
+   <div style={grid(4)}><F t="Base tributável" v={base} s={setBase}/><F t="CBS cheia %" v={cbs} s={setCbs} disabled={premissasBloqueadas}/><F t="IBS cheio %" v={ibs} s={setIbs} disabled={premissasBloqueadas}/><F t="Redução CBS %" v={redCbs} s={setRedCbs} disabled={premissasBloqueadas}/><F t="Redução IBS %" v={redIbs} s={setRedIbs} disabled={premissasBloqueadas}/><F t="Crédito CBS" v={credCbs} s={setCredCbs}/><F t="Crédito IBS" v={credIbs} s={setCredIbs}/><F t="Imposto Seletivo do período" v={seletivo} s={setSeletivo} help="Preencher somente quando a operação estiver sujeita."/>{ano==="2026"&&<label style={{display:"flex",gap:7,alignItems:"center",fontSize:9,fontWeight:800}}><input type="checkbox" checked={dispensa2026} onChange={e=>setDispensa2026(e.target.checked)}/>Considerar dispensa/compensação do teste de 2026</label>}{numero(ano)>=2027&&<label style={{display:"flex",gap:7,alignItems:"center",fontSize:9,fontWeight:800}}><input type="checkbox" checked={manterIpi} onChange={e=>setManterIpi(e.target.checked)}/>Manter IPI por exceção validada</label>}</div>
   </div>
 
   <div style={box}><SectionTitle sub="A comparação usa a carga total, não apenas IBS e CBS.">{regime==="SIMPLES_NACIONAL"?"4":"5"}. Comparativo completo</SectionTitle>
