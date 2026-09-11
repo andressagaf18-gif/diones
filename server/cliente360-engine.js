@@ -1,8 +1,10 @@
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
-import { usuarioAutenticado } from "../api/lib/auth.js";
+import { usuarioAutenticado } from "./auth.js";
 
-const sql = neon(process.env.DATABASE_URL);
+const sql = process.env.DATABASE_URL
+  ? neon(process.env.DATABASE_URL)
+  : null;
 
 let schemaPromise = null;
 
@@ -204,8 +206,11 @@ async function prepararSchema() {
 
 async function garantirSchema() {
   if (!schemaPromise) {
-    schemaPromise =
-      prepararSchema();
+    schemaPromise = prepararSchema()
+      .catch((error) => {
+        schemaPromise = null;
+        throw error;
+      });
   }
 
   return schemaPromise;
@@ -646,8 +651,6 @@ async function listarClientes(
       });
   }
 
-  await sincronizarClientes();
-
   const busca =
     texto(
       req.query?.busca,
@@ -875,8 +878,6 @@ async function verCliente(
           "Não autorizado.",
       });
   }
-
-  await sincronizarClientes();
 
   const clienteId =
     texto(
