@@ -892,19 +892,6 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   setDasPeriodoFonte(r);
   return r;
  };
-
- // Mantém o total de tributos do Simples na mesma escala do DAS validado.
- // Algumas versões antigas salvaram valores monetários multiplicados por 100
- // (ex.: 14.283,35 como 1.428.335,00). Sem esta sincronização, o topo mostrava
- // o DAS corrigido, mas recomendação, comparativos e relatório usavam o legado.
- useEffect(()=>{
-  if(!/simples/i.test(String(regime||"")))return;
-
-  const r=corrigirDasLegado(tributosAtuais);
-  if(r.corrigido&&Math.abs(n(tributosAtuais)-r.valor)>0.005){
-   setTributosAtuais(String(r.valor));
-  }
- },[regime,tributosAtuais,extracao,receita,faturamentoAnual]);
  const input={width:"100%",border:"1px solid #D9E0EA",borderRadius:12,padding:"11px 12px",fontSize:10.5,boxSizing:"border-box",background:"#FCFDFE",color:"#17233D",outline:"none",transition:"border-color .18s, box-shadow .18s"};
  const card={background:"#fff",border:"1px solid #E5EAF1",borderRadius:18,padding:18,boxShadow:"0 8px 26px rgba(23,35,61,.045)"};
  const digits=v=>String(v||"").replace(/\D/g,"");
@@ -1433,9 +1420,26 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     }
    });
 
-   setOk(`Reforma Tributária salva. Backup automático V${resultado?.backup?.versao||"-"} criado com ${resultado?.backup?.documentos??documentosBanco.length} documento(s).`);
+   const publicado=resultado?.publicacaoDiagnostico;
+   setOk(publicado?.diagnosticoId
+    ?`Reforma finalizada e publicada em Diagnósticos. ID ${publicado.diagnosticoId}. As versões Cliente e Administração foram salvas.`
+    :`Reforma Tributária salva. Backup automático V${resultado?.backup?.versao||"-"} criado com ${resultado?.backup?.documentos??documentosBanco.length} documento(s).`);
+   return resultado;
   }catch(e){
    setErro(e.message);
+   return null;
+  }
+ }
+
+ async function finalizarRelatorio(){
+  setErro("");
+  if(!analise){setErro("Gere o diagnóstico técnico antes de finalizar o relatório.");return;}
+  if(!simulacaoEfetiva&&!simulacao){setErro("Conclua a simulação antes de finalizar o relatório.");return;}
+  setCarregando(true);
+  try{
+   await salvar("FINALIZADO");
+  }finally{
+   setCarregando(false);
   }
  }
  const fatSim=faturamentoAnual||receita;
@@ -1542,18 +1546,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
   const residualAtual=estimarDasResidualPorFora({dasAtual,componentes});
   const totalIbsCbs=n(ibsCbs?.total);
-  const cargaCompleta=simulacao?.cargaCompleta||{};
-  const tributosForaDas=n(cargaCompleta?.tributosForaDas);
-  const impostoSeletivo=n(cargaCompleta?.impostoSeletivo);
-  const testeExigivel=n(cargaCompleta?.testeExigivel);
-  const dentro=dasAtual+tributosForaDas+impostoSeletivo;
-  const foraOriginal=simulacao?.simples?.fora;
-  const fora=
-   foraOriginal==null||residualAtual.residual==null
-    ?null
-    :residualAtual.residual+totalIbsCbs+tributosForaDas+impostoSeletivo+testeExigivel;
+  const fora=residualAtual.residual==null?null:residualAtual.residual+totalIbsCbs;
 
-  const dasAnterior=n(simulacao?.parametros?.tributosAtuais?.das)||n(simulacao?.composicaoDas?.dasInformado);
+  const dasAnterior=n(simulacao?.simples?.dentro);
   const residualAnterior=simulacao?.simples?.dasResidualEstimado?.residual;
 
   const mudouDas=dasAnterior>0&&dasAtual>0&&Math.abs(dasAnterior-dasAtual)>0.01;
@@ -1565,14 +1560,14 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    ...simulacao,
    simples:{
     ...(simulacao?.simples||{}),
-    dentro,
+    dentro:dasAtual,
     fora,
     dasResidualEstimado:residualAtual,
-    diferenca:fora==null?null:fora-dentro,
+    diferenca:fora==null?null:fora-dasAtual,
     menorCargaMatematica:
      fora==null?"NAO_CALCULAVEL":
-     fora<dentro?"FORA":
-     fora>dentro?"DENTRO":"EMPATE"
+     fora<dasAtual?"FORA":
+     fora>dasAtual?"DENTRO":"EMPATE"
    },
    reconciliacao:{
     aplicada:mudouDas||mudouResidual,
@@ -2826,6 +2821,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
       <span style={{background:`${corRisco}33`,border:`1px solid ${corRisco}`,borderRadius:999,padding:"6px 9px",fontSize:8,fontWeight:900}}>RISCO {motor.risco}</span>
       <button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px",borderRadius:8,fontWeight:900}}>Salvar inteligência</button>
+      <button onClick={finalizarRelatorio} disabled={carregando||!analise||(!simulacaoEfetiva&&!simulacao)} style={{padding:"9px 12px",borderRadius:8,fontWeight:900,background:"#0F6E56",color:"#fff",border:0,cursor:"pointer",opacity:(carregando||!analise||(!simulacaoEfetiva&&!simulacao)) ? .55 : 1}}>Finalizar e enviar para Diagnósticos</button>
       <button onClick={gerarPdfCliente} disabled={gerandoPdfCliente} style={{padding:"9px 12px",borderRadius:8,fontWeight:900,background:"#FF6B4A",color:"#fff",border:0,cursor:"pointer"}}>{gerandoPdfCliente?"Gerando PDF...":"Gerar PDF do cliente"}</button>
      </div>
     </div>
