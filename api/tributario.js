@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { createHash } from "node:crypto";
-import { usuarioAutenticado } from "./lib/auth.js";
+import { usuarioAutenticado } from "../server/auth.js";
 
 const sql =
   neon(
