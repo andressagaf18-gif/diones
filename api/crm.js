@@ -3,7 +3,7 @@ import crypto from "crypto";
 import dashboardHandler from "../server/dashboard-engine.js";
 import documentosHandler from "../server/documentos-engine.js";
 import cliente360Handler from "../server/cliente360-engine.js";
-import { usuarioAutenticado } from "./lib/auth.js";
+import { usuarioAutenticado } from "../server/auth.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
