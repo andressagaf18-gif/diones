@@ -669,8 +669,7 @@ export default function OperacionalBI({
             .map((lead) => [String(lead.diagnosticoId), lead])
         );
 
-        setRegistros(
-          lista.map((item) => {
+        const diagnosticosConcluidos=lista.map((item) => {
             const leadVinculado =
               leadPorDiagnostico.get(String(item.id)) || null;
 
@@ -707,8 +706,26 @@ export default function OperacionalBI({
               ),
               _tipo: tipoDiagnostico(enriquecido),
             };
-          })
-        );
+          });
+
+        const rascunhos=leads
+          .filter(lead=>!lead?.diagnosticoId&&["ACESSOU","EM_PREENCHIMENTO","NAO_CONCLUIDO"].includes(String(lead?.statusDiagnostico||"").toUpperCase()))
+          .map(lead=>({
+            id:`rascunho-${lead.leadId||lead.id}`,
+            leadId:lead.leadId||lead.id,
+            razaoSocial:lead.razaoSocial||lead.nome||"Empresa não informada",
+            nome:lead.nome||"-",cnpj:lead.cnpj||"",email:lead.email||"",telefone:lead.telefone||"",
+            origem:lead.origem||"direto",campanha:lead.campanha||"",
+            prioridadeComercial:lead.prioridadeComercial||"",
+            statusDiagnostico:String(lead.statusDiagnostico||"EM_PREENCHIMENTO").toUpperCase(),
+            criadoEm:lead.createdAt||lead.updatedAt,
+            score:null,progressoPercentual:Number(lead.progressoPercentual||0),
+            _estrutura:normalizarEstrutura(lead.estruturaNegocio),
+            _tipo:tipoDiagnostico({estruturaNegocio:lead.estruturaNegocio,lead}),
+            _rascunho:true,lead,
+          }));
+
+        setRegistros([...rascunhos,...diagnosticosConcluidos]);
       } else {
         const [ra, rr] = await Promise.all([
           fetch(
@@ -2182,6 +2199,7 @@ export default function OperacionalBI({
               >
                 <input
                   type="checkbox"
+                  disabled={Boolean(item._rascunho)}
                   checked={selecionados.includes(item._casoId || item.id)}
                   onChange={() => alternarItem(item._casoId || item.id)}
                 />
@@ -2323,15 +2341,12 @@ export default function OperacionalBI({
                             flexWrap: "wrap",
                           }}
                         >
-                          <Botao
-                            onClick={() =>
-                              onAbrirDiagnostico?.(item.id)
-                            }
-                          >
-                            Abrir diagnóstico
-                          </Botao>
-
-                          <Botao
+                          {item._rascunho?<div style={{fontSize:9,color:"#9A6700",fontWeight:900}}>
+                            Rascunho · {item.progressoPercentual}% preenchido<br/>
+                            O diagnóstico será vinculado ao mesmo lead após gerar e salvar o relatório.
+                          </div>:<><Botao
+                            onClick={() => onAbrirDiagnostico?.(item.id)}
+                          >Abrir diagnóstico</Botao><Botao
                             secundario
                             disabled={
                               processandoArquivoId === item.id
@@ -2345,7 +2360,7 @@ export default function OperacionalBI({
                               : item.arquivado
                               ? "Desarquivar"
                               : "Arquivar"}
-                          </Botao>
+                          </Botao></>}
                         </div>
                       </div>
                     </div>
