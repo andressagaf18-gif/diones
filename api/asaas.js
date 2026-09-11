@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { exigirAutenticacao } from "./lib/auth.js";
+import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
