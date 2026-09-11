@@ -296,16 +296,6 @@ async function prepararSchema() {
   `;
 
   await sql`
-    ALTER TABLE crm_atendimentos_departamento
-    ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT FALSE
-  `;
-
-  await sql`
-    ALTER TABLE crm_atendimentos_departamento
-    ADD COLUMN IF NOT EXISTS arquivado_em TIMESTAMPTZ
-  `;
-
-  await sql`
     ALTER TABLE diagnostico_leads
     ADD COLUMN IF NOT EXISTS motivos_prioridade JSONB NOT NULL DEFAULT '[]'::jsonb
   `;
@@ -420,6 +410,19 @@ async function prepararSchema() {
     ALTER TABLE crm_atendimentos_departamento
     ADD COLUMN IF NOT EXISTS ultimo_acionamento
     TIMESTAMPTZ
+  `;
+
+  // Esta tabela precisa existir antes de receber as colunas de arquivamento.
+  // Na versao anterior, estes ALTERs vinham antes do CREATE TABLE e faziam
+  // todas as acoes de /api/crm (inclusive dashboard e leads) falharem.
+  await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT FALSE
+  `;
+
+  await sql`
+    ALTER TABLE crm_atendimentos_departamento
+    ADD COLUMN IF NOT EXISTS arquivado_em TIMESTAMPTZ
   `;
 
   await sql`
@@ -565,10 +568,16 @@ async function prepararSchema() {
     ON crm_atendimento_historico (atendimento_id, created_at DESC)
   `;
 
-  await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_atendimentos_diag_area
-    ON crm_atendimentos_departamento (diagnostico_id, area)
-  `;
+  try {
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_atendimentos_diag_area
+      ON crm_atendimentos_departamento (diagnostico_id, area)
+    `;
+  } catch (error) {
+    // Bases antigas podem conter duplicidades. Isso deve ser saneado depois,
+    // mas nao pode impedir Dashboard, Leads e demais rotas de carregarem.
+    console.warn("Indice unico de atendimentos pendente de saneamento:", error?.message);
+  }
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_crm_atendimentos_responsavel
@@ -636,11 +645,15 @@ async function prepararSchema() {
     )
   `;
 
-  await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_agendamentos_horario
-    ON crm_agendamentos (data_agenda, hora_agenda)
-    WHERE status = 'AGENDADO'
-  `;
+  try {
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_agendamentos_horario
+      ON crm_agendamentos (data_agenda, hora_agenda)
+      WHERE status = 'AGENDADO'
+    `;
+  } catch (error) {
+    console.warn("Indice unico da agenda pendente de saneamento:", error?.message);
+  }
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_crm_agendamentos_data
@@ -6940,13 +6953,19 @@ export default async function handler(req, res) {
       });
     }
 
-    await garantirSchema();
-
     const action =
       texto(
         req.query?.action,
         60
       ).toLowerCase();
+
+    // O dashboard apenas consulta e cada bloco possui fallback seguro.
+    // Ele nao deve aguardar dezenas de DDLs da migracao do CRM em todo cold start.
+    if (action === "dashboard") {
+      return dashboardHandler(req, res);
+    }
+
+    await garantirSchema();
 
     switch (action) {
       case "iniciar":
