@@ -56,6 +56,7 @@ async function garantirBanco() {
       id TEXT PRIMARY KEY,
       token_publico_hash TEXT NOT NULL,
       cache_key TEXT NOT NULL,
+      projeto_id TEXT,
       cnpj TEXT,
       cnae TEXT NOT NULL,
       atividade_real TEXT NOT NULL,
@@ -81,8 +82,10 @@ async function garantirBanco() {
       motivo_rejeicao TEXT
     )
   `;
+  await sql`ALTER TABLE pesquisas_tributarias ADD COLUMN IF NOT EXISTS projeto_id TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS pesquisas_tributarias_cache_idx ON pesquisas_tributarias(cache_key, criado_em DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS pesquisas_tributarias_status_idx ON pesquisas_tributarias(status, criado_em DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS pesquisas_tributarias_projeto_idx ON pesquisas_tributarias(projeto_id, criado_em DESC)`;
   await sql`
     CREATE TABLE IF NOT EXISTS pesquisas_tributarias_limites (
       chave TEXT PRIMARY KEY,
@@ -185,8 +188,8 @@ async function pesquisar(req, res) {
     const origem = cache[0];
     await sql`
       INSERT INTO pesquisas_tributarias
-      (id,token_publico_hash,cache_key,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,fontes,modelo,prompt_versao,prompt_hash,pesquisa_origem_id)
-      VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},'AGUARDANDO_VALIDACAO_CONSULTOR',${JSON.stringify(origem.resultado_ia)},${JSON.stringify(origem.fontes)},${origem.modelo},${PROMPT_VERSAO},${origem.prompt_hash},${origem.id})
+      (id,token_publico_hash,cache_key,projeto_id,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,fontes,modelo,prompt_versao,prompt_hash,pesquisa_origem_id)
+      VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.projetoId)},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},'AGUARDANDO_VALIDACAO_CONSULTOR',${JSON.stringify(origem.resultado_ia)},${JSON.stringify(origem.fontes)},${origem.modelo},${PROMPT_VERSAO},${origem.prompt_hash},${origem.id})
     `;
     return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:true, status:"AGUARDANDO_VALIDACAO_CONSULTOR", resultado:origem.resultado_ia });
   }
@@ -216,8 +219,8 @@ Responda exclusivamente em JSON com: tratamento_sugerido; beneficio_legal {exist
   if (!resultado.fontes.length) resultado.alertas.push("Nenhuma fonte oficial válida foi capturada; não validar antes de nova pesquisa.");
   await sql`
     INSERT INTO pesquisas_tributarias
-    (id,token_publico_hash,cache_key,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,fontes,modelo,prompt_versao,prompt_hash,openai_request_id,uso_tokens)
-    VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},'AGUARDANDO_VALIDACAO_CONSULTOR',${JSON.stringify(resultado)},${JSON.stringify(resultado.fontes)},${modelo},${PROMPT_VERSAO},${hash(prompt)},${texto(data?.id)},${JSON.stringify(data?.usage||{})})
+    (id,token_publico_hash,cache_key,projeto_id,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,fontes,modelo,prompt_versao,prompt_hash,openai_request_id,uso_tokens)
+    VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.projetoId)},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},'AGUARDANDO_VALIDACAO_CONSULTOR',${JSON.stringify(resultado)},${JSON.stringify(resultado.fontes)},${modelo},${PROMPT_VERSAO},${hash(prompt)},${texto(data?.id)},${JSON.stringify(data?.usage||{})})
   `;
   return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:false, status:"AGUARDANDO_VALIDACAO_CONSULTOR", resultado });
 }
