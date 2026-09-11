@@ -1,7 +1,9 @@
 import { neon } from "@neondatabase/serverless";
-import { usuarioAutenticado } from "../api/lib/auth.js";
+import { usuarioAutenticado } from "./auth.js";
 
-const sql = neon(process.env.DATABASE_URL);
+const sql = process.env.DATABASE_URL
+  ? neon(process.env.DATABASE_URL)
+  : null;
 
 // =========================================================
 // HELPERS
@@ -34,11 +36,153 @@ async function consultaSegura(fn, fallback) {
   }
 }
 
+// V20: as consultas sao independentes e executadas em paralelo. Uma tabela ou
+// coluna antiga nao interrompe as demais e o cold start deixa de somar a
+// latencia de todos os blocos do painel.
+export default async function dashboardHandler(req, res) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ sucesso:false, error:"Método não permitido." });
+  }
+
+  if (!autorizado(req)) {
+    return res.status(401).json({ sucesso:false, error:"Não autorizado." });
+  }
+
+  if (!process.env.DATABASE_URL) {
+    return res.status(500).json({ sucesso:false, error:"DATABASE_URL não configurada." });
+  }
+
+  try {
+    const [
+      resumoRows,
+      atendimentoRows,
+      propostaRows,
+      origensRows,
+      leadsRows,
+      atendimentosRows,
+      funilRows,
+    ] = await Promise.all([
+      consultaSegura(() => sql`
+        SELECT
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE)::INTEGER AS total_leads,
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE AND (status_diagnostico='CONCLUIDO' OR diagnostico_id<>''))::INTEGER AS diagnosticos,
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE AND (prioridade_comercial IN ('A','B') OR score_comercial>=60 OR status_comercial IN ('REUNIAO_AGENDADA','PROPOSTA_ENVIADA','CONVERTIDO')))::INTEGER AS oportunidades,
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE AND (prioridade_comercial='A' OR score_comercial>=80))::INTEGER AS criticos,
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE AND status_comercial='CONVERTIDO')::INTEGER AS convertidos,
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE AND (estrutura_negocio='reforma_tributaria' OR LOWER(COALESCE(contexto_cliente::text,'')) LIKE '%reforma%' OR LOWER(COALESCE(intencao,'')) LIKE '%reforma tribut%' OR LOWER(COALESCE(intencao,'')) LIKE '%ibs%' OR LOWER(COALESCE(intencao,'')) LIKE '%cbs%'))::INTEGER AS reforma_tributaria,
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE AND (estrutura_negocio='reforma_tributaria' OR LOWER(COALESCE(contexto_cliente::text,'')) LIKE '%reforma%') AND (prioridade_comercial IN ('A','B') OR score_comercial>=60))::INTEGER AS reforma_oportunidades,
+          COUNT(*) FILTER (WHERE COALESCE(arquivado,FALSE)=FALSE AND (estrutura_negocio='reforma_tributaria' OR LOWER(COALESCE(contexto_cliente::text,'')) LIKE '%reforma%') AND status_comercial='CONVERTIDO')::INTEGER AS reforma_convertidos
+        FROM diagnostico_leads
+      `, []),
+      consultaSegura(() => sql`
+        SELECT COUNT(*)::INTEGER AS total
+        FROM crm_atendimentos_departamento
+        WHERE COALESCE(arquivado,FALSE)=FALSE
+          AND COALESCE(status_atendimento,'NAO_INICIADO')<>'CONCLUIDO'
+      `, []),
+      consultaSegura(() => sql`
+        SELECT
+          COUNT(DISTINCT lead_id) FILTER (WHERE status IN ('RASCUNHO','ENVIADA','NEGOCIACAO','GANHA'))::INTEGER AS propostas,
+          COUNT(DISTINCT lead_id) FILTER (WHERE status='GANHA')::INTEGER AS ganhos,
+          COALESCE(SUM(valor_total) FILTER (WHERE status='GANHA'),0)::NUMERIC AS valor_ganho,
+          COALESCE(SUM(mensalidade) FILTER (WHERE status='GANHA'),0)::NUMERIC AS mrr_ganho,
+          COALESCE(SUM(taxa_implantacao) FILTER (WHERE status='GANHA'),0)::NUMERIC AS implantacao_ganha
+        FROM crm_propostas
+      `, []),
+      consultaSegura(() => sql`
+        SELECT COALESCE(NULLIF(LOWER(TRIM(l.origem)),''),'direto') AS origem,
+          COUNT(DISTINCT l.id)::INTEGER AS total,
+          COUNT(DISTINCT l.id) FILTER (WHERE l.prioridade_comercial IN ('A','B') OR l.score_comercial>=60 OR l.status_comercial IN ('REUNIAO_AGENDADA','PROPOSTA_ENVIADA','CONVERTIDO'))::INTEGER AS qualificados,
+          COUNT(DISTINCT p.lead_id) FILTER (WHERE p.status IN ('RASCUNHO','ENVIADA','NEGOCIACAO','GANHA'))::INTEGER AS propostas,
+          COUNT(DISTINCT p.lead_id) FILTER (WHERE p.status='GANHA')::INTEGER AS convertidos
+        FROM diagnostico_leads l
+        LEFT JOIN crm_propostas p ON p.lead_id=l.id
+        WHERE COALESCE(l.arquivado,FALSE)=FALSE
+        GROUP BY 1 ORDER BY total DESC, origem ASC
+      `, []),
+      consultaSegura(() => sql`
+        SELECT id,diagnostico_id,origem,campanha,promoter,nome,email,telefone,cnpj,razao_social,
+          status_diagnostico,status_comercial,estrutura_negocio,score_comercial,prioridade_comercial,
+          temperatura_comercial,proxima_acao,prazo_atendimento,responsavel_finder,primeiro_acesso,
+          ultima_atividade,created_at,updated_at
+        FROM diagnostico_leads
+        WHERE COALESCE(arquivado,FALSE)=FALSE
+        ORDER BY CASE prioridade_comercial WHEN 'A' THEN 1 WHEN 'B' THEN 2 WHEN 'C' THEN 3 ELSE 4 END,
+          score_comercial DESC,ultima_atividade DESC
+        LIMIT 40
+      `, []),
+      consultaSegura(() => sql`
+        SELECT a.id,a.diagnostico_id,a.lead_id,a.area,a.score_area,a.nivel_area,a.status_atendimento,
+          a.status_oportunidade,a.proxima_acao,a.proximo_contato,a.ultimo_acionamento,a.responsavel_id,
+          a.updated_at,l.razao_social,l.nome,l.origem,l.prioridade_comercial,r.nome AS responsavel_nome
+        FROM crm_atendimentos_departamento a
+        LEFT JOIN diagnostico_leads l ON l.id=a.lead_id
+        LEFT JOIN crm_responsaveis r ON r.id=a.responsavel_id
+        WHERE COALESCE(a.arquivado,FALSE)=FALSE AND COALESCE(a.status_atendimento,'NAO_INICIADO')<>'CONCLUIDO'
+        ORDER BY COALESCE(a.proximo_contato,a.updated_at) ASC LIMIT 30
+      `, []),
+      consultaSegura(() => sql`
+        SELECT status_comercial AS status,COUNT(*)::INTEGER AS total
+        FROM diagnostico_leads WHERE COALESCE(arquivado,FALSE)=FALSE GROUP BY status_comercial
+      `, []),
+    ]);
+
+    const resumo=resumoRows?.[0]||{};
+    const propostas=propostaRows?.[0]||{};
+    const funil=Object.fromEntries((funilRows||[]).map(x=>[x.status||"SEM_STATUS",numero(x.total)]));
+    const convertidos=Math.max(numero(resumo.convertidos),numero(propostas.ganhos));
+
+    const dashboard={
+      totalLeads:numero(resumo.total_leads),
+      totalDiagnosticos:numero(resumo.diagnosticos),
+      oportunidades:numero(resumo.oportunidades),
+      atendimentosAbertos:numero(atendimentoRows?.[0]?.total),
+      propostas:numero(propostas.propostas),
+      convertidos,
+      criticos:numero(resumo.criticos),
+      reformaTributaria:numero(resumo.reforma_tributaria),
+      valorGanho:numero(propostas.valor_ganho),
+      mrrGanho:numero(propostas.mrr_ganho),
+      implantacaoGanha:numero(propostas.implantacao_ganha),
+      origens:(origensRows||[]).map(x=>({origem:x.origem||"direto",total:numero(x.total),qualificados:numero(x.qualificados),propostas:numero(x.propostas),convertidos:numero(x.convertidos)})),
+      funil,
+      reforma:{total:numero(resumo.reforma_tributaria),oportunidades:numero(resumo.reforma_oportunidades),convertidos:numero(resumo.reforma_convertidos)},
+      leads:(leadsRows||[]).map(lead=>({
+        id:lead.id,lead_id:lead.id,diagnostico_id:lead.diagnostico_id,diagnosticoId:lead.diagnostico_id,
+        origem:lead.origem||"direto",campanha:lead.campanha||"",promoter:lead.promoter||"",nome:lead.nome||"",
+        email:lead.email||"",telefone:lead.telefone||"",cnpj:lead.cnpj||"",razao_social:lead.razao_social||"",
+        razaoSocial:lead.razao_social||"",status:lead.status_comercial||"",status_lead:lead.status_comercial||"",
+        statusDiagnostico:lead.status_diagnostico||"",score:numero(lead.score_comercial),score_geral:numero(lead.score_comercial),
+        prioridade:lead.prioridade_comercial||"",temperatura:lead.temperatura_comercial||"",proximaAcao:lead.proxima_acao||"",
+        prazoAtendimento:lead.prazo_atendimento||"",responsavelFinder:lead.responsavel_finder||"",
+        estruturaNegocio:lead.estrutura_negocio||"operacional",criado_em:lead.created_at,atualizado_em:lead.updated_at,
+        ultima_atividade:lead.ultima_atividade
+      })),
+      atendimentos:(atendimentosRows||[]).map(item=>({
+        id:item.id,atendimento_id:item.id,diagnosticoId:item.diagnostico_id,leadId:item.lead_id,area:item.area||"",
+        departamento:item.area||"",scoreArea:item.score_area,nivelArea:item.nivel_area||"",status:item.status_atendimento||"",
+        etapa:item.status_atendimento||"",statusOportunidade:item.status_oportunidade||"NAO_ANALISADA",
+        proximaAcao:item.proxima_acao||"",proximoContato:item.proximo_contato||null,ultimoAcionamento:item.ultimo_acionamento||null,
+        responsavelId:item.responsavel_id||"",responsavel_nome:item.responsavel_nome||"",responsavel:item.responsavel_nome||"",
+        razao_social:item.razao_social||"",empresa:item.razao_social||item.nome||"",nome:item.nome||"",origem:item.origem||"direto",
+        prioridade:item.prioridade_comercial||"",atualizadoEm:item.updated_at
+      })),
+      atualizadoEm:new Date().toISOString()
+    };
+
+    return res.status(200).json({sucesso:true,versao:"DASHBOARD_V20",dashboard});
+  } catch (error) {
+    console.error("[dashboard-v20]",error);
+    return res.status(500).json({sucesso:false,error:"Não foi possível calcular os indicadores do dashboard.",codigo:"DASHBOARD_V20"});
+  }
+}
+
 // =========================================================
 // DASHBOARD
 // =========================================================
 
-export default async function dashboardHandler(
+async function dashboardHandlerLegado(
   req,
   res
 ) {
