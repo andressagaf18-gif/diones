@@ -14613,6 +14613,23 @@ function DetalheDiagnostico({
   const relatorioAdministracaoSegmentado =
     relatoriosSegmentados.administracao || null;
 
+  const versoesReforma =
+    item?.dadosCompletos?.versoesRelatorio || null;
+
+  const relatorioReformaCliente =
+    versoesReforma?.cliente || null;
+
+  const relatorioReformaAdmin =
+    versoesReforma?.administrador || null;
+
+  const formatarValorReforma = (valor) =>
+    valor === null || valor === undefined
+      ? "Pendente"
+      : Number(valor || 0).toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
+
   const inteligenciaTributaria =
     resultado.inteligenciaTributaria ||
     null;
@@ -15582,6 +15599,69 @@ function DetalheDiagnostico({
             </Botao>
           </div>
         </Card>
+
+        {abaRelatorio === "cliente" && relatorioReformaCliente && (
+          <Card style={{ marginBottom: 18, borderLeft: `5px solid ${CORAL}` }}>
+            <div style={{ fontSize: 9, color: CORAL, fontWeight: 900 }}>
+              VERSÃO RESUMIDA DO CLIENTE
+            </div>
+            <h2 style={{ margin: "6px 0", fontFamily: DISPLAY_FONT }}>
+              {relatorioReformaCliente.titulo}
+            </h2>
+            <div style={{ background: "#FFF1EC", border: "1px solid #FFCBBB", borderRadius: 12, padding: 14, margin: "12px 0" }}>
+              <div style={{ fontSize: 9, fontWeight: 900, color: "#993C1D" }}>MELHOR OPÇÃO / RECOMENDAÇÃO</div>
+              <div style={{ marginTop: 5, fontSize: 16, fontWeight: 900 }}>{relatorioReformaCliente.melhorOpcao}</div>
+            </div>
+            <p style={{ fontSize: 12, lineHeight: 1.6 }}>{relatorioReformaCliente.leituraExecutiva}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginTop: 12 }}>
+              {[
+                ["Faturamento", relatorioReformaCliente.numeros?.faturamento],
+                ["Carga atual", relatorioReformaCliente.numeros?.cargaAtual],
+                ["Carga na Reforma", relatorioReformaCliente.numeros?.cargaReforma],
+                ["Diferença mensal", relatorioReformaCliente.numeros?.diferencaMensal],
+                ["Diferença anual", relatorioReformaCliente.numeros?.diferencaAnual],
+              ].map(([label, valor]) => (
+                <div key={label} style={{ background: "#F7F9FC", borderRadius: 10, padding: 11 }}>
+                  <div style={{ fontSize: 8, color: MUTED, fontWeight: 900 }}>{label.toUpperCase()}</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, marginTop: 4 }}>{formatarValorReforma(valor)}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {abaRelatorio === "administracao" && relatorioReformaAdmin && (
+          <Card style={{ marginBottom: 18, borderLeft: "5px solid #31589C" }}>
+            <div style={{ fontSize: 9, color: "#31589C", fontWeight: 900 }}>
+              VERSÃO COMPLETA DO ADMINISTRADOR
+            </div>
+            <h2 style={{ margin: "6px 0", fontFamily: DISPLAY_FONT }}>{relatorioReformaAdmin.titulo}</h2>
+            <p style={{ color: MUTED, fontSize: 11 }}>
+              Projeto {relatorioReformaAdmin.auditoria?.projetoId || "-"} · finalizado por {relatorioReformaAdmin.auditoria?.finalizadoPor || "-"} · versão {relatorioReformaAdmin.auditoria?.versaoFormato || "-"}
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginTop: 12 }}>
+              {[
+                ["Diagnóstico técnico", relatorioReformaAdmin.analise],
+                ["Memória de cálculo", relatorioReformaAdmin.simulacao],
+                ["Base informada", relatorioReformaAdmin.base],
+                ["Extração documental", relatorioReformaAdmin.extracao],
+              ].map(([label, valor]) => (
+                <div key={label} style={{ background: "#F7F9FC", border: "1px solid #E3E7EF", borderRadius: 10, padding: 11 }}>
+                  <strong>{label}</strong>
+                  <div style={{ marginTop: 5, fontSize: 10, color: MUTED }}>
+                    {valor && Object.keys(valor).length ? "Disponível e preservado nesta versão." : "Sem conteúdo confirmado."}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <details style={{ marginTop: 14 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 900, color: "#31589C" }}>Abrir dados completos e auditáveis</summary>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#0F1B31", color: "#EAF0FA", borderRadius: 10, padding: 14, maxHeight: 520, overflow: "auto", fontSize: 9, lineHeight: 1.45 }}>
+                {JSON.stringify(relatorioReformaAdmin, null, 2)}
+              </pre>
+            </details>
+          </Card>
+        )}
 
         <ResumoEstruturaSelecionada
           estrutura={estruturaAtual}
