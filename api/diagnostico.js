@@ -6,7 +6,7 @@ import {
   normalizarEstrutura,
   contratoSaida,
   instrucoesDoMotor,
-} from "./lib/diagnostic-engine.js";
+} from "../server/diagnostic-engine.js";
 
 function extrairOutputText(data) {
   if (
