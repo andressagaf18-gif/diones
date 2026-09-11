@@ -1,11 +1,11 @@
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 import dashboardHandler from "../server/dashboard-engine.js";
-import documentosHandler from "../server/documentos-engine.js";
-import cliente360Handler from "../server/cliente360-engine.js";
 import { usuarioAutenticado } from "../server/auth.js";
 
-const sql = neon(process.env.DATABASE_URL);
+const sql = process.env.DATABASE_URL
+  ? neon(process.env.DATABASE_URL)
+  : null;
 
 let schemaPromise = null;
 
@@ -7122,7 +7122,7 @@ export default async function handler(req, res) {
       case "upload-documento":
       case "excluir-documento":
       case "gerar-analise-documental":
-        return documentosHandler(
+        return (await import("../server/documentos-engine.js")).default(
           req,
           res
         );
@@ -7133,7 +7133,7 @@ export default async function handler(req, res) {
       case "salvar-contato":
       case "salvar-tarefa":
       case "salvar-pendencia":
-        return cliente360Handler(
+        return (await import("../server/cliente360-engine.js")).default(
           req,
           res
         );
