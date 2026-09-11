@@ -145,8 +145,11 @@ export default function Dashboard({
         );
       }
 
-      if (!r.ok) {
-        throw new Error(d?.error || "Erro ao carregar dashboard.");
+      if (!r.ok || !d?.sucesso) {
+        throw new Error(
+          d?.error ||
+          `A função /api/crm não retornou JSON válido (HTTP ${r.status}).`
+        );
       }
 
       setDados(d?.dashboard || d?.dados || d || {});
@@ -199,7 +202,12 @@ export default function Dashboard({
         setTributario({ projetos: [] });
       }
     } catch (e) {
-      setErro(e?.message || "Erro ao carregar dashboard.");
+      const mensagem=e?.message||"Erro desconhecido.";
+      setErro(
+        mensagem==="Failed to fetch"
+          ?"Não foi possível conectar à função /api/crm. Verifique o deploy e os logs da função no Vercel."
+          :mensagem
+      );
     } finally {
       setCarregando(false);
     }
