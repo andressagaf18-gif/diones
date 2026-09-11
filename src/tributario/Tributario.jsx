@@ -797,6 +797,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [aba,setAba]=useState("identificacao");
  const [cnpj,setCnpj]=useState(""),[empresa,setEmpresa]=useState(null),[cnaes,setCnaes]=useState([]),[principal,setPrincipal]=useState("");
  const [responsavel,setResponsavel]=useState(""),[origem,setOrigem]=useState(""),[descricao,setDescricao]=useState(""),[regime,setRegime]=useState(""),[municipio,setMunicipio]=useState(""),[uf,setUf]=useState("");
+ const [nbsNcm,setNbsNcm]=useState("");
  const [b2b,setB2b]=useState(""),[b2c,setB2c]=useState(""),[receita,setReceita]=useState(""),[compras,setCompras]=useState(""),[servicosTomados,setServicosTomados]=useState(""),[creditosAtuais,setCreditosAtuais]=useState(""),[tributosAtuais,setTributosAtuais]=useState("");
  const [setorAtividade,setSetorAtividade]=useState(""),[tipoEstabelecimento,setTipoEstabelecimento]=useState(""),[quantidadeEstabelecimentos,setQuantidadeEstabelecimentos]=useState(""),[municipiosOperacao,setMunicipiosOperacao]=useState(""),[ufsOperacao,setUfsOperacao]=useState("");
  const [anexoSimples,setAnexoSimples]=useState(""),[aliquotaEfetivaSimples,setAliquotaEfetivaSimples]=useState(""),[dasPeriodo,setDasPeriodo]=useState(""),[fatorR,setFatorR]=useState("");
@@ -810,6 +811,8 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
  const [carregandoDocumentos,setCarregandoDocumentos]=useState(false);
  const [analiseDesatualizada,setAnaliseDesatualizada]=useState(false);
+ const [pesquisaTributaria,setPesquisaTributaria]=useState(null);
+ const [pesquisandoTributacao,setPesquisandoTributacao]=useState(false);
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}})());
  const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["motor","7. Recomendação"],["impacto","8. Impactos"],["transicao","9. Transição"],["relatorio","10. Relatório"]];
@@ -823,6 +826,20 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   const valor=Number(normalizado.replace(/[^\d.-]/g,""));
   return Number.isFinite(valor)?valor:0;
  };
+ const normalizarComparacao=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();
+ const consultaPesquisa=pesquisaTributaria?.resultado?.consulta||{};
+ const pesquisaCompativel=Boolean(pesquisaTributaria)&&
+  String(consultaPesquisa.cnae||"").replace(/\D/g,"")===String(principal||"").replace(/\D/g,"")&&
+  normalizarComparacao(consultaPesquisa.atividade_real)===normalizarComparacao(descricao)&&
+  normalizarComparacao(consultaPesquisa.regime)===normalizarComparacao(regime)&&
+  normalizarComparacao(consultaPesquisa.municipio)===normalizarComparacao(municipio)&&
+  normalizarComparacao(consultaPesquisa.uf)===normalizarComparacao(uf);
+ const premissasTributarias=pesquisaTributaria?.status==="VALIDADO"&&pesquisaCompativel
+  ?pesquisaTributaria?.premissasConfirmadas||null
+  :null;
+ const statusPesquisaExibido=pesquisaTributaria&&!pesquisaCompativel
+  ?"DESATUALIZADA"
+  :pesquisaTributaria?.status||"NÃO PESQUISADO";
  const componentesDasTotal=(fonte=extracao)=>{
   const t=fonte?.tributos||{};
   return [
@@ -898,6 +915,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const field=(label,value,setter,placeholder="",help="")=><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>{label}<input value={value} onChange={e=>setter(e.target.value)} placeholder={placeholder} style={input}/>{help&&<small style={{fontWeight:500,color:"#697386"}}>{help}</small>}</label>;
  const list=(titulo,itens)=><div style={card}><b>{titulo}</b>{itens?.length?<ul>{itens.map((x,i)=><li key={i} style={{fontSize:9.5,lineHeight:1.5}}>{x}</li>)}</ul>:<p style={{fontSize:9,color:"#697386"}}>Nenhum item confirmado.</p>}</div>;
  async function apiCall(action,{method="GET",body=null,query={}}={}){const p=new URLSearchParams({action});Object.entries(query).forEach(([k,v])=>v!==""&&v!=null&&p.set(k,String(v)));const r=await fetch(`/api/tributario?${p}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro no módulo tributário.");return d}
+ async function apiPesquisa(acao,{method="GET",body=null,query={}}={}){const p=new URLSearchParams({acao});Object.entries(query).forEach(([k,v])=>v!==""&&v!=null&&p.set(k,String(v)));const r=await fetch(`/api/pesquisa-tributaria?${p}`,{method,headers:{...(body?{"content-type":"application/json"}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro na pesquisa tributária.");return d}
  async function arquivoParaDataUrl(file){return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error(`Não foi possível ler ${file.name}.`));reader.readAsDataURL(file)})}
 
  async function carregarArquivoCliente(cnpjForcado=cnpj){
@@ -1034,6 +1052,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   if(Array.isArray(at.cnaes||at.selecionadas))setCnaes(at.cnaes||at.selecionadas);
   setPrincipal(at.principal||at.principalReal||"");
   setDescricao(at.descricaoReal||op.descricao||"");
+  setNbsNcm(at.nbsNcm||"");
 
   setSetorAtividade(op.setorAtividade||"");
   setTipoEstabelecimento(op.tipoEstabelecimento||"");
@@ -1079,6 +1098,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   setExtracao(manuais.extracao||salvo.extracao||null);
   setAnalise(manuais.analise||null);
   setSimulacao(manuais.simulacao||salvo.simulacao||null);
+  setPesquisaTributaria(salvo.pesquisaTributaria||manuais.pesquisaTributaria||null);
   setAnaliseDesatualizada(Boolean(manuais.analiseDesatualizada));
 
   if(Array.isArray(projetoInicial.documentos)&&projetoInicial.documentos.length){
@@ -1376,7 +1396,79 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    setExtraindo(false);
   }
  }
- function baseAtual(){return{identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),dasPeriodoFonte,fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao}}
+
+ function aplicarRetornoPesquisa(pesquisa){
+  if(!pesquisa)return;
+  setPesquisaTributaria(atual=>({
+   ...(atual||{}),
+   ...pesquisa,
+   id:pesquisa.id||atual?.id,
+   tokenPublico:pesquisa.tokenPublico||atual?.tokenPublico
+  }));
+
+  const p=pesquisa.status==="VALIDADO"?pesquisa.premissasConfirmadas:null;
+  if(p){
+   setReducaoIbsCbs(String(n(p.reducaoPct)));
+   if(p.baseLegal)setTratamentoEspecial(p.baseLegal);
+  }
+ }
+
+ async function pesquisarTratamentoTributario(){
+  const cnae=digits(principal);
+  if(cnae.length!==7){setErro("Selecione um CNAE completo com 7 dígitos antes da pesquisa tributária.");return;}
+  if(String(descricao||"").trim().length<10){setErro("Descreva a atividade realmente exercida antes da pesquisa tributária.");return;}
+
+  setPesquisandoTributacao(true);setErro("");setOk("");
+  try{
+   const d=await apiPesquisa("pesquisar",{method:"POST",body:{
+    projetoId,
+    cnpj:digits(cnpj),
+    cnae,
+    atividadeReal:descricao,
+    nbsNcm,
+    regime,
+    municipio,
+    uf,
+    ano:Number(simulacao?.parametros?.ano||2027)
+   }});
+   aplicarRetornoPesquisa({
+    id:d.pesquisaId,
+    tokenPublico:d.tokenPublico,
+    status:d.status,
+    resultado:d.resultado,
+    premissasConfirmadas:null,
+    validadoEm:null
+   });
+   setOk("Pesquisa concluída e enviada para Validação Tributária. Nenhum percentual foi aplicado ao cálculo ainda.");
+  }catch(e){setErro(e.message)}finally{setPesquisandoTributacao(false)}
+ }
+
+ async function atualizarValidacaoTributaria(){
+  if(!pesquisaTributaria?.id||!pesquisaTributaria?.tokenPublico){
+   setErro("Esta pesquisa não possui identificação pública para consultar a validação. Gere uma nova pesquisa.");
+   return;
+  }
+  setPesquisandoTributacao(true);setErro("");setOk("");
+  try{
+   const d=await apiPesquisa("status",{query:{id:pesquisaTributaria.id,token:pesquisaTributaria.tokenPublico}});
+   aplicarRetornoPesquisa(d.pesquisa);
+   setOk(d.pesquisa?.status==="VALIDADO"
+    ?"Premissas validadas carregadas. CBS, IBS e redução agora alimentam o simulador determinístico."
+    :`Pesquisa atualizada: ${String(d.pesquisa?.status||"PENDENTE").replaceAll("_"," ")}.`);
+  }catch(e){setErro(e.message)}finally{setPesquisandoTributacao(false)}
+ }
+
+ function baseAtual(){return{
+  identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},
+  atividades:{cnaes,principal,descricaoReal:descricao,nbsNcm},
+  operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},
+  valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},
+  simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),dasPeriodoFonte,fatorRPct:n(fatorR)},
+  tratamentos:{incentivoAtual,reducaoIbsCbsPct:premissasTributarias?n(premissasTributarias.reducaoPct):0,tratamentoEspecial},
+  pesquisaTributaria,
+  extracao,
+  simulacao
+ }}
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(reconciliarAnaliseCadastral(d.analise));setAnaliseDesatualizada(false);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
  async function salvar(status="EM_ANALISE"){
   try{
@@ -1406,6 +1498,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       analise,
       extracao,
       simulacao:simulacaoEfetiva||simulacao,
+      pesquisaTributaria,
       analiseDesatualizada,
       documentosSnapshot:documentosBanco.map(d=>({
        id:d.id,
@@ -1434,6 +1527,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  async function finalizarRelatorio(){
   setErro("");
   if(!analise){setErro("Gere o diagnóstico técnico antes de finalizar o relatório.");return;}
+  if(pesquisaTributaria?.status!=="VALIDADO"||!premissasTributarias){setErro("A pesquisa tributária precisa ser validada pelo consultor antes da finalização. Abra Validação Tributária, confirme as premissas e depois clique em Atualizar validação.");return;}
   if(!simulacaoEfetiva&&!simulacao){setErro("Conclua a simulação antes de finalizar o relatório.");return;}
   setCarregando(true);
   try{
@@ -2622,9 +2716,63 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    </div>}
   </div>}
 
-  {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}>{analiseDesatualizada&&<div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B",color:"#805B10"}}><b>Diagnóstico desatualizado</b><div style={{fontSize:8.8,marginTop:3}}>CNPJ, CNAEs ou dados cadastrais foram atualizados depois da última análise. Pendências cadastrais já resolvidas foram removidas, mas gere novamente o diagnóstico para atualizar riscos e recomendação.</div></div>}<div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",dadosFaltantesAtuais)}</>}</div>}
+  {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}>
+   {analiseDesatualizada&&<div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B",color:"#805B10"}}><b>Diagnóstico desatualizado</b><div style={{fontSize:8.8,marginTop:3}}>CNPJ, CNAEs ou dados cadastrais foram atualizados depois da última análise. Pendências cadastrais já resolvidas foram removidas, mas gere novamente o diagnóstico para atualizar riscos e recomendação.</div></div>}
+   <div style={{...card,borderColor:premissasTributarias?"#9ED7BB":"#F3D99B",background:premissasTributarias?"#F2FBF6":"#FFFBF2"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"start",flexWrap:"wrap"}}>
+     <div style={{maxWidth:760}}>
+      <div style={{fontSize:8,fontWeight:900,color:premissasTributarias?"#0F6E56":"#855A12"}}>PESQUISA NORMATIVA + VALIDAÇÃO HUMANA</div>
+      <h3 style={{margin:"4px 0"}}>Tratamento tributário da atividade real</h3>
+      <p style={{fontSize:9,color:"#697386",lineHeight:1.5,margin:0}}>A IA pesquisa fontes oficiais, mas o motor só recebe CBS, IBS e redução depois da validação do consultor.</p>
+     </div>
+     <span style={{padding:"5px 8px",borderRadius:999,fontSize:8,fontWeight:900,background:premissasTributarias?"#DDF3E7":"#FFF0CC",color:premissasTributarias?"#0F6E56":"#855A12"}}>{String(statusPesquisaExibido).replaceAll("_"," ")}</span>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:8,marginTop:10}}>
+     {field("NBS/NCM (se aplicável)",nbsNcm,setNbsNcm,"Código ou descrição")}
+     <div style={{fontSize:9,padding:"9px 10px",border:"1px solid #E3E7EF",borderRadius:10,background:"#fff"}}><b>CNAE pesquisado</b><div style={{marginTop:3}}>{principal||"Selecione na etapa Empresa"}</div></div>
+     <div style={{fontSize:9,padding:"9px 10px",border:"1px solid #E3E7EF",borderRadius:10,background:"#fff"}}><b>Pesquisa vinculada</b><div style={{marginTop:3,overflowWrap:"anywhere"}}>{pesquisaTributaria?.id||"Ainda não gerada"}</div></div>
+    </div>
+    {pesquisaTributaria?.resultado&&<div style={{marginTop:10,fontSize:9,lineHeight:1.5}}>
+     <div><b>Tratamento sugerido pela pesquisa:</b> {pesquisaTributaria.resultado.tratamento_sugerido||"Validação necessária"}</div>
+     <div><b>Situação da alíquota:</b> {String(pesquisaTributaria.resultado.aliquotas_referencia?.situacao_normativa||"PENDENTE").replaceAll("_"," ")}</div>
+     <div><b>Base legal pesquisada:</b> {pesquisaTributaria.resultado.beneficio_legal?.base_legal||"Não confirmada"}</div>
+     {!!pesquisaTributaria.resultado.requisitos?.length&&<div><b>Requisitos:</b> {pesquisaTributaria.resultado.requisitos.join(" · ")}</div>}
+     {!!pesquisaTributaria.resultado.fontes?.length&&<div><b>Fontes oficiais:</b> {pesquisaTributaria.resultado.fontes.map((f,i)=><React.Fragment key={f.url||i}>{i>0?" · ":""}<a href={f.url} target="_blank" rel="noreferrer">{f.titulo||f.orgao||"Fonte"}</a></React.Fragment>)}</div>}
+    </div>}
+    {premissasTributarias&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,marginTop:10}}>
+     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>CBS confirmada</b><div>{n(premissasTributarias.cbsPct).toLocaleString("pt-BR")}%</div></div>
+     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>IBS confirmado</b><div>{n(premissasTributarias.ibsPct).toLocaleString("pt-BR")}%</div></div>
+     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>Redução confirmada</b><div>{n(premissasTributarias.reducaoPct).toLocaleString("pt-BR")}%</div></div>
+    </div>}
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:11}}>
+     <button type="button" onClick={pesquisarTratamentoTributario} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>{pesquisandoTributacao?"Pesquisando...":pesquisaTributaria?"Gerar nova pesquisa":"Pesquisar fontes oficiais"}</button>
+     {pesquisaTributaria?.id&&<button type="button" onClick={atualizarValidacaoTributaria} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>Atualizar validação</button>}
+    </div>
+   </div>
+   <div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>
+   {analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",dadosFaltantesAtuais)}</>}
+  </div>}
 
-  {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{faturamento:n(fatSim),tributosAtuais:n(tributosAtuais),dasAtual:n(dasPeriodo),aliquotaAtual:n(aliquotaAtual),creditoCBS:0,creditoIBS:n(creditosAtuais),reducaoCBS:n(reducaoIbsCbs),reducaoIBS:n(reducaoIbsCbs),b2b:n(b2b),b2c:n(b2c),componentesDas:{pis:n(extracao?.tributos?.pis),cofins:n(extracao?.tributos?.cofins),icms:n(extracao?.tributos?.icms),iss:n(extracao?.tributos?.iss),ipi:n(extracao?.tributos?.ipi),cpp:n(extracao?.tributos?.cpp),irpj:n(extracao?.tributos?.irpj),csll:n(extracao?.tributos?.csll),outros:n(extracao?.tributos?.outros)}}} onResultado={setSimulacao}/>}
+  {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{
+   regime:String(regime||"").toUpperCase().includes("PRESUM")?"LUCRO_PRESUMIDO":String(regime||"").toUpperCase().includes("REAL")?"LUCRO_REAL":"SIMPLES_NACIONAL",
+   ano:simulacao?.parametros?.ano||2027,
+   faturamento:n(fatSim),
+   tributosAtuais:n(tributosAtuais),
+   dasAtual:n(dasPeriodo),
+   aliquotaAtual:n(aliquotaAtual),
+   aliquotaCBS:premissasTributarias?.cbsPct??"",
+   aliquotaIBS:premissasTributarias?.ibsPct??"",
+   creditoCBS:simulacao?.parametros?.creditoCBS??0,
+   creditoIBS:simulacao?.parametros?.creditoIBS??0,
+   reducaoCBS:premissasTributarias?.reducaoPct??0,
+   reducaoIBS:premissasTributarias?.reducaoPct??0,
+   validacaoTributariaStatus:premissasTributarias?"VALIDADO":statusPesquisaExibido,
+   pesquisaTributariaId:pesquisaTributaria?.id||"",
+   baseLegalValidada:premissasTributarias?.baseLegal||"",
+   tratamentoValidado:pesquisaTributaria?.resultado?.tratamento_sugerido||"",
+   b2b:n(b2b),b2c:n(b2c),
+   componentesDas:{pis:n(extracao?.tributos?.pis),cofins:n(extracao?.tributos?.cofins),icms:n(extracao?.tributos?.icms),iss:n(extracao?.tributos?.iss),ipi:n(extracao?.tributos?.ipi),cpp:n(extracao?.tributos?.cpp),irpj:n(extracao?.tributos?.irpj),csll:n(extracao?.tributos?.csll),outros:n(extracao?.tributos?.outros)}
+  }} onResultado={setSimulacao}/>}
 
   {aba==="motor"&&<div style={{display:"grid",gap:10}}>
    <div style={{...card,background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0}}>
@@ -2821,7 +2969,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
       <span style={{background:`${corRisco}33`,border:`1px solid ${corRisco}`,borderRadius:999,padding:"6px 9px",fontSize:8,fontWeight:900}}>RISCO {motor.risco}</span>
       <button onClick={()=>salvar(analise?"DIAGNOSTICO_GERADO":"EM_ANALISE")} style={{padding:"9px 12px",borderRadius:8,fontWeight:900}}>Salvar inteligência</button>
-      <button onClick={finalizarRelatorio} disabled={carregando||!analise||(!simulacaoEfetiva&&!simulacao)} style={{padding:"9px 12px",borderRadius:8,fontWeight:900,background:"#0F6E56",color:"#fff",border:0,cursor:"pointer",opacity:(carregando||!analise||(!simulacaoEfetiva&&!simulacao)) ? .55 : 1}}>Finalizar e enviar para Diagnósticos</button>
+      <button onClick={finalizarRelatorio} disabled={carregando||!analise||pesquisaTributaria?.status!=="VALIDADO"||!premissasTributarias||(!simulacaoEfetiva&&!simulacao)} style={{padding:"9px 12px",borderRadius:8,fontWeight:900,background:"#0F6E56",color:"#fff",border:0,cursor:"pointer",opacity:(carregando||!analise||pesquisaTributaria?.status!=="VALIDADO"||!premissasTributarias||(!simulacaoEfetiva&&!simulacao)) ? .55 : 1}}>Finalizar e enviar para Diagnósticos</button>
       <button onClick={gerarPdfCliente} disabled={gerandoPdfCliente} style={{padding:"9px 12px",borderRadius:8,fontWeight:900,background:"#FF6B4A",color:"#fff",border:0,cursor:"pointer"}}>{gerandoPdfCliente?"Gerando PDF...":"Gerar PDF do cliente"}</button>
      </div>
     </div>
