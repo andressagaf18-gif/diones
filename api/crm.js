@@ -6965,6 +6965,39 @@ export default async function handler(req, res) {
       return dashboardHandler(req, res);
     }
 
+    // Cliente 360 e Documentos possuem schema e handlers próprios.
+    // Encaminhar antes da migração geral impede que uma tabela não
+    // relacionada derrube essas telas.
+    const acoesCliente360 = new Set([
+      "sincronizar-clientes",
+      "listar-clientes",
+      "ver-cliente",
+      "salvar-contato",
+      "salvar-tarefa",
+      "salvar-pendencia",
+    ]);
+
+    if (acoesCliente360.has(action)) {
+      return (await import("../server/cliente360-engine.js")).default(
+        req,
+        res
+      );
+    }
+
+    const acoesDocumentos = new Set([
+      "listar-documentos",
+      "upload-documento",
+      "excluir-documento",
+      "gerar-analise-documental",
+    ]);
+
+    if (acoesDocumentos.has(action)) {
+      return (await import("../server/documentos-engine.js")).default(
+        req,
+        res
+      );
+    }
+
     await garantirSchema();
 
     switch (action) {
