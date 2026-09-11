@@ -476,6 +476,151 @@ async function criarSnapshotProjeto({
   return { versao, documentos };
 }
 
+function montarVersoesReforma(body, user) {
+  const manuais = jsonSeguro(body?.dadosManuais || {}) || {};
+  const reforma = jsonSeguro(manuais.reformaV2 || {}) || {};
+  const analise = jsonSeguro(manuais.analise || reforma.analise || {}) || {};
+  const simulacao = jsonSeguro(manuais.simulacao || reforma.simulacao || {}) || {};
+  const identificacao = reforma.identificacao || {};
+  const valores = reforma.valores || {};
+  const empresa = Array.isArray(body?.empresas) ? body.empresas[0] || {} : {};
+  const simples = simulacao.simples || {};
+  const totalAtual = Number(simples.dentro ?? valores.tributosAtuais ?? 0) || 0;
+  const totalReforma = simples.fora == null ? null : Number(simples.fora);
+  const diferencaMensal = totalReforma == null ? null : totalReforma - totalAtual;
+
+  const cliente = {
+    titulo: "Resumo executivo da Reforma Tributária",
+    melhorOpcao: analise.recomendacao || analise.conclusao || "Aguardar validação do consultor antes da decisão final.",
+    leituraExecutiva: analise.resumo || analise.resumoExecutivo || "Simulação concluída e disponível para apresentação.",
+    numeros: {
+      faturamento: Number(valores.receita || valores.faturamentoAnual || 0),
+      cargaAtual: totalAtual,
+      cargaReforma: totalReforma,
+      diferencaMensal,
+      diferencaAnual: diferencaMensal == null ? null : diferencaMensal * 12,
+    },
+    riscos: Array.isArray(analise.riscos) ? analise.riscos.slice(0, 6) : [],
+    oportunidades: Array.isArray(analise.oportunidades) ? analise.oportunidades.slice(0, 6) : [],
+    proximosPassos: Array.isArray(analise.planoAcao) ? analise.planoAcao.slice(0, 8) : [],
+  };
+
+  return {
+    cliente,
+    administrador: {
+      titulo: "Dossiê completo da Reforma Tributária",
+      projeto: jsonSeguro(body) || {},
+      base: reforma,
+      extracao: jsonSeguro(manuais.extracao || reforma.extracao || {}) || {},
+      analise,
+      simulacao,
+      documentos: Array.isArray(manuais.documentosSnapshot) ? manuais.documentosSnapshot : [],
+      auditoria: {
+        projetoId: body?.id || "",
+        finalizadoPor: user?.nome || user?.login || "Administrador",
+        finalizadoEm: new Date().toISOString(),
+        versaoFormato: "REFORMA_ADMIN_CLIENTE_V1",
+      },
+    },
+    identificacao: {
+      nome: body?.contatoNome || "",
+      email: body?.contatoEmail || "",
+      telefone: body?.contatoTelefone || "",
+      cnpj: empresa.cnpj || identificacao.cnpj || "",
+      razaoSocial: empresa.razaoSocial || empresa.nomeFantasia || identificacao.razaoSocial || "Cliente",
+      municipio: empresa.municipio || identificacao.municipio || "",
+      uf: empresa.uf || identificacao.uf || "",
+    },
+  };
+}
+
+async function publicarReformaNosDiagnosticos(body, user) {
+  const projetoId = txt(body?.id, 200);
+  const versoes = montarVersoesReforma(body, user);
+  const identificacao = versoes.identificacao;
+  const dadosCompletos = {
+    tipoDiagnostico: "REFORMA_TRIBUTARIA",
+    projetoTributarioId: projetoId,
+    versoesRelatorio: {
+      cliente: versoes.cliente,
+      administrador: versoes.administrador,
+    },
+    responsavel: {
+      nome: identificacao.nome,
+      email: identificacao.email,
+      telefone: identificacao.telefone,
+    },
+    empresa: {
+      cnpj: identificacao.cnpj,
+      razaoSocial: identificacao.razaoSocial,
+      municipio: identificacao.municipio,
+      uf: identificacao.uf,
+      segmento: "Reforma Tributária",
+    },
+    perfil: {
+      estruturaNegocio: "reforma_tributaria",
+      descricaoNegocio: body?.atividades?.descricaoReal || "Diagnóstico da Reforma Tributária",
+    },
+    resultado: {
+      tipoDiagnostico: "REFORMA_TRIBUTARIA",
+      relatoriosSegmentados: {
+        cliente: versoes.cliente,
+        administracao: versoes.administrador,
+      },
+      resumoExecutivo: versoes.cliente.leituraExecutiva,
+      recomendacao: versoes.cliente.melhorOpcao,
+    },
+  };
+
+  await sql`ALTER TABLE diagnosticos ADD COLUMN IF NOT EXISTS tax_project_id TEXT`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_diagnosticos_tax_project_id ON diagnosticos (tax_project_id) WHERE tax_project_id IS NOT NULL`;
+
+  const existentes = await sql`SELECT id FROM diagnosticos WHERE tax_project_id = ${projetoId} LIMIT 1`;
+  let rows;
+  if (existentes.length) {
+    rows = await sql`
+      UPDATE diagnosticos SET
+        nome = ${identificacao.nome}, email = ${identificacao.email}, telefone = ${identificacao.telefone},
+        cnpj = ${identificacao.cnpj}, razao_social = ${identificacao.razaoSocial},
+        descricao_negocio = ${body?.atividades?.descricaoReal || "Diagnóstico da Reforma Tributária"},
+        segmento = 'Reforma Tributária', subsegmento = 'IBS e CBS',
+        score = ${null}, dores = ${JSON.stringify(versoes.cliente.riscos)}::jsonb,
+        areas_selecionadas = ${JSON.stringify(["Inteligência Tributária"])}::jsonb,
+        empresas = ${JSON.stringify(body?.empresas || [])}::jsonb,
+        negocio_interpretado = ${JSON.stringify({ tipo: "reforma_tributaria" })}::jsonb,
+        perguntas_respostas = '[]'::jsonb,
+        diagnostico = ${JSON.stringify(dadosCompletos.resultado)}::jsonb,
+        dados_completos = ${JSON.stringify(dadosCompletos)}::jsonb,
+        arquivado = FALSE, arquivado_em = NULL
+      WHERE tax_project_id = ${projetoId}
+      RETURNING id
+    `;
+  } else {
+    rows = await sql`
+      INSERT INTO diagnosticos (
+        nome, cargo, telefone, email, cnpj, razao_social, descricao_negocio,
+        segmento, subsegmento, score, dores, areas_selecionadas, empresas,
+        negocio_interpretado, perguntas_respostas, diagnostico, dados_completos,
+        tax_project_id
+      ) VALUES (
+        ${identificacao.nome}, '', ${identificacao.telefone}, ${identificacao.email},
+        ${identificacao.cnpj}, ${identificacao.razaoSocial},
+        ${body?.atividades?.descricaoReal || "Diagnóstico da Reforma Tributária"},
+        'Reforma Tributária', 'IBS e CBS', ${null},
+        ${JSON.stringify(versoes.cliente.riscos)}::jsonb,
+        ${JSON.stringify(["Inteligência Tributária"])}::jsonb,
+        ${JSON.stringify(body?.empresas || [])}::jsonb,
+        ${JSON.stringify({ tipo: "reforma_tributaria" })}::jsonb,
+        '[]'::jsonb, ${JSON.stringify(dadosCompletos.resultado)}::jsonb,
+        ${JSON.stringify(dadosCompletos)}::jsonb, ${projetoId}
+      ) RETURNING id
+    `;
+  }
+
+  await addHistory(projetoId, "RELATORIO_PUBLICADO_ADMIN", "Relatório final publicado em Diagnósticos nas versões Cliente e Administração.", { diagnosticoId: rows?.[0]?.id || null }, user);
+  return { diagnosticoId: rows?.[0]?.id || null, versoes: ["cliente", "administrador"] };
+}
+
 async function salvarProjeto(
   req,
   res
@@ -677,6 +822,14 @@ async function salvarProjeto(
     user
   );
 
+  let publicacaoDiagnostico = null;
+  if (
+    txt(body.tipoProjeto, 80).toLowerCase() === "reforma" &&
+    ["FINALIZADO", "CONCLUIDO", "VALIDADO"].includes(txt(body.status, 80).toUpperCase())
+  ) {
+    publicacaoDiagnostico = await publicarReformaNosDiagnosticos(body, user);
+  }
+
   return send(
     res,
     200,
@@ -691,6 +844,7 @@ async function salvarProjeto(
         versao: backup.versao,
         documentos: backup.documentos.length,
       },
+      publicacaoDiagnostico,
     }
   );
 }
@@ -2762,8 +2916,91 @@ REGRAS:
   }
 }
 
+async function reformaExtrair(req,res){
+  const body=req.body||{};
+  const arquivos=Array.isArray(body.arquivos)?body.arquivos.filter(a=>a?.fileId):[];
+  if(!arquivos.length)return send(res,400,{sucesso:false,error:"Envie ao menos um documento para extração."});
+  const content=arquivos.map(a=>({type:"input_file",file_id:a.fileId}));
+  content.push({type:"input_text",text:`
+Você é o Finder Tax AI. Extraia somente dados comprovados nos documentos para uma simulação da Reforma Tributária.
+Não invente CNAE, regime, faturamento, DAS, tributos ou créditos. Quando não houver prova, devolva null/zero e registre a ausência nas fontes.
+Nos campos do schema de planejamento, use faturamento/tributos/creditos/parametros como memória documental; eles serão conferidos pelo consultor antes do motor calcular.
+`});
+  try{
+    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_reforma_extracao",effort:"medium",webSearch:false});
+    const identificacao=result.identificacao||{};
+    const base=result.base||{};
+    const parametros=base.parametros||{};
+    const tributos=base.tributos||{};
+    const faturamento=base.faturamento||{};
+    const simples=result.simplesNacional||{};
+    const totalMeses=(mapa)=>Object.values(mapa||{}).reduce((s,v)=>s+(Number(v)||0),0)||null;
+    const receitaExtraida=totalMeses(faturamento.naoSegregado)||totalMeses(faturamento.servicos)||totalMeses(faturamento.comercio)||totalMeses(faturamento.industria);
+    const extracao={
+      ...result,
+      identificacao:{...identificacao,regime:identificacao.regimeAtual||parametros.regimeAtual||null},
+      economicos:{
+        receitaPeriodo:receitaExtraida,
+        faturamentoAnual:receitaExtraida,
+      },
+      tributos:{
+        pis:totalMeses(tributos.pis),cofins:totalMeses(tributos.cofins),icms:totalMeses(tributos.icms),
+        iss:totalMeses(tributos.iss),ipi:totalMeses(tributos.ipi),
+        cpp:simples.composicaoDas?.cppInss||null,irpj:simples.composicaoDas?.irpj||null,
+        csll:simples.composicaoDas?.csll||null,outros:null,
+      },
+      simples:{anexo:simples.anexo||null,aliquotaEfetivaPct:simples.aliquotaEfetivaObservada||parametros.simplesAliquotaEfetiva,dasPeriodo:simples.dasTotal||totalMeses(parametros.simplesDas),fatorRPct:simples.fatorR||null},
+      confiancaGeral:result.dadosFaltantes?.length?"BAIXA":"MEDIA",
+    };
+    return send(res,200,{sucesso:true,modelo:MODEL,extracao,usage});
+  }catch(error){
+    console.error("[tributario][reforma-extrair]",error);
+    return send(res,500,{sucesso:false,error:error?.message||"Não foi possível extrair os documentos da Reforma."});
+  }
+}
+
+async function reformaAnalisar(req,res){
+  const body=req.body||{};
+  const base=jsonSeguro(body.base||{})||{};
+  const content=[{type:"input_text",text:`
+Você é o Finder Tax AI. Analise a preparação empresarial para a Reforma Tributária usando a base abaixo.
+BASE CONFIRMADA/INFORMADA:\n${JSON.stringify(base,null,2).slice(0,90000)}
+EXTRAÇÃO DOCUMENTAL:\n${JSON.stringify(body.extracaoOriginal||{},null,2).slice(0,60000)}
+
+REGRAS OBRIGATÓRIAS:
+1. Não calcule nem substitua valores do motor determinístico.
+2. Pesquise fontes oficiais para identificar possível redução ou regime específico conforme CNAE e atividade real.
+3. Diferencie benefício vigente de alíquota de referência estimada/pendente.
+4. Nunca aplique automaticamente a redução pesquisada: registre como validação necessária do consultor.
+5. Para serviços de contabilidade, confronte o art. 127 da LC 214/2025 e seus requisitos; não use 28% integral silenciosamente.
+6. Liste riscos, oportunidades, divergências, dados faltantes e perguntas de validação.
+7. Cite título, artigo e URL oficial dentro de dadosExtraidos quando houver enquadramento legal relevante.
+` }];
+  try{
+    const {result,usage}=await respostaPlanejamentoIA({content,schema:diagnosticSchema,nomeSchema:"finder_reforma_analise",effort:"high",webSearch:true});
+    const analise={
+      ...result,
+      resumo:result.resumoExecutivo,
+      conclusao:result.recomendacaoPreliminar,
+      recomendacao:result.recomendacaoPreliminar,
+      confianca:result.confiancaGeral,
+      fundamentacao:(result.dadosExtraidos||[]).map(x=>`${x.campo}: ${x.valor} — ${x.fonte}`),
+      matrizImpacto:[],
+      adequacoes:[],
+      transicao:[],
+      planoAcao:result.oportunidades||[],
+    };
+    return send(res,200,{sucesso:true,modelo:MODEL,analise,usage,statusPesquisa:"AGUARDANDO_VALIDACAO_CONSULTOR"});
+  }catch(error){
+    console.error("[tributario][reforma-analisar]",error);
+    return send(res,500,{sucesso:false,error:error?.message||"Não foi possível analisar a Reforma Tributária."});
+  }
+}
+
 export default async function handler(req,res){
   if(req.method==="OPTIONS")return res.status(204).end();
+  const user = usuarioAutenticado(req);
+  if(!user)return send(res,401,{sucesso:false,error:"Sessão inválida ou expirada."});
   const action=txt(req.query?.action,100);
   const routes={
     "salvar-projeto":salvarProjeto,
@@ -2778,6 +3015,8 @@ export default async function handler(req,res){
     "remover-documento":removerDocumento,
     "preparar-documentos-ia":prepararDocumentosIa,
     "diagnostico":diagnostico,
+    "reforma-extrair":reformaExtrair,
+    "reforma-analisar":reformaAnalisar,
     "planejamento-extrair":planejamentoExtrair,
     "planejamento-conferir":planejamentoConferir,
     "planejamento-analisar":planejamentoAnalisar
