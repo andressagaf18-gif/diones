@@ -5,11 +5,11 @@ import {
   obterMotor,
   normalizarEstrutura,
   instrucoesDoMotor,
-} from "./lib/diagnostic-engine.js";
+} from "../server/diagnostic-engine.js";
 
 import {
   perguntasBaseDaEstrutura,
-} from "./lib/question-engine.js";
+} from "../server/question-engine.js";
 
 function lista(v) {
   return Array.isArray(v) ? v : [];
