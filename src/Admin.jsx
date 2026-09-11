@@ -23281,6 +23281,75 @@ function FinderTechLayout({
 // COMPONENTE PRINCIPAL
 // =========================================================
 
+function ValidacaoPesquisaTributaria({token}) {
+  const [pesquisas,setPesquisas]=useState([]);
+  const [status,setStatus]=useState("AGUARDANDO_VALIDACAO_CONSULTOR");
+  const [busca,setBusca]=useState("");
+  const [selecionada,setSelecionada]=useState(null);
+  const [form,setForm]=useState({cbsPct:"",ibsPct:"",reducaoPct:"",baseLegal:"",observacao:""});
+  const [erro,setErro]=useState("");
+  const [carregando,setCarregando]=useState(false);
+
+  async function carregar(){
+    setCarregando(true);setErro("");
+    try{
+      const qs=new URLSearchParams({acao:"listar",busca});if(status)qs.set("status",status);
+      const r=await fetch(`/api/pesquisa-tributaria?${qs}`,{headers:{Authorization:`Bearer ${token}`}});
+      const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Falha ao carregar pesquisas.");
+      setPesquisas(d.pesquisas||[]);
+    }catch(e){setErro(e.message);}finally{setCarregando(false);}
+  }
+  useEffect(()=>{carregar();},[status]);
+
+  function abrir(item){
+    const a=item.resultado_ia?.aliquotas_referencia||{};
+    const b=item.resultado_ia?.beneficio_legal||{};
+    setSelecionada(item);setErro("");
+    setForm({
+      cbsPct:a.cbs_pct??"",ibsPct:a.ibs_pct??"",reducaoPct:b.percentual_reducao_pct??0,
+      baseLegal:b.base_legal||"",observacao:"",
+    });
+  }
+  async function enviar(acao){
+    if(!selecionada)return;
+    let motivo="";
+    if(acao==="rejeitar"){
+      motivo=window.prompt("Informe o motivo da rejeição:")||"";if(!motivo)return;
+    }
+    setCarregando(true);setErro("");
+    try{
+      const r=await fetch(`/api/pesquisa-tributaria?acao=${acao}`,{
+        method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify(acao==="validar"?{id:selecionada.id,premissasConfirmadas:form}:{id:selecionada.id,motivo}),
+      });
+      const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Não foi possível concluir a validação.");
+      setSelecionada(null);await carregar();
+    }catch(e){setErro(e.message);}finally{setCarregando(false);}
+  }
+  const input={width:"100%",padding:"9px 10px",border:"1px solid #D8DEEA",borderRadius:9,boxSizing:"border-box"};
+  return <div style={{display:"grid",gap:14}}>
+    <Card><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <input value={busca} onChange={e=>setBusca(e.target.value)} onKeyDown={e=>e.key==="Enter"&&carregar()} style={{...input,flex:"1 1 260px"}} placeholder="CNAE, CNPJ ou atividade"/>
+      <select value={status} onChange={e=>setStatus(e.target.value)} style={{...input,width:260}}><option value="AGUARDANDO_VALIDACAO_CONSULTOR">Aguardando validação</option><option value="VALIDADO">Validadas</option><option value="REJEITADO">Rejeitadas</option><option value="">Todas</option></select>
+      <Botao onClick={carregar} disabled={carregando}><RefreshCcw size={14}/>{carregando?"Carregando":"Atualizar"}</Botao>
+    </div>{erro&&<div style={{marginTop:9,color:"#B42318",fontSize:11}}>{erro}</div>}</Card>
+    <div style={{display:"grid",gridTemplateColumns:"minmax(320px,.9fr) minmax(420px,1.1fr)",gap:14,alignItems:"start"}}>
+      <Card><h3 style={{marginTop:0}}>Pesquisas ({pesquisas.length})</h3><div style={{display:"grid",gap:8}}>{pesquisas.map(item=><button key={item.id} onClick={()=>abrir(item)} style={{textAlign:"left",padding:11,border:`1px solid ${selecionada?.id===item.id?CORAL:"#DDE3EC"}`,borderRadius:10,background:"#fff",cursor:"pointer"}}><b>{item.cnae} · {item.atividade_real}</b><div style={{fontSize:9.5,color:MUTED,marginTop:4}}>{item.cnpj||"Sem CNPJ"} · {item.regime||"Regime não informado"} · {formatarData(item.criado_em)}</div><div style={{fontSize:9,fontWeight:900,marginTop:5}}>{item.status}</div></button>)}{!pesquisas.length&&!carregando&&<div style={{color:MUTED}}>Nenhuma pesquisa encontrada.</div>}</div></Card>
+      <Card>{!selecionada?<div style={{color:MUTED}}>Selecione uma pesquisa para revisar fontes, requisitos e percentuais.</div>:<div>
+        <h3 style={{marginTop:0}}>Revisão do consultor</h3>
+        <p style={{fontSize:11,lineHeight:1.5}}><b>Atividade:</b> {selecionada.atividade_real}<br/><b>NBS/NCM:</b> {selecionada.nbs_ncm||"Não informado"}<br/><b>Local:</b> {selecionada.municipio}/{selecionada.uf} · <b>Ano:</b> {selecionada.ano}</p>
+        <div style={{padding:11,background:"#F7F8FB",borderRadius:10,fontSize:10.5,lineHeight:1.55}}><b>Sugestão da IA:</b> {selecionada.resultado_ia?.tratamento_sugerido}<br/><b>Situação do benefício:</b> {selecionada.resultado_ia?.beneficio_legal?.situacao_normativa}<br/><b>Situação das alíquotas:</b> {selecionada.resultado_ia?.aliquotas_referencia?.situacao_normativa}<br/><b>Confiança:</b> {selecionada.resultado_ia?.grau_confianca}</div>
+        <h4>Requisitos</h4><ul style={{fontSize:10.5,lineHeight:1.55}}>{(selecionada.resultado_ia?.requisitos||[]).map((x,i)=><li key={i}>{x}</li>)}</ul>
+        <h4>Fontes oficiais</h4><div style={{display:"grid",gap:4}}>{(selecionada.resultado_ia?.fontes||[]).map((f,i)=><a key={i} href={f.url} target="_blank" rel="noreferrer" style={{fontSize:10}}>{f.titulo||f.url} {f.artigo?`· ${f.artigo}`:""}</a>)}</div>
+        <h4>Percentuais confirmados</h4><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}><label style={{fontSize:9,fontWeight:900}}>CBS %<input style={input} value={form.cbsPct} onChange={e=>setForm({...form,cbsPct:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>IBS %<input style={input} value={form.ibsPct} onChange={e=>setForm({...form,ibsPct:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>Redução %<input style={input} value={form.reducaoPct} onChange={e=>setForm({...form,reducaoPct:e.target.value})}/></label></div>
+        <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Base legal confirmada<textarea style={{...input,minHeight:75}} value={form.baseLegal} onChange={e=>setForm({...form,baseLegal:e.target.value})}/></label>
+        <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Observação do consultor<textarea style={{...input,minHeight:65}} value={form.observacao} onChange={e=>setForm({...form,observacao:e.target.value})}/></label>
+        <div style={{display:"flex",gap:8,marginTop:10}}><Botao onClick={()=>enviar("validar")} disabled={carregando}><ShieldCheck size={14}/>Validar e liberar para cálculo</Botao><Botao secundario onClick={()=>enviar("rejeitar")} disabled={carregando}><X size={14}/>Rejeitar</Botao></div>
+      </div>}</Card>
+    </div>
+  </div>;
+}
+
 export default function Admin() {
   const [token, setToken] = useState(
     () =>
@@ -23716,6 +23785,10 @@ export default function Admin() {
       subtitulo:
         "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
     },
+    pesquisa_tributaria: {
+      titulo: "Validação Tributária",
+      subtitulo: "Pesquisas legais da IA aguardando revisão e aprovação do consultor",
+    },
     asaas: {
       titulo: "Asaas Financeiro",
       subtitulo: "Saldo, extrato, recebimentos, cobranças, cupons e eventos Pix vinculados aos diagnósticos",
@@ -23929,6 +24002,10 @@ export default function Admin() {
         </ConteudoPadrao>
       </FinderTechLayout>
     );
+  }
+
+  if (aba === "pesquisa_tributaria") {
+    return <FinderTechLayout aba={aba} setAba={setAba} logout={sair} titulo={paginas.pesquisa_tributaria.titulo} subtitulo={paginas.pesquisa_tributaria.subtitulo}><ConteudoPadrao maxWidth="none"><ValidacaoPesquisaTributaria token={token}/></ConteudoPadrao></FinderTechLayout>;
   }
 
   if (aba === "asaas") {
