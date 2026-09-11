@@ -4,7 +4,7 @@
 
 import crypto from "crypto";
 import { neon } from "@neondatabase/serverless";
-import { exigirAutenticacao } from "./lib/auth.js";
+import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
 const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V1";
