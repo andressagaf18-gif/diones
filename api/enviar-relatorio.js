@@ -1225,6 +1225,10 @@ export default async function handler(
     const areasBanco =
       areas;
 
+    const versoesRelatorio = objetoSeguro(
+      body?.versoesRelatorio || resultado?.versoesRelatorio
+    );
+
     const dadosCompletos = {
       schemaVersion: 2,
 
@@ -1251,6 +1255,8 @@ export default async function handler(
 
       respostas:
         respostasNormalizadas,
+
+      versoesRelatorio,
 
       resultado: {
         ...resultado,
