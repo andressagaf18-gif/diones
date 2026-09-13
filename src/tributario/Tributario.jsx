@@ -979,7 +979,20 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   }
  },[cnpj]);
  function normalizarCnaes(data){const p=data?.cnaePrincipal||data?.cnae?.principal||null,s=data?.cnaesSecundarios||data?.cnae?.secundarios||[],todos=data?.todosCnaes||data?.cnae?.todos||[p,...s].filter(Boolean);return(todos||[]).map((x,i)=>({codigo:String(x?.codigo||x?.cnae||""),descricao:x?.descricao||"",principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&p)})).filter(x=>x.codigo||x.descricao)}
- async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");return{dados:d,cnaes:lista}}
+ function classificarSetorCnae(descricaoCnae=""){
+  const s=normalizarComparacao(descricaoCnae);
+  if(/industr|fabric|manuf|producao|extracao|mineral/.test(s))return"Indústria";
+  if(/comerc|varej|atacad|loja|mercad/.test(s))return"Comércio";
+  return"Serviço";
+ }
+ function selecionarCnaePrincipal(item){
+  setPrincipal(item?.codigo||item?.cnae||"");
+  setDescricao(String(item?.descricao||""));
+  setSetorAtividade(classificarSetorCnae(item?.descricao||""));
+  setPesquisaTributaria(null);
+  pesquisaTributariaAutomaticaRef.current="";
+ }
+ async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");if(p?.descricao){setDescricao(atual=>String(atual||"").trim()?atual:p.descricao);setSetorAtividade(classificarSetorCnae(p.descricao));}return{dados:d,cnaes:lista}}
  function pendenciaReformaResolvida(texto,{
   cnpjAtual=cnpj,
   cnaesAtuais=cnaes,
@@ -1413,11 +1426,19 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    tokenPublico:pesquisa.tokenPublico||atual?.tokenPublico
   }));
 
-  const p=pesquisa.status==="VALIDADO"?pesquisa.premissasConfirmadas:null;
+ const p=pesquisa.status==="VALIDADO"?pesquisa.premissasConfirmadas:null;
+  const classificacao=pesquisa?.resultado?.classificacao_operacao||{};
+  const setor=String(classificacao.setor||"").toUpperCase();
+  if(["SERVICO","COMERCIO","INDUSTRIA","MISTA"].includes(setor)){
+   setSetorAtividade({SERVICO:"Serviço",COMERCIO:"Comércio",INDUSTRIA:"Indústria",MISTA:"Mista"}[setor]);
+  }
   if(p){
    setReducaoIbsCbs(String(n(p.reducaoPct)));
    if(p.aliquotaLocalPct!=null)setAliquotaAtual(String(n(p.aliquotaLocalPct)));
-   if(p.baseLegal)setTratamentoEspecial(p.baseLegal);
+   if(p.baseLegal)setTratamentoEspecial([
+    p.baseLegal,
+    p.aplicacaoCondicional?"Simulação condicionada à comprovação dos requisitos legais e documentais.":""
+   ].filter(Boolean).join(" · "));
   }
  }
 
@@ -1442,7 +1463,11 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     regime,
     municipio,
     uf,
-    ano:Number(simulacao?.parametros?.ano||2027)
+    ano:Number(simulacao?.parametros?.ano||2027),
+    cbsReferenciaPct:9.21,
+    ibsReferenciaPct:18.7,
+    situacaoPremissaReferencia:"ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
+    fontePremissaReferencia:"Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva"
    }});
    aplicarRetornoPesquisa({
     id:d.pesquisaId,
@@ -1458,7 +1483,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     setAliquotaAtual(String(n(aliquotaLocal)));
    }
    setOk(d.status==="VALIDADO"
-    ?"Pesquisa concluída e premissas aplicadas automaticamente pelo motor de segurança."
+    ?d.premissasConfirmadas?.aplicacaoCondicional
+      ?"Pesquisa concluída. A redução legal foi aplicada à simulação com ressalvas documentais explícitas."
+      :"Pesquisa concluída e premissas aplicadas automaticamente pelo motor de segurança."
     :"Pesquisa concluída, mas os dados não atenderam aos requisitos de aplicação automática. Confira as pendências apresentadas.");
    return true;
   }catch(e){setErro(e.message);return false}finally{setPesquisandoTributacao(false)}
@@ -2643,7 +2670,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       <div style={{fontSize:8,color:"#697386"}}>Os cálculos permanecem editáveis e auditáveis.</div>
      </div>
 
-  {aba==="identificacao"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados da empresa</h3><div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7}}>{field("CNPJ",cnpj,setCnpj,"00.000.000/0000-00")}<button onClick={buscarCnpj} style={{alignSelf:"end",padding:"9px 12px"}}>Consultar CNPJ</button></div>{empresa&&<p style={{fontSize:10}}><b>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</b></p>}<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>{field("Responsável Finder",responsavel,setResponsavel)}{field("Origem",origem,setOrigem)}{field("Município",municipio,setMunicipio)}{field("UF",uf,setUf)}</div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Regime atual<select value={regime} onChange={e=>setRegime(e.target.value)} style={input}><option value="">Selecione</option><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label></div><div style={card}><h3>CNAEs oficiais</h3>{cnaes.length?cnaes.map((x,i)=><label key={`${x.codigo}_${i}`} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>setPrincipal(x.codigo)}/><span><b>{x.codigo}</b> — {x.descricao}{x.principal?" · principal cadastral":""}</span></label>):<p style={{fontSize:9,color:"#697386"}}>Carregados pela consulta do CNPJ, inclusive quando o CNPJ for identificado pela IA nos documentos.</p>}</div></div>}
+  {aba==="identificacao"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados da empresa</h3><div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7}}>{field("CNPJ",cnpj,setCnpj,"00.000.000/0000-00")}<button onClick={buscarCnpj} style={{alignSelf:"end",padding:"9px 12px"}}>Consultar CNPJ</button></div>{empresa&&<p style={{fontSize:10}}><b>{empresa.razaoSocial||empresa.razao_social||empresa.nome}</b></p>}<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>{field("Responsável Finder",responsavel,setResponsavel)}{field("Origem",origem,setOrigem)}{field("Município",municipio,setMunicipio)}{field("UF",uf,setUf)}</div><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800,marginTop:8}}>Regime atual<select value={regime} onChange={e=>setRegime(e.target.value)} style={input}><option value="">Selecione</option><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label></div><div style={card}><h3>CNAEs oficiais</h3>{cnaes.length?cnaes.map((x,i)=><label key={`${x.codigo}_${i}`} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid #EEF0F4",fontSize:9.5}}><input type="radio" checked={principal===x.codigo} onChange={()=>selecionarCnaePrincipal(x)}/><span><b>{x.codigo}</b> — {x.descricao}{x.principal?" · principal cadastral":""}</span></label>):<p style={{fontSize:9,color:"#697386"}}>Carregados pela consulta do CNPJ, inclusive quando o CNPJ for identificado pela IA nos documentos.</p>}</div></div>}
 
   {aba==="operacao"&&<div style={card}><h3>Operação real</h3><textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={5} style={{...input,resize:"vertical"}} placeholder="O que vende/presta, clientes, fornecedores, local da operação, particularidades..."/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:8}}>{field("Setor da atividade",setorAtividade,setSetorAtividade)}{field("Tipo de estabelecimento",tipoEstabelecimento,setTipoEstabelecimento,"Empresa única / múltiplos estabelecimentos")}{field("Quantidade de estabelecimentos",quantidadeEstabelecimentos,setQuantidadeEstabelecimentos)}{field("Municípios de operação",municipiosOperacao,setMunicipiosOperacao)}{field("UFs de operação",ufsOperacao,setUfsOperacao)}{field("% B2B",b2b,setB2b)}{field("% B2C",b2c,setB2c)}{field("% exportação",exportacao,setExportacao)}</div><p style={{fontSize:9,color:"#697386"}}>A IA preenche apenas o que conseguir comprovar. CNAE continua vindo da consulta oficial do CNPJ.</p></div>}
 
@@ -2770,7 +2797,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div style={{maxWidth:760}}>
       <div style={{fontSize:8,fontWeight:900,color:premissasTributarias?"#0F6E56":"#855A12"}}>PESQUISA NORMATIVA + CONTROLE AUTOMÁTICO</div>
       <h3 style={{margin:"4px 0"}}>Tratamento tributário da atividade real</h3>
-      <p style={{fontSize:9,color:"#697386",lineHeight:1.5,margin:0}}>A pesquisa começa automaticamente quando o CNPJ e o CNAE principal estão válidos. O motor aplica os percentuais somente quando encontra fonte oficial, confiança alta, vigência confirmada e nenhuma pendência.</p>
+      <p style={{fontSize:9,color:"#697386",lineHeight:1.5,margin:0}}>A pesquisa começa automaticamente quando o CNPJ e o CNAE principal estão válidos. Benefícios confirmados em fonte oficial entram na simulação; requisitos ainda não comprovados permanecem destacados como ressalva documental.</p>
      </div>
      <span style={{padding:"5px 8px",borderRadius:999,fontSize:8,fontWeight:900,background:premissasTributarias?"#DDF3E7":"#FFF0CC",color:premissasTributarias?"#0F6E56":"#855A12"}}>{String(statusPesquisaExibido).replaceAll("_"," ")}</span>
     </div>
@@ -2781,13 +2808,17 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     </div>
     {pesquisaTributaria?.resultado&&<div style={{marginTop:10,fontSize:9,lineHeight:1.5}}>
      <div><b>Tratamento sugerido pela pesquisa:</b> {pesquisaTributaria.resultado.tratamento_sugerido||"Validação necessária"}</div>
+     <div><b>Tipo da operação:</b> {String(pesquisaTributaria.resultado.classificacao_operacao?.setor||"Não determinado").replaceAll("_"," ")}</div>
+     <div><b>Código fiscal identificado:</b> {pesquisaTributaria.resultado.classificacao_operacao?.codigo||"Pendente de produto/serviço suficiente"} {pesquisaTributaria.resultado.classificacao_operacao?.tipo_codigo?`· ${String(pesquisaTributaria.resultado.classificacao_operacao.tipo_codigo).replaceAll("_"," ")}`:""}</div>
+     <div><b>Descrição fiscal:</b> {pesquisaTributaria.resultado.classificacao_operacao?.descricao||"Não determinada"}</div>
      <div><b>Situação da alíquota:</b> {String(pesquisaTributaria.resultado.aliquotas_referencia?.situacao_normativa||"PENDENTE").replaceAll("_"," ")}</div>
      <div><b>Base legal pesquisada:</b> {pesquisaTributaria.resultado.beneficio_legal?.base_legal||"Não confirmada"}</div>
      <div><b>Redução identificada:</b> {pesquisaTributaria.resultado.beneficio_legal?.percentual_reducao_pct!=null?`${pesquisaTributaria.resultado.beneficio_legal.percentual_reducao_pct}%`:"Não identificada"}</div>
      <div><b>Tributo do regime atual:</b> {pesquisaTributaria.resultado.tributacao_local?.tipo||"Não determinado"} {pesquisaTributaria.resultado.tributacao_local?.aliquota_efetiva_pct!=null?`· ${pesquisaTributaria.resultado.tributacao_local.aliquota_efetiva_pct}%`:"· alíquota pendente"}</div>
      <div><b>Base legal ISS/ICMS:</b> {pesquisaTributaria.resultado.tributacao_local?.base_legal||"Não confirmada"}</div>
-     <div><b>Aplicação automática:</b> {pesquisaTributaria.resultado.validacao_automatica?.apto?"Liberada":"Não aplicada"}</div>
+     <div><b>Aplicação automática:</b> {pesquisaTributaria.resultado.validacao_automatica?.status==="APLICADO_COM_RESSALVA"?"Aplicada com ressalva legal":pesquisaTributaria.resultado.validacao_automatica?.apto?"Liberada":"Não aplicada"}</div>
      {!!pesquisaTributaria.resultado.validacao_automatica?.motivos?.length&&<div><b>Pendências:</b> {pesquisaTributaria.resultado.validacao_automatica.motivos.join(" · ")}</div>}
+     {!!pesquisaTributaria.resultado.validacao_automatica?.ressalvas?.length&&<div style={{color:"#805B10"}}><b>Ressalvas documentais:</b> {pesquisaTributaria.resultado.validacao_automatica.ressalvas.join(" · ")}</div>}
      {!!pesquisaTributaria.resultado.requisitos?.length&&<div><b>Requisitos:</b> {pesquisaTributaria.resultado.requisitos.join(" · ")}</div>}
      {!!pesquisaTributaria.resultado.fontes?.length&&<div><b>Fontes oficiais:</b> {pesquisaTributaria.resultado.fontes.map((f,i)=><React.Fragment key={f.url||i}>{i>0?" · ":""}<a href={f.url} target="_blank" rel="noreferrer">{f.titulo||f.orgao||"Fonte"}</a></React.Fragment>)}</div>}
     </div>}
