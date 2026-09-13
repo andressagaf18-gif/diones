@@ -23366,7 +23366,7 @@ function ValidacaoPesquisaTributaria({token}) {
   const [status,setStatus]=useState("AGUARDANDO_VALIDACAO_CONSULTOR");
   const [busca,setBusca]=useState("");
   const [selecionada,setSelecionada]=useState(null);
-  const [form,setForm]=useState({cbsPct:"",ibsPct:"",reducaoPct:"",baseLegal:"",observacao:""});
+  const [form,setForm]=useState({cbsPct:"",ibsPct:"",reducaoPct:"",tipoTributoLocal:"",aliquotaLocalPct:"",baseLegalLocal:"",baseLegal:"",observacao:""});
   const [erro,setErro]=useState("");
   const [carregando,setCarregando]=useState(false);
 
@@ -23384,10 +23384,12 @@ function ValidacaoPesquisaTributaria({token}) {
   function abrir(item){
     const a=item.resultado_ia?.aliquotas_referencia||{};
     const b=item.resultado_ia?.beneficio_legal||{};
+    const l=item.resultado_ia?.tributacao_local||{};
     setSelecionada(item);setErro("");
     setForm({
       cbsPct:a.cbs_pct??"",ibsPct:a.ibs_pct??"",reducaoPct:b.percentual_reducao_pct??0,
-      baseLegal:b.base_legal||"",observacao:"",
+      tipoTributoLocal:l.tipo||"",aliquotaLocalPct:l.aliquota_efetiva_pct??l.aliquota_nominal_pct??"",
+      baseLegalLocal:l.base_legal||"",baseLegal:b.base_legal||"",observacao:"",
     });
   }
   async function enviar(acao){
@@ -23418,10 +23420,12 @@ function ValidacaoPesquisaTributaria({token}) {
       <Card>{!selecionada?<div style={{color:MUTED}}>Selecione uma pesquisa para revisar fontes, requisitos e percentuais.</div>:<div>
         <h3 style={{marginTop:0}}>Revisão do consultor</h3>
         <p style={{fontSize:11,lineHeight:1.5}}><b>Atividade:</b> {selecionada.atividade_real}<br/><b>NBS/NCM:</b> {selecionada.nbs_ncm||"Não informado"}<br/><b>Local:</b> {selecionada.municipio}/{selecionada.uf} · <b>Ano:</b> {selecionada.ano}</p>
-        <div style={{padding:11,background:"#F7F8FB",borderRadius:10,fontSize:10.5,lineHeight:1.55}}><b>Sugestão da IA:</b> {selecionada.resultado_ia?.tratamento_sugerido}<br/><b>Situação do benefício:</b> {selecionada.resultado_ia?.beneficio_legal?.situacao_normativa}<br/><b>Situação das alíquotas:</b> {selecionada.resultado_ia?.aliquotas_referencia?.situacao_normativa}<br/><b>Confiança:</b> {selecionada.resultado_ia?.grau_confianca}</div>
+        <div style={{padding:11,background:"#F7F8FB",borderRadius:10,fontSize:10.5,lineHeight:1.55}}><b>Sugestão da IA:</b> {selecionada.resultado_ia?.tratamento_sugerido}<br/><b>Situação do benefício:</b> {selecionada.resultado_ia?.beneficio_legal?.situacao_normativa}<br/><b>Situação das alíquotas:</b> {selecionada.resultado_ia?.aliquotas_referencia?.situacao_normativa}<br/><b>Tributo local pesquisado:</b> {selecionada.resultado_ia?.tributacao_local?.tipo||"Não determinado"} {selecionada.resultado_ia?.tributacao_local?.aliquota_efetiva_pct!=null?`· ${selecionada.resultado_ia.tributacao_local.aliquota_efetiva_pct}%`:"· alíquota pendente"}<br/><b>Base legal local:</b> {selecionada.resultado_ia?.tributacao_local?.base_legal||"Não confirmada"}<br/><b>Confiança:</b> {selecionada.resultado_ia?.grau_confianca}</div>
         <h4>Requisitos</h4><ul style={{fontSize:10.5,lineHeight:1.55}}>{(selecionada.resultado_ia?.requisitos||[]).map((x,i)=><li key={i}>{x}</li>)}</ul>
         <h4>Fontes oficiais</h4><div style={{display:"grid",gap:4}}>{(selecionada.resultado_ia?.fontes||[]).map((f,i)=><a key={i} href={f.url} target="_blank" rel="noreferrer" style={{fontSize:10}}>{f.titulo||f.url} {f.artigo?`· ${f.artigo}`:""}</a>)}</div>
         <h4>Percentuais confirmados</h4><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}><label style={{fontSize:9,fontWeight:900}}>CBS %<input style={input} value={form.cbsPct} onChange={e=>setForm({...form,cbsPct:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>IBS %<input style={input} value={form.ibsPct} onChange={e=>setForm({...form,ibsPct:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>Redução %<input style={input} value={form.reducaoPct} onChange={e=>setForm({...form,reducaoPct:e.target.value})}/></label></div>
+        <h4>Tributação local confirmada</h4><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7}}><label style={{fontSize:9,fontWeight:900}}>Tipo — ISS/ICMS<input style={input} value={form.tipoTributoLocal} onChange={e=>setForm({...form,tipoTributoLocal:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>Alíquota local %<input style={input} value={form.aliquotaLocalPct} onChange={e=>setForm({...form,aliquotaLocalPct:e.target.value})}/></label></div>
+        <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Base legal ISS/ICMS<textarea style={{...input,minHeight:65}} value={form.baseLegalLocal} onChange={e=>setForm({...form,baseLegalLocal:e.target.value})}/></label>
         <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Base legal confirmada<textarea style={{...input,minHeight:75}} value={form.baseLegal} onChange={e=>setForm({...form,baseLegal:e.target.value})}/></label>
         <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Observação do consultor<textarea style={{...input,minHeight:65}} value={form.observacao} onChange={e=>setForm({...form,observacao:e.target.value})}/></label>
         <div style={{display:"flex",gap:8,marginTop:10}}><Botao onClick={()=>enviar("validar")} disabled={carregando}><ShieldCheck size={14}/>Validar e liberar para cálculo</Botao><Botao secundario onClick={()=>enviar("rejeitar")} disabled={carregando}><X size={14}/>Rejeitar</Botao></div>
