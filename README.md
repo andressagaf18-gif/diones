@@ -41,7 +41,7 @@ Este projeto já vem com CNPJ real e IA real integrados via funções na pasta `
 
 ### Configurar a chave da IA na Vercel
 1. No painel do projeto na Vercel, vá em **Settings → Environment Variables**.
-2. Adicione uma variável chamada `ANTHROPIC_API_KEY` com sua chave da API da Anthropic
+2. Adicione uma variável chamada `OPENAI_API_KEY` com sua chave da API da OpenAI. Os endpoints de diagnóstico, perguntas, pesquisa tributária e documentos usam a Responses API da OpenAI.
    (gerada em https://console.anthropic.com — aba "API Keys").
 3. Marque para os ambientes Production e Preview.
 4. Clique em **Redeploy** (Deployments → ⋯ → Redeploy) para a variável entrar em vigor.
@@ -58,4 +58,3 @@ vercel dev
 O `vercel dev` sobe tanto o front-end quanto as funções da pasta `/api` juntos,
 simulando o ambiente de produção. Copie `.env.example` para `.env` e preencha
 sua chave antes de rodar.
-
