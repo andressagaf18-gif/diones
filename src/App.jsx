@@ -1578,9 +1578,21 @@ function SimuladorReformaPublico({
   email,
   telefone,
   onVoltar,
-  onAprofundar,
   onSnapshot,
   onPersistirResultado,
+  diagnosticoIdSalvo="",
+  agendaData="",
+  agendaHora="",
+  agendaHorarios=[],
+  agendaStatus="idle",
+  agendaMensagem="",
+  hojeAgenda="",
+  limiteAgenda="",
+  onAgendaDataChange,
+  onAgendaHoraChange,
+  onAgendaObservacaoChange,
+  agendaObservacao="",
+  onConfirmarAgendamento,
 }) {
   const [etapa,setEtapa]=useState("empresa");
 
@@ -3025,6 +3037,22 @@ function SimuladorReformaPublico({
     }
   },[etapa]);
 
+  async function finalizarRelatorioReforma(){
+    if(!relatorioIa||persistenciaRelatorioRef.current)return;
+    persistenciaRelatorioRef.current=true;
+    setPersistenciaRelatorio("saving");
+    try{
+      const resposta=await onPersistirResultado?.({snapshot,relatorioIa});
+      if(!resposta?.sucesso)throw new Error("Não foi possível concluir o relatório da Reforma.");
+      setDiagnosticoIdPersistido(resposta.diagnosticoId||"");
+      setPersistenciaRelatorio("saved");
+    }catch(error){
+      persistenciaRelatorioRef.current=false;
+      setPersistenciaRelatorio("error");
+      setErroRelatorioIa(error?.message||"Não foi possível salvar o relatório da Reforma.");
+    }
+  }
+
   function gerarRelatorioExecutivoCliente(){
     const empresaNome=empresaCadastral?.razaoSocial||empresaCadastral?.nomeFantasia||"Empresa";
     const escapar=(valor="")=>String(valor??"").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
@@ -4124,6 +4152,27 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             {kpi("Dentro do DAS",simplesDentro==null?"A validar":moedaSimulador(simplesDentro),"#31589C")}
             {kpi("Carga total por fora",simplesFora==null?"A validar":moedaSimulador(simplesFora),"#176B47")}
           </div>
+          <div style={{marginTop:8,overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:7.8}}>
+              <thead><tr style={{background:NAVY,color:WHITE}}>
+                <th style={{padding:7,textAlign:"left"}}>Componente</th>
+                <th style={{padding:7,textAlign:"right"}}>Simples por dentro</th>
+                <th style={{padding:7,textAlign:"right"}}>IBS/CBS por fora</th>
+              </tr></thead>
+              <tbody>
+                {[
+                  ["DAS total",simplesDentro,simplesFora==null?null:dasResidualUsado],
+                  ["IBS/CBS embutidos no DAS",parcelaConsumoDasEstimada,null],
+                  ["IBS líquido",null,ibsLiquido],
+                  ["Carga total comparável",simplesDentro,simplesFora],
+                ].map(([rotulo,dentro,foraValor])=><tr key={rotulo} style={{borderBottom:"1px solid #E8ECF2"}}>
+                  <td style={{padding:7,fontWeight:800}}>{rotulo}</td>
+                  <td style={{padding:7,textAlign:"right"}}>{dentro==null?"A validar":moedaSimulador(dentro)}</td>
+                  <td style={{padding:7,textAlign:"right"}}>{foraValor==null?"A validar":moedaSimulador(foraValor)}</td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
           {simplesFora!=null&&<div style={{marginTop:7,background:"#F7F9FC",borderRadius:9,padding:9,fontSize:7.6,lineHeight:1.45}}>
             <b>Composição por fora:</b> DAS residual {moedaSimulador(dasResidualUsado)} + IBS/CBS líquido {moedaSimulador(ibsCbsLiquido)} + demais tributos {moedaSimulador(outrosAtuaisUsados+isUsado)} = <b>{moedaSimulador(simplesFora)}</b>.<br/>
             <span style={{color:MUTED}}>Origem do residual: {origemDasResidual}.</span>
@@ -4458,11 +4507,55 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
       <button
         type="button"
-        onClick={()=>onAprofundar?.(snapshot)}
-        style={{...chipStyle(false),width:"100%",minHeight:42}}
+        onClick={finalizarRelatorioReforma}
+        disabled={!relatorioIa||persistenciaRelatorio==="saving"||persistenciaRelatorio==="saved"}
+        style={{
+          width:"100%",minHeight:44,border:0,borderRadius:11,
+          background:relatorioIa&&persistenciaRelatorio!=="saved"?NAVY:"#D7DDE8",
+          color:WHITE,fontWeight:900,cursor:relatorioIa&&persistenciaRelatorio!=="saved"?"pointer":"default"
+        }}
       >
-        Fazer Diagnóstico completo da Reforma
+        {persistenciaRelatorio==="saving"?"Salvando relatório da Reforma...":persistenciaRelatorio==="saved"?"Relatório da Reforma finalizado":"Finalizar relatório da Reforma"}
       </button>
+
+      {persistenciaRelatorio==="saved"&&<>
+        <div style={{...card,marginTop:10,background:"#F7F9FD"}}>
+          <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 5px",color:NAVY}}>Falar com um especialista</h3>
+          <p style={{fontSize:9.5,lineHeight:1.45,color:MUTED,margin:"0 0 9px"}}>
+            Seu relatório da Reforma foi concluído e está disponível para a equipe. Sugerimos agendar uma conversa para interpretar os cenários com você.
+          </p>
+          <button type="button" onClick={()=>{
+            const mensagem=encodeURIComponent(`Olá! Finalizei o Simulador da Reforma Tributária Finder.\n\nGostaria de conversar com um especialista sobre o meu relatório.`);
+            window.open(`https://wa.me/5541989049616?text=${mensagem}`,"_blank");
+          }} style={{width:"100%",minHeight:40,border:0,borderRadius:10,background:CORAL,color:WHITE,fontWeight:900,cursor:"pointer"}}>
+            Falar com um especialista
+          </button>
+        </div>
+
+        <div style={{...card,marginTop:10,background:"#F7F9FD"}}>
+          <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 5px",color:NAVY}}>Agendar conversa</h3>
+          <p style={{fontSize:9.5,lineHeight:1.45,color:MUTED,margin:"0 0 9px"}}>Escolha um horário disponível para tratar exclusivamente da sua simulação da Reforma.</p>
+          {agendaStatus==="success"?<div style={{background:"#E1F5EE",color:"#0F6E56",borderRadius:9,padding:10,fontSize:10,fontWeight:800}}>{agendaMensagem}</div>:<>
+            <label style={labelStyle}>Melhor dia
+              <input type="date" min={hojeAgenda} max={limiteAgenda} value={agendaData} onChange={e=>onAgendaDataChange?.(e.target.value)} style={{...inputStyle,marginTop:4,marginBottom:8}}/>
+            </label>
+            {agendaStatus==="loading"&&<p style={{fontSize:9.5,color:MUTED}}>Consultando horários...</p>}
+            {agendaHorarios.length>0&&<>
+              <label style={labelStyle}>Melhor horário</label>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,margin:"5px 0 9px"}}>
+                {agendaHorarios.map(item=><button key={item.hora} type="button" disabled={!item.disponivel} onClick={()=>onAgendaHoraChange?.(item.hora)} style={{border:agendaHora===item.hora?`2px solid ${CORAL}`:"1px solid #D8DEEA",borderRadius:8,padding:"8px 3px",background:agendaHora===item.hora?"#FFF3EF":item.disponivel?WHITE:"#EEF1F5",color:item.disponivel?NAVY:"#A8B0BE",fontSize:10,fontWeight:800}}>{item.hora}</button>)}
+              </div>
+            </>}
+            <label style={labelStyle}>Observação (opcional)
+              <textarea value={agendaObservacao} onChange={e=>onAgendaObservacaoChange?.(e.target.value)} maxLength={1000} style={{...inputStyle,minHeight:55,resize:"vertical",marginTop:4}} placeholder="Ex.: dúvidas sobre a redução da alíquota."/>
+            </label>
+            {agendaMensagem&&<p style={{fontSize:9.5,color:agendaStatus==="error"?"#993C1D":MUTED}}>{agendaMensagem}</p>}
+            <button type="button" onClick={onConfirmarAgendamento} disabled={!diagnosticoIdSalvo||!agendaData||!agendaHora||agendaStatus==="saving"} style={{width:"100%",minHeight:40,border:0,borderRadius:10,background:!diagnosticoIdSalvo||!agendaData||!agendaHora?"#D7DDE8":NAVY,color:WHITE,fontWeight:900,cursor:!diagnosticoIdSalvo||!agendaData||!agendaHora?"default":"pointer"}}>
+              {agendaStatus==="saving"?"Confirmando...":"Confirmar agendamento"}
+            </button>
+          </>}
+        </div>
+      </>}
 
       <button
         type="button"
@@ -6374,12 +6467,21 @@ function DiagnosticoPrototipo() {
           recomendacoes:relatorioIa?.recomendacoes||[],
         }],
         diagnosticoGeral:{
+          tipoDiagnostico:"simulador_reforma",
+          estruturaNegocio:"simulador_reforma",
           resumoExecutivo:relatorioIa?.leituraExecutiva||"",
           principaisDores:relatorioIa?.riscosPrioritarios||[],
           prioridadesImediatas:relatorioIa?.prioridades||[],
           oportunidades:relatorioIa?.recomendacoes||[],
           proximosPassos:relatorioIa?.proximosPassos||[],
           alertaEstrategico:(relatorioIa?.riscosPrioritarios||[])[0]||"",
+          visaoCliente:relatoriosSegmentados.cliente,
+          visaoAdministracao:relatoriosSegmentados.administracao,
+          atendimento:{
+            disponivel:true,
+            canais:["especialista","agenda"],
+            agendaEndpoint:"/api/crm?action=agendar-reuniao",
+          },
         },
         inteligenciaTributaria:{
           disponivel:true,
@@ -6405,6 +6507,17 @@ function DiagnosticoPrototipo() {
         relatorioCliente:relatoriosSegmentados.cliente,
         relatorioAdministracao:relatoriosSegmentados.administracao,
         visaoAdministracaoCompleta:relatoriosSegmentados.administracao,
+        diagnosticoPersonalizadoReforma:{
+          tipo:"simulador_reforma",
+          finalidade:"painel_empresarial",
+          cliente:relatoriosSegmentados.cliente,
+          administracao:relatoriosSegmentados.administracao,
+        },
+        atendimento:{
+          disponivel:true,
+          canais:["especialista","agenda"],
+          diagnosticoId:null,
+        },
         resultadoCompleto:{
           leituraExecutiva:relatorioIa?.leituraExecutiva||"",
           riscosPrioritarios:relatorioIa?.riscosPrioritarios||[],
@@ -6414,6 +6527,7 @@ function DiagnosticoPrototipo() {
           visaoAdministracao:relatoriosSegmentados.administracao,
           relatorioCliente:relatoriosSegmentados.cliente,
           relatorioAdministracao:relatoriosSegmentados.administracao,
+          diagnosticoPersonalizadoReforma:relatoriosSegmentados.administracao,
         },
       },
     };
@@ -6440,6 +6554,13 @@ function DiagnosticoPrototipo() {
       data?.resultado?.id||
       "";
 
+    if(idSalvo){
+      // O agendamento do módulo Reforma usa exatamente o diagnóstico recém
+      // salvo; não deixa a tela continuar apontando para um diagnóstico
+      // operacional anterior.
+      setDiagnosticoIdSalvo(String(idSalvo));
+    }
+
     await atualizarLeadCRM({
       statusDiagnostico:"CONCLUIDO",
       etapaAtual:"RESULTADO_SIMULADOR_REFORMA",
@@ -6455,6 +6576,8 @@ function DiagnosticoPrototipo() {
         estruturaNegocio:"simulador_reforma",
         reformaTributaria:{ativo:true,origem:"Simulador Reforma"},
         simuladorReforma:snapshot,
+        diagnosticoPersonalizadoReforma:true,
+        atendimento:{disponivel:true,diagnosticoId:idSalvo?String(idSalvo):null},
       },
     });
 
@@ -11358,16 +11481,19 @@ function DiagnosticoPrototipo() {
                 onVoltar={()=>setStep("estrutura")}
                 onSnapshot={setSimuladorReformaDados}
                 onPersistirResultado={persistirResultadoSimuladorReforma}
-                onAprofundar={(dados)=>{
-                  setSimuladorReformaDados(dados);
-                  setEstruturaNegocio("reforma_tributaria");
-                  setObjetivosReforma((atuais)=>atuais.length?atuais:[
-                    "Comparar a tributação atual com a Reforma Tributária",
-                    "Entender créditos de IBS/CBS nas compras e despesas",
-                    "Planejar a empresa para 2027 em diante",
-                  ]);
-                  setStep("cnpj");
-                }}
+                diagnosticoIdSalvo={diagnosticoIdSalvo}
+                agendaData={agendaData}
+                agendaHora={agendaHora}
+                agendaHorarios={agendaHorarios}
+                agendaStatus={agendaStatus}
+                agendaMensagem={agendaMensagem}
+                agendaObservacao={agendaObservacao}
+                hojeAgenda={hojeAgenda}
+                limiteAgenda={limiteAgenda}
+                onAgendaDataChange={(valor)=>{setAgendaData(valor);setAgendaHora("");}}
+                onAgendaHoraChange={setAgendaHora}
+                onAgendaObservacaoChange={setAgendaObservacao}
+                onConfirmarAgendamento={confirmarAgendamento}
               />
             )}
 
