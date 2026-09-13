@@ -7,7 +7,7 @@ import { neon } from "@neondatabase/serverless";
 import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
-const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V2_BENEFICIO_E_TRIBUTO_LOCAL";
+const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V3_WEB_SEARCH_COMPATIVEL";
 const FONTES_OFICIAIS = [
   "planalto.gov.br",
   "gov.br",
@@ -38,7 +38,18 @@ function extrairOutputText(data) {
   return "";
 }
 function limparJson(valor) {
-  return texto(valor).replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "");
+  const limpo = texto(valor)
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const inicio = limpo.indexOf("{");
+  const fim = limpo.lastIndexOf("}");
+
+  return inicio >= 0 && fim > inicio
+    ? limpo.slice(inicio, fim + 1)
+    : limpo;
 }
 function urlOficial(url = "") {
   try {
@@ -114,7 +125,7 @@ function construirCacheKey(body) {
   const partes = [
     texto(body.cnae).replace(/\D/g, ""), normalizar(body.atividadeReal),
     normalizar(body.nbsNcm), normalizar(body.regime), normalizar(body.municipio),
-    texto(body.uf).toUpperCase(), texto(body.ano), "LC214_LOCAL_V2",
+    texto(body.uf).toUpperCase(), texto(body.ano), "LC214_LOCAL_V3",
   ];
   return `tributario_${hash(partes.join("|"))}`;
 }
@@ -217,7 +228,7 @@ async function pesquisar(req, res) {
 Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}.
 Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Verifique expressamente se a atividade possui redução de IBS/CBS na LC 214/2025, inclusive o art. 127 quando se tratar de profissão intelectual regulamentada, e informe o percentual mesmo quando sua aplicação depender de requisitos a validar.
 Pesquise também o tributo do regime atual. Para serviços, identifique o item da lista, o município competente, o ISS nominal/efetivo e a legislação municipal. Para comércio ou indústria, identifique o ICMS conforme NCM, UF de origem e destino, operação interna/interestadual, consumidor, benefício, ST, monofasia ou redução de base. Se os dados não permitirem uma alíquota exata, devolva null e liste precisamente o que falta; nunca devolva zero apenas por falta de informação.
-Responda exclusivamente em JSON com: tratamento_sugerido; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (26.5 significa 26,5%).`;
+Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários ou texto antes/depois, contendo: tratamento_sugerido; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (26.5 significa 26,5%).`;
   const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
   const resposta = await fetch("https://api.openai.com/v1/responses", {
     method:"POST",
@@ -226,7 +237,6 @@ Responda exclusivamente em JSON com: tratamento_sugerido; beneficio_legal {exist
       model:modelo, input:prompt,
       tools:[{ type:"web_search", filters:{ allowed_domains:FONTES_OFICIAIS } }],
       tool_choice:"auto", include:["web_search_call.action.sources"],
-      text:{ format:{ type:"json_object" } },
     }),
   });
   const data = await resposta.json();
