@@ -6697,6 +6697,18 @@ function DiagnosticoPrototipo() {
       setDiagnosticoIdSalvo(String(idSalvo));
     }
 
+    // Garante que o lead usado na fila seja concluído mesmo quando o estado
+    // do CRM foi criado antes do ID definitivo do diagnóstico.
+    await atualizarLeadCRM({
+      leadId:leadId||"",
+      sessionId:sessionIdLead||sessionStorage.getItem("finder_diagnostico_session_id")||"",
+      statusDiagnostico:"CONCLUIDO",
+      etapaAtual:"RESULTADO_SIMULADOR_REFORMA",
+      progressoPercentual:100,
+      diagnosticoId:idSalvo?String(idSalvo):"",
+      estruturaNegocio:"simulador_reforma",
+    });
+
     await atualizarLeadCRM({
       statusDiagnostico:"CONCLUIDO",
       etapaAtual:"RESULTADO_SIMULADOR_REFORMA",
