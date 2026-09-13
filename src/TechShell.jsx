@@ -69,11 +69,6 @@ const itensPadrao = [
     icon: Gauge,
   },
   {
-    id: "pesquisa_tributaria",
-    label: "Validação Tributária",
-    icon: ShieldCheck,
-  },
-  {
     id: "asaas",
     label: "Asaas Financeiro",
     icon: Activity,
