@@ -2074,7 +2074,7 @@ function SimuladorReformaPublico({
     csllAtualUsado+outrosAtuaisUsados;
   const temComposicaoAtual=cargaDetalhadaInformada>0||regime==="Simples Nacional";
   const aliquotasFuturasInformadas=cbsNom>0&&ibsNom>0;
-  const reducaoExigeValidacao=(redCbs>0||redIbs>0)&&!tratamentoConfirmado;
+  const reducaoSemConfirmacaoAutomatica=(redCbs>0||redIbs>0)&&!tratamentoConfirmado;
   const precoFinalNovo=baseIbsCbs+debitoCbs+debitoIbs;
 
   let reforma=null;
@@ -2159,8 +2159,8 @@ function SimuladorReformaPublico({
     motivoPendencia="Selecione um ano da transição entre 2026 e 2033.";
   }else if(!aliquotasFuturasInformadas){
     motivoPendencia="Informe as alíquotas editáveis de CBS e IBS para o ano selecionado.";
-  }else if(reducaoExigeValidacao){
-    motivoPendencia="Confirme o enquadramento legal da redução ou alíquota zero antes de comparar.";
+  }else if(reducaoSemConfirmacaoAutomatica){
+    motivoPendencia="A pesquisa automática não confirmou todos os requisitos legais da redução; o percentual não será usado na comparação.";
   }else if(regime==="Simples Nacional"){
     reforma=ibsCbsLiquido;
     motivoPendencia=simplesFora==null
@@ -2450,16 +2450,27 @@ function SimuladorReformaPublico({
       });
       const data=await resposta.json().catch(()=>null);
       if(!resposta.ok||!data?.sucesso)throw new Error(data?.error||"Não foi possível pesquisar o tratamento tributário.");
-      setPesquisaTributaria({
+      const pesquisaNova={
         id:data.pesquisaId,tokenPublico:data.tokenPublico,status:data.status,
-        resultado:data.resultado,premissasConfirmadas:null,
-      });
+        resultado:data.resultado,premissasConfirmadas:data.premissasConfirmadas||null,
+      };
+      setPesquisaTributaria(pesquisaNova);
       const reducaoSugerida=Number(data.resultado?.beneficio_legal?.percentual_reducao_pct??0);
-      if(data.resultado?.beneficio_legal?.existe===true&&reducaoSugerida>0){
-        setReducaoCbs(String(reducaoSugerida).replace(".",","));
-        setReducaoIbs(String(reducaoSugerida).replace(".",","));
-        setTratamentoIbsCbs(reducaoSugerida===30?"REDUCAO_30":reducaoSugerida===60?"REDUCAO_60":reducaoSugerida===100?"ZERO":"MANUAL");
-        setClassificacaoFiscal(data.resultado?.beneficio_legal?.base_legal||data.resultado?.tratamento_sugerido||"");
+      const premissas=data.status==="VALIDADO"?data.premissasConfirmadas:null;
+      if(premissas){
+        const reducaoAplicada=Number(premissas.reducaoPct??reducaoSugerida??0);
+        setCbs(String(premissas.cbsPct).replace(".",","));
+        setIbs(String(premissas.ibsPct).replace(".",","));
+        setReducaoCbs(String(reducaoAplicada).replace(".",","));
+        setReducaoIbs(String(reducaoAplicada).replace(".",","));
+        setTratamentoIbsCbs(reducaoAplicada===30?"REDUCAO_30":reducaoAplicada===60?"REDUCAO_60":reducaoAplicada===100?"ZERO":reducaoAplicada>0?"MANUAL":"PADRAO");
+        setClassificacaoFiscal(premissas.baseLegal||data.resultado?.tratamento_sugerido||"");
+        setTratamentoConfirmado(true);
+        if(premissas.aliquotaLocalPct!=null){
+          setAliquotaLocalAtual(String(premissas.aliquotaLocalPct).replace(".",","));
+          setAliquotaLocalConfirmada(true);
+        }
+      }else{
         setTratamentoConfirmado(false);
       }
       return true;
@@ -2515,7 +2526,7 @@ function SimuladorReformaPublico({
   function aplicarPesquisaTributariaValidada(){
     const p=pesquisaTributaria?.premissasConfirmadas;
     if(pesquisaTributaria?.status!=="VALIDADO"||!p){
-      setErroPesquisaTributaria("A pesquisa ainda não foi validada pelo consultor.");return;
+      setErroPesquisaTributaria("A pesquisa automática não liberou premissas suficientes para o cálculo.");return;
     }
     setCbs(String(p.cbsPct).replace(".",","));
     setIbs(String(p.ibsPct).replace(".",","));
@@ -2566,7 +2577,7 @@ function SimuladorReformaPublico({
   const decisaoRecomendada=useMemo(()=>{
     const pendencias=[];
     if(naoSeiImpostoAtual)pendencias.push("Confirmar a carga atual nos documentos fiscais e no PGDAS.");
-    if(!tratamentoConfirmado&&(redCbs>0||redIbs>0))pendencias.push("Validar o enquadramento legal da redução aplicada.");
+    if(!tratamentoConfirmado&&(redCbs>0||redIbs>0))pendencias.push("A pesquisa automática não confirmou o enquadramento legal da redução.");
     if(regime==="Simples Nacional"&&origemDasResidual.includes("Estimativa gerencial")){
       pendencias.push("Substituir o DAS residual estimado pela composição documental do PGDAS.");
     }
@@ -3762,7 +3773,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
         <div style={{marginTop:8,padding:10,border:"1px solid #CADAF2",borderRadius:11,background:"#F5F8FF"}}>
           <div style={{fontSize:9,fontWeight:900,color:NAVY}}>Pesquisa tributária da atividade com IA</div>
-          <p style={{...muted,margin:"4px 0 8px"}}>Ao selecionar o CNAE principal, a pesquisa inicia automaticamente. A IA consulta fontes oficiais e sugere benefício, requisitos e base legal. Nenhum percentual entra no cálculo antes da validação do consultor.</p>
+          <p style={{...muted,margin:"4px 0 8px"}}>Ao selecionar o CNAE principal, a pesquisa inicia automaticamente. O percentual é aplicado somente quando o motor confirma fonte oficial, confiança alta, base legal vigente e ausência de dados pendentes.</p>
           <label style={labelStyle}>NBS ou NCM, quando aplicável
             <input value={nbsNcm} onChange={e=>{setNbsNcm(e.target.value);setPesquisaTributaria(null)}} style={input} placeholder="Opcional - informe se conhecido"/>
           </label>
@@ -3773,6 +3784,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           {erroPesquisaTributaria&&<button type="button" onClick={()=>{pesquisaTributariaAutomaticaRef.current="";pesquisarTratamentoTributario()}} disabled={pesquisandoTributaria} style={{...chipStyle(false),width:"100%",marginTop:7}}>Tentar pesquisa novamente</button>}
           {pesquisaTributaria&&<div style={{marginTop:8,padding:9,borderRadius:9,background:pesquisaTributaria.status==="VALIDADO"?"#EAF8F1":"#FFF8E8",fontSize:8,lineHeight:1.5}}>
             <div><b>Status:</b> {pesquisaTributaria.status}</div>
+            <div><b>Aplicação automática:</b> {pesquisaTributaria.resultado?.validacao_automatica?.apto?"Liberada pelo motor":"Não aplicada por dados insuficientes"}</div>
             <div><b>Sugestão:</b> {pesquisaTributaria.resultado?.tratamento_sugerido||"A validar"}</div>
             <div><b>Benefício:</b> {pesquisaTributaria.resultado?.beneficio_legal?.base_legal||"Base legal ainda não confirmada"}</div>
             <div><b>Redução identificada:</b> {pesquisaTributaria.resultado?.beneficio_legal?.percentual_reducao_pct!=null?`${pesquisaTributaria.resultado.beneficio_legal.percentual_reducao_pct}%`:"Não identificada"}</div>
@@ -3780,8 +3792,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             <div><b>Tributo atual pesquisado:</b> {pesquisaTributaria.resultado?.tributacao_local?.tipo||"Não determinado"} {pesquisaTributaria.resultado?.tributacao_local?.aliquota_efetiva_pct!=null?`· ${pesquisaTributaria.resultado.tributacao_local.aliquota_efetiva_pct}%`:"· faltam dados para determinar"}</div>
             <div><b>Base legal local:</b> {pesquisaTributaria.resultado?.tributacao_local?.base_legal||"Ainda não confirmada"}</div>
             {pesquisaTributaria.resultado?.fontes?.length>0&&<div style={{marginTop:4}}><b>Fontes oficiais:</b>{pesquisaTributaria.resultado.fontes.slice(0,5).map((fonte,i)=><div key={i}><a href={fonte.url} target="_blank" rel="noreferrer">{fonte.titulo||fonte.url}</a>{fonte.artigo?` · ${fonte.artigo}`:""}</div>)}</div>}
-            {pesquisaTributaria.status!=="VALIDADO"&&<button type="button" onClick={consultarStatusPesquisaTributaria} disabled={pesquisandoTributaria} style={{...chipStyle(false),width:"100%",marginTop:7}}>Consultar validação do consultor</button>}
-            {pesquisaTributaria.status==="VALIDADO"&&<button type="button" onClick={aplicarPesquisaTributariaValidada} style={{...chipStyle(false),width:"100%",marginTop:7,background:"#176B47",color:"#fff"}}>Aplicar percentuais validados e recalcular</button>}
+            {!!pesquisaTributaria.resultado?.validacao_automatica?.motivos?.length&&<div style={{marginTop:4}}><b>Por que não foi aplicada:</b> {pesquisaTributaria.resultado.validacao_automatica.motivos.join(" · ")}</div>}
           </div>}
         </div>
 
@@ -3837,10 +3848,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           <label style={labelStyle}>Atividade, NCM/NBS ou fundamento
             <input value={classificacaoFiscal} onChange={e=>{setClassificacaoFiscal(e.target.value);setTratamentoConfirmado(false)}} style={input} placeholder="Informe o que sustenta a redução"/>
           </label>
-          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:7.8,lineHeight:1.35,marginTop:6}}>
-            <input type="checkbox" checked={tratamentoConfirmado} onChange={e=>setTratamentoConfirmado(e.target.checked)}/>
-            Confirmo que essa hipótese será usada somente como estimativa
-          </label>
+          <div style={{fontSize:7.8,lineHeight:1.35,marginTop:6,color:tratamentoConfirmado?"#176B47":"#805B10",fontWeight:850}}>
+            {tratamentoConfirmado?"Enquadramento liberado automaticamente pelo motor.":"Enquadramento não aplicado: a pesquisa automática não confirmou todos os requisitos."}
+          </div>
         </div>}
 
         <details style={{marginTop:8,border:"1px solid #E6EAF0",borderRadius:9,padding:8,background:"#FBFCFE"}}>
@@ -3914,7 +3924,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       <PrimaryButton
         disabled={
           !regime||!natureza||!fat||cbsNom<=0||ibsNom<=0||
-          (reducaoExigeValidacao)||
+          (reducaoSemConfirmacaoAutomatica)||
           (naoSeiImpostoAtual&&regime==="Simples Nacional"&&!anexoSimples)||
           (naoSeiImpostoAtual&&regime==="Lucro Real"&&!n(custosDespesasDedutiveis))||
           (
