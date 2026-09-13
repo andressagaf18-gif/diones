@@ -14602,6 +14602,8 @@ function DetalheDiagnostico({
   const relatoriosSegmentados =
     resultado.relatoriosSegmentados ||
     resultado?.resultadoCompleto?.relatoriosSegmentados ||
+    item?.dadosCompletos?.relatoriosSegmentados ||
+    item?.dadosCompletos?.resultado?.relatoriosSegmentados ||
     {};
 
   const relatorioClienteSegmentado =
@@ -14614,13 +14616,42 @@ function DetalheDiagnostico({
     relatoriosSegmentados.administracao || null;
 
   const versoesReforma =
-    item?.dadosCompletos?.versoesRelatorio || null;
+    item?.dadosCompletos?.versoesRelatorio ||
+    resultado?.versoesRelatorio ||
+    relatoriosSegmentados?.versoesRelatorio ||
+    null;
 
   const relatorioReformaCliente =
-    versoesReforma?.cliente || null;
+    versoesReforma?.cliente ||
+    (relatoriosSegmentados?.cliente
+      ? {
+          titulo:relatoriosSegmentados.cliente.titulo,
+          melhorOpcao:relatoriosSegmentados.cliente.decisaoRecomendada?.titulo||"Validação tributária em andamento",
+          leituraExecutiva:relatoriosSegmentados.cliente.leituraExecutiva,
+          numeros:{
+            faturamento:relatoriosSegmentados.cliente.resumoNumerico?.faturamento??
+              relatoriosSegmentados.cliente.empresa?.faturamentoMensal??null,
+            cargaAtual:relatoriosSegmentados.cliente.resumoNumerico?.cargaAtualMensal??null,
+            cargaReforma:relatoriosSegmentados.cliente.resumoNumerico?.cargaReformaMensal??null,
+            diferencaMensal:relatoriosSegmentados.cliente.resumoNumerico?.economiaMensal??null,
+            diferencaAnual:relatoriosSegmentados.cliente.resumoNumerico?.economiaAnual??null,
+          },
+          riscos:relatoriosSegmentados.cliente.riscos||[],
+        }
+      : null);
 
   const relatorioReformaAdmin =
-    versoesReforma?.administrador || null;
+    versoesReforma?.administrador ||
+    (relatoriosSegmentados?.administracao
+      ? {
+          titulo:relatoriosSegmentados.administracao.titulo,
+          analise:relatoriosSegmentados.administracao,
+          simulacao:relatoriosSegmentados.administracao.simulacao,
+          base:relatoriosSegmentados.administracao.configuracao,
+          extracao:relatoriosSegmentados.administracao.snapshotCompleto,
+          auditoria:{projetoId:"SIMULADOR_REFORMA",finalizadoPor:"Sistema Finder",versaoFormato:"REFORMA_TRIBUTARIA_V1"},
+        }
+      : null);
 
   const formatarValorReforma = (valor) =>
     valor === null || valor === undefined
@@ -14630,9 +14661,51 @@ function DetalheDiagnostico({
           currency: "BRL",
         });
 
-  const inteligenciaTributaria =
+  const inteligenciaTributariaBase =
     resultado.inteligenciaTributaria ||
+    resultado?.resultadoCompleto?.inteligenciaTributaria ||
+    item?.dadosCompletos?.resultado?.inteligenciaTributaria ||
     null;
+
+  // O simulador grava a memória detalhada dentro de reforma. O painel antigo
+  // usa os campos-resumo no nível superior; normalizamos ambos para impedir
+  // NaN e preservar a visualização dos relatórios antigos.
+  const inteligenciaReforma=inteligenciaTributariaBase?.reforma||{};
+  const simuladorAdmin=
+    relatoriosSegmentados?.administracao?.snapshotCompleto||
+    relatoriosSegmentados?.administracao?.snapshot||
+    resultado?.contextoEstrutura?.simuladorReforma||
+    item?.dadosCompletos?.perfil?.simuladorReforma||
+    {};
+  const configuracaoAdmin=simuladorAdmin?.configuracao||{};
+  const resultadoAdmin=simuladorAdmin?.resultado||{};
+  const numeroFinito=(valor)=>Number.isFinite(Number(valor))?Number(valor):null;
+  const faturamentoReferencia=numeroFinito(
+    inteligenciaTributariaBase?.faturamentoMensalReferencia ??
+    inteligenciaReforma?.faturamentoMensal ??
+    configuracaoAdmin?.faturamentoMensal
+  );
+  const tributosMensais=numeroFinito(
+    inteligenciaTributariaBase?.tributosMensaisEstimados ??
+    resultadoAdmin?.atual ??
+    inteligenciaReforma?.atual
+  );
+  const cargaEstimada=numeroFinito(
+    inteligenciaTributariaBase?.cargaTributariaEstimada ??
+    (faturamentoReferencia>0&&tributosMensais!=null
+      ?tributosMensais/faturamentoReferencia*100
+      :null)
+  );
+  const inteligenciaTributaria=inteligenciaTributariaBase
+    ?{
+      ...inteligenciaTributariaBase,
+      faturamentoMensalReferencia:faturamentoReferencia,
+      tributosMensaisEstimados:tributosMensais,
+      tributosAnuaisEstimados:numeroFinito(inteligenciaTributariaBase.tributosAnuaisEstimados ?? (tributosMensais==null?null:tributosMensais*12)),
+      cargaTributariaEstimada:cargaEstimada,
+      reforma:inteligenciaReforma,
+    }
+    :null;
 
   const perguntas =
     normalizarLista(
