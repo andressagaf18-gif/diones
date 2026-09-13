@@ -7,7 +7,7 @@ import { neon } from "@neondatabase/serverless";
 import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
-const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V1";
+const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V2_BENEFICIO_E_TRIBUTO_LOCAL";
 const FONTES_OFICIAIS = [
   "planalto.gov.br",
   "gov.br",
@@ -114,7 +114,7 @@ function construirCacheKey(body) {
   const partes = [
     texto(body.cnae).replace(/\D/g, ""), normalizar(body.atividadeReal),
     normalizar(body.nbsNcm), normalizar(body.regime), normalizar(body.municipio),
-    texto(body.uf).toUpperCase(), texto(body.ano), "LC214_BASE_V1",
+    texto(body.uf).toUpperCase(), texto(body.ano), "LC214_LOCAL_V2",
   ];
   return `tributario_${hash(partes.join("|"))}`;
 }
@@ -132,6 +132,11 @@ function normalizarResultado(dados, body, fontesFerramenta = []) {
   const reducao = Math.max(0, Math.min(100, numero(dados?.reducao_pct, 0)));
   const cbs = numero(dados?.cbs_referencia_pct, null);
   const ibs = numero(dados?.ibs_referencia_pct, null);
+  const local = dados?.tributacao_local || {};
+  const aliquotaLocal = numero(
+    local?.aliquota_efetiva_pct ?? local?.aliquota_nominal_pct,
+    null
+  );
   return {
     consulta: {
       cnae: texto(body.cnae).replace(/\D/g, ""), atividade_real: texto(body.atividadeReal),
@@ -154,6 +159,20 @@ function normalizarResultado(dados, body, fontesFerramenta = []) {
     aliquotas_efetivas_simuladas: {
       cbs_pct: cbs == null ? null : cbs * (1 - reducao / 100),
       ibs_pct: ibs == null ? null : ibs * (1 - reducao / 100),
+    },
+    tributacao_local: {
+      tipo: texto(local?.tipo).toUpperCase() || "NAO_DETERMINADO",
+      incide: local?.incide === true,
+      aplicavel_regime_atual: local?.aplicavel_regime_atual !== false,
+      aliquota_nominal_pct: numero(local?.aliquota_nominal_pct, null),
+      aliquota_efetiva_pct: aliquotaLocal,
+      codigo_enquadramento: texto(local?.codigo_enquadramento),
+      local_competente: texto(local?.local_competente),
+      situacao_normativa: texto(local?.situacao_normativa) || "NAO_CONFIRMADA",
+      base_legal: texto(local?.base_legal),
+      memoria_calculo: texto(local?.memoria_calculo),
+      requisitos: lista(local?.requisitos).map(texto).filter(Boolean),
+      informacoes_faltantes: lista(local?.informacoes_faltantes).map(texto).filter(Boolean),
     },
     requisitos: lista(dados?.requisitos).map(texto).filter(Boolean),
     informacoes_faltantes: lista(dados?.informacoes_faltantes).map(texto).filter(Boolean),
@@ -196,8 +215,9 @@ async function pesquisar(req, res) {
 
   const prompt = `Você é um pesquisador tributário brasileiro. Pesquise a legislação vigente usando somente fontes oficiais.
 Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}.
-Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Liste requisitos cumulativos, lacunas e artigos. Para IBS/CBS, nunca apresente alíquota futura estimada como definitiva.
-Responda exclusivamente em JSON com: tratamento_sugerido; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (26.5 significa 26,5%).`;
+Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Verifique expressamente se a atividade possui redução de IBS/CBS na LC 214/2025, inclusive o art. 127 quando se tratar de profissão intelectual regulamentada, e informe o percentual mesmo quando sua aplicação depender de requisitos a validar.
+Pesquise também o tributo do regime atual. Para serviços, identifique o item da lista, o município competente, o ISS nominal/efetivo e a legislação municipal. Para comércio ou indústria, identifique o ICMS conforme NCM, UF de origem e destino, operação interna/interestadual, consumidor, benefício, ST, monofasia ou redução de base. Se os dados não permitirem uma alíquota exata, devolva null e liste precisamente o que falta; nunca devolva zero apenas por falta de informação.
+Responda exclusivamente em JSON com: tratamento_sugerido; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (26.5 significa 26,5%).`;
   const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
   const resposta = await fetch("https://api.openai.com/v1/responses", {
     method:"POST",
@@ -249,7 +269,18 @@ async function validarAdmin(req,res) {
   if(cbs==null||ibs==null||reducao==null||cbs<0||ibs<0||reducao<0||reducao>100){
     return res.status(400).json({sucesso:false,error:"Confirme CBS, IBS e redução em percentuais de 0 a 100."});
   }
-  const premissas={cbsPct:cbs,ibsPct:ibs,reducaoPct:reducao,baseLegal:texto(p.baseLegal),observacao:texto(p.observacao),confirmadoPor:texto(usuario.nome||usuario.login),confirmadoEm:new Date().toISOString()};
+  const aliquotaLocal=numero(p.aliquotaLocalPct,null);
+  if(aliquotaLocal!=null&&(aliquotaLocal<0||aliquotaLocal>100)){
+    return res.status(400).json({sucesso:false,error:"A alíquota local deve ficar entre 0 e 100%."});
+  }
+  const premissas={
+    cbsPct:cbs,ibsPct:ibs,reducaoPct:reducao,
+    tipoTributoLocal:texto(p.tipoTributoLocal).toUpperCase(),
+    aliquotaLocalPct:aliquotaLocal,
+    baseLegalLocal:texto(p.baseLegalLocal),
+    baseLegal:texto(p.baseLegal),observacao:texto(p.observacao),
+    confirmadoPor:texto(usuario.nome||usuario.login),confirmadoEm:new Date().toISOString()
+  };
   const rows=await sql`UPDATE pesquisas_tributarias SET status='VALIDADO',premissas_confirmadas=${JSON.stringify(premissas)},validado_por=${texto(usuario.nome||usuario.login)},validado_em=NOW(),atualizado_em=NOW(),motivo_rejeicao=NULL WHERE id=${id} RETURNING *`;
   if(!rows.length)return res.status(404).json({sucesso:false,error:"Pesquisa não encontrada."});
   return res.status(200).json({sucesso:true,pesquisa:rows[0]});
