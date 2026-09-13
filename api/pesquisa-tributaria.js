@@ -1,5 +1,5 @@
 // api/pesquisa-tributaria.js
-// Finder - pesquisa normativa com IA e validacao humana.
+// Finder - pesquisa normativa com IA e validacao automatica protegida.
 // No projeto Vercel, mantenha este arquivo com extensao .js.
 
 import crypto from "crypto";
@@ -7,7 +7,7 @@ import { neon } from "@neondatabase/serverless";
 import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
-const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V3_WEB_SEARCH_COMPATIVEL";
+const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V4_VALIDACAO_AUTOMATICA";
 const FONTES_OFICIAIS = [
   "planalto.gov.br",
   "gov.br",
@@ -125,7 +125,7 @@ function construirCacheKey(body) {
   const partes = [
     texto(body.cnae).replace(/\D/g, ""), normalizar(body.atividadeReal),
     normalizar(body.nbsNcm), normalizar(body.regime), normalizar(body.municipio),
-    texto(body.uf).toUpperCase(), texto(body.ano), "LC214_LOCAL_V3",
+    texto(body.uf).toUpperCase(), texto(body.ano), "LC214_LOCAL_V4_AUTO",
   ];
   return `tributario_${hash(partes.join("|"))}`;
 }
@@ -196,6 +196,72 @@ function normalizarResultado(dados, body, fontesFerramenta = []) {
   };
 }
 
+function validarAutomaticamente(resultado) {
+  const beneficio = resultado?.beneficio_legal || {};
+  const aliquotas = resultado?.aliquotas_referencia || {};
+  const local = resultado?.tributacao_local || {};
+  const reducao = numero(beneficio.percentual_reducao_pct, 0);
+  const situacaoBeneficio = normalizar(beneficio.situacao_normativa);
+  const situacaoAliquotas = normalizar(aliquotas.situacao_normativa);
+  const faltantes = lista(resultado?.informacoes_faltantes).filter(Boolean);
+  const temFonteOficial = lista(resultado?.fontes).some(f => urlOficial(f?.url));
+  const beneficioVigente = !beneficio.existe || (
+    reducao > 0 &&
+    Boolean(texto(beneficio.base_legal)) &&
+    /(vigente|em vigor|publicad|lei complementar)/.test(situacaoBeneficio) &&
+    !/(pendente|estimad|nao confirm|revogad|proposta)/.test(situacaoBeneficio)
+  );
+  const aliquotasInformadas =
+    numero(aliquotas.cbs_pct, null) != null &&
+    numero(aliquotas.ibs_pct, null) != null;
+  const aliquotasEstimadas =
+    /(pendente|estimad|nao confirm|a definir)/.test(situacaoAliquotas);
+  const resultadoCoerente = beneficio.existe ? reducao > 0 : reducao === 0;
+
+  const motivos = [];
+  if (resultado?.grau_confianca !== "ALTO") motivos.push("A pesquisa não atingiu confiança alta.");
+  if (!temFonteOficial) motivos.push("Nenhuma fonte oficial foi confirmada.");
+  if (faltantes.length) motivos.push(...faltantes);
+  if (!beneficioVigente) motivos.push("O benefício não está demonstrado como vigente e aplicável.");
+  if (!resultadoCoerente) motivos.push("A existência do benefício e o percentual de redução são incompatíveis.");
+  if (!aliquotasInformadas) motivos.push("As alíquotas de referência da simulação estão incompletas.");
+
+  const apto = motivos.length === 0;
+  const localSeguro =
+    local.incide === true &&
+    numero(local.aliquota_efetiva_pct ?? local.aliquota_nominal_pct, null) != null &&
+    lista(local.informacoes_faltantes).length === 0 &&
+    Boolean(texto(local.base_legal)) &&
+    !/(pendente|estimad|nao confirm|a definir)/.test(normalizar(local.situacao_normativa));
+
+  const premissas = apto ? {
+    cbsPct: numero(aliquotas.cbs_pct),
+    ibsPct: numero(aliquotas.ibs_pct),
+    reducaoPct: reducao,
+    tipoTributoLocal: texto(local.tipo).toUpperCase(),
+    aliquotaLocalPct: localSeguro
+      ? numero(local.aliquota_efetiva_pct ?? local.aliquota_nominal_pct, null)
+      : null,
+    baseLegalLocal: localSeguro ? texto(local.base_legal) : "",
+    baseLegal: texto(beneficio.base_legal),
+    observacao: "Premissas liberadas automaticamente pelo motor de segurança.",
+    confirmadoPor: "MOTOR_AUTOMATICO",
+    confirmadoEm: new Date().toISOString(),
+    confirmacaoTipo: "AUTOMATICA",
+    situacaoNormativaAliquotas: texto(aliquotas.situacao_normativa),
+    aliquotasEstimadas,
+  } : null;
+
+  resultado.validacao_automatica = {
+    apto,
+    status: apto ? "APLICADO_AUTOMATICAMENTE" : "DADOS_INSUFICIENTES",
+    motivos,
+    regra: "Fonte oficial + confiança alta + benefício vigente + ausência de pendências + alíquotas de simulação informadas",
+  };
+
+  return { apto, motivos, premissas };
+}
+
 async function pesquisar(req, res) {
   const body = req.body || {};
   const cnae = texto(body.cnae).replace(/\D/g, "");
@@ -208,7 +274,7 @@ async function pesquisar(req, res) {
   const cacheKey = construirCacheKey(body);
   const cache = await sql`
     SELECT * FROM pesquisas_tributarias
-    WHERE cache_key=${cacheKey} AND status IN ('VALIDADO','AGUARDANDO_VALIDACAO_CONSULTOR')
+    WHERE cache_key=${cacheKey} AND status IN ('VALIDADO','DADOS_INSUFICIENTES','AGUARDANDO_VALIDACAO_CONSULTOR')
       AND criado_em > NOW() - INTERVAL '30 days'
     ORDER BY CASE WHEN status='VALIDADO' THEN 0 ELSE 1 END, criado_em DESC LIMIT 1
   `;
@@ -216,17 +282,21 @@ async function pesquisar(req, res) {
   const id = crypto.randomUUID();
   if (cache.length) {
     const origem = cache[0];
+    const resultadoCache = origem.resultado_ia;
+    const automatico = validarAutomaticamente(resultadoCache);
+    const statusAutomatico = automatico.apto ? "VALIDADO" : "DADOS_INSUFICIENTES";
+    const validadoEm = automatico.apto ? new Date().toISOString() : null;
     await sql`
       INSERT INTO pesquisas_tributarias
-      (id,token_publico_hash,cache_key,projeto_id,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,fontes,modelo,prompt_versao,prompt_hash,pesquisa_origem_id)
-      VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.projetoId)},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},'AGUARDANDO_VALIDACAO_CONSULTOR',${JSON.stringify(origem.resultado_ia)},${JSON.stringify(origem.fontes)},${origem.modelo},${PROMPT_VERSAO},${origem.prompt_hash},${origem.id})
+      (id,token_publico_hash,cache_key,projeto_id,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,premissas_confirmadas,fontes,modelo,prompt_versao,prompt_hash,pesquisa_origem_id,validado_por,validado_em)
+      VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.projetoId)},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},${statusAutomatico},${JSON.stringify(resultadoCache)},${automatico.premissas?JSON.stringify(automatico.premissas):null},${JSON.stringify(origem.fontes)},${origem.modelo},${PROMPT_VERSAO},${origem.prompt_hash},${origem.id},${automatico.apto?"MOTOR_AUTOMATICO":null},${validadoEm})
     `;
-    return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:true, status:"AGUARDANDO_VALIDACAO_CONSULTOR", resultado:origem.resultado_ia });
+    return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:true, status:statusAutomatico, resultado:resultadoCache, premissasConfirmadas:automatico.premissas });
   }
 
   const prompt = `Você é um pesquisador tributário brasileiro. Pesquise a legislação vigente usando somente fontes oficiais.
 Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}.
-Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Verifique expressamente se a atividade possui redução de IBS/CBS na LC 214/2025, inclusive o art. 127 quando se tratar de profissão intelectual regulamentada, e informe o percentual mesmo quando sua aplicação depender de requisitos a validar.
+Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Verifique expressamente se a atividade possui redução de IBS/CBS na LC 214/2025, inclusive o art. 127 quando se tratar de profissão intelectual regulamentada. Todo requisito que não puder ser comprovado pelos dados pesquisados deve obrigatoriamente constar em informacoes_faltantes. Use grau_confianca ALTO somente quando as fontes oficiais sustentarem diretamente a conclusão e não houver requisito de elegibilidade pendente.
 Pesquise também o tributo do regime atual. Para serviços, identifique o item da lista, o município competente, o ISS nominal/efetivo e a legislação municipal. Para comércio ou indústria, identifique o ICMS conforme NCM, UF de origem e destino, operação interna/interestadual, consumidor, benefício, ST, monofasia ou redução de base. Se os dados não permitirem uma alíquota exata, devolva null e liste precisamente o que falta; nunca devolva zero apenas por falta de informação.
 Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários ou texto antes/depois, contendo: tratamento_sugerido; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (26.5 significa 26,5%).`;
   const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
@@ -247,12 +317,15 @@ Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários o
   const fontesTool = lista(data?.output).filter(x=>x?.type==="web_search_call").flatMap(x=>lista(x?.action?.sources));
   const resultado = normalizarResultado(bruto, body, fontesTool);
   if (!resultado.fontes.length) resultado.alertas.push("Nenhuma fonte oficial válida foi capturada; não validar antes de nova pesquisa.");
+  const automatico = validarAutomaticamente(resultado);
+  const statusAutomatico = automatico.apto ? "VALIDADO" : "DADOS_INSUFICIENTES";
+  const validadoEm = automatico.apto ? new Date().toISOString() : null;
   await sql`
     INSERT INTO pesquisas_tributarias
-    (id,token_publico_hash,cache_key,projeto_id,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,fontes,modelo,prompt_versao,prompt_hash,openai_request_id,uso_tokens)
-    VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.projetoId)},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},'AGUARDANDO_VALIDACAO_CONSULTOR',${JSON.stringify(resultado)},${JSON.stringify(resultado.fontes)},${modelo},${PROMPT_VERSAO},${hash(prompt)},${texto(data?.id)},${JSON.stringify(data?.usage||{})})
+    (id,token_publico_hash,cache_key,projeto_id,cnpj,cnae,atividade_real,nbs_ncm,regime,municipio,uf,ano,status,resultado_ia,premissas_confirmadas,fontes,modelo,prompt_versao,prompt_hash,openai_request_id,uso_tokens,validado_por,validado_em)
+    VALUES (${id},${hash(tokenPublico)},${cacheKey},${texto(body.projetoId)},${texto(body.cnpj)},${cnae},${atividadeReal},${texto(body.nbsNcm)},${texto(body.regime)},${texto(body.municipio)},${texto(body.uf).toUpperCase()},${numero(body.ano)},${statusAutomatico},${JSON.stringify(resultado)},${automatico.premissas?JSON.stringify(automatico.premissas):null},${JSON.stringify(resultado.fontes)},${modelo},${PROMPT_VERSAO},${hash(prompt)},${texto(data?.id)},${JSON.stringify(data?.usage||{})},${automatico.apto?"MOTOR_AUTOMATICO":null},${validadoEm})
   `;
-  return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:false, status:"AGUARDANDO_VALIDACAO_CONSULTOR", resultado });
+  return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:false, status:statusAutomatico, resultado, premissasConfirmadas:automatico.premissas });
 }
 
 async function statusPublico(req,res) {
