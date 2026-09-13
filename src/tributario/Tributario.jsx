@@ -1409,6 +1409,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   const p=pesquisa.status==="VALIDADO"?pesquisa.premissasConfirmadas:null;
   if(p){
    setReducaoIbsCbs(String(n(p.reducaoPct)));
+   if(p.aliquotaLocalPct!=null)setAliquotaAtual(String(n(p.aliquotaLocalPct)));
    if(p.baseLegal)setTratamentoEspecial(p.baseLegal);
   }
  }
@@ -1439,7 +1440,12 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     premissasConfirmadas:null,
     validadoEm:null
    });
-   setOk("Pesquisa concluída e enviada para Validação Tributária. Nenhum percentual foi aplicado ao cálculo ainda.");
+   const local=d.resultado?.tributacao_local||{};
+   const aliquotaLocal=local.aliquota_efetiva_pct??local.aliquota_nominal_pct;
+   if(local.incide===true&&aliquotaLocal!=null&&!(local.informacoes_faltantes||[]).length){
+    setAliquotaAtual(String(n(aliquotaLocal)));
+   }
+   setOk("A IA identificou benefício IBS/CBS e tributação local. A alíquota local exata foi preenchida quando sustentada por fonte oficial; a redução IBS/CBS segue para validação do consultor.");
   }catch(e){setErro(e.message)}finally{setPesquisandoTributacao(false)}
  }
 
@@ -1453,7 +1459,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    const d=await apiPesquisa("status",{query:{id:pesquisaTributaria.id,token:pesquisaTributaria.tokenPublico}});
    aplicarRetornoPesquisa(d.pesquisa);
    setOk(d.pesquisa?.status==="VALIDADO"
-    ?"Premissas validadas carregadas. CBS, IBS e redução agora alimentam o simulador determinístico."
+    ?"Premissas validadas carregadas. CBS, IBS, redução e ISS/ICMS agora alimentam o simulador determinístico."
     :`Pesquisa atualizada: ${String(d.pesquisa?.status||"PENDENTE").replaceAll("_"," ")}.`);
   }catch(e){setErro(e.message)}finally{setPesquisandoTributacao(false)}
  }
@@ -2736,6 +2742,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div><b>Tratamento sugerido pela pesquisa:</b> {pesquisaTributaria.resultado.tratamento_sugerido||"Validação necessária"}</div>
      <div><b>Situação da alíquota:</b> {String(pesquisaTributaria.resultado.aliquotas_referencia?.situacao_normativa||"PENDENTE").replaceAll("_"," ")}</div>
      <div><b>Base legal pesquisada:</b> {pesquisaTributaria.resultado.beneficio_legal?.base_legal||"Não confirmada"}</div>
+     <div><b>Redução identificada:</b> {pesquisaTributaria.resultado.beneficio_legal?.percentual_reducao_pct!=null?`${pesquisaTributaria.resultado.beneficio_legal.percentual_reducao_pct}%`:"Não identificada"}</div>
+     <div><b>Tributo do regime atual:</b> {pesquisaTributaria.resultado.tributacao_local?.tipo||"Não determinado"} {pesquisaTributaria.resultado.tributacao_local?.aliquota_efetiva_pct!=null?`· ${pesquisaTributaria.resultado.tributacao_local.aliquota_efetiva_pct}%`:"· alíquota pendente"}</div>
+     <div><b>Base legal ISS/ICMS:</b> {pesquisaTributaria.resultado.tributacao_local?.base_legal||"Não confirmada"}</div>
      {!!pesquisaTributaria.resultado.requisitos?.length&&<div><b>Requisitos:</b> {pesquisaTributaria.resultado.requisitos.join(" · ")}</div>}
      {!!pesquisaTributaria.resultado.fontes?.length&&<div><b>Fontes oficiais:</b> {pesquisaTributaria.resultado.fontes.map((f,i)=><React.Fragment key={f.url||i}>{i>0?" · ":""}<a href={f.url} target="_blank" rel="noreferrer">{f.titulo||f.orgao||"Fonte"}</a></React.Fragment>)}</div>}
     </div>}
