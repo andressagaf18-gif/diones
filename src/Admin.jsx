@@ -14291,7 +14291,7 @@ function DetalheDiagnostico({
     resultado.resultadoCompleto ||
     {};
 
-  const diagnosticoGeral =
+  let diagnosticoGeral =
     resultado.diagnosticoGeral ||
     {
       resumoExecutivo:
@@ -14334,6 +14334,15 @@ function DetalheDiagnostico({
           ? resultadoCompleto.riscosPrioritarios[0]
           : "",
     };
+
+  if (["simulador_reforma", "reforma_tributaria"].includes(estruturaDiagnostico(item))) {
+    const generica=/leitura automática da IA não ficou disponível/i;
+    const atual=Number(resultado?.inteligenciaTributaria?.reforma?.atual||0);
+    const futura=Number(resultado?.inteligenciaTributaria?.reforma?.reforma||resultado?.inteligenciaTributaria?.tributosMensaisEstimados||0);
+    const leitura=`A simulação da Reforma foi concluída. Sugerimos comparar a carga atual de ${atual.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})} com o cenário projetado de ${futura.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}, considerando deduções, créditos e requisitos legais da atividade.`;
+    const riscos=["Sugerimos validar a atividade efetiva, o CNAE, o município e a UF para confirmar o tratamento de IBS/CBS.","Sugerimos confrontar a carga atual e o cenário por fora com PGDAS/DEFIS e documentos fiscais.","Sugerimos separar DAS residual, IBS/CBS por dentro, IBS/CBS por fora e créditos aproveitáveis."];
+    diagnosticoGeral={...diagnosticoGeral,resumoExecutivo:!diagnosticoGeral.resumoExecutivo||generica.test(diagnosticoGeral.resumoExecutivo)?leitura:diagnosticoGeral.resumoExecutivo,alertaEstrategico:!diagnosticoGeral.alertaEstrategico||generica.test(diagnosticoGeral.alertaEstrategico)?riscos[0]:diagnosticoGeral.alertaEstrategico,principaisDores:!diagnosticoGeral.principaisDores?.length||diagnosticoGeral.principaisDores.some(x=>generica.test(String(x)))?riscos:diagnosticoGeral.principaisDores,oportunidades:diagnosticoGeral.oportunidades?.length?diagnosticoGeral.oportunidades:["Sugerimos projetar preços, margens e créditos para os anos de transição."],proximosPassos:diagnosticoGeral.proximosPassos?.length?diagnosticoGeral.proximosPassos:["Sugerimos reunir PGDAS/DEFIS, NFS-e/NF-e e a memória dos créditos."]};
+  }
 
   // =====================================================
   // DOSSIÊ CONSULTIVO FINDER
@@ -14429,7 +14438,16 @@ function DetalheDiagnostico({
 
   const inteligenciaTributaria =
     resultado.inteligenciaTributaria ||
-    null;
+    (["simulador_reforma", "reforma_tributaria"].includes(estruturaDiagnostico(item))
+      ? (() => {
+          const snap = resultado?.contextoEstrutura?.simuladorReforma || resultado?.simuladorReforma || {};
+          const r = snap?.resultado || {};
+          const cfg = snap?.configuracao || {};
+          const faturamento = Number(cfg.faturamentoMensal || item?.empresa?.faturamentoMensal || 0);
+          const reforma = Number(r.reforma || 0);
+          return { disponivel:true, faturamentoMensalReferencia:faturamento, tributosMensaisEstimados:reforma, tributosAnuaisEstimados:reforma*12, cargaTributariaEstimada:faturamento?(reforma/faturamento)*100:0, faturamentoFaixa:faturamento?`${faturamento.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}/mês`:"Não informado", regime:cfg.regime||"", segmento:cfg.natureza||"Serviço", categoria:"Simulador Reforma", criterio:"Cálculo determinístico com premissas, deduções, créditos e comparação por dentro/por fora.", confiabilidade:"Preliminar", reforma:{status:"Simulado",atual:Number(r.atual||0),reforma,diferenca:Number(r.diferenca||0)} };
+        })()
+      : null);
 
   const perguntas =
     normalizarLista(
