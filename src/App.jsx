@@ -1552,6 +1552,27 @@ function percentualSimulador(valor) {
   })}%`;
 }
 
+// Mantém a leitura destinada ao cliente em tom consultivo. A IA pode
+// retornar verbos no imperativo; aqui eles são apresentados como sugestão,
+// sem transformar a orientação em ordem ou obrigação.
+function textoConsultivoSimulador(valor) {
+  const texto = String(valor ?? "").trim();
+  if (!texto) return "";
+  if (/^sugerimos\b/i.test(texto)) return texto;
+  if (/^recomenda-se\b/i.test(texto)) {
+    return `Sugerimos${texto.slice("Recomenda-se".length)}`;
+  }
+  if (/^recomendamos\b/i.test(texto)) {
+    return `Sugerimos${texto.slice("Recomendamos".length)}`;
+  }
+  return `Sugerimos ${texto.charAt(0).toLowerCase()}${texto.slice(1)}`;
+}
+
+function listaConsultivaSimulador(valor) {
+  if (!Array.isArray(valor)) return [];
+  return valor.map(textoConsultivoSimulador).filter(Boolean);
+}
+
 function SimuladorReformaPublico({
   nome,
   email,
@@ -2951,6 +2972,7 @@ function SimuladorReformaPublico({
           "Quando citar percentual posterior a 2026, identificar expressamente como premissa editável do cenário.",
           "Distinguir os percentuais legais da transição das alíquotas nominais de referência, que dependem de resolução do Senado.",
           "No Simples Nacional, não comparar IBS/CBS isolado com o DAS total nem concluir carga por fora sem o DAS residual.",
+          "A leitura é destinada ao cliente e deve usar tom consultivo: iniciar recomendações e próximos passos com 'Sugerimos'. Não usar imperativos como 'faça', 'solicite', 'obtenha', 'verifique' ou 'deve'.",
         ],
       };
 
@@ -2978,8 +3000,8 @@ function SimuladorReformaPublico({
           "A simulação foi concluída. A interpretação definitiva depende da validação dos dados e da legislação aplicável.",
         riscosPrioritarios:listaIaSeguraSimulador(d.riscosPrioritarios),
         prioridades:listaIaSeguraSimulador(d.prioridades),
-        recomendacoes:listaIaSeguraSimulador(d.recomendacoes),
-        proximosPassos:listaIaSeguraSimulador(d.proximosPassos),
+        recomendacoes:listaConsultivaSimulador(listaIaSeguraSimulador(d.recomendacoes)),
+        proximosPassos:listaConsultivaSimulador(listaIaSeguraSimulador(d.proximosPassos)),
         pontosFortes:listaIaSeguraSimulador(d.pontosFortes),
         impactos:listaIaSeguraSimulador(d.impactos),
       });
@@ -6169,17 +6191,17 @@ function DiagnosticoPrototipo() {
       ...lista(origem?.resultadoCompleto?.riscosPrioritarios),
     ].filter(Boolean);
 
-    const recomendacoes=[
+    const recomendacoes=listaConsultivaSimulador([
       ...lista(relatorioIa?.recomendacoes),
       ...lista(geral?.oportunidades),
       ...lista(origem?.resultadoCompleto?.recomendacoes),
-    ].filter(Boolean);
+    ].filter(Boolean));
 
-    const proximos=[
+    const proximos=listaConsultivaSimulador([
       ...lista(relatorioIa?.proximosPassos),
       ...lista(geral?.proximosPassos),
       ...lista(origem?.resultadoCompleto?.proximosPassos),
-    ].filter(Boolean);
+    ].filter(Boolean));
 
     return{
       tipo,
@@ -6249,6 +6271,14 @@ function DiagnosticoPrototipo() {
         oportunidadesConsultoria:lista(origem?.oportunidadesConsultoria),
         plano90Dias:origem?.plano90Dias||origem?.resultadoCompleto?.plano90Dias||null,
       },
+
+      // Aliases explícitos para o painel administrativo e para o relatório
+      // do cliente. Assim cada consumidor recebe sua versão sem precisar
+      // interpretar ou montar novamente o snapshot.
+      versaoCliente:"resumida_consultiva",
+      versaoAdministracao:"completa",
+      clienteResumo:null,
+      administracaoCompleta:null,
     };
   }
 
@@ -6266,7 +6296,18 @@ function DiagnosticoPrototipo() {
       relatorioIa,
     });
 
+    // Mantém as duas visões no mesmo registro: a cliente é curta e
+    // consultiva; a administrativa preserva todos os dados para auditoria.
+    relatoriosSegmentados.clienteResumo=relatoriosSegmentados.cliente;
+    relatoriosSegmentados.administracaoCompleta=relatoriosSegmentados.administracao;
+
     const payload={
+      tipoDiagnostico:"simulador_reforma",
+      estruturaNegocio:"simulador_reforma",
+      origem:"simulador_reforma",
+      versaoRelatorioCliente:"resumida_consultiva",
+      versaoRelatorioAdministracao:"completa",
+      relatoriosSegmentados,
       crm:{
         leadId,
         sessionId:
@@ -6361,6 +6402,9 @@ function DiagnosticoPrototipo() {
           },
         },
         relatoriosSegmentados,
+        relatorioCliente:relatoriosSegmentados.cliente,
+        relatorioAdministracao:relatoriosSegmentados.administracao,
+        visaoAdministracaoCompleta:relatoriosSegmentados.administracao,
         resultadoCompleto:{
           leituraExecutiva:relatorioIa?.leituraExecutiva||"",
           riscosPrioritarios:relatorioIa?.riscosPrioritarios||[],
@@ -6368,6 +6412,8 @@ function DiagnosticoPrototipo() {
           recomendacoes:relatorioIa?.recomendacoes||[],
           proximosPassos:relatorioIa?.proximosPassos||[],
           visaoAdministracao:relatoriosSegmentados.administracao,
+          relatorioCliente:relatoriosSegmentados.cliente,
+          relatorioAdministracao:relatoriosSegmentados.administracao,
         },
       },
     };
