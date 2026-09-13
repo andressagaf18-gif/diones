@@ -5,6 +5,7 @@ import PlanejamentoTributario from "./PlanejamentoTributario";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -813,6 +814,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [analiseDesatualizada,setAnaliseDesatualizada]=useState(false);
  const [pesquisaTributaria,setPesquisaTributaria]=useState(null);
  const [pesquisandoTributacao,setPesquisandoTributacao]=useState(false);
+ const pesquisaTributariaAutomaticaRef=useRef("");
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}})());
  const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["motor","7. Recomendação"],["impacto","8. Impactos"],["transicao","9. Transição"],["relatorio","10. Relatório"]];
@@ -1414,10 +1416,15 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   }
  }
 
- async function pesquisarTratamentoTributario(){
+ async function pesquisarTratamentoTributario(opcoes={}){
+  const automatica=opcoes?.automatica===true;
   const cnae=digits(principal);
-  if(cnae.length!==7){setErro("Selecione um CNAE completo com 7 dígitos antes da pesquisa tributária.");return;}
-  if(String(descricao||"").trim().length<10){setErro("Descreva a atividade realmente exercida antes da pesquisa tributária.");return;}
+  const itemCnae=cnaes.find(item=>digits(item.codigo||item.cnae)===cnae)||{};
+  const atividadeReal=(String(descricao||"").trim().length>=10
+   ?String(descricao).trim()
+   :String(itemCnae.descricao||"").trim());
+  if(cnae.length!==7){if(!automatica)setErro("Selecione um CNAE completo com 7 dígitos antes da pesquisa tributária.");return false;}
+  if(atividadeReal.length<10){if(!automatica)setErro("O CNAE selecionado não possui descrição suficiente para a pesquisa tributária.");return false;}
 
   setPesquisandoTributacao(true);setErro("");setOk("");
   try{
@@ -1425,7 +1432,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     projetoId,
     cnpj:digits(cnpj),
     cnae,
-    atividadeReal:descricao,
+    atividadeReal,
     nbsNcm,
     regime,
     municipio,
@@ -1446,8 +1453,35 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     setAliquotaAtual(String(n(aliquotaLocal)));
    }
    setOk("A IA identificou benefício IBS/CBS e tributação local. A alíquota local exata foi preenchida quando sustentada por fonte oficial; a redução IBS/CBS segue para validação do consultor.");
-  }catch(e){setErro(e.message)}finally{setPesquisandoTributacao(false)}
+   return true;
+  }catch(e){setErro(e.message);return false}finally{setPesquisandoTributacao(false)}
  }
+
+ useEffect(()=>{
+  const cnpjPesquisa=digits(cnpj);
+  const cnae=digits(principal);
+  const itemCnae=cnaes.find(item=>digits(item.codigo||item.cnae)===cnae)||{};
+  const atividadeReal=(String(descricao||"").trim().length>=10
+   ?String(descricao).trim()
+   :String(itemCnae.descricao||"").trim());
+
+  if(cnpjPesquisa.length!==14||cnae.length!==7||atividadeReal.length<10)return;
+
+  const chave=[
+   cnpjPesquisa,cnae,atividadeReal.toLowerCase(),String(nbsNcm||"").trim().toLowerCase(),
+   regime,municipio,uf,Number(simulacao?.parametros?.ano||2027),
+  ].join("|");
+
+  if(pesquisaTributariaAutomaticaRef.current===chave)return;
+
+  const temporizador=setTimeout(async()=>{
+   if(pesquisaTributariaAutomaticaRef.current===chave)return;
+   pesquisaTributariaAutomaticaRef.current=chave;
+   await pesquisarTratamentoTributario({automatica:true});
+  },900);
+
+  return()=>clearTimeout(temporizador);
+ },[cnpj,principal,cnaes,descricao,nbsNcm,regime,municipio,uf,simulacao?.parametros?.ano]);
 
  async function atualizarValidacaoTributaria(){
   if(!pesquisaTributaria?.id||!pesquisaTributaria?.tokenPublico){
@@ -2729,7 +2763,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div style={{maxWidth:760}}>
       <div style={{fontSize:8,fontWeight:900,color:premissasTributarias?"#0F6E56":"#855A12"}}>PESQUISA NORMATIVA + VALIDAÇÃO HUMANA</div>
       <h3 style={{margin:"4px 0"}}>Tratamento tributário da atividade real</h3>
-      <p style={{fontSize:9,color:"#697386",lineHeight:1.5,margin:0}}>A IA pesquisa fontes oficiais, mas o motor só recebe CBS, IBS e redução depois da validação do consultor.</p>
+      <p style={{fontSize:9,color:"#697386",lineHeight:1.5,margin:0}}>A pesquisa começa automaticamente quando o CNPJ e o CNAE principal estão válidos. O motor só recebe CBS, IBS e redução depois da validação do consultor.</p>
      </div>
      <span style={{padding:"5px 8px",borderRadius:999,fontSize:8,fontWeight:900,background:premissasTributarias?"#DDF3E7":"#FFF0CC",color:premissasTributarias?"#0F6E56":"#855A12"}}>{String(statusPesquisaExibido).replaceAll("_"," ")}</span>
     </div>
@@ -2753,8 +2787,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>IBS confirmado</b><div>{n(premissasTributarias.ibsPct).toLocaleString("pt-BR")}%</div></div>
      <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>Redução confirmada</b><div>{n(premissasTributarias.reducaoPct).toLocaleString("pt-BR")}%</div></div>
     </div>}
-    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:11}}>
-     <button type="button" onClick={pesquisarTratamentoTributario} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>{pesquisandoTributacao?"Pesquisando...":pesquisaTributaria?"Gerar nova pesquisa":"Pesquisar fontes oficiais"}</button>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:11,alignItems:"center"}}>
+     <div style={{padding:"9px 12px",borderRadius:9,background:"#fff",fontSize:8.5,fontWeight:850}}>{pesquisandoTributacao?"Pesquisando automaticamente...":pesquisaTributaria?"Pesquisa automática concluída":"Aguardando CNPJ e CNAE principal"}</div>
+     {erro&&<button type="button" onClick={()=>{pesquisaTributariaAutomaticaRef.current="";pesquisarTratamentoTributario()}} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>Tentar pesquisa novamente</button>}
      {pesquisaTributaria?.id&&<button type="button" onClick={atualizarValidacaoTributaria} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>Atualizar validação</button>}
     </div>
    </div>
