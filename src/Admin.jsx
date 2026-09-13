@@ -14532,6 +14532,7 @@ function DetalheDiagnostico({
   const plano90Dias =
     resultado.plano90Dias ||
     resultadoCompleto.plano90Dias ||
+    resultado?.relatoriosSegmentados?.administracao?.plano90Dias ||
     null;
 
   const quickWins =
@@ -14542,7 +14543,7 @@ function DetalheDiagnostico({
       resultado.quickWins.length
         ? resultado.quickWins
         : resultadoCompleto.quickWins
-    ) || [];
+    ) || (resultado?.relatoriosSegmentados?.administracao ? ["Sugerimos validar as premissas fiscais e os documentos da simulação."] : []);
 
   const kpisRecomendados =
     (
@@ -14552,7 +14553,7 @@ function DetalheDiagnostico({
       resultado.kpisRecomendados.length
         ? resultado.kpisRecomendados
         : resultadoCompleto.indicadores
-    ) || [];
+    ) || (resultado?.relatoriosSegmentados?.administracao ? ["Carga tributária efetiva", "Créditos aproveitáveis", "Impacto no preço e na margem"] : []);
 
   const perguntasAprofundamento =
     (
@@ -14571,12 +14572,14 @@ function DetalheDiagnostico({
   const visaoConsultor =
     resultado.visaoConsultor ||
     visaoAdministracaoV2.aprofundamentos ||
-    null;
+    resultado?.relatoriosSegmentados?.administracao?.visaoConsultor ||
+    [];
 
   const visaoComercial =
     resultado.visaoComercial ||
     visaoAdministracaoV2.oportunidades ||
-    null;
+    resultado?.relatoriosSegmentados?.administracao?.visaoComercial ||
+    [];
 
   const lacunasDiagnostico =
     (
