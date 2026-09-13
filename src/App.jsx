@@ -6328,98 +6328,74 @@ function DiagnosticoPrototipo() {
       ...lista(origem?.resultadoCompleto?.proximosPassos),
     ].filter(Boolean));
 
-    const cliente={
+    return{
       tipo,
       geradoEm:new Date().toISOString(),
 
-      titulo:tipo==="simulador_reforma"
-        ?"Simulação da Reforma Tributária — Relatório do Cliente"
-        :"Diagnóstico da Reforma Tributária — Relatório do Cliente",
-      leituraExecutiva:snapshot?.decisao?.destaque||leitura,
-      decisaoRecomendada:snapshot?.decisao||null,
-      resumoNumerico:{
-        cargaAtualMensal:snapshot?.resultado?.atual??null,
-        melhorOpcaoMensal:snapshot?.decisao?.valorMensal??null,
-        economiaMensal:snapshot?.decisao?.economiaMensal??null,
-        economiaAnual:snapshot?.decisao?.economiaAnual??null,
-        perfilClientes:snapshot?.configuracao?.perfilClientes||null,
+      cliente:{
+        titulo:tipo==="simulador_reforma"
+          ?"Simulação da Reforma Tributária — Relatório do Cliente"
+          :"Diagnóstico da Reforma Tributária — Relatório do Cliente",
+        leituraExecutiva:snapshot?.decisao?.destaque||leitura,
+        decisaoRecomendada:snapshot?.decisao||null,
+        resumoNumerico:{
+          cargaAtualMensal:snapshot?.resultado?.atual??null,
+          melhorOpcaoMensal:snapshot?.decisao?.valorMensal??null,
+          economiaMensal:snapshot?.decisao?.economiaMensal??null,
+          economiaAnual:snapshot?.decisao?.economiaAnual??null,
+          perfilClientes:snapshot?.configuracao?.perfilClientes||null,
+        },
+        empresa:snapshot?.empresa||null,
+        justificativas:(snapshot?.decisao?.justificativas||[]).slice(0,3),
+        ressalvas:(snapshot?.decisao?.pendencias||[]).slice(0,3),
+        riscos:riscos.slice(0,3),
+        recomendacoes:recomendacoes.slice(0,3),
+        proximosPassos:proximos.slice(0,3),
       },
-      empresa:snapshot?.empresa||null,
-      justificativas:(snapshot?.decisao?.justificativas||[]).slice(0,3),
-      ressalvas:(snapshot?.decisao?.pendencias||[]).slice(0,3),
-      riscos:riscos.slice(0,3),
-      recomendacoes:recomendacoes.slice(0,3),
-      proximosPassos:proximos.slice(0,3),
-    };
 
-    const equipe={
-      tipo,
-      geradoEm:new Date().toISOString(),
-      titulo:tipo==="simulador_reforma"
-        ?"Simulação da Reforma Tributária — Relatório da Equipe"
-        :"Diagnóstico da Reforma Tributária — Relatório da Equipe",
-      atividadeReal:snapshot?.empresa?.descricaoAtividadeReal||"",
-      cnaePreponderante:snapshot?.empresa?.atividadeSelecionada||"",
-      memoriaCalculo:snapshot?.memoria||null,
-      estimativaCargaAtual:snapshot?.configuracao?.estimativaCargaAtual||null,
-      premissas:snapshot?.configuracao||null,
-      pendencias:[
-        ...(snapshot?.configuracao?.naoSeiImpostoAtual
-          ?["Confirmar carga tributária vigente pelos documentos fiscais/apurações."]
-          :[]),
-        ...lista(origem?.lacunasDiagnostico),
-        ...lista(origem?.resultadoCompleto?.informacoesFaltantes),
-      ].filter(Boolean),
-      recomendacoes:recomendacoes.slice(0,10),
-      proximosPassos:proximos.slice(0,10),
-    };
-
-    const administracao={
-      tipo,
-      geradoEm:new Date().toISOString(),
-      titulo:tipo==="simulador_reforma"
-        ?"Simulação da Reforma Tributária — Relatório da Administração"
-        :"Diagnóstico da Reforma Tributária — Relatório da Administração",
-      leituraExecutiva:leitura,
-      empresa:snapshot?.empresa||null,
-      simulacao:snapshot?.resultado||null,
-      memoriaCalculo:snapshot?.memoria||null,
-      configuracao:snapshot?.configuracao||null,
-      creditos:snapshot?.creditos||null,
-      baseLegalPremissas:snapshot?.configuracao?.fonteAliquota||null,
-      decisaoRecomendada:snapshot?.decisao||null,
-      transicao:snapshot?.transicao||[],
-      cronogramaLegal:snapshot?.cronogramaLegal||[],
-      snapshotCompleto:snapshot||null,
-      riscos,
-      recomendacoes,
-      proximosPassos:proximos,
-      visaoConsultor:lista(origem?.visaoConsultor).length
-        ?lista(origem?.visaoConsultor)
-        :[
-          "Sugerimos validar a carga atual com documentos fiscais e conciliar o DAS ou os tributos destacados.",
-          "Sugerimos revisar os créditos aproveitáveis, o perfil dos clientes e a capacidade de repasse no preço.",
-          "Sugerimos transformar a simulação em plano de adequação do ERP, contratos e formação de preços.",
-        ],
-      visaoComercial:lista(origem?.visaoComercial).length
-        ?lista(origem?.visaoComercial)
-        :["A oportunidade consultiva está concentrada na validação documental, simulação de cenários e preparação para a transição."],
-      oportunidadesConsultoria:lista(origem?.oportunidadesConsultoria).length
-        ?lista(origem?.oportunidadesConsultoria)
-        :["Diagnóstico tributário personalizado da Reforma Tributária."],
-      plano90Dias:origem?.plano90Dias||origem?.resultadoCompleto?.plano90Dias||{
-        dias30:["Sugerimos reunir PGDAS, apurações, notas fiscais, compras e contratos para validar as premissas."],
-        dias60:["Sugerimos simular créditos, impacto nos preços, margens e perfil B2B ou B2C."],
-        dias90:["Sugerimos consolidar a recomendação e o plano de adequação da empresa para a transição."],
+      equipe:{
+        titulo:tipo==="simulador_reforma"
+          ?"Simulação da Reforma Tributária — Relatório da Equipe"
+          :"Diagnóstico da Reforma Tributária — Relatório da Equipe",
+        atividadeReal:snapshot?.empresa?.descricaoAtividadeReal||"",
+        cnaePreponderante:snapshot?.empresa?.atividadeSelecionada||"",
+        memoriaCalculo:snapshot?.memoria||null,
+        estimativaCargaAtual:snapshot?.configuracao?.estimativaCargaAtual||null,
+        premissas:snapshot?.configuracao||null,
+        pendencias:[
+          ...(snapshot?.configuracao?.naoSeiImpostoAtual
+            ?["Confirmar carga tributária vigente pelos documentos fiscais/apurações."]
+            :[]),
+          ...lista(origem?.lacunasDiagnostico),
+          ...lista(origem?.resultadoCompleto?.informacoesFaltantes),
+        ].filter(Boolean),
+        recomendacoes:recomendacoes.slice(0,10),
+        proximosPassos:proximos.slice(0,10),
       },
-    };
 
-    const relatorios={
-      tipo,
-      geradoEm:new Date().toISOString(),
-      cliente,
-      equipe,
-      administracao,
+      administracao:{
+        titulo:tipo==="simulador_reforma"
+          ?"Simulação da Reforma Tributária — Relatório da Administração"
+          :"Diagnóstico da Reforma Tributária — Relatório da Administração",
+        leituraExecutiva:leitura,
+        empresa:snapshot?.empresa||null,
+        simulacao:snapshot?.resultado||null,
+        memoriaCalculo:snapshot?.memoria||null,
+        configuracao:snapshot?.configuracao||null,
+        creditos:snapshot?.creditos||null,
+        baseLegalPremissas:snapshot?.configuracao?.fonteAliquota||null,
+        decisaoRecomendada:snapshot?.decisao||null,
+        transicao:snapshot?.transicao||[],
+        cronogramaLegal:snapshot?.cronogramaLegal||[],
+        snapshotCompleto:snapshot||null,
+        riscos,
+        recomendacoes,
+        proximosPassos:proximos,
+        visaoConsultor:lista(origem?.visaoConsultor),
+        visaoComercial:lista(origem?.visaoComercial),
+        oportunidadesConsultoria:lista(origem?.oportunidadesConsultoria),
+        plano90Dias:origem?.plano90Dias||origem?.resultadoCompleto?.plano90Dias||null,
+      },
 
       // Aliases explícitos para o painel administrativo e para o relatório
       // do cliente. Assim cada consumidor recebe sua versão sem precisar
@@ -6429,39 +6405,6 @@ function DiagnosticoPrototipo() {
       clienteResumo:null,
       administracaoCompleta:null,
     };
-
-    // Compatibilidade com o formato anterior consumido pelo painel Admin.
-    // Mantemos os dois formatos para que relatórios antigos continuem abrindo.
-    relatorios.versoesRelatorio={
-      cliente:{
-        titulo:cliente.titulo,
-        melhorOpcao:snapshot?.decisao?.titulo||"Validação tributária em andamento",
-        leituraExecutiva:cliente.leituraExecutiva,
-        numeros:{
-          faturamento:snapshot?.configuracao?.faturamentoMensal??null,
-          cargaAtual:snapshot?.resultado?.atual??null,
-          cargaReforma:snapshot?.resultado?.reforma??null,
-          diferencaMensal:snapshot?.resultado?.diferenca??null,
-          diferencaAnual:snapshot?.decisao?.economiaAnual??null,
-        },
-        riscos:cliente.riscos,
-        recomendacoes:cliente.recomendacoes,
-        proximosPassos:cliente.proximosPassos,
-      },
-      equipe:equipe,
-      administrador:{
-        titulo:administracao.titulo,
-        analise:{leituraExecutiva:administracao.leituraExecutiva,riscos:administracao.riscos,recomendacoes:administracao.recomendacoes},
-        simulacao:administracao.simulacao,
-        base:administracao.configuracao,
-        extracao:administracao.snapshotCompleto,
-        auditoria:{projetoId:snapshot?.versao||"SIMULADOR_REFORMA",finalizadoPor:"Sistema Finder",versaoFormato:"REFORMA_TRIBUTARIA_V1"},
-      },
-    };
-
-    relatorios.clienteResumo=cliente;
-    relatorios.administracaoCompleta=administracao;
-    return relatorios;
   }
 
   async function persistirResultadoSimuladorReforma({
@@ -6478,14 +6421,6 @@ function DiagnosticoPrototipo() {
       relatorioIa,
     });
 
-    const atualMensal=snapshot?.resultado?.atual??null;
-    const reformaMensal=snapshot?.resultado?.reforma??null;
-    const faturamentoMensal=configuracao.faturamentoMensal??null;
-    const cargaAtualPct=Number.isFinite(Number(atualMensal))&&Number(faturamentoMensal)>0
-      ?Number(atualMensal)/Number(faturamentoMensal)*100
-      :null;
-    const tributosMensaisEstimados=atualMensal==null?null:Number(atualMensal);
-
     // Mantém as duas visões no mesmo registro: a cliente é curta e
     // consultiva; a administrativa preserva todos os dados para auditoria.
     relatoriosSegmentados.clienteResumo=relatoriosSegmentados.cliente;
@@ -6498,9 +6433,6 @@ function DiagnosticoPrototipo() {
       versaoRelatorioCliente:"resumida_consultiva",
       versaoRelatorioAdministracao:"completa",
       relatoriosSegmentados,
-      // Formato legado mantido para o painel Admin e para registros já
-      // existentes que ainda não consomem relatoriosSegmentados.
-      versoesRelatorio:relatoriosSegmentados.versoesRelatorio,
       crm:{
         leadId,
         sessionId:
@@ -6558,46 +6490,14 @@ function DiagnosticoPrototipo() {
         tipoDiagnostico:"simulador_reforma",
         scoreGeral:50,
         nivelGeral:"Simulação",
-        // Eixos próprios do simulador: o relatório não deve cair no modelo
-        // genérico de departamentos do diagnóstico empresarial.
-        areas:[
-          {
-            area:"Carga atual e impacto financeiro",
-            score:50,
-            nivel:"Análise da carga e dos cenários",
-            resumo:`Comparação entre a carga atual e o cenário projetado da Reforma Tributária para ${configuracao.cenarioAliquota||"o ano selecionado"}.`,
-            achados:[`Carga atual: ${moedaSimulador(atualMensal)} por mês.`,`Cenário projetado: ${moedaSimulador(reformaMensal)} por mês.`],
-            riscos:relatorioIa?.riscosPrioritarios||[],
-            recomendacoes:relatorioIa?.recomendacoes||[],
-          },
-          {
-            area:"Créditos de IBS e CBS",
-            score:50,
-            nivel:"Validação de créditos",
-            resumo:"A apropriação depende da natureza das compras, documentação fiscal e regras aplicáveis ao crédito.",
-            achados:[`Créditos estimados no cenário: ${moedaSimulador(snapshot?.creditos?.creditoNovo)}`],
-            riscos:["A estimativa não substitui a validação dos documentos fiscais e da elegibilidade das despesas."],
-            recomendacoes:["Sugerimos revisar as despesas com potencial de crédito e sua documentação fiscal."],
-          },
-          {
-            area:"Preço, margem e repasse",
-            score:50,
-            nivel:"Impacto comercial",
-            resumo:"A alteração da carga precisa ser avaliada junto à margem, ao preço final e ao perfil dos clientes.",
-            achados:[`Perfil de clientes informado: ${configuracao.perfilClientes||"não informado"}.`],
-            riscos:["O impacto econômico pode variar conforme a capacidade de repasse e o aproveitamento de créditos pelos clientes."],
-            recomendacoes:["Sugerimos simular preço, margem e repasse por tipo de cliente."],
-          },
-          {
-            area:"Transição e adequação operacional",
-            score:50,
-            nivel:"Preparação para 2026–2033",
-            resumo:"A transição exige acompanhamento das alíquotas, documentos fiscais, ERP, contratos e processos internos.",
-            achados:[`Cenário analisado: ${configuracao.cenarioAliquota||"não definido"}.`],
-            riscos:["Premissas futuras podem depender de regulamentação e validação normativa."],
-            recomendacoes:["Sugerimos preparar o ERP e os processos internos para acompanhar a transição."],
-          },
-        ],
+        areas:[{
+          area:"Fiscal / Tributário",
+          score:50,
+          nivel:"Análise tributária",
+          resumo:relatorioIa?.leituraExecutiva||"",
+          riscos:relatorioIa?.riscosPrioritarios||[],
+          recomendacoes:relatorioIa?.recomendacoes||[],
+        }],
         diagnosticoGeral:{
           tipoDiagnostico:"simulador_reforma",
           estruturaNegocio:"simulador_reforma",
@@ -6621,18 +6521,14 @@ function DiagnosticoPrototipo() {
           regime:configuracao.regime||"",
           segmento:configuracao.natureza||"",
           categoria:"Simulador Reforma",
-          faturamentoMensalReferencia:faturamentoMensal,
-          tributosMensaisEstimados,
-          tributosAnuaisEstimados:tributosMensaisEstimados==null?null:tributosMensaisEstimados*12,
-          cargaTributariaEstimada:cargaAtualPct,
           confiabilidade:configuracao.naoSeiImpostoAtual
             ?"Preliminar"
             :"Maior — carga atual informada",
           reforma:{
             status:"Simulado",
-            faturamentoMensal,
-            atual:atualMensal,
-            reforma:reformaMensal,
+            faturamentoMensal:configuracao.faturamentoMensal||0,
+            atual:snapshot?.resultado?.atual??null,
+            reforma:snapshot?.resultado?.reforma??null,
             diferenca:snapshot?.resultado?.diferenca??null,
             variacaoPct:snapshot?.resultado?.variacaoPct??null,
             memoria:snapshot?.memoria||null,
@@ -6696,18 +6592,6 @@ function DiagnosticoPrototipo() {
       // operacional anterior.
       setDiagnosticoIdSalvo(String(idSalvo));
     }
-
-    // Garante que o lead usado na fila seja concluído mesmo quando o estado
-    // do CRM foi criado antes do ID definitivo do diagnóstico.
-    await atualizarLeadCRM({
-      leadId:leadId||"",
-      sessionId:sessionIdLead||sessionStorage.getItem("finder_diagnostico_session_id")||"",
-      statusDiagnostico:"CONCLUIDO",
-      etapaAtual:"RESULTADO_SIMULADOR_REFORMA",
-      progressoPercentual:100,
-      diagnosticoId:idSalvo?String(idSalvo):"",
-      estruturaNegocio:"simulador_reforma",
-    });
 
     await atualizarLeadCRM({
       statusDiagnostico:"CONCLUIDO",
