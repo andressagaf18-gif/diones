@@ -2988,11 +2988,15 @@ function SimuladorReformaPublico({
         ],
       };
 
+      const controlador=new AbortController();
+      const limite=setTimeout(()=>controlador.abort(),30000);
       const r=await fetch("/api/diagnostico",{
         method:"POST",
         headers:{"content-type":"application/json"},
         body:JSON.stringify(payload),
+        signal:controlador.signal,
       });
+      clearTimeout(limite);
 
       const data=await r.json().catch(()=>null);
 
@@ -3019,7 +3023,20 @@ function SimuladorReformaPublico({
       });
     }catch(e){
       console.error("[simulador-reforma][relatorio-ia]",e);
-      setErroRelatorioIa(e?.message||"Não foi possível gerar o relatório com IA.");
+      // Mesmo se a IA estiver indisponível, o resultado determinístico do
+      // simulador não pode ficar preso em “em preenchimento”. O snapshot é
+      // salvo com uma leitura transparente e pode ser complementado pelo
+      // administrador depois.
+      setRelatorioIa({
+        leituraExecutiva:"A simulação da Reforma foi concluída com os dados informados. Sugerimos interpretar os valores como estimativa gerencial e complementar a análise com a documentação fiscal da empresa.",
+        riscosPrioritarios:["A leitura automática da IA não ficou disponível nesta tentativa; os valores determinísticos do simulador foram preservados."],
+        prioridades:[],
+        recomendacoes:listaConsultivaSimulador(["Revisar as premissas e documentos fiscais antes de tomar decisões." ]),
+        proximosPassos:listaConsultivaSimulador(["Agendar uma conversa com um especialista para interpretar o cenário." ]),
+        pontosFortes:[],
+        impactos:[],
+      });
+      setErroRelatorioIa("");
     }finally{
       setGerandoRelatorioIa(false);
     }
@@ -3052,6 +3069,20 @@ function SimuladorReformaPublico({
       setErroRelatorioIa(error?.message||"Não foi possível salvar o relatório da Reforma.");
     }
   }
+
+  // Gerar o relatório encerra automaticamente o simulador. Quando a IA
+  // conclui a leitura, o diagnóstico é persistido e o lead passa a concluído
+  // sem exigir um segundo clique do participante.
+  useEffect(()=>{
+    if(
+      etapa==="resultado" &&
+      relatorioIa &&
+      persistenciaRelatorio==="idle" &&
+      !persistenciaRelatorioRef.current
+    ){
+      finalizarRelatorioReforma();
+    }
+  },[etapa,relatorioIa,persistenciaRelatorio]);
 
   function gerarRelatorioExecutivoCliente(){
     const empresaNome=empresaCadastral?.razaoSocial||empresaCadastral?.nomeFantasia||"Empresa";
@@ -4505,18 +4536,19 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         Gerar PDF do relatório
       </button>
 
-      <button
-        type="button"
-        onClick={finalizarRelatorioReforma}
-        disabled={!relatorioIa||persistenciaRelatorio==="saving"||persistenciaRelatorio==="saved"}
-        style={{
-          width:"100%",minHeight:44,border:0,borderRadius:11,
-          background:relatorioIa&&persistenciaRelatorio!=="saved"?NAVY:"#D7DDE8",
-          color:WHITE,fontWeight:900,cursor:relatorioIa&&persistenciaRelatorio!=="saved"?"pointer":"default"
-        }}
-      >
-        {persistenciaRelatorio==="saving"?"Salvando relatório da Reforma...":persistenciaRelatorio==="saved"?"Relatório da Reforma finalizado":"Finalizar relatório da Reforma"}
-      </button>
+      <div style={{
+        width:"100%",boxSizing:"border-box",minHeight:44,borderRadius:11,
+        background:persistenciaRelatorio==="saved"?"#E1F5EE":"#EEF5FF",
+        border:`1px solid ${persistenciaRelatorio==="saved"?"#B7E2D3":"#CADAF2"}`,
+        color:persistenciaRelatorio==="saved"?"#0F6E56":"#31589C",
+        display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",
+        padding:"10px 12px",fontWeight:900,fontSize:10
+      }}>
+        {persistenciaRelatorio==="saving"&&"Salvando diagnóstico no painel administrativo..."}
+        {persistenciaRelatorio==="saved"&&"Diagnóstico salvo no painel administrativo."}
+        {persistenciaRelatorio==="error"&&"O relatório foi gerado, mas não foi possível salvá-lo."}
+        {persistenciaRelatorio==="idle"&&"Processando o relatório automaticamente..."}
+      </div>
 
       {persistenciaRelatorio==="saved"&&<>
         <div style={{...card,marginTop:10,background:"#F7F9FD"}}>
