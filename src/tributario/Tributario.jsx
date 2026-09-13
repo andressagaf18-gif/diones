@@ -830,9 +830,14 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  };
  const normalizarComparacao=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();
  const consultaPesquisa=pesquisaTributaria?.resultado?.consulta||{};
+ const codigoPrincipalAtual=String(principal||"").replace(/\D/g,"");
+ const cnaePrincipalAtual=cnaes.find(item=>String(item.codigo||item.cnae||"").replace(/\D/g,"")===codigoPrincipalAtual)||{};
+ const atividadePesquisaAtual=String(descricao||"").trim().length>=10
+  ?String(descricao).trim()
+  :String(cnaePrincipalAtual.descricao||"").trim();
  const pesquisaCompativel=Boolean(pesquisaTributaria)&&
   String(consultaPesquisa.cnae||"").replace(/\D/g,"")===String(principal||"").replace(/\D/g,"")&&
-  normalizarComparacao(consultaPesquisa.atividade_real)===normalizarComparacao(descricao)&&
+  normalizarComparacao(consultaPesquisa.atividade_real)===normalizarComparacao(atividadePesquisaAtual)&&
   normalizarComparacao(consultaPesquisa.regime)===normalizarComparacao(regime)&&
   normalizarComparacao(consultaPesquisa.municipio)===normalizarComparacao(municipio)&&
   normalizarComparacao(consultaPesquisa.uf)===normalizarComparacao(uf);
@@ -1442,17 +1447,19 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    aplicarRetornoPesquisa({
     id:d.pesquisaId,
     tokenPublico:d.tokenPublico,
-    status:d.status,
-    resultado:d.resultado,
-    premissasConfirmadas:null,
-    validadoEm:null
+   status:d.status,
+   resultado:d.resultado,
+    premissasConfirmadas:d.premissasConfirmadas||null,
+    validadoEm:d.premissasConfirmadas?.confirmadoEm||null
    });
    const local=d.resultado?.tributacao_local||{};
    const aliquotaLocal=local.aliquota_efetiva_pct??local.aliquota_nominal_pct;
    if(local.incide===true&&aliquotaLocal!=null&&!(local.informacoes_faltantes||[]).length){
     setAliquotaAtual(String(n(aliquotaLocal)));
    }
-   setOk("A IA identificou benefício IBS/CBS e tributação local. A alíquota local exata foi preenchida quando sustentada por fonte oficial; a redução IBS/CBS segue para validação do consultor.");
+   setOk(d.status==="VALIDADO"
+    ?"Pesquisa concluída e premissas aplicadas automaticamente pelo motor de segurança."
+    :"Pesquisa concluída, mas os dados não atenderam aos requisitos de aplicação automática. Confira as pendências apresentadas.");
    return true;
   }catch(e){setErro(e.message);return false}finally{setPesquisandoTributacao(false)}
  }
@@ -1567,7 +1574,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  async function finalizarRelatorio(){
   setErro("");
   if(!analise){setErro("Gere o diagnóstico técnico antes de finalizar o relatório.");return;}
-  if(pesquisaTributaria?.status!=="VALIDADO"||!premissasTributarias){setErro("A pesquisa tributária precisa ser validada pelo consultor antes da finalização. Abra Validação Tributária, confirme as premissas e depois clique em Atualizar validação.");return;}
+  if(pesquisaTributaria?.status!=="VALIDADO"||!premissasTributarias){setErro("A pesquisa automática não confirmou fonte oficial, confiança, vigência e ausência de pendências. Complete os dados indicados e pesquise novamente antes de finalizar.");return;}
   if(!simulacaoEfetiva&&!simulacao){setErro("Conclua a simulação antes de finalizar o relatório.");return;}
   setCarregando(true);
   try{
@@ -2675,7 +2682,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   </label>
   {field("Fator R %",fatorR,setFatorR,"%")}
  </div>
-</div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
+</div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS pesquisada %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
 
   {aba==="documentos"&&<div style={{display:"grid",gap:10}}>
    <div style={card}>
@@ -2761,9 +2768,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    <div style={{...card,borderColor:premissasTributarias?"#9ED7BB":"#F3D99B",background:premissasTributarias?"#F2FBF6":"#FFFBF2"}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"start",flexWrap:"wrap"}}>
      <div style={{maxWidth:760}}>
-      <div style={{fontSize:8,fontWeight:900,color:premissasTributarias?"#0F6E56":"#855A12"}}>PESQUISA NORMATIVA + VALIDAÇÃO HUMANA</div>
+      <div style={{fontSize:8,fontWeight:900,color:premissasTributarias?"#0F6E56":"#855A12"}}>PESQUISA NORMATIVA + CONTROLE AUTOMÁTICO</div>
       <h3 style={{margin:"4px 0"}}>Tratamento tributário da atividade real</h3>
-      <p style={{fontSize:9,color:"#697386",lineHeight:1.5,margin:0}}>A pesquisa começa automaticamente quando o CNPJ e o CNAE principal estão válidos. O motor só recebe CBS, IBS e redução depois da validação do consultor.</p>
+      <p style={{fontSize:9,color:"#697386",lineHeight:1.5,margin:0}}>A pesquisa começa automaticamente quando o CNPJ e o CNAE principal estão válidos. O motor aplica os percentuais somente quando encontra fonte oficial, confiança alta, vigência confirmada e nenhuma pendência.</p>
      </div>
      <span style={{padding:"5px 8px",borderRadius:999,fontSize:8,fontWeight:900,background:premissasTributarias?"#DDF3E7":"#FFF0CC",color:premissasTributarias?"#0F6E56":"#855A12"}}>{String(statusPesquisaExibido).replaceAll("_"," ")}</span>
     </div>
@@ -2779,18 +2786,20 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      <div><b>Redução identificada:</b> {pesquisaTributaria.resultado.beneficio_legal?.percentual_reducao_pct!=null?`${pesquisaTributaria.resultado.beneficio_legal.percentual_reducao_pct}%`:"Não identificada"}</div>
      <div><b>Tributo do regime atual:</b> {pesquisaTributaria.resultado.tributacao_local?.tipo||"Não determinado"} {pesquisaTributaria.resultado.tributacao_local?.aliquota_efetiva_pct!=null?`· ${pesquisaTributaria.resultado.tributacao_local.aliquota_efetiva_pct}%`:"· alíquota pendente"}</div>
      <div><b>Base legal ISS/ICMS:</b> {pesquisaTributaria.resultado.tributacao_local?.base_legal||"Não confirmada"}</div>
+     <div><b>Aplicação automática:</b> {pesquisaTributaria.resultado.validacao_automatica?.apto?"Liberada":"Não aplicada"}</div>
+     {!!pesquisaTributaria.resultado.validacao_automatica?.motivos?.length&&<div><b>Pendências:</b> {pesquisaTributaria.resultado.validacao_automatica.motivos.join(" · ")}</div>}
      {!!pesquisaTributaria.resultado.requisitos?.length&&<div><b>Requisitos:</b> {pesquisaTributaria.resultado.requisitos.join(" · ")}</div>}
      {!!pesquisaTributaria.resultado.fontes?.length&&<div><b>Fontes oficiais:</b> {pesquisaTributaria.resultado.fontes.map((f,i)=><React.Fragment key={f.url||i}>{i>0?" · ":""}<a href={f.url} target="_blank" rel="noreferrer">{f.titulo||f.orgao||"Fonte"}</a></React.Fragment>)}</div>}
     </div>}
     {premissasTributarias&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,marginTop:10}}>
-     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>CBS confirmada</b><div>{n(premissasTributarias.cbsPct).toLocaleString("pt-BR")}%</div></div>
-     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>IBS confirmado</b><div>{n(premissasTributarias.ibsPct).toLocaleString("pt-BR")}%</div></div>
-     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>Redução confirmada</b><div>{n(premissasTributarias.reducaoPct).toLocaleString("pt-BR")}%</div></div>
+     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>CBS aplicada</b><div>{n(premissasTributarias.cbsPct).toLocaleString("pt-BR")}%</div></div>
+     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>IBS aplicado</b><div>{n(premissasTributarias.ibsPct).toLocaleString("pt-BR")}%</div></div>
+     <div style={{padding:9,borderRadius:9,background:"#fff",fontSize:9}}><b>Redução aplicada</b><div>{n(premissasTributarias.reducaoPct).toLocaleString("pt-BR")}%</div></div>
     </div>}
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:11,alignItems:"center"}}>
      <div style={{padding:"9px 12px",borderRadius:9,background:"#fff",fontSize:8.5,fontWeight:850}}>{pesquisandoTributacao?"Pesquisando automaticamente...":pesquisaTributaria?"Pesquisa automática concluída":"Aguardando CNPJ e CNAE principal"}</div>
      {erro&&<button type="button" onClick={()=>{pesquisaTributariaAutomaticaRef.current="";pesquisarTratamentoTributario()}} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>Tentar pesquisa novamente</button>}
-     {pesquisaTributaria?.id&&<button type="button" onClick={atualizarValidacaoTributaria} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>Atualizar validação</button>}
+     {pesquisaTributaria?.status==="DADOS_INSUFICIENTES"&&<button type="button" onClick={()=>{pesquisaTributariaAutomaticaRef.current="";pesquisarTratamentoTributario()}} disabled={pesquisandoTributacao} style={{padding:"9px 12px",fontWeight:850}}>Pesquisar novamente</button>}
     </div>
    </div>
    <div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>
