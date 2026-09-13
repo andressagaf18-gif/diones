@@ -3029,10 +3029,14 @@ function SimuladorReformaPublico({
       // administrador depois.
       setRelatorioIa({
         leituraExecutiva:"A simulação da Reforma foi concluída com os dados informados. Sugerimos interpretar os valores como estimativa gerencial e complementar a análise com a documentação fiscal da empresa.",
-        riscosPrioritarios:["A leitura automática da IA não ficou disponível nesta tentativa; os valores determinísticos do simulador foram preservados."],
-        prioridades:[],
-        recomendacoes:listaConsultivaSimulador(["Revisar as premissas e documentos fiscais antes de tomar decisões." ]),
-        proximosPassos:listaConsultivaSimulador(["Agendar uma conversa com um especialista para interpretar o cenário." ]),
+        riscosPrioritarios:[
+          "Sugerimos validar a atividade efetiva, o CNAE, o município e a UF para confirmar o tratamento de IBS/CBS.",
+          "Sugerimos confrontar a carga atual e o cenário por fora com PGDAS/DEFIS e documentos fiscais.",
+          "Sugerimos separar DAS residual, IBS/CBS por dentro, IBS/CBS por fora e créditos aproveitáveis.",
+        ],
+        prioridades:["Validar enquadramento e deduções","Conferir memória de cálculo","Projetar preços e margens"],
+        recomendacoes:listaConsultivaSimulador(["Sugerimos revisar as premissas, deduções e fontes legais antes de qualquer decisão.","Sugerimos simular os anos de transição e os perfis B2B/B2C."]),
+        proximosPassos:listaConsultivaSimulador(["Sugerimos reunir PGDAS/DEFIS, NFS-e/NF-e e documentos de créditos.","Sugerimos confirmar a atividade efetiva e os requisitos do benefício identificado.","Sugerimos agendar uma conversa com especialista."]),
         pontosFortes:[],
         impactos:[],
       });
@@ -6328,6 +6332,11 @@ function DiagnosticoPrototipo() {
       ...lista(origem?.resultadoCompleto?.proximosPassos),
     ].filter(Boolean));
 
+    const atividade = snapshot?.empresa?.descricaoAtividadeReal || snapshot?.empresa?.atividadeSelecionada || "atividade informada";
+    if (!riscos.length) riscos.push(`Sugerimos validar o enquadramento da atividade ${atividade}, o CNAE e as reduções legais aplicáveis.`);
+    if (!recomendacoes.length) recomendacoes.push("Sugerimos comparar Simples por dentro, IBS/CBS por fora, DAS residual e créditos antes de decidir.");
+    if (!proximos.length) proximos.push("Sugerimos reunir PGDAS/DEFIS, notas fiscais e documentos que comprovem as deduções.");
+
     return{
       tipo,
       geradoEm:new Date().toISOString(),
@@ -6394,7 +6403,12 @@ function DiagnosticoPrototipo() {
         visaoConsultor:lista(origem?.visaoConsultor),
         visaoComercial:lista(origem?.visaoComercial),
         oportunidadesConsultoria:lista(origem?.oportunidadesConsultoria),
-        plano90Dias:origem?.plano90Dias||origem?.resultadoCompleto?.plano90Dias||null,
+        plano90Dias:origem?.plano90Dias||origem?.resultadoCompleto?.plano90Dias||{
+          titulo:"Plano de preparação para a Reforma",
+          dias30:["Sugerimos conferir PGDAS/DEFIS, CNAE, atividade efetiva e premissas."],
+          dias60:["Sugerimos validar deduções, créditos, DAS residual e formação de preços."],
+          dias90:["Sugerimos consolidar o cenário e preparar a comunicação com clientes."],
+        },
       },
 
       // Aliases explícitos para o painel administrativo e para o relatório
@@ -6426,12 +6440,19 @@ function DiagnosticoPrototipo() {
     relatoriosSegmentados.clienteResumo=relatoriosSegmentados.cliente;
     relatoriosSegmentados.administracaoCompleta=relatoriosSegmentados.administracao;
 
+    const versoesRelatorio={
+      cliente:relatoriosSegmentados.cliente,
+      administrador:relatoriosSegmentados.administracao,
+      equipe:relatoriosSegmentados.equipe,
+    };
+
     const payload={
       tipoDiagnostico:"simulador_reforma",
       estruturaNegocio:"simulador_reforma",
       origem:"simulador_reforma",
       versaoRelatorioCliente:"resumida_consultiva",
       versaoRelatorioAdministracao:"completa",
+      versoesRelatorio,
       relatoriosSegmentados,
       crm:{
         leadId,
@@ -6559,6 +6580,7 @@ function DiagnosticoPrototipo() {
           },
         },
         relatoriosSegmentados,
+        versoesRelatorio,
         relatorioCliente:relatoriosSegmentados.cliente,
         relatorioAdministracao:relatoriosSegmentados.administracao,
         visaoAdministracaoCompleta:relatoriosSegmentados.administracao,
