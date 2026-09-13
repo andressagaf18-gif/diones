@@ -36,6 +36,7 @@ import {
   UserCog,
   Pencil,
   Sparkles,
+  CalendarDays,
 } from "lucide-react";
 import Dashboard from "./Dashboard";
 import OperacionalBI from "./OperacionalBI";
@@ -1034,10 +1035,11 @@ function Botao({
   disabled = false,
   secundario = false,
   style = {},
+  type = "button",
 }) {
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
       disabled={disabled}
       style={{
@@ -6814,6 +6816,13 @@ function AtendimentosDepartamento({
     setAtendimentoAberto,
   ] = useState(null);
 
+  // Um caso representa um diagnóstico. Os registros departamentais continuam
+  // separados no banco para preservar responsável, histórico e proposta.
+  const [
+    atendimentosDoCaso,
+    setAtendimentosDoCaso,
+  ] = useState([]);
+
   const [
     atendimentoInicialProcessado,
     setAtendimentoInicialProcessado,
@@ -7518,6 +7527,17 @@ async function salvarPropostaCaso() {
 
     setAtendimentoAberto(
       atendimento
+    );
+
+    const chaveCaso =
+      atendimento.diagnosticoId ||
+      atendimento.leadId ||
+      atendimento.id;
+
+    setAtendimentosDoCaso(
+      atendimentos.filter((item) =>
+        (item.diagnosticoId || item.leadId || item.id) === chaveCaso
+      )
     );
 
     setStatusCaso(
@@ -8261,6 +8281,15 @@ async function salvarPropostaCaso() {
       EM_ATENDIMENTO:
         "Em tratativa",
 
+      EM_ANDAMENTO:
+        "Em andamento",
+
+      AGUARDANDO_CLIENTE:
+        "Aguardando cliente",
+
+      AGUARDANDO_INTERNO:
+        "Aguardando retorno interno",
+
       PLANO_APRESENTADO:
         "Proposta / plano apresentado",
 
@@ -8305,10 +8334,18 @@ async function salvarPropostaCaso() {
   function indiceEtapaAtendimento(
     status
   ) {
+    const statusEtapa = [
+      "EM_ANDAMENTO",
+      "AGUARDANDO_CLIENTE",
+      "AGUARDANDO_INTERNO",
+    ].includes(status)
+      ? "EM_ATENDIMENTO"
+      : status;
+
     const indice =
       etapasAtendimento.findIndex(
         (item) =>
-          item.id === status
+          item.id === statusEtapa
       );
 
     return indice >= 0
@@ -8334,6 +8371,12 @@ async function salvarPropostaCaso() {
         "Preparar a reunião usando as respostas e riscos do diagnóstico.",
       EM_ATENDIMENTO:
         "Registrar o resultado da tratativa e definir o próximo passo.",
+      EM_ANDAMENTO:
+        "Registrar o andamento e definir o próximo contato.",
+      AGUARDANDO_CLIENTE:
+        "Realizar o follow-up na data combinada com o cliente.",
+      AGUARDANDO_INTERNO:
+        "Cobrar o retorno da equipe responsável e atualizar o cliente.",
       PLANO_APRESENTADO:
         "Realizar follow-up da proposta ou plano apresentado.",
       CONCLUIDO:
@@ -8362,6 +8405,9 @@ async function salvarPropostaCaso() {
 
     if (
       status === "EM_ATENDIMENTO" ||
+      status === "EM_ANDAMENTO" ||
+      status === "AGUARDANDO_CLIENTE" ||
+      status === "AGUARDANDO_INTERNO" ||
       status === "EM_ANALISE"
     ) {
       return {
@@ -8608,12 +8654,52 @@ async function salvarPropostaCaso() {
       }
     );
 
+  const gruposFiltrados = useMemo(() => {
+    const mapa = new Map();
+
+    filtrados.forEach((atendimento) => {
+      const chave =
+        atendimento.diagnosticoId ||
+        atendimento.leadId ||
+        atendimento.id;
+
+      if (!mapa.has(chave)) {
+        mapa.set(chave, {
+          chave,
+          principal: atendimento,
+          atendimentos: [],
+        });
+      }
+
+      mapa.get(chave).atendimentos.push(atendimento);
+    });
+
+    return Array.from(mapa.values()).map((grupo) => {
+      const ordenados = [...grupo.atendimentos].sort((a, b) => {
+        const scoreA = Number.isFinite(Number(a.scoreArea)) ? Number(a.scoreArea) : 101;
+        const scoreB = Number.isFinite(Number(b.scoreArea)) ? Number(b.scoreArea) : 101;
+        return scoreA - scoreB;
+      });
+
+      return {
+        ...grupo,
+        principal: ordenados[0],
+        atendimentos: ordenados,
+        areas: ordenados.map((item) => item.area).filter(Boolean),
+      };
+    });
+  }, [filtrados]);
+
   const agoraAtendimentos =
     new Date();
 
   const resumo = {
     total:
-      atendimentos.length,
+      new Set(
+        atendimentos.map((item) =>
+          item.diagnosticoId || item.leadId || item.id
+        )
+      ).size,
 
     naoIniciado:
       atendimentos.filter(
@@ -9188,13 +9274,13 @@ async function salvarPropostaCaso() {
       >
         Exibindo{" "}
         <strong>
-          {filtrados.length}
+          {gruposFiltrados.length}
         </strong>{" "}
         de{" "}
         <strong>
-          {atendimentos.length}
+          {resumo.total}
         </strong>{" "}
-        atendimentos
+        casos consolidados · {filtrados.length} departamento(s) no filtro
       </div>
         </>
       )}
@@ -11153,6 +11239,59 @@ async function salvarPropostaCaso() {
                 padding: 16,
               }}
             >
+              {atendimentosDoCaso.length > 1 && (
+                <Card
+                  style={{
+                    marginBottom: 12,
+                    borderLeft: `4px solid ${CORAL}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: MUTED,
+                      fontWeight: 900,
+                      marginBottom: 7,
+                    }}
+                  >
+                    DEPARTAMENTO PARA ACIONAMENTO E PROPOSTA
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                    {atendimentosDoCaso.map((item) => {
+                      const ativo = item.id === atendimentoAberto.id;
+
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => abrirAtendimento(item)}
+                          style={{
+                            border: ativo
+                              ? `1px solid ${CORAL}`
+                              : "1px solid #D8DEEA",
+                            background: ativo ? "#FFF3EF" : WHITE,
+                            color: ativo ? "#993C1D" : NAVY,
+                            borderRadius: 999,
+                            padding: "8px 11px",
+                            cursor: "pointer",
+                            fontSize: 9.5,
+                            fontWeight: 900,
+                          }}
+                        >
+                          {item.area} · {item.scoreArea ?? "N/A"}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 7, color: MUTED, fontSize: 9.5 }}>
+                    O acionamento, o responsável, o histórico e a proposta serão
+                    registrados somente no departamento selecionado.
+                  </div>
+                </Card>
+              )}
+
               <DocumentosAtendimento
                 token={token}
                 atendimento={atendimentoAberto}
@@ -12822,7 +12961,7 @@ async function salvarPropostaCaso() {
         <Card>
           Carregando atendimentos...
         </Card>
-      ) : filtrados.length === 0 ? (
+      ) : gruposFiltrados.length === 0 ? (
         <Card
           style={{
             borderLeft:
@@ -12858,8 +12997,9 @@ async function salvarPropostaCaso() {
             gap: 12,
           }}
         >
-          {filtrados.map(
-            (atendimento) => {
+          {gruposFiltrados.map(
+            (grupo) => {
+              const atendimento = grupo.principal;
               const lead =
                 leadDoAtendimento(
                   atendimento
@@ -12892,9 +13032,7 @@ async function salvarPropostaCaso() {
 
               return (
                 <Card
-                  key={
-                    atendimento.id
-                  }
+                  key={grupo.chave}
                 >
                   <div
                     style={{
@@ -12915,9 +13053,32 @@ async function salvarPropostaCaso() {
                           marginBottom: 4,
                         }}
                       >
-                        {
-                          atendimento.area
-                        }
+                        {grupo.areas.length} DEPARTAMENTO(S)
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 5,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {grupo.atendimentos.map((item) => (
+                          <span
+                            key={item.id}
+                            style={{
+                              background: "#EEF3FF",
+                              color: "#31589C",
+                              borderRadius: 999,
+                              padding: "4px 7px",
+                              fontSize: 8.5,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {item.area} · {item.scoreArea ?? "N/A"}
+                          </span>
+                        ))}
                       </div>
 
                       <strong
@@ -13702,6 +13863,12 @@ function ResumoEstruturaSelecionada({
     const configSim=simuladorReforma?.configuracao||{};
     const resultadoSim=simuladorReforma?.resultado||{};
     const memoriaSim=simuladorReforma?.memoria||{};
+    const creditosSim=simuladorReforma?.creditos||{};
+    const decisaoSim=simuladorReforma?.decisao||{};
+    const transicaoSim=Array.isArray(simuladorReforma?.transicao)?simuladorReforma.transicao:[];
+    const cronogramaSim=Array.isArray(simuladorReforma?.cronogramaLegal)?simuladorReforma.cronogramaLegal:[];
+    const moedaSim=(valor)=>valor==null?"-":Number(valor||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    const percentualSim=(valor)=>valor==null?"-":`${Number(valor||0).toLocaleString("pt-BR",{maximumFractionDigits:2})}%`;
 
     return (
       <Card style={{marginBottom:16,borderLeft:"4px solid #176B47"}}>
@@ -13710,8 +13877,18 @@ function ResumoEstruturaSelecionada({
         </h3>
 
         <p style={{margin:"0 0 12px",color:MUTED,fontSize:10.5}}>
-          Simulação tributária salva no CRM com atividade analisada, premissas, carga atual e cenário IBS/CBS.
+          Diagnóstico administrativo completo: decisão, premissas, memória de cálculo, créditos e transição vinculados ao cliente.
         </p>
+
+        <div style={{
+          marginBottom:12,padding:14,borderRadius:12,
+          background:decisaoSim.codigo==="VALIDAR_DADOS"?"#FFF8E8":"#EAF8F1",
+          border:`1px solid ${decisaoSim.codigo==="VALIDAR_DADOS"?"#EACB82":"#A9DCC4"}`,
+        }}>
+          <div style={{fontSize:8,fontWeight:900,color:MUTED}}>DECISÃO RECOMENDADA · CONFIANÇA {decisaoSim.confianca||"PRELIMINAR"}</div>
+          <div style={{fontSize:16,fontWeight:950,color:NAVY,marginTop:4}}>{decisaoSim.titulo||"Validação pendente"}</div>
+          <div style={{fontSize:10.5,color:NAVY,marginTop:5,lineHeight:1.45}}>{decisaoSim.destaque||resultadoSim.motivoPendencia}</div>
+        </div>
 
         <div style={{
           display:"grid",
@@ -13723,14 +13900,51 @@ function ResumoEstruturaSelecionada({
           <Linha titulo="ATIVIDADE DE FATO" valor={empresaSim.descricaoAtividadeReal} />
           <Linha titulo="REGIME ATUAL" valor={configSim.regime} />
           <Linha titulo="NATUREZA" valor={configSim.natureza} />
-          <Linha titulo="FATURAMENTO MENSAL" valor={configSim.faturamentoMensal} />
-          <Linha titulo="CARGA ATUAL" valor={resultadoSim.atual} />
-          <Linha titulo="CENÁRIO REFORMA" valor={resultadoSim.reforma} />
-          <Linha titulo="DIFERENÇA" valor={resultadoSim.diferenca} />
-          <Linha titulo="VARIAÇÃO %" valor={resultadoSim.variacaoPct} />
-          <Linha titulo="IBS/CBS LÍQUIDO" valor={memoriaSim.ibsCbsLiquido} />
-          <Linha titulo="CRÉDITOS ESTIMADOS" valor={memoriaSim.creditoNovo} />
+          <Linha titulo="FATURAMENTO MENSAL" valor={moedaSim(configSim.faturamentoMensal)} />
+          <Linha titulo="RBT12" valor={moedaSim(configSim.rbt12)} />
+          <Linha titulo="ANEXO DO SIMPLES" valor={configSim.anexoSimples} />
+          <Linha titulo="PERFIL DOS CLIENTES" valor={configSim.perfilClientes} />
+          <Linha titulo="ANO DO CENÁRIO" valor={configSim.cenarioAliquota} />
+          <Linha titulo="CARGA ATUAL" valor={moedaSim(resultadoSim.atual)} />
+          <Linha titulo="CENÁRIO REFORMA" valor={moedaSim(resultadoSim.reforma)} />
+          <Linha titulo="DIFERENÇA MENSAL" valor={resultadoSim.diferenca==null?"Pendente":moedaSim(resultadoSim.diferenca)} />
+          <Linha titulo="DIFERENÇA ANUAL" valor={decisaoSim.economiaAnual==null?"Pendente":moedaSim(decisaoSim.economiaAnual)} />
+          <Linha titulo="VARIAÇÃO" valor={resultadoSim.variacaoPct==null?"Pendente":percentualSim(resultadoSim.variacaoPct)} />
+          <Linha titulo="CBS EFETIVA" valor={percentualSim(configSim.cbsEfetivaPct)} />
+          <Linha titulo="IBS EFETIVO" valor={percentualSim(configSim.ibsEfetivaPct)} />
+          <Linha titulo="BASE IBS/CBS" valor={moedaSim(memoriaSim.baseIbsCbs)} />
+          <Linha titulo="DÉBITO CBS" valor={moedaSim(memoriaSim.debitoCbs)} />
+          <Linha titulo="CRÉDITO CBS" valor={moedaSim(memoriaSim.creditoCbs)} />
+          <Linha titulo="CBS LÍQUIDA" valor={moedaSim(memoriaSim.cbsLiquida)} />
+          <Linha titulo="DÉBITO IBS" valor={moedaSim(memoriaSim.debitoIbs)} />
+          <Linha titulo="CRÉDITO IBS" valor={moedaSim(memoriaSim.creditoIbs)} />
+          <Linha titulo="IBS LÍQUIDO" valor={moedaSim(memoriaSim.ibsLiquido)} />
+          <Linha titulo="IBS/CBS LÍQUIDO" valor={moedaSim(memoriaSim.ibsCbsLiquido)} />
+          <Linha titulo="DAS RESIDUAL" valor={moedaSim(memoriaSim.dasResidual)} />
+          <Linha titulo="CARGA TOTAL POR FORA" valor={moedaSim(memoriaSim.cargaTotalPorFora)} />
+          <Linha titulo="TRIBUTOS MANTIDOS" valor={moedaSim(memoriaSim.tributosMantidos)} />
+          <Linha titulo="CRÉDITOS ESTIMADOS" valor={moedaSim(creditosSim.creditoNovo)} />
+          <Linha titulo="BASE DE CRÉDITOS CONFIRMADA" valor={moedaSim(creditosSim.baseCreditosConfirmados)} />
+          <Linha titulo="ORIGEM DO DAS RESIDUAL" valor={configSim.origemDasResidual} />
+          <Linha titulo="STATUS DA COMPARAÇÃO" valor={resultadoSim.comparacaoPermitida?"Comparável":"Validação pendente"} />
         </div>
+
+        {decisaoSim.justificativas?.length>0&&<div style={{marginTop:12}}>
+          <h4 style={{margin:"0 0 7px"}}>Justificativas da recomendação</h4>
+          <ul style={{margin:0,paddingLeft:18,fontSize:10.5,lineHeight:1.6}}>{decisaoSim.justificativas.map((item,i)=><li key={i}>{item}</li>)}</ul>
+        </div>}
+
+        {decisaoSim.pendencias?.length>0&&<div style={{marginTop:12,padding:12,borderRadius:10,background:"#FFF8E8",border:"1px solid #EACB82"}}>
+          <b style={{fontSize:10}}>PENDÊNCIAS PARA FECHAR O PARECER</b>
+          <ul style={{margin:"6px 0 0",paddingLeft:18,fontSize:10,lineHeight:1.55}}>{decisaoSim.pendencias.map((item,i)=><li key={i}>{item}</li>)}</ul>
+        </div>}
+
+        {transicaoSim.length>0&&<div style={{marginTop:15,overflowX:"auto"}}>
+          <h4 style={{margin:"0 0 7px"}}>Projeção anual da transição</h4>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:9.5}}><thead><tr style={{background:NAVY,color:"#fff"}}><th style={{padding:7,textAlign:"left"}}>Ano</th><th>Total</th><th>CBS</th><th>IBS</th><th style={{textAlign:"left"}}>Leitura</th></tr></thead><tbody>{transicaoSim.map(item=><tr key={item.ano} style={{borderBottom:"1px solid #E4E8EF"}}><td style={{padding:7,fontWeight:900}}>{item.ano}</td><td style={{textAlign:"center"}}>{moedaSim(item.total)}</td><td style={{textAlign:"center"}}>{moedaSim(item.cbs)}</td><td style={{textAlign:"center"}}>{moedaSim(item.ibs)}</td><td style={{padding:7}}>{item.status}</td></tr>)}</tbody></table>
+        </div>}
+
+        {cronogramaSim.length>0&&<details style={{marginTop:12}}><summary style={{cursor:"pointer",fontWeight:900,fontSize:10.5}}>Ver cronograma legal e premissas publicadas</summary><div style={{marginTop:8,display:"grid",gap:6}}>{cronogramaSim.map(item=><Linha key={item.ano} titulo={`${item.ano} · CBS ${item.cbs} · IBS ${item.ibs}`} valor={`${item.legados} · ${item.publicacao}`} />)}</div></details>}
       </Card>
     );
   }
@@ -14388,11 +14602,7 @@ function DetalheDiagnostico({
   const relatoriosSegmentados =
     resultado.relatoriosSegmentados ||
     resultado?.resultadoCompleto?.relatoriosSegmentados ||
-    {
-      cliente: resultado.relatorioCliente || resultado?.resultadoCompleto?.relatorioCliente || null,
-      equipe: resultado.relatorioEquipe || resultado?.resultadoCompleto?.relatorioEquipe || null,
-      administracao: resultado.relatorioAdministracao || resultado?.resultadoCompleto?.relatorioAdministracao || null,
-    };
+    {};
 
   const relatorioClienteSegmentado =
     relatoriosSegmentados.cliente || null;
@@ -14402,6 +14612,46 @@ function DetalheDiagnostico({
 
   const relatorioAdministracaoSegmentado =
     relatoriosSegmentados.administracao || null;
+
+  // A API pode entregar o dossiê completo em locais diferentes conforme a
+  // versão do endpoint/banco. Normalizamos aqui para não perder os relatórios.
+  const dadosCompletosItem =
+    item?.dadosCompletos ||
+    item?.completo ||
+    item?.dados_completos ||
+    {};
+
+  const versoesReforma =
+    dadosCompletosItem?.versoesRelatorio ||
+    resultado?.versoesRelatorio ||
+    resultado?.resultadoCompleto?.versoesRelatorio ||
+    null;
+
+  const relatorioReformaCliente =
+    versoesReforma?.cliente ||
+    versoesReforma?.clienteResumo ||
+    resultado?.relatorioCliente ||
+    null;
+
+  const relatorioReformaAdmin =
+    versoesReforma?.administrador ||
+    versoesReforma?.admin ||
+    versoesReforma?.administracao ||
+    resultado?.relatorioAdministracao ||
+    null;
+
+  const relatorioReformaEquipe =
+    versoesReforma?.equipe ||
+    resultado?.relatorioEquipe ||
+    null;
+
+  const formatarValorReforma = (valor) =>
+    valor === null || valor === undefined
+      ? "Pendente"
+      : Number(valor || 0).toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
 
   const inteligenciaTributaria =
     resultado.inteligenciaTributaria ||
@@ -14638,6 +14888,40 @@ function DetalheDiagnostico({
     estruturaDiagnostico(
       item
     );
+
+  // Registros antigos do simulador podem ter sido salvos com a mensagem
+  // genérica de indisponibilidade da IA. Nunca exibimos essa mensagem no
+  // diagnóstico da Reforma: reconstruímos uma leitura tributária mínima a
+  // partir dos valores determinísticos já persistidos.
+  if (["simulador_reforma", "reforma_tributaria"].includes(estruturaAtual)) {
+    const mensagemGenerica = /leitura automática da IA não ficou disponível/i;
+    const trib = resultado?.inteligenciaTributaria || {};
+    const atual = Number(trib?.reforma?.atual ?? resultado?.reforma?.atual ?? 0);
+    const futura = Number(trib?.reforma?.reforma ?? resultado?.reforma?.reforma ?? trib?.tributosMensaisEstimados ?? 0);
+    const riscosReforma = [
+      "Sugerimos validar a atividade efetiva, o CNAE, o município e a UF para confirmar o tratamento de IBS/CBS.",
+      "Sugerimos confrontar a carga atual e o cenário por fora com PGDAS/DEFIS e documentos fiscais.",
+      "Sugerimos separar DAS residual, IBS/CBS por dentro, IBS/CBS por fora e créditos aproveitáveis.",
+    ];
+    const baseLeitura = `A simulação da Reforma foi concluída. Sugerimos comparar a carga atual de ${atual.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} com o cenário projetado de ${futura.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}, sempre considerando as deduções, créditos e requisitos legais da atividade.`;
+    const dg = resultado.diagnosticoGeral || {};
+    resultado.diagnosticoGeral = {
+      ...dg,
+      resumoExecutivo: mensagemGenerica.test(dg.resumoExecutivo || "") || !dg.resumoExecutivo ? baseLeitura : dg.resumoExecutivo,
+      alertaEstrategico: mensagemGenerica.test(dg.alertaEstrategico || "") || !dg.alertaEstrategico ? riscosReforma[0] : dg.alertaEstrategico,
+      principaisDores: Array.isArray(dg.principaisDores) && dg.principaisDores.length && !dg.principaisDores.some(x => mensagemGenerica.test(String(x))) ? dg.principaisDores : riscosReforma,
+      oportunidades: Array.isArray(dg.oportunidades) && dg.oportunidades.length && !dg.oportunidades.some(x => mensagemGenerica.test(String(x))) ? dg.oportunidades : ["Sugerimos projetar preços, margens e créditos para os anos de transição da Reforma."],
+      proximosPassos: Array.isArray(dg.proximosPassos) && dg.proximosPassos.length ? dg.proximosPassos : ["Sugerimos reunir PGDAS/DEFIS, NFS-e/NF-e e a memória dos créditos."],
+    };
+    if (Array.isArray(resultado.areas)) {
+      resultado.areas = resultado.areas.map(area => ({
+        ...area,
+        resumo: mensagemGenerica.test(String(area.resumo || "")) || !area.resumo ? baseLeitura : area.resumo,
+        riscos: Array.isArray(area.riscos) && area.riscos.length && !area.riscos.some(x => mensagemGenerica.test(String(x))) ? area.riscos : riscosReforma,
+        recomendacoes: Array.isArray(area.recomendacoes) && area.recomendacoes.length && !area.recomendacoes.some(x => mensagemGenerica.test(String(x))) ? area.recomendacoes : ["Sugerimos revisar premissas, deduções e fontes legais antes de decidir."],
+      }));
+    }
+  }
 
   const estruturaAtualLabel =
     labelEstruturaDiagnostico(
@@ -15372,6 +15656,93 @@ function DetalheDiagnostico({
             </Botao>
           </div>
         </Card>
+
+        {abaRelatorio === "cliente" && relatorioReformaCliente && (
+          <Card style={{ marginBottom: 18, borderLeft: `5px solid ${CORAL}` }}>
+            <div style={{ fontSize: 9, color: CORAL, fontWeight: 900 }}>
+              VERSÃO RESUMIDA DO CLIENTE
+            </div>
+            <h2 style={{ margin: "6px 0", fontFamily: DISPLAY_FONT }}>
+              {relatorioReformaCliente.titulo}
+            </h2>
+            <div style={{ background: "#FFF1EC", border: "1px solid #FFCBBB", borderRadius: 12, padding: 14, margin: "12px 0" }}>
+              <div style={{ fontSize: 9, fontWeight: 900, color: "#993C1D" }}>MELHOR OPÇÃO / RECOMENDAÇÃO</div>
+              <div style={{ marginTop: 5, fontSize: 16, fontWeight: 900 }}>{relatorioReformaCliente.melhorOpcao}</div>
+            </div>
+            <p style={{ fontSize: 12, lineHeight: 1.6 }}>{relatorioReformaCliente.leituraExecutiva}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginTop: 12 }}>
+              {[
+                ["Faturamento", relatorioReformaCliente.numeros?.faturamento],
+                ["Carga atual", relatorioReformaCliente.numeros?.cargaAtual],
+                ["Carga na Reforma", relatorioReformaCliente.numeros?.cargaReforma],
+                ["Diferença mensal", relatorioReformaCliente.numeros?.diferencaMensal],
+                ["Diferença anual", relatorioReformaCliente.numeros?.diferencaAnual],
+              ].map(([label, valor]) => (
+                <div key={label} style={{ background: "#F7F9FC", borderRadius: 10, padding: 11 }}>
+                  <div style={{ fontSize: 8, color: MUTED, fontWeight: 900 }}>{label.toUpperCase()}</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, marginTop: 4 }}>{formatarValorReforma(valor)}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {abaRelatorio === "administracao" && relatorioReformaAdmin && (
+          <Card style={{ marginBottom: 18, borderLeft: "5px solid #31589C" }}>
+            <div style={{ fontSize: 9, color: "#31589C", fontWeight: 900 }}>
+              VERSÃO COMPLETA DO ADMINISTRADOR
+            </div>
+            <h2 style={{ margin: "6px 0", fontFamily: DISPLAY_FONT }}>{relatorioReformaAdmin.titulo}</h2>
+            <p style={{ color: MUTED, fontSize: 11 }}>
+              Projeto {relatorioReformaAdmin.auditoria?.projetoId || "-"} · finalizado por {relatorioReformaAdmin.auditoria?.finalizadoPor || "-"} · versão {relatorioReformaAdmin.auditoria?.versaoFormato || "-"}
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginTop: 12 }}>
+              {[
+                ["Diagnóstico técnico", relatorioReformaAdmin.analise],
+                ["Memória de cálculo", relatorioReformaAdmin.simulacao],
+                ["Base informada", relatorioReformaAdmin.base],
+                ["Extração documental", relatorioReformaAdmin.extracao],
+              ].map(([label, valor]) => (
+                <div key={label} style={{ background: "#F7F9FC", border: "1px solid #E3E7EF", borderRadius: 10, padding: 11 }}>
+                  <strong>{label}</strong>
+                  <div style={{ marginTop: 5, fontSize: 10, color: MUTED }}>
+                    {valor && Object.keys(valor).length ? "Disponível e preservado nesta versão." : "Sem conteúdo confirmado."}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <details style={{ marginTop: 14 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 900, color: "#31589C" }}>Abrir dados completos e auditáveis</summary>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#0F1B31", color: "#EAF0FA", borderRadius: 10, padding: 14, maxHeight: 520, overflow: "auto", fontSize: 9, lineHeight: 1.45 }}>
+                {JSON.stringify(relatorioReformaAdmin, null, 2)}
+              </pre>
+            </details>
+          </Card>
+        )}
+
+        {abaRelatorio === "equipe" && relatorioReformaEquipe && (
+          <Card style={{ marginBottom: 18, borderLeft: `5px solid ${CORAL}` }}>
+            <div style={{ fontSize: 9, color: CORAL, fontWeight: 900 }}>
+              VERSÃO DA EQUIPE
+            </div>
+            <h2 style={{ margin: "6px 0", fontFamily: DISPLAY_FONT }}>
+              {relatorioReformaEquipe.titulo || "Relatório Reforma Tributária — Equipe"}
+            </h2>
+            <p style={{ fontSize: 12, lineHeight: 1.6 }}>
+              {relatorioReformaEquipe.leituraExecutiva ||
+                relatorioReformaEquipe.analise?.leituraExecutiva ||
+                "Versão interna da equipe preservada no diagnóstico."}
+            </p>
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 900, color: "#31589C" }}>
+                Abrir conteúdo completo da equipe
+              </summary>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#0F1B31", color: "#EAF0FA", borderRadius: 10, padding: 14, maxHeight: 420, overflow: "auto", fontSize: 9 }}>
+                {JSON.stringify(relatorioReformaEquipe, null, 2)}
+              </pre>
+            </details>
+          </Card>
+        )}
 
         <ResumoEstruturaSelecionada
           estrutura={estruturaAtual}
@@ -18921,6 +19292,7 @@ function EventosOrigens({ token }) {
     dataFim: "",
     metaLeads: "",
     descricao: "",
+    diagnosticoInicialGratuito: false,
     ativo: true,
   };
 
@@ -18957,7 +19329,7 @@ function EventosOrigens({ token }) {
 
   function link(origem) {
     if (!origem) return "";
-    return `${window.location.origin}/?origem=${encodeURIComponent(origem)}`;
+    return `https://diagnosticofinderofsolutions.vercel.app/origem=${encodeURIComponent(origem)}`;
   }
 
   async function carregar() {
@@ -19015,6 +19387,7 @@ function EventosOrigens({ token }) {
         : "",
       metaLeads: e?.metaLeads || "",
       descricao: e?.descricao || "",
+      diagnosticoInicialGratuito: Boolean(e?.diagnosticoInicialGratuito),
       ativo: e?.ativo !== false,
     });
 
@@ -19059,6 +19432,7 @@ function EventosOrigens({ token }) {
         dataFim: form.dataFim || null,
         metaLeads: Number(form.metaLeads || 0),
         descricao: String(form.descricao || "").trim(),
+        diagnosticoInicialGratuito: Boolean(form.diagnosticoInicialGratuito),
         ativo: Boolean(form.ativo),
       };
 
@@ -19385,6 +19759,7 @@ function EventosOrigens({ token }) {
               style={{ ...input, resize: "vertical" }}
             />
           </div>
+          <label style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:8,fontSize:11,fontWeight:800,color:NAVY,background:"#E1F5EE",padding:11,borderRadius:9}}><input type="checkbox" checked={Boolean(form.diagnosticoInicialGratuito)} onChange={ev=>setForm({...form,diagnosticoInicialGratuito:ev.target.checked})}/> Liberar gratuitamente o Diagnóstico Inicial para esta origem</label>
         </div>
 
         {form.origem && (
@@ -19498,6 +19873,7 @@ function EventosOrigens({ token }) {
               <div>Local: {e.localEvento || "-"}</div>
               <div>Meta: {e.metaLeads || 0} leads</div>
             </div>
+            {e.diagnosticoInicialGratuito&&<div style={{display:"inline-block",marginTop:8,background:"#E1F5EE",color:"#0F6E56",borderRadius:99,padding:"5px 8px",fontSize:8.5,fontWeight:900}}>DIAGNÓSTICO INICIAL GRATUITO</div>}
 
             <div
               style={{
@@ -19673,6 +20049,7 @@ function Cliente360({
     erro,
     setErro,
   ] = useState("");
+  const [pagamentosCliente, setPagamentosCliente] = useState([]);
 
   const [
     abaCliente,
@@ -19920,6 +20297,12 @@ function Cliente360({
       setClienteAberto(
         data
       );
+      const documento = String(data?.cliente?.cnpj || cliente?.cnpj || "").replace(/\D/g, "");
+      try {
+        const rp = await fetch(`/api/asaas?acao=admin-painel&busca=${encodeURIComponent(documento)}`, { headers:{Authorization:`Bearer ${token}`} });
+        const dp = await rp.json().catch(()=>null);
+        setPagamentosCliente(rp.ok&&dp?.ok?(dp.pagamentos||[]):[]);
+      } catch { setPagamentosCliente([]); }
     } catch (error) {
       setErro(
         error?.message ||
@@ -20332,6 +20715,7 @@ function Cliente360({
         "propostas",
         `Propostas (${clienteAberto.propostas?.length || 0})`,
       ],
+      ["financeiro", `Financeiro (${pagamentosCliente.length})`],
       [
         "historico",
         "Histórico",
@@ -20545,6 +20929,7 @@ function Cliente360({
                 r.receitaGanha
               ),
             ],
+            ["PAGO NO ASAAS", moeda(pagamentosCliente.filter(p=>["RECEIVED","CONFIRMED","RECEIVED_IN_CASH"].includes(p.status)).reduce((s,p)=>s+Number(p.valor||0),0))],
           ].map(
             (
               [
@@ -22111,6 +22496,8 @@ function Cliente360({
           </Card>
         )}
 
+        {abaCliente === "financeiro" && <Card><strong>Pagamentos vinculados ao cliente</strong><div style={{overflowX:"auto",marginTop:10}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:760}}><thead><tr>{["Data","Diagnóstico","Plano","Forma","Valor original","Desconto","Valor pago","Status"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{pagamentosCliente.map(p=><tr key={p.payment_id}><td style={tdStyle}>{dataHora(p.criado_em)}</td><td style={tdStyle}><button type="button" onClick={()=>onAbrirDiagnostico?.(p.diagnostico_id)} style={{border:0,background:"transparent",color:"#2453A6",cursor:"pointer"}}>{p.diagnostico_id}</button></td><td style={tdStyle}>{p.plano}</td><td style={tdStyle}>{p.forma_pagamento||"PIX"}</td><td style={tdStyle}>{moeda(p.valor_original||p.valor)}</td><td style={tdStyle}>{moeda(p.desconto)}{p.cupom_codigo&&<><br/><strong>{p.cupom_codigo}</strong></>}</td><td style={tdStyle}><strong>{moeda(p.valor)}</strong></td><td style={tdStyle}>{p.status}</td></tr>)}{!pagamentosCliente.length&&<tr><td colSpan="8" style={{...tdStyle,textAlign:"center"}}>Nenhum pagamento encontrado para o CPF/CNPJ deste cliente.</td></tr>}</tbody></table></div></Card>}
+
         {abaCliente ===
           "historico" && (
           <Card>
@@ -22698,6 +23085,317 @@ function Cliente360({
 }
 
 
+function AgendaDiagnosticos({ token, onAbrirDiagnostico }) {
+  const [agendamentos, setAgendamentos] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [modoAgenda, setModoAgenda] = useState("calendario");
+  const [mesAgenda, setMesAgenda] = useState(new Date().toISOString().slice(0, 7));
+  const [editando, setEditando] = useState(null);
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const resposta = await fetch("/api/crm?action=listar-agendamentos", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok || !dados?.sucesso) throw new Error(dados?.error || "Erro ao carregar agenda.");
+      setAgendamentos(dados.agendamentos || []);
+    } catch (error) {
+      setErro(error?.message || "Erro ao carregar agenda.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  async function atualizarAgenda(payload) {
+    try {
+      const resposta = await fetch("/api/crm?action=atualizar-agendamento", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok || !dados?.sucesso) throw new Error(dados?.error || "Erro ao atualizar agendamento.");
+      setEditando(null);
+      await carregar();
+    } catch (error) {
+      setErro(error?.message || "Erro ao atualizar agendamento.");
+    }
+  }
+
+  const alterarStatus = (id, status) => atualizarAgenda({ id, status });
+
+  const termo = busca.trim().toLowerCase();
+  const visiveis = agendamentos.filter((item) => String(item.data_agenda||"").slice(0,7)===mesAgenda && (!termo || [item.nome, item.empresa, item.email, item.telefone, item.cnpj, item.origem, item.diagnostico_id].some((valor) => String(valor || "").toLowerCase().includes(termo))));
+  const futuros = visiveis.filter((item) => item.status === "AGENDADO" && String(item.data_agenda).slice(0, 10) >= new Date().toISOString().slice(0, 10)).length;
+  const contagemStatus = (status) => visiveis.filter(item=>item.status===status).length;
+  const diasDoMes = useMemo(()=>{
+    const [ano,mes]=mesAgenda.split("-").map(Number); const ultimo=new Date(ano,mes,0).getDate();
+    return Array.from({length:ultimo},(_,i)=>`${mesAgenda}-${String(i+1).padStart(2,"0")}`);
+  },[mesAgenda]);
+
+  const box = { background: WHITE, border: "1px solid #E3E7EF", borderRadius: 14, padding: 14, boxShadow: "0 5px 18px rgba(23,35,61,.05)" };
+  const statusCores = { AGENDADO: ["#EAF1FF", "#2453A6"], REALIZADO: ["#E1F5EE", "#0F6E56"], CANCELADO: ["#FAECE7", "#993C1D"], NAO_COMPARECEU: ["#FFF4D8", "#8A5800"] };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <h2 style={{ margin: 0, fontFamily: DISPLAY_FONT, fontSize: 22 }}>Agenda dos diagnósticos</h2>
+          <p style={{ margin: "4px 0 0", fontSize: 10.5, color: MUTED }}>Reuniões solicitadas pelos clientes e vinculadas ao diagnóstico completo.</p>
+        </div>
+        <Botao secundario onClick={carregar}><RefreshCcw size={14} /> Atualizar</Botao>
+      </div>
+
+      {erro && <div style={{ background: "#FAECE7", color: "#993C1D", padding: 11, borderRadius: 10, marginBottom: 12 }}>{erro}</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 14 }}>
+        <div style={box}><div style={{ fontSize: 9, color: MUTED, fontWeight: 800 }}>PRÓXIMAS REUNIÕES</div><strong style={{ fontSize: 22 }}>{futuros}</strong></div>
+        <div style={box}><div style={{ fontSize: 9, color: MUTED, fontWeight: 800 }}>TOTAL DE AGENDAMENTOS</div><strong style={{ fontSize: 22 }}>{agendamentos.length}</strong></div>
+        <div style={box}><div style={{fontSize:9,color:MUTED,fontWeight:800}}>REALIZADOS NO MÊS</div><strong style={{fontSize:22,color:"#0F6E56"}}>{contagemStatus("REALIZADO")}</strong></div>
+        <div style={box}><div style={{fontSize:9,color:MUTED,fontWeight:800}}>CANCELADOS / AUSENTES</div><strong style={{fontSize:22,color:"#993C1D"}}>{contagemStatus("CANCELADO")+contagemStatus("NAO_COMPARECEU")}</strong></div>
+      </div>
+
+      <div style={{...box,display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}><input type="month" value={mesAgenda} onChange={e=>setMesAgenda(e.target.value)} style={{border:"1px solid #D8DEEA",borderRadius:9,padding:9}}/><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, empresa, origem ou diagnóstico..." style={{ flex:1,minWidth:240,boxSizing:"border-box",border:"1px solid #D8DEEA",borderRadius:10,padding:"11px 12px" }}/><Botao secundario={modoAgenda!=="calendario"} onClick={()=>setModoAgenda("calendario")}><CalendarDays size={14}/> Calendário</Botao><Botao secundario={modoAgenda!=="lista"} onClick={()=>setModoAgenda("lista")}><LayoutDashboard size={14}/> Lista</Botao></div>
+
+      {carregando ? <div style={box}>Carregando agenda...</div> : (
+        modoAgenda === "calendario" ? <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(130px,1fr))",gap:7,overflowX:"auto"}}>{diasDoMes.map(dia=>{const itens=visiveis.filter(a=>String(a.data_agenda).slice(0,10)===dia);return <div key={dia} style={{...box,minHeight:115,padding:9,background:itens.length?WHITE:"#F8FAFD"}}><strong style={{fontSize:10}}>{dia.slice(8,10)}/{dia.slice(5,7)}</strong><div style={{display:"grid",gap:5,marginTop:7}}>{itens.map(a=>{const cores=statusCores[a.status]||["#EEF1F5",MUTED];return <button key={a.id} type="button" onClick={()=>setEditando({...a,data:String(a.data_agenda).slice(0,10),hora:a.hora_agenda,duracaoMinutos:a.duracao_minutos||60})} style={{border:0,borderRadius:7,padding:6,textAlign:"left",cursor:"pointer",background:cores[0],color:cores[1],fontSize:8.5}}><strong>{a.hora_agenda} · {a.nome||a.empresa}</strong><br/>{a.status}</button>})}{!itens.length&&<span style={{fontSize:8,color:MUTED}}>Livre</span>}</div></div>})}</div> :
+        <div style={{ ...box, overflowX: "auto", padding: 0 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+            <thead><tr>{["Data / hora", "Cliente", "Empresa / documento", "Origem", "Diagnóstico", "Score", "Observação", "Status", "Ações"].map((item) => <th key={item} style={thStyle}>{item}</th>)}</tr></thead>
+            <tbody>
+              {visiveis.map((item) => {
+                const [fundo, cor] = statusCores[item.status] || ["#EEF1F5", MUTED];
+                return <tr key={item.id}>
+                  <td style={tdStyle}><strong>{String(item.data_agenda || "").slice(0, 10).split("-").reverse().join("/")}</strong><br />{item.hora_agenda}–{String(Number(String(item.hora_agenda).slice(0, 2)) + 1).padStart(2, "0")}:00</td>
+                  <td style={tdStyle}><strong>{item.nome || "Não informado"}</strong><br /><span style={{ color: MUTED }}>{item.email || item.telefone || "-"}</span></td>
+                  <td style={tdStyle}>{item.empresa || "-"}<br /><span style={{ color: MUTED }}>{formatarCnpj(item.cnpj)}</span></td>
+                  <td style={tdStyle}>{item.origem || "direto"}</td>
+                  <td style={tdStyle}><button type="button" onClick={() => onAbrirDiagnostico(item.diagnostico_id)} style={{ border: 0, background: "transparent", color: "#2453A6", cursor: "pointer", fontWeight: 800, padding: 0 }}>{item.diagnostico_id}</button></td>
+                  <td style={tdStyle}><strong>{Number(item.score || 0)}/100</strong></td>
+                  <td style={{ ...tdStyle, maxWidth: 220 }}>{item.observacao || "-"}</td>
+                  <td style={tdStyle}><span style={{ background: fundo, color: cor, borderRadius: 99, padding: "5px 8px", fontSize: 9, fontWeight: 900 }}>{item.status}</span></td>
+                  <td style={tdStyle}><div style={{display:"flex",gap:6}}><select value={item.status} onChange={(e) => alterarStatus(item.id, e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: 7, fontSize: 9, fontWeight: 800 }}><option value="AGENDADO">Agendado</option><option value="REALIZADO">Realizado</option><option value="CANCELADO">Cancelado</option><option value="NAO_COMPARECEU">Não compareceu</option></select><button type="button" onClick={()=>setEditando({...item,data:String(item.data_agenda).slice(0,10),hora:item.hora_agenda,duracaoMinutos:item.duracao_minutos||60})} style={{border:"1px solid #D8DEEA",background:WHITE,borderRadius:8,cursor:"pointer"}}><Pencil size={14}/></button></div></td>
+                </tr>;
+              })}
+              {!visiveis.length && <tr><td colSpan="9" style={{ ...tdStyle, textAlign: "center" }}>Nenhum agendamento encontrado.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {editando&&<div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(8,17,31,.55)",display:"grid",placeItems:"center",padding:20}}><form onSubmit={e=>{e.preventDefault();atualizarAgenda({id:editando.id,status:editando.status,data:editando.data,hora:editando.hora,duracaoMinutos:editando.duracaoMinutos,observacao:editando.observacao})}} style={{...box,width:"min(520px,100%)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><h3 style={{margin:0}}>Editar agendamento</h3><button type="button" onClick={()=>setEditando(null)} style={{border:0,background:"transparent",cursor:"pointer"}}><X/></button></div><p style={{fontSize:10,color:MUTED}}>{editando.nome} · {editando.empresa||editando.diagnostico_id}</p><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><label style={{fontSize:9}}>Data<input required type="date" value={editando.data} onChange={e=>setEditando({...editando,data:e.target.value})} style={{width:"100%",boxSizing:"border-box",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}/></label><label style={{fontSize:9}}>Horário<input required type="time" min="09:00" max="16:30" step="1800" value={editando.hora} onChange={e=>setEditando({...editando,hora:e.target.value})} style={{width:"100%",boxSizing:"border-box",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}/></label><label style={{fontSize:9}}>Duração<select value={editando.duracaoMinutos} onChange={e=>setEditando({...editando,duracaoMinutos:Number(e.target.value)})} style={{width:"100%",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}>{[30,60,90,120,180,240,360,480].map(v=><option key={v} value={v}>{v<60?`${v} min`:`${v/60} hora${v>60?"s":""}`}</option>)}</select></label><label style={{fontSize:9}}>Status<select value={editando.status} onChange={e=>setEditando({...editando,status:e.target.value})} style={{width:"100%",padding:9,border:"1px solid #D8DEEA",borderRadius:8}}><option value="AGENDADO">Agendado</option><option value="REALIZADO">Realizado</option><option value="CANCELADO">Cancelado</option><option value="NAO_COMPARECEU">Não compareceu</option></select></label></div><textarea value={editando.observacao||""} onChange={e=>setEditando({...editando,observacao:e.target.value})} placeholder="Observação" style={{width:"100%",boxSizing:"border-box",minHeight:80,marginTop:10,padding:9,border:"1px solid #D8DEEA",borderRadius:8}}/><div style={{display:"flex",gap:8,marginTop:10}}><Botao type="submit"><Save size={14}/> Salvar</Botao><Botao secundario onClick={()=>atualizarAgenda({id:editando.id,status:"CANCELADO"})}>Cancelar agendamento</Botao></div></form></div>}
+    </div>
+  );
+}
+
+function AsaasFinanceiro({ token }) {
+  const [abaInterna, setAbaInterna] = useState("visao");
+  const [painel, setPainel] = useState({ resumo: {}, pagamentos: [], eventos: [] });
+  const [financeiro, setFinanceiro] = useState({ saldo: null, extrato: { data: [] }, avisos: [] });
+  const [cupons, setCupons] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [sucessoCupom, setSucessoCupom] = useState("");
+  const [editandoCupom, setEditandoCupom] = useState("");
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null);
+  const [filtros, setFiltros] = useState({ status: "", plano: "", busca: "", inicio: "", fim: "" });
+  const [cupomForm, setCupomForm] = useState({
+    codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "",
+    descontosPlanos: { INICIAL: "", COMPLETO: "", ESPECIALISTA: "" },
+    planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "",
+    inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true,
+  });
+
+  const cupomVazio = () => ({
+    codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "",
+    descontosPlanos: { INICIAL: "", COMPLETO: "", ESPECIALISTA: "" },
+    planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "",
+    inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: 1, ativo: true,
+  });
+  const dataFormulario = (valor) => valor ? new Date(valor).toISOString().slice(0, 16) : "";
+
+  const headers = { Authorization: `Bearer ${token}` };
+  const moeda = (valor) => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const statusPago = (status) => ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(status);
+  const statusCor = (status) => statusPago(status) ? ["#E1F5EE", "#0F6E56"]
+    : status === "PENDING" ? ["#FFF4D8", "#8A5800"] : ["#FAECE7", "#993C1D"];
+
+  async function json(url, options = {}) {
+    const resposta = await fetch(url, { ...options, headers: { ...headers, ...(options.headers || {}) } });
+    const data = await resposta.json().catch(() => null);
+    if (!resposta.ok || !data?.ok) throw new Error(data?.error || "Falha ao consultar o Asaas.");
+    return data;
+  }
+
+  async function carregar(silencioso = false) {
+    if (!silencioso) setCarregando(true);
+    setErro("");
+    try {
+      const query = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v));
+      const [dadosPainel, dadosFinanceiros, dadosCupons] = await Promise.all([
+        json(`/api/asaas?acao=admin-painel&${query}`),
+        json(`/api/asaas?acao=admin-financeiro&inicio=${filtros.inicio}&fim=${filtros.fim}`),
+        json("/api/asaas?acao=admin-cupons"),
+      ]);
+      setPainel(dadosPainel);
+      setFinanceiro(dadosFinanceiros);
+      setCupons(dadosCupons.cupons || []);
+      setUltimaAtualizacao(new Date());
+    } catch (e) { setErro(e.message); }
+    finally { if (!silencioso) setCarregando(false); }
+  }
+
+  useEffect(() => { carregar(); }, []);
+  useEffect(() => {
+    const timer = setInterval(() => carregar(true), 15000);
+    return () => clearInterval(timer);
+  }, [filtros]);
+
+  async function sincronizar(paymentId = "") {
+    setErro("");
+    try {
+      await json("/api/asaas?acao=admin-sincronizar", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paymentId }),
+      });
+      await carregar(true);
+    } catch (e) { setErro(e.message); }
+  }
+
+  async function salvarCupom(e) {
+    e.preventDefault();
+    setErro("");
+    setSucessoCupom("");
+
+    const valores = cupomForm.planos.map(p => Number(cupomForm.descontosPlanos?.[p] || cupomForm.valor));
+    if (cupomForm.tipo === "PERCENTUAL" && valores.some(v => v > 90)) {
+      setErro("O desconto percentual máximo permitido é 90%.");
+      return;
+    }
+
+    try {
+      await json("/api/asaas?acao=admin-cupons", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cupomForm),
+      });
+      setSucessoCupom(`Cupom ${cupomForm.codigo.trim().toUpperCase()} salvo com sucesso.`);
+      setCupomForm(cupomVazio());
+      setEditandoCupom("");
+      await carregar(true);
+    } catch (e2) { setErro(e2.message); }
+  }
+
+  async function alternarCupom(cupom) {
+    try {
+      await json("/api/asaas?acao=admin-cupom-status", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ codigo: cupom.codigo, ativo: !cupom.ativo }),
+      });
+      await carregar(true);
+    } catch (e) { setErro(e.message); }
+  }
+
+  function editarCupom(cupom) {
+    const regras = cupom.descontos_planos || {};
+    setCupomForm({ codigo: cupom.codigo, descricao: cupom.descricao || "", tipo: cupom.tipo,
+      valor: String(cupom.valor ?? ""), descontosPlanos: {
+        INICIAL: String(regras.INICIAL ?? cupom.valor ?? ""),
+        COMPLETO: String(regras.COMPLETO ?? cupom.valor ?? ""),
+        ESPECIALISTA: String(regras.ESPECIALISTA ?? cupom.valor ?? ""),
+      }, planos: cupom.planos || [], valorMinimo: String(cupom.valor_minimo ?? ""),
+      inicioEm: dataFormulario(cupom.inicio_em), fimEm: dataFormulario(cupom.fim_em),
+      limiteTotal: cupom.limite_total == null ? "" : String(cupom.limite_total),
+      limiteDocumento: cupom.limite_documento || 1, ativo: cupom.ativo !== false });
+    setEditandoCupom(cupom.codigo); setErro(""); setSucessoCupom("");
+  }
+
+  async function excluirCupom(cupom) {
+    if (!window.confirm(`Excluir definitivamente o cupom ${cupom.codigo}?`)) return;
+    try {
+      await json("/api/asaas?acao=admin-cupom", { method: "DELETE",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ codigo: cupom.codigo }) });
+      if (editandoCupom === cupom.codigo) { setCupomForm(cupomVazio()); setEditandoCupom(""); }
+      setSucessoCupom(`Cupom ${cupom.codigo} excluído com sucesso.`);
+      await carregar(true);
+    } catch (e) { setErro(e.message); }
+  }
+
+  const box = { background: WHITE, border: "1px solid #E3E7EF", borderRadius: 14, padding: 14, boxShadow: "0 5px 18px rgba(23,35,61,.05)" };
+  const input = { border: "1px solid #D8DEEA", borderRadius: 9, padding: "9px 10px", background: WHITE, minHeight: 38, boxSizing: "border-box" };
+  const saldo = financeiro?.saldo?.balance ?? financeiro?.saldo?.availableBalance ?? 0;
+  const resumo = painel.resumo || {};
+
+  return <div>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
+      <div><h2 style={{margin:0,fontFamily:DISPLAY_FONT,fontSize:22}}>Asaas Financeiro</h2>
+        <p style={{margin:"4px 0 0",fontSize:10.5,color:MUTED}}>Saldo e extrato direto do Asaas · cobranças vinculadas aos diagnósticos · atualização automática a cada 15 segundos</p></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <span style={{fontSize:9,color:MUTED}}>Atualizado {ultimaAtualizacao ? ultimaAtualizacao.toLocaleTimeString("pt-BR") : "-"}</span>
+        <Botao secundario onClick={()=>sincronizar()}><RefreshCcw size={14}/> Sincronizar pendentes</Botao>
+        <Botao onClick={()=>carregar()}><RefreshCcw size={14}/> Atualizar</Botao>
+      </div>
+    </div>
+
+    {erro && <div style={{background:"#FAECE7",color:"#993C1D",padding:11,borderRadius:10,marginBottom:12}}>{erro}</div>}
+    {(financeiro.avisos || []).map((aviso,i)=><div key={i} style={{background:"#FFF4D8",color:"#70410A",padding:9,borderRadius:9,marginBottom:8,fontSize:10}}>{aviso}</div>)}
+
+    <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+      {[["visao","Visão geral"],["cobrancas","Cobranças"],["extrato","Extrato da conta"],["cupons","Cupons"],["eventos","Eventos Pix"]].map(([id,label])=><button key={id} onClick={()=>setAbaInterna(id)} style={{border:"1px solid #DDE3EC",borderRadius:10,padding:"9px 12px",cursor:"pointer",fontWeight:800,fontSize:10,background:abaInterna===id?NAVY:WHITE,color:abaInterna===id?WHITE:NAVY}}>{label}</button>)}
+    </div>
+
+    {carregando ? <div style={box}>Carregando dados financeiros...</div> : <>
+      {abaInterna === "visao" && <>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10,marginBottom:14}}>
+          {[["Saldo disponível",moeda(saldo),"#0F6E56"],["Recebido bruto",moeda(resumo.bruto),NAVY],["Recebido líquido",moeda(resumo.liquido),"#0F6E56"],["Taxas",moeda(resumo.taxas),"#993C1D"],["Descontos",moeda(resumo.descontos),CORAL],["Pendentes",String(resumo.pendentes||0),"#8A5800"]].map(([l,v,c])=><div key={l} style={box}><div style={{fontSize:9,color:MUTED,fontWeight:800,textTransform:"uppercase"}}>{l}</div><div style={{fontSize:21,fontWeight:900,color:c,marginTop:5}}>{v}</div></div>)}
+        </div>
+        <div style={{...box,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+          {[["Cobranças geradas",resumo.total],["Recebidas",resumo.recebidos],["Não concluídas",resumo.nao_concluidos],["Estornadas",resumo.estornados]].map(([l,v])=><div key={l}><div style={{fontSize:9,color:MUTED}}>{l}</div><strong style={{fontSize:18}}>{v||0}</strong></div>)}
+        </div>
+      </>}
+
+      {abaInterna === "cobrancas" && <>
+        <div style={{...box,display:"flex",gap:7,flexWrap:"wrap",marginBottom:10}}>
+          <input style={{...input,flex:1,minWidth:220}} placeholder="Cliente, CPF/CNPJ, pagamento ou diagnóstico" value={filtros.busca} onChange={e=>setFiltros({...filtros,busca:e.target.value})}/>
+          <select style={input} value={filtros.status} onChange={e=>setFiltros({...filtros,status:e.target.value})}><option value="">Todos os status</option><option>PENDING</option><option>RECEIVED</option><option>CONFIRMED</option><option>OVERDUE</option><option>REFUNDED</option><option>DELETED</option></select>
+          <select style={input} value={filtros.plano} onChange={e=>setFiltros({...filtros,plano:e.target.value})}><option value="">Todos os planos</option><option>INICIAL</option><option>COMPLETO</option><option>ESPECIALISTA</option></select>
+          <input type="date" style={input} value={filtros.inicio} onChange={e=>setFiltros({...filtros,inicio:e.target.value})}/><input type="date" style={input} value={filtros.fim} onChange={e=>setFiltros({...filtros,fim:e.target.value})}/>
+          <Botao onClick={()=>carregar()}>Filtrar</Botao>
+        </div>
+        <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:1150}}><thead><tr>{["Data","Cliente / documento","Diagnóstico","Plano","Forma","Original","Desconto","Cobrado","Líquido / taxa","Status","Ações"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>
+          {(painel.pagamentos||[]).map(p=>{const [bg,cor]=statusCor(p.status);return <tr key={p.payment_id}><td style={tdStyle}>{formatarData(p.criado_em)}</td><td style={tdStyle}><strong>{p.cliente_nome||"Não registrado"}</strong><br/><span style={{color:MUTED}}>{p.cliente_documento||p.cliente_email||"-"}</span></td><td style={tdStyle}><code>{p.diagnostico_id}</code><br/><span style={{fontSize:9,color:MUTED}}>Pagamento: {p.payment_id}</span></td><td style={tdStyle}>{p.plano}</td><td style={tdStyle}>{p.forma_pagamento||"PIX"}</td><td style={tdStyle}>{moeda(p.valor_original||p.valor)}</td><td style={tdStyle}>{moeda(p.desconto)}{p.cupom_codigo&&<><br/><strong>{p.cupom_codigo}</strong></>}</td><td style={tdStyle}><strong>{moeda(p.valor)}</strong></td><td style={tdStyle}>{moeda(p.valor_liquido)}<br/><span style={{color:MUTED}}>Taxa {moeda(p.taxa)}</span></td><td style={tdStyle}><span style={{background:bg,color:cor,padding:"4px 7px",borderRadius:99,fontWeight:800,fontSize:9}}>{p.status}</span><br/><span style={{fontSize:8.5,color:MUTED}}>{p.pago_em?formatarData(p.pago_em):"Não pago"}</span></td><td style={tdStyle}><button onClick={()=>sincronizar(p.payment_id)} style={{...input,cursor:"pointer",fontSize:9,fontWeight:800}}>Sincronizar</button></td></tr>})}
+          {!painel.pagamentos?.length&&<tr><td colSpan="11" style={{...tdStyle,textAlign:"center"}}>Nenhuma cobrança encontrada.</td></tr>}
+        </tbody></table></div>
+      </>}
+
+      {abaInterna === "extrato" && <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}><thead><tr>{["Data","Tipo","Descrição","Pagamento vinculado","Valor","Saldo após movimento"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>
+        {(financeiro.extrato?.data||[]).map((m,i)=><tr key={m.id||i}><td style={tdStyle}>{formatarData(m.date||m.dateCreated)}</td><td style={tdStyle}>{m.type||"-"}</td><td style={tdStyle}>{m.description||m.observation||"-"}</td><td style={tdStyle}>{m.paymentId||"-"}</td><td style={{...tdStyle,color:Number(m.value)>=0?"#0F6E56":"#993C1D",fontWeight:900}}>{moeda(m.value)}</td><td style={tdStyle}>{moeda(m.balance)}</td></tr>)}
+        {!financeiro.extrato?.data?.length&&<tr><td colSpan="6" style={{...tdStyle,textAlign:"center"}}>Nenhuma movimentação encontrada ou a chave não possui permissão financeira.</td></tr>}
+      </tbody></table></div>}
+
+      {abaInterna === "cupons" && <div style={{display:"grid",gridTemplateColumns:"minmax(300px,420px) 1fr",gap:12,alignItems:"start"}}>
+        <form onSubmit={salvarCupom} style={box}><h3 style={{margin:"0 0 12px"}}>{editandoCupom?`Editar cupom ${editandoCupom}`:"Criar cupom"}</h3>
+          <div style={{display:"grid",gap:8}}><input required minLength={3} disabled={Boolean(editandoCupom)} style={input} placeholder="Código do cupom" value={cupomForm.codigo} onChange={e=>setCupomForm({...cupomForm,codigo:e.target.value.toUpperCase()})}/><input style={input} placeholder="Descrição interna" value={cupomForm.descricao} onChange={e=>setCupomForm({...cupomForm,descricao:e.target.value})}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><select style={input} value={cupomForm.tipo} onChange={e=>setCupomForm({...cupomForm,tipo:e.target.value})}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select><input required type="number" min="0.01" max={cupomForm.tipo === "PERCENTUAL" ? 90 : undefined} step="0.01" style={input} placeholder="Desconto padrão" value={cupomForm.valor} onChange={e=>setCupomForm({...cupomForm,valor:e.target.value})}/></div>
+          <strong style={{fontSize:9}}>Planos permitidos</strong><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{["INICIAL","COMPLETO","ESPECIALISTA"].map(p=><label key={p} style={{fontSize:9}}><input type="checkbox" checked={cupomForm.planos.includes(p)} onChange={e=>setCupomForm({...cupomForm,planos:e.target.checked?[...cupomForm.planos,p]:cupomForm.planos.filter(x=>x!==p)})}/> {p}</label>)}</div>
+          <strong style={{fontSize:9}}>Desconto específico por plano</strong><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}>{["INICIAL","COMPLETO","ESPECIALISTA"].map(p=><label key={p} style={{fontSize:8,fontWeight:800}}>{p}<input required={cupomForm.planos.includes(p)} disabled={!cupomForm.planos.includes(p)} type="number" min="0.01" max={cupomForm.tipo==="PERCENTUAL"?90:undefined} step="0.01" style={{...input,width:"100%",marginTop:4}} placeholder={cupomForm.tipo==="PERCENTUAL"?"%":"R$"} value={cupomForm.descontosPlanos?.[p]||""} onChange={e=>setCupomForm({...cupomForm,descontosPlanos:{...cupomForm.descontosPlanos,[p]:e.target.value}})}/></label>)}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><label style={{fontSize:8.5}}>Início<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.inicioEm} onChange={e=>setCupomForm({...cupomForm,inicioEm:e.target.value})}/></label><label style={{fontSize:8.5}}>Fim<input type="datetime-local" style={{...input,width:"100%"}} value={cupomForm.fimEm} onChange={e=>setCupomForm({...cupomForm,fimEm:e.target.value})}/></label></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7}}><input type="number" min="0" style={input} placeholder="Compra mínima" value={cupomForm.valorMinimo} onChange={e=>setCupomForm({...cupomForm,valorMinimo:e.target.value})}/><input type="number" min="1" style={input} placeholder="Limite total" value={cupomForm.limiteTotal} onChange={e=>setCupomForm({...cupomForm,limiteTotal:e.target.value})}/><input type="number" min="1" style={input} placeholder="Por CPF/CNPJ" value={cupomForm.limiteDocumento} onChange={e=>setCupomForm({...cupomForm,limiteDocumento:e.target.value})}/></div>
+          {sucessoCupom&&<div style={{background:"#E1F5EE",color:"#0F6E56",padding:9,borderRadius:8,fontSize:10,fontWeight:800}}>{sucessoCupom}</div>}
+          <div style={{display:"flex",gap:7}}><Botao type="submit"><Save size={14}/> {editandoCupom?"Salvar alterações":"Salvar cupom"}</Botao>{editandoCupom&&<Botao secundario onClick={()=>{setCupomForm(cupomVazio());setEditandoCupom("");}}><X size={14}/> Cancelar</Botao>}</div></div>
+        </form>
+        <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:850}}><thead><tr>{["Código","Regra por plano","Validade","Usos","Desconto concedido","Status","Ações"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{cupons.map(c=>{const regras=c.descontos_planos||{};return <tr key={c.codigo}><td style={tdStyle}><strong>{c.codigo}</strong><br/><span style={{color:MUTED}}>{c.descricao}</span></td><td style={tdStyle}>{(c.planos||[]).map(p=><div key={p}><strong>{p}:</strong> {c.tipo==="PERCENTUAL"?`${regras[p]??c.valor}%`:moeda(regras[p]??c.valor)}</div>)}</td><td style={tdStyle}>{c.inicio_em?formatarData(c.inicio_em):"Imediato"}<br/>{c.fim_em?formatarData(c.fim_em):"Sem término"}</td><td style={tdStyle}>{c.usos||0}{c.limite_total?` / ${c.limite_total}`:""}</td><td style={tdStyle}>{moeda(c.desconto_concedido)}</td><td style={tdStyle}><button onClick={()=>alternarCupom(c)} style={{...input,cursor:"pointer",fontWeight:800,color:c.ativo?"#0F6E56":"#993C1D"}}>{c.ativo?"ATIVO":"INATIVO"}</button></td><td style={tdStyle}><div style={{display:"flex",gap:6}}><button type="button" onClick={()=>editarCupom(c)} title="Editar" style={{...input,cursor:"pointer",color:"#2453A6"}}><Pencil size={14}/></button><button type="button" onClick={()=>excluirCupom(c)} title="Excluir" style={{...input,cursor:"pointer",color:"#B42318"}}><Trash2 size={14}/></button></div></td></tr>})}{!cupons.length&&<tr><td colSpan="7" style={{...tdStyle,textAlign:"center"}}>Nenhum cupom cadastrado.</td></tr>}</tbody></table></div>
+      </div>}
+
+      {abaInterna === "eventos" && <div style={{...box,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:780}}><thead><tr>{["Recebido em","Evento","Status","Pagamento","ID do evento"].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead><tbody>{(painel.eventos||[]).map(e=><tr key={e.evento_id}><td style={tdStyle}>{formatarData(e.recebido_em)}</td><td style={tdStyle}><strong>{e.evento}</strong></td><td style={tdStyle}>{e.status||"-"}</td><td style={tdStyle}>{e.payment_id||"-"}</td><td style={tdStyle}><code>{e.evento_id}</code></td></tr>)}{!painel.eventos?.length&&<tr><td colSpan="5" style={{...tdStyle,textAlign:"center"}}>Nenhum evento autenticado registrado.</td></tr>}</tbody></table></div>}
+    </>}
+  </div>;
+}
+
 function FinderTechLayout({
   aba,
   setAba,
@@ -22743,6 +23441,79 @@ function FinderTechLayout({
 // =========================================================
 // COMPONENTE PRINCIPAL
 // =========================================================
+
+function ValidacaoPesquisaTributaria({token}) {
+  const [pesquisas,setPesquisas]=useState([]);
+  const [status,setStatus]=useState("AGUARDANDO_VALIDACAO_CONSULTOR");
+  const [busca,setBusca]=useState("");
+  const [selecionada,setSelecionada]=useState(null);
+  const [form,setForm]=useState({cbsPct:"",ibsPct:"",reducaoPct:"",tipoTributoLocal:"",aliquotaLocalPct:"",baseLegalLocal:"",baseLegal:"",observacao:""});
+  const [erro,setErro]=useState("");
+  const [carregando,setCarregando]=useState(false);
+
+  async function carregar(){
+    setCarregando(true);setErro("");
+    try{
+      const qs=new URLSearchParams({acao:"listar",busca});if(status)qs.set("status",status);
+      const r=await fetch(`/api/pesquisa-tributaria?${qs}`,{headers:{Authorization:`Bearer ${token}`}});
+      const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Falha ao carregar pesquisas.");
+      setPesquisas(d.pesquisas||[]);
+    }catch(e){setErro(e.message);}finally{setCarregando(false);}
+  }
+  useEffect(()=>{carregar();},[status]);
+
+  function abrir(item){
+    const a=item.resultado_ia?.aliquotas_referencia||{};
+    const b=item.resultado_ia?.beneficio_legal||{};
+    const l=item.resultado_ia?.tributacao_local||{};
+    setSelecionada(item);setErro("");
+    setForm({
+      cbsPct:a.cbs_pct??"",ibsPct:a.ibs_pct??"",reducaoPct:b.percentual_reducao_pct??0,
+      tipoTributoLocal:l.tipo||"",aliquotaLocalPct:l.aliquota_efetiva_pct??l.aliquota_nominal_pct??"",
+      baseLegalLocal:l.base_legal||"",baseLegal:b.base_legal||"",observacao:"",
+    });
+  }
+  async function enviar(acao){
+    if(!selecionada)return;
+    let motivo="";
+    if(acao==="rejeitar"){
+      motivo=window.prompt("Informe o motivo da rejeição:")||"";if(!motivo)return;
+    }
+    setCarregando(true);setErro("");
+    try{
+      const r=await fetch(`/api/pesquisa-tributaria?acao=${acao}`,{
+        method:"POST",headers:{"content-type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify(acao==="validar"?{id:selecionada.id,premissasConfirmadas:form}:{id:selecionada.id,motivo}),
+      });
+      const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Não foi possível concluir a validação.");
+      setSelecionada(null);await carregar();
+    }catch(e){setErro(e.message);}finally{setCarregando(false);}
+  }
+  const input={width:"100%",padding:"9px 10px",border:"1px solid #D8DEEA",borderRadius:9,boxSizing:"border-box"};
+  return <div style={{display:"grid",gap:14}}>
+    <Card><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <input value={busca} onChange={e=>setBusca(e.target.value)} onKeyDown={e=>e.key==="Enter"&&carregar()} style={{...input,flex:"1 1 260px"}} placeholder="CNAE, CNPJ ou atividade"/>
+      <select value={status} onChange={e=>setStatus(e.target.value)} style={{...input,width:260}}><option value="AGUARDANDO_VALIDACAO_CONSULTOR">Aguardando validação</option><option value="VALIDADO">Validadas</option><option value="REJEITADO">Rejeitadas</option><option value="">Todas</option></select>
+      <Botao onClick={carregar} disabled={carregando}><RefreshCcw size={14}/>{carregando?"Carregando":"Atualizar"}</Botao>
+    </div>{erro&&<div style={{marginTop:9,color:"#B42318",fontSize:11}}>{erro}</div>}</Card>
+    <div style={{display:"grid",gridTemplateColumns:"minmax(320px,.9fr) minmax(420px,1.1fr)",gap:14,alignItems:"start"}}>
+      <Card><h3 style={{marginTop:0}}>Pesquisas ({pesquisas.length})</h3><div style={{display:"grid",gap:8}}>{pesquisas.map(item=><button key={item.id} onClick={()=>abrir(item)} style={{textAlign:"left",padding:11,border:`1px solid ${selecionada?.id===item.id?CORAL:"#DDE3EC"}`,borderRadius:10,background:"#fff",cursor:"pointer"}}><b>{item.cnae} · {item.atividade_real}</b><div style={{fontSize:9.5,color:MUTED,marginTop:4}}>{item.cnpj||"Sem CNPJ"} · {item.regime||"Regime não informado"} · {formatarData(item.criado_em)}</div><div style={{fontSize:9,fontWeight:900,marginTop:5}}>{item.status}</div></button>)}{!pesquisas.length&&!carregando&&<div style={{color:MUTED}}>Nenhuma pesquisa encontrada.</div>}</div></Card>
+      <Card>{!selecionada?<div style={{color:MUTED}}>Selecione uma pesquisa para revisar fontes, requisitos e percentuais.</div>:<div>
+        <h3 style={{marginTop:0}}>Revisão do consultor</h3>
+        <p style={{fontSize:11,lineHeight:1.5}}><b>Atividade:</b> {selecionada.atividade_real}<br/><b>NBS/NCM:</b> {selecionada.nbs_ncm||"Não informado"}<br/><b>Local:</b> {selecionada.municipio}/{selecionada.uf} · <b>Ano:</b> {selecionada.ano}</p>
+        <div style={{padding:11,background:"#F7F8FB",borderRadius:10,fontSize:10.5,lineHeight:1.55}}><b>Sugestão da IA:</b> {selecionada.resultado_ia?.tratamento_sugerido}<br/><b>Situação do benefício:</b> {selecionada.resultado_ia?.beneficio_legal?.situacao_normativa}<br/><b>Situação das alíquotas:</b> {selecionada.resultado_ia?.aliquotas_referencia?.situacao_normativa}<br/><b>Tributo local pesquisado:</b> {selecionada.resultado_ia?.tributacao_local?.tipo||"Não determinado"} {selecionada.resultado_ia?.tributacao_local?.aliquota_efetiva_pct!=null?`· ${selecionada.resultado_ia.tributacao_local.aliquota_efetiva_pct}%`:"· alíquota pendente"}<br/><b>Base legal local:</b> {selecionada.resultado_ia?.tributacao_local?.base_legal||"Não confirmada"}<br/><b>Confiança:</b> {selecionada.resultado_ia?.grau_confianca}</div>
+        <h4>Requisitos</h4><ul style={{fontSize:10.5,lineHeight:1.55}}>{(selecionada.resultado_ia?.requisitos||[]).map((x,i)=><li key={i}>{x}</li>)}</ul>
+        <h4>Fontes oficiais</h4><div style={{display:"grid",gap:4}}>{(selecionada.resultado_ia?.fontes||[]).map((f,i)=><a key={i} href={f.url} target="_blank" rel="noreferrer" style={{fontSize:10}}>{f.titulo||f.url} {f.artigo?`· ${f.artigo}`:""}</a>)}</div>
+        <h4>Percentuais confirmados</h4><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}><label style={{fontSize:9,fontWeight:900}}>CBS %<input style={input} value={form.cbsPct} onChange={e=>setForm({...form,cbsPct:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>IBS %<input style={input} value={form.ibsPct} onChange={e=>setForm({...form,ibsPct:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>Redução %<input style={input} value={form.reducaoPct} onChange={e=>setForm({...form,reducaoPct:e.target.value})}/></label></div>
+        <h4>Tributação local confirmada</h4><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7}}><label style={{fontSize:9,fontWeight:900}}>Tipo — ISS/ICMS<input style={input} value={form.tipoTributoLocal} onChange={e=>setForm({...form,tipoTributoLocal:e.target.value})}/></label><label style={{fontSize:9,fontWeight:900}}>Alíquota local %<input style={input} value={form.aliquotaLocalPct} onChange={e=>setForm({...form,aliquotaLocalPct:e.target.value})}/></label></div>
+        <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Base legal ISS/ICMS<textarea style={{...input,minHeight:65}} value={form.baseLegalLocal} onChange={e=>setForm({...form,baseLegalLocal:e.target.value})}/></label>
+        <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Base legal confirmada<textarea style={{...input,minHeight:75}} value={form.baseLegal} onChange={e=>setForm({...form,baseLegal:e.target.value})}/></label>
+        <label style={{display:"block",fontSize:9,fontWeight:900,marginTop:8}}>Observação do consultor<textarea style={{...input,minHeight:65}} value={form.observacao} onChange={e=>setForm({...form,observacao:e.target.value})}/></label>
+        <div style={{display:"flex",gap:8,marginTop:10}}><Botao onClick={()=>enviar("validar")} disabled={carregando}><ShieldCheck size={14}/>Validar e liberar para cálculo</Botao><Botao secundario onClick={()=>enviar("rejeitar")} disabled={carregando}><X size={14}/>Rejeitar</Botao></div>
+      </div>}</Card>
+    </div>
+  </div>;
+}
 
 export default function Admin() {
   const [token, setToken] = useState(
@@ -22972,6 +23743,14 @@ export default function Admin() {
           <Gauge size={14} />
           Tributário
         </Botao>
+        <Botao secundario={aba !== "asaas"} onClick={() => setAba("asaas")}>
+          <Activity size={14} />
+          Asaas Financeiro
+        </Botao>
+        <Botao secundario={aba !== "agenda"} onClick={() => setAba("agenda")}>
+          <CalendarDays size={14} />
+          Agenda
+        </Botao>
       </div>
     );
   }
@@ -23170,6 +23949,14 @@ export default function Admin() {
       titulo: "Inteligência Tributária",
       subtitulo:
         "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
+    },
+    asaas: {
+      titulo: "Asaas Financeiro",
+      subtitulo: "Saldo, extrato, recebimentos, cobranças, cupons e eventos Pix vinculados aos diagnósticos",
+    },
+    agenda: {
+      titulo: "Agenda compartilhada",
+      subtitulo: "Reuniões solicitadas no final dos diagnósticos e vinculadas a cada cliente",
     },
   };
 
@@ -23373,6 +24160,38 @@ export default function Admin() {
           <Tributario
             token={token}
           />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "asaas") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.asaas.titulo}
+        subtitulo={paginas.asaas.subtitulo}
+      >
+        <ConteudoPadrao maxWidth="none" padding="18px 18px 44px">
+          <AsaasFinanceiro token={token} />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "agenda") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo={paginas.agenda.titulo}
+        subtitulo={paginas.agenda.subtitulo}
+      >
+        <ConteudoPadrao maxWidth="none" padding="18px 18px 44px">
+          <AgendaDiagnosticos token={token} onAbrirDiagnostico={setDiagnosticoId} />
         </ConteudoPadrao>
       </FinderTechLayout>
     );
