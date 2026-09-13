@@ -23869,10 +23869,6 @@ export default function Admin() {
       subtitulo:
         "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
     },
-    pesquisa_tributaria: {
-      titulo: "Validação Tributária",
-      subtitulo: "Pesquisas legais da IA aguardando revisão e aprovação do consultor",
-    },
     asaas: {
       titulo: "Asaas Financeiro",
       subtitulo: "Saldo, extrato, recebimentos, cobranças, cupons e eventos Pix vinculados aos diagnósticos",
@@ -24086,10 +24082,6 @@ export default function Admin() {
         </ConteudoPadrao>
       </FinderTechLayout>
     );
-  }
-
-  if (aba === "pesquisa_tributaria") {
-    return <FinderTechLayout aba={aba} setAba={setAba} logout={sair} titulo={paginas.pesquisa_tributaria.titulo} subtitulo={paginas.pesquisa_tributaria.subtitulo}><ConteudoPadrao maxWidth="none"><ValidacaoPesquisaTributaria token={token}/></ConteudoPadrao></FinderTechLayout>;
   }
 
   if (aba === "asaas") {
