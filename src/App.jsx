@@ -1723,6 +1723,21 @@ function SimuladorReformaPublico({
     const municipio=String(empresaCadastral?.endereco?.municipio||"").toLowerCase();
     const uf=String(empresaCadastral?.endereco?.uf||"").toUpperCase();
     const atividadeTexto=`${atividadeSelecionada||""} ${descricaoAtividadeReal||""}`.toLowerCase();
+    const localIa=pesquisaTributaria?.resultado?.tributacao_local;
+    const aliquotaIa=Number(localIa?.aliquota_efetiva_pct??localIa?.aliquota_nominal_pct);
+
+    if(localIa?.incide===true&&Number.isFinite(aliquotaIa)&&aliquotaIa>0){
+      const faltas=Array.isArray(localIa.informacoes_faltantes)?localIa.informacoes_faltantes:[];
+      const vigente=String(localIa.situacao_normativa||"").toUpperCase().includes("VIGENTE");
+      return{
+        tipo:String(localIa.tipo||"ISS/ICMS").toUpperCase(),
+        aliquotaSugerida:aliquotaIa,
+        usarComoEfetiva:vigente&&faltas.length===0,
+        fonte:localIa.base_legal||"Pesquisa tributária em fonte oficial.",
+        observacao:[localIa.memoria_calculo,faltas.length?`Falta confirmar: ${faltas.join("; ")}`:vigente?"Alíquota vigente identificada pela pesquisa da IA.":"Situação normativa ainda não confirmada."].filter(Boolean).join(" "),
+        origem:"IA"
+      };
+    }
 
     if(natureza==="Serviço"){
       if(municipio.includes("curitiba")){
@@ -1791,25 +1806,27 @@ function SimuladorReformaPublico({
       atividadeSelecionada,
       descricaoAtividadeReal,
       empresaCadastral?.endereco?.municipio,
-      empresaCadastral?.endereco?.uf
+      empresaCadastral?.endereco?.uf,
+      pesquisaTributaria
     ]
   );
 
   useEffect(()=>{
-    setAliquotaLocalConfirmada(false);
-
     if(sugestaoTributoLocal?.aliquotaSugerida!=null){
       setAliquotaLocalAtual(
         String(sugestaoTributoLocal.aliquotaSugerida).replace(".",",")
       );
+      setAliquotaLocalConfirmada(Boolean(sugestaoTributoLocal.usarComoEfetiva));
     }else{
       setAliquotaLocalAtual("");
+      setAliquotaLocalConfirmada(false);
     }
   },[
     natureza,
     atividadeSelecionada,
     empresaCadastral?.endereco?.municipio,
-    empresaCadastral?.endereco?.uf
+    empresaCadastral?.endereco?.uf,
+    pesquisaTributaria
   ]);
 
   function calcularPresumidoEstimado(){
@@ -1834,14 +1851,16 @@ function SimuladorReformaPublico({
 
     const aliquotaLocalUsada=
       aliquotaLocalConfirmada?n(aliquotaLocalAtual):0;
-    const tributoLocalMes=fat*aliquotaLocalUsada/100;
+    const tributoLocalMes=aliquotaLocalConfirmada
+      ?fat*aliquotaLocalUsada/100
+      :null;
 
     const valor=
       irpjTri/3+
       csllTri/3+
       pisMes+
       cofinsMes+
-      tributoLocalMes;
+      (tributoLocalMes||0);
 
     return{
       regime:"Lucro Presumido",
@@ -1897,11 +1916,13 @@ function SimuladorReformaPublico({
 
     const aliquotaLocalUsada=
       aliquotaLocalConfirmada?n(aliquotaLocalAtual):0;
-    const tributoLocalMes=fat*aliquotaLocalUsada/100;
+    const tributoLocalMes=aliquotaLocalConfirmada
+      ?fat*aliquotaLocalUsada/100
+      :null;
 
     return{
       regime:"Lucro Real",
-      valor:irpj+csll+pisCofinsLiquido+tributoLocalMes,
+      valor:irpj+csll+pisCofinsLiquido+(tributoLocalMes||0),
       lucroEstimado,
       custosDespesasDedutiveis:dedutiveis,
       irpjNormal,
@@ -2426,6 +2447,14 @@ function SimuladorReformaPublico({
         id:data.pesquisaId,tokenPublico:data.tokenPublico,status:data.status,
         resultado:data.resultado,premissasConfirmadas:null,
       });
+      const reducaoSugerida=Number(data.resultado?.beneficio_legal?.percentual_reducao_pct??0);
+      if(data.resultado?.beneficio_legal?.existe===true&&reducaoSugerida>0){
+        setReducaoCbs(String(reducaoSugerida).replace(".",","));
+        setReducaoIbs(String(reducaoSugerida).replace(".",","));
+        setTratamentoIbsCbs(reducaoSugerida===30?"REDUCAO_30":reducaoSugerida===60?"REDUCAO_60":reducaoSugerida===100?"ZERO":"MANUAL");
+        setClassificacaoFiscal(data.resultado?.beneficio_legal?.base_legal||data.resultado?.tratamento_sugerido||"");
+        setTratamentoConfirmado(false);
+      }
     }catch(error){setErroPesquisaTributaria(error?.message||"Falha na pesquisa tributária.");}
     finally{setPesquisandoTributaria(false);}
   }
@@ -2454,6 +2483,10 @@ function SimuladorReformaPublico({
     setTratamentoIbsCbs(Number(p.reducaoPct)===30?"REDUCAO_30":Number(p.reducaoPct)===60?"REDUCAO_60":Number(p.reducaoPct)===100?"ZERO":Number(p.reducaoPct)>0?"MANUAL":"PADRAO");
     setClassificacaoFiscal([p.baseLegal,p.observacao].filter(Boolean).join(" · "));
     setTratamentoConfirmado(true);
+    if(p.aliquotaLocalPct!=null&&Number(p.aliquotaLocalPct)>0){
+      setAliquotaLocalAtual(String(p.aliquotaLocalPct).replace(".",","));
+      setAliquotaLocalConfirmada(true);
+    }
     setCenarioAliquota(String(pesquisaTributaria?.resultado?.consulta?.ano||cenarioAliquota));
   }
 
@@ -3700,7 +3733,10 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             <div><b>Status:</b> {pesquisaTributaria.status}</div>
             <div><b>Sugestão:</b> {pesquisaTributaria.resultado?.tratamento_sugerido||"A validar"}</div>
             <div><b>Benefício:</b> {pesquisaTributaria.resultado?.beneficio_legal?.base_legal||"Base legal ainda não confirmada"}</div>
+            <div><b>Redução identificada:</b> {pesquisaTributaria.resultado?.beneficio_legal?.percentual_reducao_pct!=null?`${pesquisaTributaria.resultado.beneficio_legal.percentual_reducao_pct}%`:"Não identificada"}</div>
             <div><b>Situação da alíquota:</b> {pesquisaTributaria.resultado?.aliquotas_referencia?.situacao_normativa||"Não informada"}</div>
+            <div><b>Tributo atual pesquisado:</b> {pesquisaTributaria.resultado?.tributacao_local?.tipo||"Não determinado"} {pesquisaTributaria.resultado?.tributacao_local?.aliquota_efetiva_pct!=null?`· ${pesquisaTributaria.resultado.tributacao_local.aliquota_efetiva_pct}%`:"· faltam dados para determinar"}</div>
+            <div><b>Base legal local:</b> {pesquisaTributaria.resultado?.tributacao_local?.base_legal||"Ainda não confirmada"}</div>
             {pesquisaTributaria.resultado?.fontes?.length>0&&<div style={{marginTop:4}}><b>Fontes oficiais:</b>{pesquisaTributaria.resultado.fontes.slice(0,5).map((fonte,i)=><div key={i}><a href={fonte.url} target="_blank" rel="noreferrer">{fonte.titulo||fonte.url}</a>{fonte.artigo?` · ${fonte.artigo}`:""}</div>)}</div>}
             {pesquisaTributaria.status!=="VALIDADO"&&<button type="button" onClick={consultarStatusPesquisaTributaria} disabled={pesquisandoTributaria} style={{...chipStyle(false),width:"100%",marginTop:7}}>Consultar validação do consultor</button>}
             {pesquisaTributaria.status==="VALIDADO"&&<button type="button" onClick={aplicarPesquisaTributariaValidada} style={{...chipStyle(false),width:"100%",marginTop:7,background:"#176B47",color:"#fff"}}>Aplicar percentuais validados e recalcular</button>}
@@ -3828,7 +3864,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           borderRadius:9,padding:8,
           display:"flex",justifyContent:"space-between",gap:10
         }}>
-          <span style={{fontSize:8,fontWeight:800}}>Alíquota combinada informada</span>
+          <span style={{fontSize:8,fontWeight:800}}>Alíquota combinada após a redução aplicada</span>
           <b>{percentualSimulador(iva)}</b>
         </div>
       </div>
