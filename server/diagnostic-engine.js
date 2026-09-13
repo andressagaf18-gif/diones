@@ -144,6 +144,29 @@ export const ESTRUTURAS = {
       "estrutura societária", "processo comercial", "marketing empresarial"
     ],
   },
+
+  reforma_tributaria: {
+    id: "reforma_tributaria",
+    label: "Simulador da Reforma Tributária",
+    tipo: "REFORMA_TRIBUTARIA",
+    exigeCnpj: false,
+    eixos: [
+      "reforma_carga", "reforma_creditos", "reforma_precos", "reforma_transicao"
+    ],
+    foco: [
+      "carga tributária atual e projetada (Simples, Presumido, Real ou regime regular)",
+      "créditos de IBS/CBS e repasse ao cliente B2B",
+      "impacto no preço, na margem e na competitividade",
+      "cronograma legal de transição 2026 a 2033",
+      "enquadramento por atividade, CNAE/CNAE de fato e redução setorial aplicável",
+    ],
+    proibicoes: [
+      "apresentar a soma de CBS/IBS digitada no simulador como alíquota oficial definitiva",
+      "avaliar comercial, marketing, RH, tecnologia, administrativo ou operacional — fora do escopo desta simulação",
+      "calcular a carga do Simples Nacional sem considerar o DAS residual (IRPJ, CSLL, CPP e ISS/ICMS remanescentes)",
+      "tratar percentuais nominais de referência ainda não fixados por Resolução do Senado como definitivos",
+    ],
+  },
 };
 
 export function normalizarEstrutura(valor) {
@@ -167,6 +190,9 @@ export function normalizarEstrutura(valor) {
     associação: "terceiro_setor",
     entidade_sem_fins_lucrativos: "terceiro_setor",
     ong: "terceiro_setor",
+    reforma_tributaria: "reforma_tributaria",
+    simulador_reforma: "reforma_tributaria",
+    reforma: "reforma_tributaria",
   };
 
   return aliases[v] || "operacional";
@@ -233,6 +259,11 @@ export const LABELS_EIXOS = {
   contratos_terceiro_setor: "Contratos e instrumentos",
   tributario_terceiro_setor: "Tributário e conformidade",
   operacao_entidade: "Operação da entidade",
+
+  reforma_carga: "Carga tributária e cenários",
+  reforma_creditos: "Créditos de IBS/CBS",
+  reforma_precos: "Preço, margem e repasse",
+  reforma_transicao: "Transição e preparação",
 };
 
 export function contratoSaida(
