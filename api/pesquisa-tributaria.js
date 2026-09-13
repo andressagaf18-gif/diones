@@ -7,7 +7,14 @@ import { neon } from "@neondatabase/serverless";
 import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
-const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V4_VALIDACAO_AUTOMATICA";
+const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V6_CNAE_CLASSIFICACAO_AUTOMATICA";
+const PREMISSA_REFERENCIA = Object.freeze({
+  cbsPct: 9.21,
+  ibsPct: 18.7,
+  totalPct: 27.91,
+  situacao: "ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
+  fonte: "Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva",
+});
 const FONTES_OFICIAIS = [
   "planalto.gov.br",
   "gov.br",
@@ -15,6 +22,9 @@ const FONTES_OFICIAIS = [
   "camara.leg.br",
   "confaz.fazenda.gov.br",
   "receita.economia.gov.br",
+  "ibge.gov.br",
+  "concla.ibge.gov.br",
+  "cgibs.gov.br",
 ];
 
 function texto(valor = "") { return String(valor ?? "").trim(); }
@@ -125,9 +135,74 @@ function construirCacheKey(body) {
   const partes = [
     texto(body.cnae).replace(/\D/g, ""), normalizar(body.atividadeReal),
     normalizar(body.nbsNcm), normalizar(body.regime), normalizar(body.municipio),
-    texto(body.uf).toUpperCase(), texto(body.ano), "LC214_LOCAL_V4_AUTO",
+    texto(body.uf).toUpperCase(), texto(body.ano),
+    texto(body.cbsReferenciaPct), texto(body.ibsReferenciaPct),
+    "LC214_LOCAL_V6_CLASSIFICACAO_AUTOMATICA",
   ];
   return `tributario_${hash(partes.join("|"))}`;
+}
+
+/*
+ * A IA localiza e resume a norma; este catálogo impede que um benefício já
+ * positivado desapareça porque o modelo respondeu com redação ou estrutura
+ * diferente. A aplicação continua condicionada aos requisitos do caso real.
+ */
+function aplicarCatalogoLegal(resultado, body) {
+  const cnae = texto(body?.cnae).replace(/\D/g, "");
+  const atividade = normalizar(body?.atividadeReal);
+  const contabilista =
+    cnae === "6920601" &&
+    /(contab|escrituracao contabil|auditoria contabil|pericia contabil)/.test(atividade);
+
+  if (!contabilista) return resultado;
+
+  const fonte = {
+    titulo: "Lei Complementar nº 214, de 16 de janeiro de 2025",
+    url: "https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp214.htm",
+    orgao: "Presidência da República",
+    artigo: "Art. 127, VII",
+    consultadoEm: new Date().toISOString(),
+  };
+
+  resultado.beneficio_legal = {
+    ...(resultado.beneficio_legal || {}),
+    existe: true,
+    tipo: "REDUCAO_ALIQUOTAS_IBS_CBS_PROFISSAO_INTELECTUAL",
+    percentual_reducao_pct: 30,
+    situacao_normativa: "VIGENTE_APLICACAO_CONDICIONADA_AOS_REQUISITOS_LEGAIS",
+    base_legal: "LC 214/2025, art. 127, VII — serviços prestados por contabilistas",
+    catalogo_legal: true,
+    enquadramento_catalogo: "CNAE_6920601_CONTABILISTAS",
+  };
+  resultado.classificacao_operacao = {
+    setor: "SERVICO",
+    tipo_codigo: "ITEM_LISTA_SERVICOS_LC_116",
+    codigo: "17.19",
+    descricao: "Contabilidade, inclusive serviços técnicos e auxiliares",
+    origem: "CATALOGO_LEGAL",
+    automatico: true,
+    confianca: "ALTA",
+    base_legal: "LC 116/2003, lista de serviços, item 17.19; LC 214/2025, art. 127, VII",
+    informacoes_faltantes: [],
+  };
+  resultado.tratamento_sugerido =
+    "Simular redução de 30% nas alíquotas de IBS e CBS, condicionada ao atendimento dos requisitos do art. 127 da LC 214/2025.";
+  resultado.requisitos = [...new Set([
+    ...lista(resultado.requisitos).map(texto).filter(Boolean),
+    "Comprovar que a atividade efetivamente prestada corresponde aos serviços de contabilista abrangidos pelo art. 127.",
+    "Manter documentação cadastral, profissional e operacional que sustente o enquadramento.",
+  ])];
+  resultado.alertas = [...new Set([
+    ...lista(resultado.alertas).map(texto).filter(Boolean),
+    "A redução legal é aplicada à simulação; a fruição concreta permanece condicionada aos requisitos legais da operação e do prestador.",
+  ])];
+  resultado.fontes = [...new Map([
+    ...lista(resultado.fontes),
+    fonte,
+  ].filter(item => item?.url).map(item => [item.url, item])).values()];
+  resultado.grau_confianca = "ALTO";
+  resultado.catalogo_legal_aplicado = true;
+  return resultado;
 }
 
 function normalizarResultado(dados, body, fontesFerramenta = []) {
@@ -141,9 +216,16 @@ function normalizarResultado(dados, body, fontesFerramenta = []) {
   })).filter(f => f.url && urlOficial(f.url));
   const mapa = new Map([...fontesIa, ...fontesTool].map(f => [f.url, f]));
   const reducao = Math.max(0, Math.min(100, numero(dados?.reducao_pct, 0)));
-  const cbs = numero(dados?.cbs_referencia_pct, null);
-  const ibs = numero(dados?.ibs_referencia_pct, null);
+  const cbs = numero(
+    body?.cbsReferenciaPct,
+    numero(dados?.cbs_referencia_pct, PREMISSA_REFERENCIA.cbsPct)
+  );
+  const ibs = numero(
+    body?.ibsReferenciaPct,
+    numero(dados?.ibs_referencia_pct, PREMISSA_REFERENCIA.ibsPct)
+  );
   const local = dados?.tributacao_local || {};
+  const classificacao = dados?.classificacao_operacao || {};
   const aliquotaLocal = numero(
     local?.aliquota_efetiva_pct ?? local?.aliquota_nominal_pct,
     null
@@ -155,6 +237,17 @@ function normalizarResultado(dados, body, fontesFerramenta = []) {
       municipio: texto(body.municipio), uf: texto(body.uf).toUpperCase(), ano: numero(body.ano),
     },
     tratamento_sugerido: texto(dados?.tratamento_sugerido) || "Validação necessária",
+    classificacao_operacao: {
+      setor: texto(classificacao?.setor).toUpperCase() || "NAO_DETERMINADO",
+      tipo_codigo: texto(classificacao?.tipo_codigo).toUpperCase() || "NAO_DETERMINADO",
+      codigo: texto(classificacao?.codigo) || null,
+      descricao: texto(classificacao?.descricao),
+      origem: texto(classificacao?.origem).toUpperCase() || "PESQUISA_IA",
+      automatico: classificacao?.automatico !== false,
+      confianca: texto(classificacao?.confianca).toUpperCase() || "BAIXA",
+      base_legal: texto(classificacao?.base_legal),
+      informacoes_faltantes: lista(classificacao?.informacoes_faltantes).map(texto).filter(Boolean),
+    },
     beneficio_legal: {
       existe: dados?.beneficio_legal?.existe === true,
       tipo: texto(dados?.beneficio_legal?.tipo),
@@ -165,7 +258,9 @@ function normalizarResultado(dados, body, fontesFerramenta = []) {
     aliquotas_referencia: {
       cbs_pct: cbs, ibs_pct: ibs,
       total_pct: cbs != null && ibs != null ? cbs + ibs : numero(dados?.aliquota_referencia_total_pct, null),
-      situacao_normativa: texto(dados?.situacao_normativa_aliquotas) || "ESTIMADA_OU_PENDENTE",
+      situacao_normativa: texto(body?.situacaoPremissaReferencia) ||
+        texto(dados?.situacao_normativa_aliquotas) || PREMISSA_REFERENCIA.situacao,
+      fonte_premissa: texto(body?.fontePremissaReferencia) || PREMISSA_REFERENCIA.fonte,
     },
     aliquotas_efetivas_simuladas: {
       cbs_pct: cbs == null ? null : cbs * (1 - reducao / 100),
@@ -217,6 +312,14 @@ function validarAutomaticamente(resultado) {
   const aliquotasEstimadas =
     /(pendente|estimad|nao confirm|a definir)/.test(situacaoAliquotas);
   const resultadoCoerente = beneficio.existe ? reducao > 0 : reducao === 0;
+  const catalogoLegal = beneficio.catalogo_legal === true;
+  const beneficioOficialCondicional = Boolean(
+    beneficio.existe &&
+    beneficioVigente &&
+    resultadoCoerente &&
+    temFonteOficial &&
+    aliquotasInformadas
+  );
 
   const motivos = [];
   if (resultado?.grau_confianca !== "ALTO") motivos.push("A pesquisa não atingiu confiança alta.");
@@ -226,7 +329,23 @@ function validarAutomaticamente(resultado) {
   if (!resultadoCoerente) motivos.push("A existência do benefício e o percentual de redução são incompatíveis.");
   if (!aliquotasInformadas) motivos.push("As alíquotas de referência da simulação estão incompletas.");
 
-  const apto = motivos.length === 0;
+  // Para item positivado no catálogo jurídico, dados documentais pendentes não
+  // apagam o benefício da simulação. Eles passam a ser ressalvas explícitas.
+  const aplicacaoCondicional = Boolean(catalogoLegal || beneficioOficialCondicional);
+  const semBeneficioConfirmado = Boolean(
+    !beneficio.existe &&
+    temFonteOficial &&
+    aliquotasInformadas &&
+    resultadoCoerente
+  );
+  const apto = motivos.length === 0 || aplicacaoCondicional || semBeneficioConfirmado;
+  const ressalvas = aplicacaoCondicional
+    ? [...new Set([
+        ...faltantes,
+        ...lista(resultado?.requisitos),
+        "Confirmar documentalmente os requisitos do art. 127 antes de tratar a simulação como apuração definitiva.",
+      ].map(texto).filter(Boolean))]
+    : [];
   const localSeguro =
     local.incide === true &&
     numero(local.aliquota_efetiva_pct ?? local.aliquota_nominal_pct, null) != null &&
@@ -250,13 +369,25 @@ function validarAutomaticamente(resultado) {
     confirmacaoTipo: "AUTOMATICA",
     situacaoNormativaAliquotas: texto(aliquotas.situacao_normativa),
     aliquotasEstimadas,
+    aplicacaoCondicional,
+    requisitosPendentes: ressalvas,
+    setorOperacao: texto(resultado?.classificacao_operacao?.setor).toUpperCase(),
+    tipoCodigoOperacao: texto(resultado?.classificacao_operacao?.tipo_codigo).toUpperCase(),
+    codigoOperacao: texto(resultado?.classificacao_operacao?.codigo),
+    descricaoOperacao: texto(resultado?.classificacao_operacao?.descricao),
   } : null;
 
   resultado.validacao_automatica = {
     apto,
-    status: apto ? "APLICADO_AUTOMATICAMENTE" : "DADOS_INSUFICIENTES",
-    motivos,
-    regra: "Fonte oficial + confiança alta + benefício vigente + ausência de pendências + alíquotas de simulação informadas",
+    status: apto
+      ? aplicacaoCondicional
+        ? "APLICADO_COM_RESSALVA"
+        : "APLICADO_AUTOMATICAMENTE"
+      : "DADOS_INSUFICIENTES",
+    motivos: apto ? [] : motivos,
+    ressalvas,
+    aplicacao_condicional: aplicacaoCondicional,
+    regra: "Fonte oficial + benefício vigente + alíquotas informadas; benefícios legais podem alimentar automaticamente a simulação com ressalvas explícitas",
   };
 
   return { apto, motivos, premissas };
@@ -282,7 +413,7 @@ async function pesquisar(req, res) {
   const id = crypto.randomUUID();
   if (cache.length) {
     const origem = cache[0];
-    const resultadoCache = origem.resultado_ia;
+    const resultadoCache = aplicarCatalogoLegal(origem.resultado_ia, body);
     const automatico = validarAutomaticamente(resultadoCache);
     const statusAutomatico = automatico.apto ? "VALIDADO" : "DADOS_INSUFICIENTES";
     const validadoEm = automatico.apto ? new Date().toISOString() : null;
@@ -294,11 +425,14 @@ async function pesquisar(req, res) {
     return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:true, status:statusAutomatico, resultado:resultadoCache, premissasConfirmadas:automatico.premissas });
   }
 
+  const cbsPremissa = numero(body.cbsReferenciaPct, PREMISSA_REFERENCIA.cbsPct);
+  const ibsPremissa = numero(body.ibsReferenciaPct, PREMISSA_REFERENCIA.ibsPct);
   const prompt = `Você é um pesquisador tributário brasileiro. Pesquise a legislação vigente usando somente fontes oficiais.
-Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}.
+Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}. Premissas nominais da simulação: CBS ${cbsPremissa}% e IBS ${ibsPremissa}% — ${PREMISSA_REFERENCIA.situacao}. Não substitua essas premissas por uma alíquota apresentada como definitiva.
 Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Verifique expressamente se a atividade possui redução de IBS/CBS na LC 214/2025, inclusive o art. 127 quando se tratar de profissão intelectual regulamentada. Todo requisito que não puder ser comprovado pelos dados pesquisados deve obrigatoriamente constar em informacoes_faltantes. Use grau_confianca ALTO somente quando as fontes oficiais sustentarem diretamente a conclusão e não houver requisito de elegibilidade pendente.
+Classifique automaticamente a operação como SERVICO, COMERCIO, INDUSTRIA ou MISTA. Para serviço, pesquise o item exato ou mais aderente da lista da LC 116/2003 e devolva o código no formato 17.19. Para comércio ou indústria, só devolva NCM quando o produto estiver suficientemente identificado; CNAE isolado não prova NCM. Se faltar produto, devolva codigo null e explique o dado necessário. Informe NBS ou cClassTrib somente quando houver correspondência oficial sustentada pela fonte.
 Pesquise também o tributo do regime atual. Para serviços, identifique o item da lista, o município competente, o ISS nominal/efetivo e a legislação municipal. Para comércio ou indústria, identifique o ICMS conforme NCM, UF de origem e destino, operação interna/interestadual, consumidor, benefício, ST, monofasia ou redução de base. Se os dados não permitirem uma alíquota exata, devolva null e liste precisamente o que falta; nunca devolva zero apenas por falta de informação.
-Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários ou texto antes/depois, contendo: tratamento_sugerido; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (26.5 significa 26,5%).`;
+Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários ou texto antes/depois, contendo: tratamento_sugerido; classificacao_operacao {setor,tipo_codigo,codigo,descricao,origem,automatico,confianca,base_legal,informacoes_faltantes[]}; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (27.91 significa 27,91%).`;
   const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
   const resposta = await fetch("https://api.openai.com/v1/responses", {
     method:"POST",
@@ -315,7 +449,10 @@ Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários o
   try { bruto = JSON.parse(limparJson(extrairOutputText(data))); }
   catch { return res.status(502).json({ sucesso:false, error:"A pesquisa não retornou JSON válido." }); }
   const fontesTool = lista(data?.output).filter(x=>x?.type==="web_search_call").flatMap(x=>lista(x?.action?.sources));
-  const resultado = normalizarResultado(bruto, body, fontesTool);
+  const resultado = aplicarCatalogoLegal(
+    normalizarResultado(bruto, body, fontesTool),
+    body
+  );
   if (!resultado.fontes.length) resultado.alertas.push("Nenhuma fonte oficial válida foi capturada; não validar antes de nova pesquisa.");
   const automatico = validarAutomaticamente(resultado);
   const statusAutomatico = automatico.apto ? "VALIDADO" : "DADOS_INSUFICIENTES";
