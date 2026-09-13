@@ -4,7 +4,7 @@ import pdf from "pdf-parse";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
-import { usuarioAutenticado } from "../api/lib/auth.js";
+import { usuarioAutenticado } from "./auth.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
