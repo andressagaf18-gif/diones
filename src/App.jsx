@@ -1618,6 +1618,7 @@ function SimuladorReformaPublico({
   const [pesquisaTributaria,setPesquisaTributaria]=useState(null);
   const [pesquisandoTributaria,setPesquisandoTributaria]=useState(false);
   const [erroPesquisaTributaria,setErroPesquisaTributaria]=useState("");
+  const pesquisaTributariaAutomaticaRef=useRef("");
   const [crescimento,setCrescimento]=useState("20");
 
   const [relatorioIa,setRelatorioIa]=useState(null);
@@ -2416,18 +2417,24 @@ function SimuladorReformaPublico({
     const valor=`${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
     setAtividadeSelecionada(valor);
     setNatureza(classificarNaturezaPorCnae(item.descricao));
+    setPesquisaTributaria(null);
+    setErroPesquisaTributaria("");
   }
 
-  async function pesquisarTratamentoTributario(){
-    const atividade=descricaoAtividadeReal.trim();
+  async function pesquisarTratamentoTributario(opcoes={}){
+    const automatica=opcoes?.automatica===true;
     const cnaeSelecionado=atividadesReais.find(item=>{
       const valor=`${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
       return valor===atividadeSelecionada;
     })||atividadesReais.find(item=>item.principal)||{};
+    const atividadeInformada=descricaoAtividadeReal.trim();
+    const atividade=atividadeInformada.length>=10
+      ?atividadeInformada
+      :String(cnaeSelecionado.descricao||"").trim();
     const cnae=String(cnaeSelecionado.codigo||atividadeSelecionada||"").replace(/\D/g,"").slice(0,7);
     if(cnae.length!==7||atividade.length<10){
-      setErroPesquisaTributaria("Selecione um CNAE completo e descreva a atividade real antes da pesquisa.");
-      return;
+      if(!automatica)setErroPesquisaTributaria("Selecione um CNAE completo antes da pesquisa.");
+      return false;
     }
     setPesquisandoTributaria(true);
     setErroPesquisaTributaria("");
@@ -2455,9 +2462,43 @@ function SimuladorReformaPublico({
         setClassificacaoFiscal(data.resultado?.beneficio_legal?.base_legal||data.resultado?.tratamento_sugerido||"");
         setTratamentoConfirmado(false);
       }
-    }catch(error){setErroPesquisaTributaria(error?.message||"Falha na pesquisa tributária.");}
+      return true;
+    }catch(error){setErroPesquisaTributaria(error?.message||"Falha na pesquisa tributária.");return false;}
     finally{setPesquisandoTributaria(false);}
   }
+
+  useEffect(()=>{
+    const cnpjPesquisa=String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,"");
+    const item=atividadesReais.find(atividade=>{
+      const valor=`${atividade.codigo}${atividade.codigo?" — ":""}${atividade.descricao}`;
+      return valor===atividadeSelecionada;
+    })||atividadesReais.find(atividade=>atividade.principal)||{};
+    const cnae=String(item.codigo||atividadeSelecionada||"").replace(/\D/g,"").slice(0,7);
+    const atividade=(descricaoAtividadeReal.trim().length>=10
+      ?descricaoAtividadeReal
+      :item.descricao||"").trim();
+
+    if(cnpjPesquisa.length!==14||cnae.length!==7||atividade.length<10)return;
+
+    const chave=[
+      cnpjPesquisa,cnae,atividade.toLowerCase(),nbsNcm.trim().toLowerCase(),
+      regime,empresaCadastral?.endereco?.municipio||"",
+      empresaCadastral?.endereco?.uf||"",cenarioAliquota,
+    ].join("|");
+
+    if(pesquisaTributariaAutomaticaRef.current===chave)return;
+
+    const temporizador=setTimeout(async()=>{
+      if(pesquisaTributariaAutomaticaRef.current===chave)return;
+      pesquisaTributariaAutomaticaRef.current=chave;
+      await pesquisarTratamentoTributario({automatica:true});
+    },900);
+
+    return()=>clearTimeout(temporizador);
+  },[
+    cnpj,empresaCadastral,atividadesReais,atividadeSelecionada,
+    descricaoAtividadeReal,nbsNcm,regime,cenarioAliquota,
+  ]);
 
   async function consultarStatusPesquisaTributaria(){
     if(!pesquisaTributaria?.id||!pesquisaTributaria?.tokenPublico)return;
@@ -3721,14 +3762,15 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
         <div style={{marginTop:8,padding:10,border:"1px solid #CADAF2",borderRadius:11,background:"#F5F8FF"}}>
           <div style={{fontSize:9,fontWeight:900,color:NAVY}}>Pesquisa tributária da atividade com IA</div>
-          <p style={{...muted,margin:"4px 0 8px"}}>A IA consulta fontes oficiais e sugere benefício, requisitos e base legal. Nenhum percentual entra no cálculo antes da validação do consultor.</p>
+          <p style={{...muted,margin:"4px 0 8px"}}>Ao selecionar o CNAE principal, a pesquisa inicia automaticamente. A IA consulta fontes oficiais e sugere benefício, requisitos e base legal. Nenhum percentual entra no cálculo antes da validação do consultor.</p>
           <label style={labelStyle}>NBS ou NCM, quando aplicável
             <input value={nbsNcm} onChange={e=>{setNbsNcm(e.target.value);setPesquisaTributaria(null)}} style={input} placeholder="Opcional - informe se conhecido"/>
           </label>
-          <button type="button" onClick={pesquisarTratamentoTributario} disabled={pesquisandoTributaria} style={{...chipStyle(false),width:"100%",marginTop:7,background:NAVY,color:"#fff"}}>
-            {pesquisandoTributaria?"Pesquisando fontes oficiais...":"Pesquisar atividade e base legal"}
-          </button>
+          <div style={{marginTop:7,padding:"8px 10px",borderRadius:9,background:"#EAF0FA",fontSize:8,fontWeight:850,color:NAVY}}>
+            {pesquisandoTributaria?"Pesquisando automaticamente em fontes oficiais...":pesquisaTributaria?"Pesquisa automática concluída.":"Aguardando CNPJ e CNAE principal válidos."}
+          </div>
           {erroPesquisaTributaria&&<div style={{marginTop:7,color:"#B42318",fontSize:8,fontWeight:800}}>{erroPesquisaTributaria}</div>}
+          {erroPesquisaTributaria&&<button type="button" onClick={()=>{pesquisaTributariaAutomaticaRef.current="";pesquisarTratamentoTributario()}} disabled={pesquisandoTributaria} style={{...chipStyle(false),width:"100%",marginTop:7}}>Tentar pesquisa novamente</button>}
           {pesquisaTributaria&&<div style={{marginTop:8,padding:9,borderRadius:9,background:pesquisaTributaria.status==="VALIDADO"?"#EAF8F1":"#FFF8E8",fontSize:8,lineHeight:1.5}}>
             <div><b>Status:</b> {pesquisaTributaria.status}</div>
             <div><b>Sugestão:</b> {pesquisaTributaria.resultado?.tratamento_sugerido||"A validar"}</div>
