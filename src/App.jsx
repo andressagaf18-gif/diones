@@ -6524,6 +6524,29 @@ function DiagnosticoPrototipo() {
           confiabilidade:configuracao.naoSeiImpostoAtual
             ?"Preliminar"
             :"Maior — carga atual informada",
+          // Estes 4 campos são os que o painel do administrador e o PDF
+          // executivo leem diretamente (faturamentoMensalReferencia,
+          // tributosMensaisEstimados, cargaTributariaEstimada,
+          // tributosAnuaisEstimados). Antes eles não existiam aqui — só
+          // dentro de "reforma.*", com nomes diferentes — e o admin
+          // exibia "R$ NaN" porque lia um campo inexistente.
+          faturamentoFaixa:"",
+          faturamentoMensalReferencia:
+            configuracao.faturamentoMensal||null,
+          faturamentoAnualReferencia:
+            configuracao.faturamentoMensal
+              ?configuracao.faturamentoMensal*12
+              :null,
+          tributosMensaisEstimados:
+            snapshot?.resultado?.reforma??null,
+          tributosAnuaisEstimados:
+            snapshot?.resultado?.reforma!=null
+              ?snapshot.resultado.reforma*12
+              :null,
+          cargaTributariaEstimada:
+            snapshot?.resultado?.reforma!=null&&configuracao.faturamentoMensal
+              ?(snapshot.resultado.reforma/configuracao.faturamentoMensal)*100
+              :null,
           reforma:{
             status:"Simulado",
             faturamentoMensal:configuracao.faturamentoMensal||0,
