@@ -1607,7 +1607,7 @@ function SimuladorReformaPublico({
   const [custosDespesasDedutiveis,setCustosDespesasDedutiveis]=useState("");
 
   const [cenarioAliquota,setCenarioAliquota]=useState("2033");
-  const [cbs,setCbs]=useState("9,3");
+  const [cbs,setCbs]=useState("9,21");
   const [ibs,setIbs]=useState("18,7");
   const [reducaoCbs,setReducaoCbs]=useState("0");
   const [reducaoIbs,setReducaoIbs]=useState("0");
@@ -1965,11 +1965,12 @@ function SimuladorReformaPublico({
     anoCenario===2027||anoCenario===2028?Math.max(0,cbsNom-.1):cbsNom;
   const cbsEfetiva=cbsBaseTransicao*(1-redCbs/100);
   const fatorIbsTransicao={2029:.1,2030:.2,2031:.3,2032:.4,2033:1}[anoCenario];
-  const ibsEfetivaCheia=ibsNom*(1-redIbs/100);
-  const ibsEfetiva=
+  const ibsBaseTransicao=
     anoCenario===2026||anoCenario===2027||anoCenario===2028
-      ?.1*(1-redIbs/100)
-      :ibsEfetivaCheia*(fatorIbsTransicao??1);
+      ?.1
+      :ibsNom*(fatorIbsTransicao??1);
+  const ibsEfetivaCheia=ibsNom*(1-redIbs/100);
+  const ibsEfetiva=ibsBaseTransicao*(1-redIbs/100);
   const iva=cbsEfetiva+ibsEfetiva;
 
   const linhas=Object.values(despesas);
@@ -2248,9 +2249,11 @@ function SimuladorReformaPublico({
     const ibsAno=(ano<=2028?.1:ibsNom*fatorIbs)*(1-redIbs/100);
     const debCbsAno=baseIbsCbs*cbsAno/100;
     const debIbsAno=baseIbsCbs*ibsAno/100;
-    const novoAno=Math.max(0,debCbsAno-creditoCbsNovo)+Math.max(0,debIbsAno-creditoIbsNovo);
+    const creditoCbsAno=baseCreditosConfirmados*cbsAno/100;
+    const creditoIbsAno=baseCreditosConfirmados*ibsAno/100;
+    const novoAno=Math.max(0,debCbsAno-creditoCbsAno)+Math.max(0,debIbsAno-creditoIbsAno);
     const mantidosAno=(icmsAtualUsado+issAtualUsado)*fatorLegado+tributosMantidos;
-    return {ano,total:novoAno+mantidosAno,iva:novoAno,cbs:Math.max(0,debCbsAno-creditoCbsNovo),ibs:Math.max(0,debIbsAno-creditoIbsNovo),status:ano<2029?"CBS + início do IBS":"Transição ICMS/ISS para IBS"};
+    return {ano,total:novoAno+mantidosAno,iva:novoAno,cbs:Math.max(0,debCbsAno-creditoCbsAno),ibs:Math.max(0,debIbsAno-creditoIbsAno),status:ano<2029?"CBS + início do IBS":"Transição ICMS/ISS para IBS"};
   });
 
   const impostoRendaReforma=regime==="Lucro Presumido"
@@ -2291,8 +2294,8 @@ function SimuladorReformaPublico({
 
     if(/^20(2[7-9]|3[0-3])$/.test(valor)){
       // Premissas gerenciais editáveis. Não representam alíquota legal definitiva.
-      setCbs("9,3");
-      setIbs(valor==="2027"||valor==="2028"?"0,1":"18,7");
+      setCbs("9,21");
+      setIbs("18,7");
       setReducaoCbs("0");
       setReducaoIbs("0");
       return;
@@ -2400,6 +2403,7 @@ function SimuladorReformaPublico({
       if(p){
         const selecionada=`${p.codigo}${p.codigo?" — ":""}${p.descricao}`;
         setAtividadeSelecionada(selecionada);
+        setDescricaoAtividadeReal(String(p.descricao||""));
         setNatureza(classificarNaturezaPorCnae(p.descricao));
       }
     }catch(e){
@@ -2416,6 +2420,7 @@ function SimuladorReformaPublico({
   function selecionarAtividade(item){
     const valor=`${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
     setAtividadeSelecionada(valor);
+    setDescricaoAtividadeReal(String(item.descricao||""));
     setNatureza(classificarNaturezaPorCnae(item.descricao));
     setPesquisaTributaria(null);
     setErroPesquisaTributaria("");
@@ -2446,6 +2451,9 @@ function SimuladorReformaPublico({
           cnae,atividadeReal:atividade,nbsNcm,regime,
           municipio:empresaCadastral?.endereco?.municipio||"",
           uf:empresaCadastral?.endereco?.uf||"",ano:cenarioAliquota,
+          cbsReferenciaPct:n(cbs),ibsReferenciaPct:n(ibs),
+          situacaoPremissaReferencia:"ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
+          fontePremissaReferencia:"Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva",
         }),
       });
       const data=await resposta.json().catch(()=>null);
@@ -2455,6 +2463,11 @@ function SimuladorReformaPublico({
         resultado:data.resultado,premissasConfirmadas:data.premissasConfirmadas||null,
       };
       setPesquisaTributaria(pesquisaNova);
+      const classificacao=data.resultado?.classificacao_operacao||{};
+      if(["SERVICO","COMERCIO","INDUSTRIA"].includes(String(classificacao.setor||"").toUpperCase())){
+        const nomes={SERVICO:"Serviço",COMERCIO:"Comércio",INDUSTRIA:"Indústria"};
+        setNatureza(nomes[String(classificacao.setor).toUpperCase()]);
+      }
       const reducaoSugerida=Number(data.resultado?.beneficio_legal?.percentual_reducao_pct??0);
       const premissas=data.status==="VALIDADO"?data.premissasConfirmadas:null;
       if(premissas){
@@ -2464,7 +2477,10 @@ function SimuladorReformaPublico({
         setReducaoCbs(String(reducaoAplicada).replace(".",","));
         setReducaoIbs(String(reducaoAplicada).replace(".",","));
         setTratamentoIbsCbs(reducaoAplicada===30?"REDUCAO_30":reducaoAplicada===60?"REDUCAO_60":reducaoAplicada===100?"ZERO":reducaoAplicada>0?"MANUAL":"PADRAO");
-        setClassificacaoFiscal(premissas.baseLegal||data.resultado?.tratamento_sugerido||"");
+        setClassificacaoFiscal([
+          premissas.baseLegal||data.resultado?.tratamento_sugerido||"",
+          premissas.aplicacaoCondicional?"Aplicação simulada condicionada aos requisitos legais e documentais.":"",
+        ].filter(Boolean).join(" · "));
         setTratamentoConfirmado(true);
         if(premissas.aliquotaLocalPct!=null){
           setAliquotaLocalAtual(String(premissas.aliquotaLocalPct).replace(".",","));
@@ -2494,7 +2510,7 @@ function SimuladorReformaPublico({
     const chave=[
       cnpjPesquisa,cnae,atividade.toLowerCase(),nbsNcm.trim().toLowerCase(),
       regime,empresaCadastral?.endereco?.municipio||"",
-      empresaCadastral?.endereco?.uf||"",cenarioAliquota,
+      empresaCadastral?.endereco?.uf||"",cenarioAliquota,n(cbs),n(ibs),
     ].join("|");
 
     if(pesquisaTributariaAutomaticaRef.current===chave)return;
@@ -2508,7 +2524,7 @@ function SimuladorReformaPublico({
     return()=>clearTimeout(temporizador);
   },[
     cnpj,empresaCadastral,atividadesReais,atividadeSelecionada,
-    descricaoAtividadeReal,nbsNcm,regime,cenarioAliquota,
+    descricaoAtividadeReal,nbsNcm,regime,cenarioAliquota,cbs,ibs,
   ]);
 
   async function consultarStatusPesquisaTributaria(){
@@ -2533,7 +2549,11 @@ function SimuladorReformaPublico({
     setReducaoCbs(String(p.reducaoPct).replace(".",","));
     setReducaoIbs(String(p.reducaoPct).replace(".",","));
     setTratamentoIbsCbs(Number(p.reducaoPct)===30?"REDUCAO_30":Number(p.reducaoPct)===60?"REDUCAO_60":Number(p.reducaoPct)===100?"ZERO":Number(p.reducaoPct)>0?"MANUAL":"PADRAO");
-    setClassificacaoFiscal([p.baseLegal,p.observacao].filter(Boolean).join(" · "));
+    setClassificacaoFiscal([
+      p.baseLegal,
+      p.observacao,
+      p.aplicacaoCondicional?"Aplicação simulada condicionada aos requisitos legais e documentais.":"",
+    ].filter(Boolean).join(" · "));
     setTratamentoConfirmado(true);
     if(p.aliquotaLocalPct!=null&&Number(p.aliquotaLocalPct)>0){
       setAliquotaLocalAtual(String(p.aliquotaLocalPct).replace(".",","));
@@ -2576,8 +2596,12 @@ function SimuladorReformaPublico({
 
   const decisaoRecomendada=useMemo(()=>{
     const pendencias=[];
+    const aplicacaoCondicional=pesquisaTributaria?.premissasConfirmadas?.aplicacaoCondicional===true;
     if(naoSeiImpostoAtual)pendencias.push("Confirmar a carga atual nos documentos fiscais e no PGDAS.");
     if(!tratamentoConfirmado&&(redCbs>0||redIbs>0))pendencias.push("A pesquisa automática não confirmou o enquadramento legal da redução.");
+    if(aplicacaoCondicional){
+      pendencias.push("A redução legal foi aplicada automaticamente à simulação, condicionada à comprovação dos requisitos indicados na pesquisa.");
+    }
     if(regime==="Simples Nacional"&&origemDasResidual.includes("Estimativa gerencial")){
       pendencias.push("Substituir o DAS residual estimado pela composição documental do PGDAS.");
     }
@@ -2642,12 +2666,12 @@ function SimuladorReformaPublico({
     };
   },[
     naoSeiImpostoAtual,tratamentoConfirmado,redCbs,redIbs,regime,
-    origemDasResidual,faseTeste2026,comparacaoPermitida,motivoPendencia,
+    origemDasResidual,faseTeste2026,comparacaoPermitida,motivoPendencia,pesquisaTributaria,
     simplesDentro,simplesFora,perfilClientes,diferenca,totalReformaExibido,atual
   ]);
 
   const snapshot={
-    versao:"SIMULADOR_REFORMA_PUBLICO_V7_RELATORIOS_SEGMENTADOS",
+    versao:"SIMULADOR_REFORMA_PUBLICO_V8_MOTOR_HIBRIDO",
     etapa,
     participante:{nome,email,telefone},
     empresa:{
@@ -3106,9 +3130,12 @@ ${decisao.pendencias?.length?`<h2 class="section">O que precisa ser confirmado</
   <div class="box">
     <div class="row"><span>CBS de referência informada - premissa</span><strong>${percentualSimulador(cbsNom)}</strong></div>
     <div class="row"><span>IBS de referência informada - premissa</span><strong>${percentualSimulador(ibsNom)}</strong></div>
+    <div class="row"><span>CBS nominal aplicável no ano</span><strong>${percentualSimulador(cbsBaseTransicao)}</strong></div>
     <div class="row"><span>Redução CBS</span><strong>${percentualSimulador(redCbs)}</strong></div>
+    <div class="row"><span>CBS efetiva após redução</span><strong>${percentualSimulador(cbsEfetiva)}</strong></div>
+    <div class="row"><span>IBS nominal aplicável no ano</span><strong>${percentualSimulador(ibsBaseTransicao)}</strong></div>
     <div class="row"><span>Redução IBS</span><strong>${percentualSimulador(redIbs)}</strong></div>
-    <div class="row"><span>IBS efetivo no ano</span><strong>${percentualSimulador(ibsEfetiva)}</strong></div>
+    <div class="row"><span>IBS efetivo após redução</span><strong>${percentualSimulador(ibsEfetiva)}</strong></div>
     <div class="row"><span>Alíquota combinada do cenário</span><strong>${percentualSimulador(iva)}</strong></div>
     <div class="row"><span>Tratamento</span><strong>${tratamentoIbsCbs}</strong></div>
     <div class="row"><span>Classificação/fundamento</span><strong>${classificacaoFiscal||"Pendente"}</strong></div>
@@ -3164,9 +3191,11 @@ ${decisao.pendencias?.length?`<h2 class="section">O que precisa ser confirmado</
   <h2>Memória de cálculo</h2>
   <div class="box">
     <div class="row"><span>Base IBS/CBS — por fora</span><strong>${moedaSimulador(baseIbsCbs)}</strong></div>
+    <div class="row"><span>Fórmula CBS</span><strong>${percentualSimulador(cbsBaseTransicao)} × (1 − ${percentualSimulador(redCbs)}) = ${percentualSimulador(cbsEfetiva)}</strong></div>
     <div class="row"><span>Débito CBS</span><strong>${moedaSimulador(debitoCbs)}</strong></div>
     <div class="row"><span>(-) Crédito CBS validado</span><strong>${moedaSimulador(creditoCbsNovo)}</strong></div>
     <div class="row"><span>CBS líquida</span><strong>${moedaSimulador(cbsLiquida)}</strong></div>
+    <div class="row"><span>Fórmula IBS</span><strong>${percentualSimulador(ibsBaseTransicao)} × (1 − ${percentualSimulador(redIbs)}) = ${percentualSimulador(ibsEfetiva)}</strong></div>
     <div class="row"><span>Débito IBS</span><strong>${moedaSimulador(debitoIbs)}</strong></div>
     <div class="row"><span>(-) Crédito IBS validado</span><strong>${moedaSimulador(creditoIbsNovo)}</strong></div>
     <div class="row"><span>IBS líquido</span><strong>${moedaSimulador(ibsLiquido)}</strong></div>
@@ -3773,7 +3802,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
         <div style={{marginTop:8,padding:10,border:"1px solid #CADAF2",borderRadius:11,background:"#F5F8FF"}}>
           <div style={{fontSize:9,fontWeight:900,color:NAVY}}>Pesquisa tributária da atividade com IA</div>
-          <p style={{...muted,margin:"4px 0 8px"}}>Ao selecionar o CNAE principal, a pesquisa inicia automaticamente. O percentual é aplicado somente quando o motor confirma fonte oficial, confiança alta, base legal vigente e ausência de dados pendentes.</p>
+          <p style={{...muted,margin:"4px 0 8px"}}>Ao selecionar o CNAE principal, a pesquisa inicia automaticamente. Benefícios confirmados em fonte oficial entram na simulação. Quando a lei exigir comprovação adicional, o cálculo é apresentado com ressalva expressa, sem esconder a redução nem tratá-la como apuração definitiva.</p>
           <label style={labelStyle}>NBS ou NCM, quando aplicável
             <input value={nbsNcm} onChange={e=>{setNbsNcm(e.target.value);setPesquisaTributaria(null)}} style={input} placeholder="Opcional - informe se conhecido"/>
           </label>
@@ -3784,15 +3813,20 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           {erroPesquisaTributaria&&<button type="button" onClick={()=>{pesquisaTributariaAutomaticaRef.current="";pesquisarTratamentoTributario()}} disabled={pesquisandoTributaria} style={{...chipStyle(false),width:"100%",marginTop:7}}>Tentar pesquisa novamente</button>}
           {pesquisaTributaria&&<div style={{marginTop:8,padding:9,borderRadius:9,background:pesquisaTributaria.status==="VALIDADO"?"#EAF8F1":"#FFF8E8",fontSize:8,lineHeight:1.5}}>
             <div><b>Status:</b> {pesquisaTributaria.status}</div>
-            <div><b>Aplicação automática:</b> {pesquisaTributaria.resultado?.validacao_automatica?.apto?"Liberada pelo motor":"Não aplicada por dados insuficientes"}</div>
+            <div><b>Aplicação automática:</b> {pesquisaTributaria.resultado?.validacao_automatica?.status==="APLICADO_COM_RESSALVA"?"Aplicada à simulação com ressalva legal":pesquisaTributaria.resultado?.validacao_automatica?.apto?"Liberada pelo motor":"Não aplicada por dados insuficientes"}</div>
             <div><b>Sugestão:</b> {pesquisaTributaria.resultado?.tratamento_sugerido||"A validar"}</div>
+            <div><b>Tipo da operação:</b> {String(pesquisaTributaria.resultado?.classificacao_operacao?.setor||"Não determinado").replaceAll("_"," ")}</div>
+            <div><b>Código identificado:</b> {pesquisaTributaria.resultado?.classificacao_operacao?.codigo||"Depende da identificação do produto/serviço"} {pesquisaTributaria.resultado?.classificacao_operacao?.tipo_codigo?`· ${String(pesquisaTributaria.resultado.classificacao_operacao.tipo_codigo).replaceAll("_"," ")}`:""}</div>
+            <div><b>Descrição fiscal:</b> {pesquisaTributaria.resultado?.classificacao_operacao?.descricao||"Não determinada"}</div>
             <div><b>Benefício:</b> {pesquisaTributaria.resultado?.beneficio_legal?.base_legal||"Base legal ainda não confirmada"}</div>
             <div><b>Redução identificada:</b> {pesquisaTributaria.resultado?.beneficio_legal?.percentual_reducao_pct!=null?`${pesquisaTributaria.resultado.beneficio_legal.percentual_reducao_pct}%`:"Não identificada"}</div>
             <div><b>Situação da alíquota:</b> {pesquisaTributaria.resultado?.aliquotas_referencia?.situacao_normativa||"Não informada"}</div>
+            <div><b>Premissa utilizada:</b> CBS {Number(pesquisaTributaria.resultado?.aliquotas_referencia?.cbs_pct||0).toLocaleString("pt-BR")}% + IBS {Number(pesquisaTributaria.resultado?.aliquotas_referencia?.ibs_pct||0).toLocaleString("pt-BR")}%</div>
             <div><b>Tributo atual pesquisado:</b> {pesquisaTributaria.resultado?.tributacao_local?.tipo||"Não determinado"} {pesquisaTributaria.resultado?.tributacao_local?.aliquota_efetiva_pct!=null?`· ${pesquisaTributaria.resultado.tributacao_local.aliquota_efetiva_pct}%`:"· faltam dados para determinar"}</div>
             <div><b>Base legal local:</b> {pesquisaTributaria.resultado?.tributacao_local?.base_legal||"Ainda não confirmada"}</div>
             {pesquisaTributaria.resultado?.fontes?.length>0&&<div style={{marginTop:4}}><b>Fontes oficiais:</b>{pesquisaTributaria.resultado.fontes.slice(0,5).map((fonte,i)=><div key={i}><a href={fonte.url} target="_blank" rel="noreferrer">{fonte.titulo||fonte.url}</a>{fonte.artigo?` · ${fonte.artigo}`:""}</div>)}</div>}
             {!!pesquisaTributaria.resultado?.validacao_automatica?.motivos?.length&&<div style={{marginTop:4}}><b>Por que não foi aplicada:</b> {pesquisaTributaria.resultado.validacao_automatica.motivos.join(" · ")}</div>}
+            {!!pesquisaTributaria.resultado?.validacao_automatica?.ressalvas?.length&&<div style={{marginTop:4,color:"#805B10"}}><b>Ressalvas para confirmação documental:</b> {pesquisaTributaria.resultado.validacao_automatica.ressalvas.join(" · ")}</div>}
           </div>}
         </div>
 
@@ -3849,7 +3883,11 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             <input value={classificacaoFiscal} onChange={e=>{setClassificacaoFiscal(e.target.value);setTratamentoConfirmado(false)}} style={input} placeholder="Informe o que sustenta a redução"/>
           </label>
           <div style={{fontSize:7.8,lineHeight:1.35,marginTop:6,color:tratamentoConfirmado?"#176B47":"#805B10",fontWeight:850}}>
-            {tratamentoConfirmado?"Enquadramento liberado automaticamente pelo motor.":"Enquadramento não aplicado: a pesquisa automática não confirmou todos os requisitos."}
+            {tratamentoConfirmado
+              ?pesquisaTributaria?.premissasConfirmadas?.aplicacaoCondicional
+                ?"Redução aplicada automaticamente à simulação, com requisitos documentais destacados."
+                :"Enquadramento liberado automaticamente pelo motor."
+              :"Enquadramento não aplicado: a pesquisa automática não confirmou base legal suficiente."}
           </div>
         </div>}
 
@@ -4176,6 +4214,10 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           Memória de cálculo
         </h3>
 
+        <div style={{margin:"0 0 8px",padding:9,borderRadius:9,background:"#EEF5FF",color:"#31589C",fontSize:7.8,lineHeight:1.5}}>
+          <b>Alíquota efetiva utilizada:</b> CBS {percentualSimulador(cbsBaseTransicao)} × (1 − {percentualSimulador(redCbs)}) = {percentualSimulador(cbsEfetiva)} · IBS {percentualSimulador(ibsBaseTransicao)} × (1 − {percentualSimulador(redIbs)}) = {percentualSimulador(ibsEfetiva)}.
+        </div>
+
         {[
           ["Faturamento",fat],
           ["Base IBS/CBS — cálculo por fora",baseIbsCbs],
@@ -4186,6 +4228,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           ["(-) Crédito IBS validado",creditoIbsNovo],
           ["IBS líquido",ibsLiquido],
           ["IBS/CBS líquido",ibsCbsLiquido],
+          ["DAS total antes da opção",regime==="Simples Nacional"?dasAtualReferencia:null],
+          ["(-) Parcela do DAS substituída",regime==="Simples Nacional"?parcelaConsumoDasEstimada:null],
+          ["DAS residual que permanece",regime==="Simples Nacional"?dasResidualUsado:null],
           ["PIS/Cofins remanescentes",pisCofinsRemanescentes],
           ["ICMS/ISS remanescentes",icmsIssRemanescentes],
           ["IPI remanescente",ipiRemanescente],
@@ -4195,7 +4240,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           ["CPP / folha",cppAtualUsado],
           ["Imposto Seletivo",isUsado],
           ["Outros tributos",outrosAtuaisUsados],
-          ["Valor da operação + IBS/CBS",precoFinalNovo],
+          ["Preço se houver repasse integral dos débitos IBS/CBS",precoFinalNovo],
           [faseTeste2026?"Carga vigente - sem falsa economia":regime==="Simples Nacional"?"Carga total por fora":"Total Reforma",totalReformaExibido],
         ].map(([l,v])=><div key={l} style={{
           display:"flex",justifyContent:"space-between",
