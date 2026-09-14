@@ -19699,6 +19699,254 @@ function AuditoriaSistema({ token }) {
 }
 
 // =========================================================
+// ASAAS FINANCEIRO (admin)
+// =========================================================
+
+function moedaAdmin(valor) {
+  return Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+const STATUS_ASAAS = ["", "PENDING", "RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "OVERDUE", "CANCELLED", "REFUNDED", "DELETED"];
+
+function AsaasFinanceiroAdmin({ token }) {
+  const [dados, setDados] = useState({ resumo: {}, pagamentos: [], eventos: [] });
+  const [status, setStatus] = useState("");
+  const [busca, setBusca] = useState("");
+  const [inicio, setInicio] = useState("");
+  const [fim, setFim] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [sincronizando, setSincronizando] = useState("");
+  const [erro, setErro] = useState("");
+  const [ok, setOk] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const p = new URLSearchParams({ acao: "admin-painel" });
+      if (status) p.set("status", status);
+      if (busca) p.set("busca", busca);
+      if (inicio) p.set("inicio", inicio);
+      if (fim) p.set("fim", fim);
+      const r = await fetch(`/api/asaas?${p.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao carregar o painel financeiro.");
+      setDados(d);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  async function sincronizar(paymentId = "") {
+    setSincronizando(paymentId || "TODOS");
+    setErro("");
+    setOk("");
+    try {
+      const r = await fetch("/api/asaas?acao=admin-sincronizar", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ paymentId }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao sincronizar com o Asaas.");
+      setOk(`${d.atualizados || 0} pagamento(s) sincronizado(s).`);
+      await carregar();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setSincronizando("");
+    }
+  }
+
+  const r = dados.resumo || {};
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 16 }}>
+        <Card><small style={{ color: MUTED }}>RECEITA BRUTA</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.bruto)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>{r.recebidos || 0} recebidos</span></Card>
+        <Card><small style={{ color: MUTED }}>RECEITA LÍQUIDA</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.liquido)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Taxas: {moedaAdmin(r.taxas)}</span></Card>
+        <Card><small style={{ color: MUTED }}>DESCONTOS</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.descontos)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Cupons concedidos</span></Card>
+        <Card><small style={{ color: MUTED }}>PENDENTES</small><h3 style={{ margin: "6px 0 0" }}>{r.pendentes || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Cobranças não concluídas</span></Card>
+        <Card><small style={{ color: MUTED }}>NÃO CONCLUÍDOS</small><h3 style={{ margin: "6px 0 0" }}>{r.nao_concluidos || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Vencidos/cancelados</span></Card>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
+          {STATUS_ASAAS.map((s) => <option key={s} value={s}>{s || "Todos os status"}</option>)}
+        </select>
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Cliente, CPF/CNPJ ou ID do pagamento..." style={{ flex: 1, minWidth: 220, border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+        <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+        <input type="date" value={fim} onChange={(e) => setFim(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+        <Botao secundario onClick={carregar}><RefreshCcw size={14} />{carregando ? "Atualizando..." : "Filtrar"}</Botao>
+        <Botao onClick={() => sincronizar("")} disabled={sincronizando === "TODOS"}>{sincronizando === "TODOS" ? "Sincronizando..." : "Sincronizar pendentes"}</Botao>
+      </div>
+
+      {erro && <div style={{ background: "#FAECE7", color: "#993C1D", padding: 10, borderRadius: 9, marginBottom: 12 }}>{erro}</div>}
+      {ok && <div style={{ background: "#EAF7EE", color: "#1F7A44", padding: 10, borderRadius: 9, marginBottom: 12 }}>{ok}</div>}
+
+      <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+          <thead><tr>
+            <th style={thStyle}>Data</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Plano</th>
+            <th style={thStyle}>Valor</th>
+            <th style={thStyle}>Líquido</th>
+            <th style={thStyle}>Cupom</th>
+            <th style={thStyle}>Forma</th>
+            <th style={thStyle}>Status</th>
+            <th style={thStyle}>Ações</th>
+          </tr></thead>
+          <tbody>
+            {(dados.pagamentos || []).map((p) => (
+              <tr key={p.payment_id}>
+                <td style={tdStyle}>{formatarData(p.criado_em)}</td>
+                <td style={tdStyle}><strong>{p.cliente_nome || "-"}</strong><br /><span style={{ color: MUTED }}>{p.cliente_documento || ""}</span></td>
+                <td style={tdStyle}>{p.plano || "-"}</td>
+                <td style={tdStyle}>{moedaAdmin(p.valor)}</td>
+                <td style={tdStyle}>{moedaAdmin(p.valor_liquido)}</td>
+                <td style={tdStyle}>{p.cupom_codigo || "-"}</td>
+                <td style={tdStyle}>{p.forma_pagamento || "-"}</td>
+                <td style={tdStyle}>{p.status}</td>
+                <td style={tdStyle}>
+                  <button type="button" onClick={() => sincronizar(p.payment_id)} disabled={sincronizando === p.payment_id} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>
+                    {sincronizando === p.payment_id ? "..." : "Sincronizar"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!(dados.pagamentos || []).length && <tr><td colSpan={9} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum pagamento encontrado.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
+// AGENDA (admin)
+// =========================================================
+
+const STATUS_AGENDA = {
+  AGENDADO: { label: "Agendado", bg: "#EEF3FF", color: "#2453A6" },
+  REALIZADO: { label: "Realizado", bg: "#EAF7EE", color: "#1F7A44" },
+  CANCELADO: { label: "Cancelado", bg: "#FAECE7", color: "#993C1D" },
+  NAO_COMPARECEU: { label: "Não compareceu", bg: "#FDF3D8", color: "#8A5A00" },
+};
+
+function AgendaAdmin({ token }) {
+  const [agendamentos, setAgendamentos] = useState([]);
+  const [filtroStatus, setFiltroStatus] = useState("");
+  const [busca, setBusca] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [atualizando, setAtualizando] = useState("");
+  const [erro, setErro] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const r = await fetch("/api/crm?action=listar-agendamentos", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro ao carregar a agenda.");
+      setAgendamentos(d.agendamentos || []);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  async function mudarStatus(id, status) {
+    setAtualizando(id);
+    setErro("");
+    try {
+      const r = await fetch("/api/crm?action=atualizar-agendamento", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id, status }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro ao atualizar o agendamento.");
+      await carregar();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setAtualizando("");
+    }
+  }
+
+  const lista = agendamentos.filter((a) => {
+    if (filtroStatus && a.status !== filtroStatus) return false;
+    if (busca && !JSON.stringify(a).toLowerCase().includes(busca.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
+          <option value="">Todos os status</option>
+          {Object.entries(STATUS_AGENDA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Filtrar por nome, empresa, e-mail..." style={{ flex: 1, minWidth: 220, border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+        <Botao secundario onClick={carregar}><RefreshCcw size={14} />{carregando ? "Atualizando..." : "Atualizar"}</Botao>
+      </div>
+
+      {erro && <div style={{ background: "#FAECE7", color: "#993C1D", padding: 10, borderRadius: 9, marginBottom: 12 }}>{erro}</div>}
+
+      <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000 }}>
+          <thead><tr>
+            <th style={thStyle}>Data</th>
+            <th style={thStyle}>Hora</th>
+            <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>Empresa</th>
+            <th style={thStyle}>Contato</th>
+            <th style={thStyle}>Origem</th>
+            <th style={thStyle}>Status</th>
+            <th style={thStyle}>Ações</th>
+          </tr></thead>
+          <tbody>
+            {lista.map((a) => {
+              const s = STATUS_AGENDA[a.status] || { label: a.status || "-", bg: "#EEF0F4", color: MUTED };
+              return (
+                <tr key={a.id}>
+                  <td style={tdStyle}>{a.data_agenda ? new Date(a.data_agenda).toLocaleDateString("pt-BR") : "-"}</td>
+                  <td style={tdStyle}>{a.hora_agenda || "-"}</td>
+                  <td style={tdStyle}><strong>{a.nome || "-"}</strong><br /><span style={{ color: MUTED }}>{a.email || ""}</span></td>
+                  <td style={tdStyle}>{a.empresa || "-"}</td>
+                  <td style={tdStyle}>{a.telefone || "-"}</td>
+                  <td style={tdStyle}>{a.origem || "-"}</td>
+                  <td style={tdStyle}><span style={{ background: s.bg, color: s.color, borderRadius: 999, padding: "4px 9px", fontSize: 10.5, fontWeight: 800 }}>{s.label}</span></td>
+                  <td style={tdStyle}>
+                    <select
+                      value={a.status || "AGENDADO"}
+                      disabled={atualizando === a.id}
+                      onChange={(e) => mudarStatus(a.id, e.target.value)}
+                      style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "6px 8px", fontSize: 10.5 }}
+                    >
+                      {Object.entries(STATUS_AGENDA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
+            {!lista.length && <tr><td colSpan={8} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum agendamento encontrado.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
 // CLIENTE 360º
 // =========================================================
 
@@ -23444,6 +23692,42 @@ export default function Admin() {
       >
         <ConteudoPadrao>
           <Tributario
+            token={token}
+          />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "asaas") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo="Asaas Financeiro"
+        subtitulo="Cobranças Pix, conciliação e cupons"
+      >
+        <ConteudoPadrao>
+          <AsaasFinanceiroAdmin
+            token={token}
+          />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "agenda") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo="Agenda"
+        subtitulo="Reuniões agendadas a partir dos diagnósticos"
+      >
+        <ConteudoPadrao>
+          <AgendaAdmin
             token={token}
           />
         </ConteudoPadrao>
