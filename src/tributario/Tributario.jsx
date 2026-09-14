@@ -808,6 +808,21 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
  const [documentosBanco,setDocumentosBanco]=useState([]);
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
+ const checklistTributario=useMemo(()=>{
+  const nomes=documentosBanco.map(d=>String(d.nome||d.filename||d.name||"").toLowerCase());
+  const possui=(...termos)=>nomes.some(nome=>termos.some(t=>nome.includes(t)));
+  const itens=[
+   ["Cartão CNPJ / cadastro",possui("cnpj","cartao")||Boolean(cnpj)],
+   ["PGDAS / DEFIS / DAS",possui("pgdas","defis","das")],
+   ["Notas fiscais de venda",possui("nf-e","nfe","nfs-e","nfse","venda")],
+   ["Notas fiscais de compra",possui("compra","entrada","fornecedor")],
+   ["Folha e pró-labore",possui("folha","prolabore","pro-labore")],
+   ["Composição dos tributos atuais",Boolean(tributosAtuais)||possui("tributo","imposto","apuracao","apuração")],
+   ["Documentos para créditos e deduções",possui("credito","crédito","dedu","benef")],
+   ["Contratos e perfil B2B/B2C",possui("contrato","b2b","b2c")],
+  ];
+  return {itens,concluidos:itens.filter(([,ok])=>ok).length,total:itens.length};
+ },[documentosBanco,cnpj,tributosAtuais]);
  const [carregandoDocumentos,setCarregandoDocumentos]=useState(false);
  const [analiseDesatualizada,setAnaliseDesatualizada]=useState(false);
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
@@ -2548,7 +2563,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  </div>
 </div><div style={card}><h3>Tratamentos e particularidades</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}><label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Incentivo fiscal atual<select value={incentivoAtual} onChange={e=>setIncentivoAtual(e.target.value)} style={input}><option value="NORMAL">Sem incentivo informado</option><option value="PIS_COFINS">Incentivo PIS/Cofins</option><option value="ICMS">Incentivo ICMS</option><option value="ISS">Incentivo ISS</option><option value="OUTRO">Outro</option></select></label>{field("Redução IBS/CBS a validar %",reducaoIbsCbs,setReducaoIbsCbs,"%")}</div>{field("Tratamento setorial/especial",tratamentoEspecial,setTratamentoEspecial,"Saúde, educação, exportação, regime específico etc.")}</div></div>}
 
-  {aba==="documentos"&&<div style={{display:"grid",gap:10}}>
+  {aba==="documentos"&&<div style={{display:"grid",gap:10}}><div style={{...card,borderTop:"4px solid #31589C"}}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}><div><h3 style={{margin:"0 0 4px"}}>Checklist documental</h3><div style={{fontSize:9,color:"#697386"}}>Atualizado automaticamente conforme os documentos são arquivados.</div></div><strong style={{fontSize:18,color:checklistTributario.concluidos===checklistTributario.total?"#16805C":"#31589C"}}>{checklistTributario.concluidos}/{checklistTributario.total}</strong></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:7,marginTop:12}}>{checklistTributario.itens.map(([nome,ok])=><div key={nome} style={{padding:"8px 10px",borderRadius:9,border:`1px solid ${ok?"#B8E5D2":"#E3E7EF"}`,background:ok?"#F0FBF5":"#FBFCFE",fontSize:9}}><b style={{color:ok?"#16805C":"#697386"}}>{ok?"✓ Entregue":"○ Pendente"}</b><div style={{marginTop:3}}>{nome}</div></div>)}</div></div>
    <div style={card}>
     <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start",flexWrap:"wrap"}}>
      <div>
