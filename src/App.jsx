@@ -3011,6 +3011,7 @@ function SimuladorReformaPublico({
       }
 
       setRelatorioIa({
+        origemIA:"openai",
         leituraExecutiva:
           textoIaSeguroSimulador(d.leituraExecutiva)||
           "A simulação foi concluída. A interpretação definitiva depende da validação dos dados e da legislação aplicável.",
@@ -3020,6 +3021,14 @@ function SimuladorReformaPublico({
         proximosPassos:listaConsultivaSimulador(listaIaSeguraSimulador(d.proximosPassos)),
         pontosFortes:listaIaSeguraSimulador(d.pontosFortes),
         impactos:listaIaSeguraSimulador(d.impactos),
+        plano90Dias:d.plano90Dias||null,
+        quickWins:listaIaSeguraSimulador(d.quickWins),
+        kpisRecomendados:listaIaSeguraSimulador(d.kpisRecomendados||d.indicadores),
+        visaoConsultor:d.visaoConsultor||null,
+        visaoComercial:d.visaoComercial||null,
+        relatorioCliente:d.relatorioCliente||d.cliente||null,
+        relatorioAdministracao:d.relatorioAdministracao||d.administracao||null,
+        relatorioEquipe:d.relatorioEquipe||d.equipe||null,
       });
     }catch(e){
       console.error("[simulador-reforma][relatorio-ia]",e);
@@ -3028,7 +3037,8 @@ function SimuladorReformaPublico({
       // salvo com uma leitura transparente e pode ser complementado pelo
       // administrador depois.
       setRelatorioIa({
-        leituraExecutiva:"A simulação da Reforma foi concluída com os dados informados. Sugerimos interpretar os valores como estimativa gerencial e complementar a análise com a documentação fiscal da empresa.",
+        origemIA:"fallback_deterministico",
+        leituraExecutiva:"A simulação da Reforma foi concluída com base no CNAE, atividade, regime e valores informados. Sugerimos validar esta estimativa com PGDAS/DEFIS, documentos fiscais, deduções e créditos antes de qualquer decisão.",
         riscosPrioritarios:[
           "Sugerimos validar a atividade efetiva, o CNAE, o município e a UF para confirmar o tratamento de IBS/CBS.",
           "Sugerimos confrontar a carga atual e o cenário por fora com PGDAS/DEFIS e documentos fiscais.",
@@ -3037,8 +3047,12 @@ function SimuladorReformaPublico({
         prioridades:["Validar enquadramento e deduções","Conferir memória de cálculo","Projetar preços e margens"],
         recomendacoes:listaConsultivaSimulador(["Sugerimos revisar as premissas, deduções e fontes legais antes de qualquer decisão.","Sugerimos simular os anos de transição e os perfis B2B/B2C."]),
         proximosPassos:listaConsultivaSimulador(["Sugerimos reunir PGDAS/DEFIS, NFS-e/NF-e e documentos de créditos.","Sugerimos confirmar a atividade efetiva e os requisitos do benefício identificado.","Sugerimos agendar uma conversa com especialista."]),
-        pontosFortes:[],
-        impactos:[],
+        pontosFortes:["Sugerimos utilizar a memória de cálculo para comparar o Simples por dentro e IBS/CBS por fora."],
+        impactos:["Sugerimos avaliar impacto na carga, margem, preço e fluxo de caixa."],
+        plano90Dias:{titulo:"Plano de preparação para a Reforma",dias30:["Sugerimos conferir PGDAS/DEFIS, CNAE e atividade efetiva."],dias60:["Sugerimos validar deduções, créditos e DAS residual."],dias90:["Sugerimos consolidar preços, margens e plano de transição."]},
+        quickWins:["Sugerimos confirmar o enquadramento legal da atividade.","Sugerimos separar IBS/CBS por dentro e por fora."],
+        kpisRecomendados:["Carga atual x cenário Reforma","DAS residual","Créditos aproveitáveis","Diferença anual"],
+        visaoConsultor:{objetivo:"Sugerimos validar tecnicamente a simulação da Reforma.",perguntas:["Sugerimos confirmar a atividade efetiva.","Sugerimos conferir os requisitos das deduções."]},
       });
       setErroRelatorioIa("");
     }finally{
