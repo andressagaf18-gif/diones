@@ -5614,10 +5614,11 @@ export default function Tributario({
           </div>
         </div>
 
+        <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${CORAL}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>ANÁLISE TRIBUTÁRIA CONSOLIDADA</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:24}}>Planejamento + Reforma Tributária</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>Uma única análise da empresa, usando CNPJ, CNAE, atividade, documentos e dados econômicos para comparar regimes atuais e impactos de IBS/CBS.</p><div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:12}}><Botao onClick={()=>escolherProjeto("reforma")}>Iniciar análise consolidada</Botao><Botao secundario onClick={()=>escolherProjeto("planejamento")}>Abrir análise existente</Botao></div></div>
         <div
           style={{
             display:
-              "grid",
+              "none",
             gridTemplateColumns:
               "repeat(auto-fit,minmax(180px,1fr))",
             gap:
