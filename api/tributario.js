@@ -17,6 +17,28 @@ const MODEL =
 const MAX_FILE_BYTES =
   3 * 1024 * 1024;
 
+const EXTENSOES_IMAGEM = new Set([
+  "jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif",
+]);
+
+// Fotos/scans (jpg, png etc.) precisam ser enviados ao modelo como
+// input_image, não input_file: o input_file é para extração de texto/
+// planilha e ignora o conteúdo visual de uma imagem.
+function ehImagem(arquivo) {
+  const mime = String(arquivo?.mimeType || "").toLowerCase();
+  if (mime.startsWith("image/")) return true;
+
+  const nome = String(arquivo?.filename || "").toLowerCase();
+  const ext = nome.includes(".") ? nome.split(".").pop() : "";
+  return EXTENSOES_IMAGEM.has(ext);
+}
+
+function conteudoArquivoIA(arquivo) {
+  return ehImagem(arquivo)
+    ? { type: "input_image", file_id: arquivo.fileId, detail: "auto" }
+    : { type: "input_file", file_id: arquivo.fileId };
+}
+
 let schemaPromise =
   null;
 
@@ -1657,10 +1679,40 @@ async function salvarDocumentoBanco({
   `;
 
   if (existente?.[0]) {
+    const projetoIdAtual = txt(projetoId, 200);
+    let projetoIdFinal = existente[0].projeto_id;
+
+    // O mesmo arquivo (mesmo hash) já existia no arquivo do cliente, mas
+    // vinculado a outro projeto (ex.: rascunho anterior ainda sem CNPJ, ou
+    // reaproveitamento do documento em uma nova análise). Sem isto, o
+    // documento continua "solto" no projeto antigo e desaparece do
+    // histórico/backup do projeto atual, mesmo já estando em tax_documents.
+    if (projetoIdAtual && projetoIdAtual !== projetoIdFinal) {
+      await sql`
+        UPDATE tax_documents
+        SET projeto_id = ${projetoIdAtual}
+        WHERE id = ${existente[0].id}
+      `;
+
+      projetoIdFinal = projetoIdAtual;
+
+      await addHistory(
+        projetoIdAtual,
+        "DOCUMENTO_VINCULADO",
+        `Documento ${existente[0].filename} (já existente no arquivo do cliente) vinculado a este projeto.`,
+        {
+          documentoId: existente[0].id,
+          filename: existente[0].filename,
+          projetoAnterior: existente[0].projeto_id || null,
+        },
+        user
+      );
+    }
+
     return {
       documento: {
         id: existente[0].id,
-        projetoId: existente[0].projeto_id,
+        projetoId: projetoIdFinal,
         cnpj: existente[0].cnpj,
         tipoProjeto: existente[0].tipo_projeto,
         categoria: existente[0].categoria,
@@ -2011,6 +2063,7 @@ async function prepararDocumentosIa(req, res) {
       documentId: row.id,
       fileId,
       filename: row.filename,
+      mimeType: row.mime_type,
       bytes: row.bytes,
     });
   }
@@ -2803,7 +2856,7 @@ async function planejamentoExtrair(req,res){
   const arquivos=Array.isArray(body.arquivos)?body.arquivos.filter(a=>a?.fileId):[];
   if(!arquivos.length) return send(res,400,{sucesso:false,error:"Envie ao menos um documento para extração."});
   const content=[];
-  for(const arquivo of arquivos) content.push({type:"input_file",file_id:arquivo.fileId});
+  for(const arquivo of arquivos) content.push(conteudoArquivoIA(arquivo));
   content.push({type:"input_text",text:`
 Você é o Finder Tax AI. Extraia SOMENTE a base necessária para PLANEJAMENTO TRIBUTÁRIO. NÃO analise IBS, CBS ou transição da Reforma Tributária.
 
@@ -2934,7 +2987,7 @@ async function reformaExtrair(req,res){
   const body=req.body||{};
   const arquivos=Array.isArray(body.arquivos)?body.arquivos.filter(a=>a?.fileId):[];
   if(!arquivos.length)return send(res,400,{sucesso:false,error:"Envie ao menos um documento para extração."});
-  const content=arquivos.map(a=>({type:"input_file",file_id:a.fileId}));
+  const content=arquivos.map(conteudoArquivoIA);
   content.push({type:"input_text",text:`
 Você é o Finder Tax AI. Extraia somente dados comprovados nos documentos para uma simulação da Reforma Tributária.
 Não invente CNAE, regime, faturamento, DAS, tributos ou créditos. Quando não houver prova, devolva null/zero e registre a ausência nas fontes.
@@ -2955,7 +3008,12 @@ Nos campos do schema de planejamento, use faturamento/tributos/creditos/parametr
       identificacao:{...identificacao,regime:identificacao.regimeAtual||parametros.regimeAtual||null},
       economicos:{
         receitaPeriodo:receitaExtraida,
-        faturamentoAnual:receitaExtraida,
+        // RBT12 real (Simples Nacional, extraído do PGDAS/documentos) tem
+        // prioridade sobre a soma de faturamento do período: são bases
+        // diferentes e a soma do período NÃO deve sobrescrever o RBT12
+        // documental na tela.
+        rbt12:simples.rbt12||null,
+        faturamentoAnual:simples.rbt12||receitaExtraida,
       },
       tributos:{
         pis:totalMeses(tributos.pis),cofins:totalMeses(tributos.cofins),icms:totalMeses(tributos.icms),
