@@ -19706,16 +19706,76 @@ function moedaAdmin(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function horaAdmin(valor) {
+  if (!valor) return "-";
+  try { return new Date(valor).toLocaleTimeString("pt-BR"); } catch { return "-"; }
+}
+
 const STATUS_ASAAS = ["", "PENDING", "RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "OVERDUE", "CANCELLED", "REFUNDED", "DELETED"];
 
+const PLANOS_ASAAS = {
+  INICIAL: "Diagnóstico Inicial",
+  COMPLETO: "Diagnóstico Completo",
+  ESPECIALISTA: "Diagnóstico + Especialista",
+};
+
+const ABAS_ASAAS = [
+  { id: "visao", label: "Visão geral" },
+  { id: "cobrancas", label: "Cobranças" },
+  { id: "extrato", label: "Extrato da conta" },
+  { id: "cupons", label: "Cupons" },
+  { id: "eventos", label: "Eventos Pix" },
+];
+
+function PillTabs({ abas, ativa, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+      {abas.map((a) => (
+        <button
+          key={a.id}
+          type="button"
+          onClick={() => onChange(a.id)}
+          style={{
+            border: "1px solid " + (ativa === a.id ? NAVY : "#D8DEEA"),
+            background: ativa === a.id ? NAVY : "#fff",
+            color: ativa === a.id ? WHITE : NAVY,
+            fontWeight: 800,
+            fontSize: 11.5,
+            borderRadius: 999,
+            padding: "8px 14px",
+            cursor: "pointer",
+          }}
+        >
+          {a.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const CUPOM_VAZIO = {
+  codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "",
+  planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "",
+  inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: "1", ativo: true,
+};
+
 function AsaasFinanceiroAdmin({ token }) {
-  const [dados, setDados] = useState({ resumo: {}, pagamentos: [], eventos: [] });
+  const [abaAsaas, setAbaAsaas] = useState("visao");
+  const [dados, setDados] = useState({ resumo: {}, pagamentos: [], eventos: [], atualizadoEm: null });
+  const [financeiro, setFinanceiro] = useState({ saldo: null, extrato: { data: [] }, avisos: [] });
+  const [cupons, setCupons] = useState([]);
+  const [novoCupom, setNovoCupom] = useState(CUPOM_VAZIO);
+
   const [status, setStatus] = useState("");
   const [busca, setBusca] = useState("");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
+
   const [carregando, setCarregando] = useState(false);
+  const [carregandoFinanceiro, setCarregandoFinanceiro] = useState(false);
+  const [carregandoCupons, setCarregandoCupons] = useState(false);
   const [sincronizando, setSincronizando] = useState("");
+  const [salvandoCupom, setSalvandoCupom] = useState(false);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
 
@@ -19739,7 +19799,52 @@ function AsaasFinanceiroAdmin({ token }) {
     }
   }
 
+  async function carregarFinanceiro() {
+    setCarregandoFinanceiro(true);
+    try {
+      const p = new URLSearchParams({ acao: "admin-financeiro" });
+      if (inicio) p.set("inicio", inicio);
+      if (fim) p.set("fim", fim);
+      const r = await fetch(`/api/asaas?${p.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao carregar o extrato do Asaas.");
+      setFinanceiro(d);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregandoFinanceiro(false);
+    }
+  }
+
+  async function carregarCupons() {
+    setCarregandoCupons(true);
+    try {
+      const r = await fetch("/api/asaas?acao=admin-cupons", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao carregar os cupons.");
+      setCupons(d.cupons || []);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregandoCupons(false);
+    }
+  }
+
   useEffect(() => { carregar(); }, []);
+
+  // Atualização automática a cada 15 segundos, respeitando a aba aberta.
+  useEffect(() => {
+    const t = setInterval(() => {
+      carregar();
+      if (abaAsaas === "visao" || abaAsaas === "extrato") carregarFinanceiro();
+    }, 15000);
+    return () => clearInterval(t);
+  }, [abaAsaas, status, busca, inicio, fim]);
+
+  useEffect(() => {
+    if ((abaAsaas === "visao" || abaAsaas === "extrato")) carregarFinanceiro();
+    if (abaAsaas === "cupons") carregarCupons();
+  }, [abaAsaas]);
 
   async function sincronizar(paymentId = "") {
     setSincronizando(paymentId || "TODOS");
@@ -19762,70 +19867,293 @@ function AsaasFinanceiroAdmin({ token }) {
     }
   }
 
+  async function salvarCupom(e) {
+    e.preventDefault();
+    setSalvandoCupom(true);
+    setErro("");
+    setOk("");
+    try {
+      const r = await fetch("/api/asaas?acao=admin-cupons", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(novoCupom),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao salvar o cupom.");
+      setOk(`Cupom ${d.codigo} salvo.`);
+      setNovoCupom(CUPOM_VAZIO);
+      await carregarCupons();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setSalvandoCupom(false);
+    }
+  }
+
+  async function alternarCupom(codigo, ativo) {
+    setErro("");
+    try {
+      const r = await fetch("/api/asaas?acao=admin-cupom-status", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ codigo, ativo }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao atualizar o cupom.");
+      await carregarCupons();
+    } catch (e) {
+      setErro(e.message);
+    }
+  }
+
+  async function excluirCupom(codigo) {
+    if (!window.confirm(`Excluir o cupom ${codigo}?`)) return;
+    setErro("");
+    try {
+      const r = await fetch("/api/asaas?acao=admin-cupom", {
+        method: "DELETE",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ codigo }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao excluir o cupom.");
+      await carregarCupons();
+    } catch (e) {
+      setErro(e.message);
+    }
+  }
+
+  function alternarPlanoCupom(plano) {
+    setNovoCupom((at) => ({
+      ...at,
+      planos: at.planos.includes(plano) ? at.planos.filter((p) => p !== plano) : [...at.planos, plano],
+    }));
+  }
+
   const r = dados.resumo || {};
+  const saldo = financeiro.saldo;
+  const extrato = Array.isArray(financeiro.extrato?.data) ? financeiro.extrato.data : [];
 
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 16 }}>
-        <Card><small style={{ color: MUTED }}>RECEITA BRUTA</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.bruto)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>{r.recebidos || 0} recebidos</span></Card>
-        <Card><small style={{ color: MUTED }}>RECEITA LÍQUIDA</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.liquido)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Taxas: {moedaAdmin(r.taxas)}</span></Card>
-        <Card><small style={{ color: MUTED }}>DESCONTOS</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.descontos)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Cupons concedidos</span></Card>
-        <Card><small style={{ color: MUTED }}>PENDENTES</small><h3 style={{ margin: "6px 0 0" }}>{r.pendentes || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Cobranças não concluídas</span></Card>
-        <Card><small style={{ color: MUTED }}>NÃO CONCLUÍDOS</small><h3 style={{ margin: "6px 0 0" }}>{r.nao_concluidos || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Vencidos/cancelados</span></Card>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, color: MUTED }}>Atualizado {horaAdmin(dados.atualizadoEm)}</span>
+        <Botao secundario onClick={() => sincronizar("")} disabled={sincronizando === "TODOS"}><RefreshCcw size={14} />{sincronizando === "TODOS" ? "Sincronizando..." : "Sincronizar pendentes"}</Botao>
+        <Botao onClick={() => { carregar(); if (abaAsaas === "visao" || abaAsaas === "extrato") carregarFinanceiro(); if (abaAsaas === "cupons") carregarCupons(); }}>{carregando ? "Atualizando..." : "Atualizar"}</Botao>
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
-          {STATUS_ASAAS.map((s) => <option key={s} value={s}>{s || "Todos os status"}</option>)}
-        </select>
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Cliente, CPF/CNPJ ou ID do pagamento..." style={{ flex: 1, minWidth: 220, border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
-        <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
-        <input type="date" value={fim} onChange={(e) => setFim(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
-        <Botao secundario onClick={carregar}><RefreshCcw size={14} />{carregando ? "Atualizando..." : "Filtrar"}</Botao>
-        <Botao onClick={() => sincronizar("")} disabled={sincronizando === "TODOS"}>{sincronizando === "TODOS" ? "Sincronizando..." : "Sincronizar pendentes"}</Botao>
-      </div>
+      <PillTabs abas={ABAS_ASAAS} ativa={abaAsaas} onChange={setAbaAsaas} />
 
       {erro && <div style={{ background: "#FAECE7", color: "#993C1D", padding: 10, borderRadius: 9, marginBottom: 12 }}>{erro}</div>}
       {ok && <div style={{ background: "#EAF7EE", color: "#1F7A44", padding: 10, borderRadius: 9, marginBottom: 12 }}>{ok}</div>}
 
-      <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
-          <thead><tr>
-            <th style={thStyle}>Data</th>
-            <th style={thStyle}>Cliente</th>
-            <th style={thStyle}>Plano</th>
-            <th style={thStyle}>Valor</th>
-            <th style={thStyle}>Líquido</th>
-            <th style={thStyle}>Cupom</th>
-            <th style={thStyle}>Forma</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Ações</th>
-          </tr></thead>
-          <tbody>
-            {(dados.pagamentos || []).map((p) => (
-              <tr key={p.payment_id}>
-                <td style={tdStyle}>{formatarData(p.criado_em)}</td>
-                <td style={tdStyle}><strong>{p.cliente_nome || "-"}</strong><br /><span style={{ color: MUTED }}>{p.cliente_documento || ""}</span></td>
-                <td style={tdStyle}>{p.plano || "-"}</td>
-                <td style={tdStyle}>{moedaAdmin(p.valor)}</td>
-                <td style={tdStyle}>{moedaAdmin(p.valor_liquido)}</td>
-                <td style={tdStyle}>{p.cupom_codigo || "-"}</td>
-                <td style={tdStyle}>{p.forma_pagamento || "-"}</td>
-                <td style={tdStyle}>{p.status}</td>
-                <td style={tdStyle}>
-                  <button type="button" onClick={() => sincronizar(p.payment_id)} disabled={sincronizando === p.payment_id} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>
-                    {sincronizando === p.payment_id ? "..." : "Sincronizar"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!(dados.pagamentos || []).length && <tr><td colSpan={9} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum pagamento encontrado.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      {abaAsaas === "visao" && (
+        <div>
+          {saldo && (
+            <Card style={{ marginBottom: 14 }}>
+              <small style={{ color: MUTED }}>SALDO NA CONTA ASAAS</small>
+              <h2 style={{ margin: "6px 0 0" }}>{moedaAdmin(saldo?.balance)}</h2>
+            </Card>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+            <Card><small style={{ color: MUTED }}>RECEITA BRUTA</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.bruto)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>{r.recebidos || 0} recebidos</span></Card>
+            <Card><small style={{ color: MUTED }}>RECEITA LÍQUIDA</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.liquido)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Taxas: {moedaAdmin(r.taxas)}</span></Card>
+            <Card><small style={{ color: MUTED }}>DESCONTOS</small><h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(r.descontos)}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Cupons concedidos</span></Card>
+            <Card><small style={{ color: MUTED }}>PENDENTES</small><h3 style={{ margin: "6px 0 0" }}>{r.pendentes || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Cobranças não concluídas</span></Card>
+            <Card><small style={{ color: MUTED }}>NÃO CONCLUÍDOS</small><h3 style={{ margin: "6px 0 0" }}>{r.nao_concluidos || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Vencidos/cancelados</span></Card>
+            <Card><small style={{ color: MUTED }}>ESTORNADOS</small><h3 style={{ margin: "6px 0 0" }}>{r.estornados || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Reembolsos</span></Card>
+          </div>
+        </div>
+      )}
+
+      {abaAsaas === "cobrancas" && (
+        <div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
+              {STATUS_ASAAS.map((s) => <option key={s} value={s}>{s || "Todos os status"}</option>)}
+            </select>
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Cliente, CPF/CNPJ ou ID do pagamento..." style={{ flex: 1, minWidth: 220, border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+            <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+            <input type="date" value={fim} onChange={(e) => setFim(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+            <Botao secundario onClick={carregar}><RefreshCcw size={14} />{carregando ? "Atualizando..." : "Filtrar"}</Botao>
+          </div>
+
+          <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1150 }}>
+              <thead><tr>
+                <th style={thStyle}>Data</th>
+                <th style={thStyle}>Cliente</th>
+                <th style={thStyle}>Plano</th>
+                <th style={thStyle}>Valor</th>
+                <th style={thStyle}>Líquido</th>
+                <th style={thStyle}>Cupom</th>
+                <th style={thStyle}>Forma</th>
+                <th style={thStyle}>Pagamento vinculado</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Ações</th>
+              </tr></thead>
+              <tbody>
+                {(dados.pagamentos || []).map((p) => (
+                  <tr key={p.payment_id}>
+                    <td style={tdStyle}>{formatarData(p.criado_em)}</td>
+                    <td style={tdStyle}><strong>{p.cliente_nome || "-"}</strong><br /><span style={{ color: MUTED }}>{p.cliente_documento || ""}</span></td>
+                    <td style={tdStyle}>{p.plano || "-"}</td>
+                    <td style={tdStyle}>{moedaAdmin(p.valor)}</td>
+                    <td style={tdStyle}>{moedaAdmin(p.valor_liquido)}</td>
+                    <td style={tdStyle}>{p.cupom_codigo || "-"}</td>
+                    <td style={tdStyle}>{p.forma_pagamento || "-"}</td>
+                    <td style={tdStyle}>{p.diagnostico_id || "-"}</td>
+                    <td style={tdStyle}>{p.status}</td>
+                    <td style={tdStyle}>
+                      <button type="button" onClick={() => sincronizar(p.payment_id)} disabled={sincronizando === p.payment_id} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>
+                        {sincronizando === p.payment_id ? "..." : "Sincronizar"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!(dados.pagamentos || []).length && <tr><td colSpan={10} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum pagamento encontrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {abaAsaas === "extrato" && (
+        <div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+            <input type="date" value={fim} onChange={(e) => setFim(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }} />
+            <Botao secundario onClick={carregarFinanceiro}><RefreshCcw size={14} />{carregandoFinanceiro ? "Atualizando..." : "Filtrar"}</Botao>
+          </div>
+
+          {(financeiro.avisos || []).map((a, i) => <div key={i} style={{ background: "#FDF3D8", color: "#8A5A00", padding: 10, borderRadius: 9, marginBottom: 10, fontSize: 11 }}>{a}</div>)}
+
+          <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000 }}>
+              <thead><tr>
+                <th style={thStyle}>Data</th>
+                <th style={thStyle}>Tipo</th>
+                <th style={thStyle}>Descrição</th>
+                <th style={thStyle}>Pagamento vinculado</th>
+                <th style={thStyle}>Valor</th>
+                <th style={thStyle}>Saldo após movimento</th>
+              </tr></thead>
+              <tbody>
+                {extrato.map((t, i) => {
+                  const valor = Number(t.value || 0);
+                  return (
+                    <tr key={t.id || i}>
+                      <td style={tdStyle}>{formatarData(t.date || t.effectiveDate || t.dateCreated)}</td>
+                      <td style={tdStyle}>{t.type || "-"}</td>
+                      <td style={tdStyle}>{t.description || "-"}</td>
+                      <td style={tdStyle}>{t.paymentId || "-"}</td>
+                      <td style={{ ...tdStyle, color: valor < 0 ? "#993C1D" : "#1F7A44", fontWeight: 800 }}>{moedaAdmin(valor)}</td>
+                      <td style={tdStyle}>{moedaAdmin(t.balance)}</td>
+                    </tr>
+                  );
+                })}
+                {!extrato.length && <tr><td colSpan={6} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>{carregandoFinanceiro ? "Carregando extrato..." : "Nenhum movimento encontrado."}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {abaAsaas === "cupons" && (
+        <div>
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ marginTop: 0 }}>Novo cupom</h3>
+            <form onSubmit={salvarCupom} style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Código<input required value={novoCupom.codigo} onChange={(e) => setNovoCupom((at) => ({ ...at, codigo: e.target.value.toUpperCase() }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Tipo<select value={novoCupom.tipo} onChange={(e) => setNovoCupom((at) => ({ ...at, tipo: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>{novoCupom.tipo === "PERCENTUAL" ? "Desconto (%)" : "Desconto (R$)"}<input required type="number" step="0.01" value={novoCupom.valor} onChange={(e) => setNovoCupom((at) => ({ ...at, valor: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Valor mínimo (R$)<input type="number" step="0.01" value={novoCupom.valorMinimo} onChange={(e) => setNovoCupom((at) => ({ ...at, valorMinimo: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Início<input type="datetime-local" value={novoCupom.inicioEm} onChange={(e) => setNovoCupom((at) => ({ ...at, inicioEm: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Validade até<input type="datetime-local" value={novoCupom.fimEm} onChange={(e) => setNovoCupom((at) => ({ ...at, fimEm: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Limite total de usos<input type="number" min="1" value={novoCupom.limiteTotal} onChange={(e) => setNovoCupom((at) => ({ ...at, limiteTotal: e.target.value }))} placeholder="Sem limite" style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Limite por CPF/CNPJ<input type="number" min="1" value={novoCupom.limiteDocumento} onChange={(e) => setNovoCupom((at) => ({ ...at, limiteDocumento: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+              </div>
+              <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Descrição<input value={novoCupom.descricao} onChange={(e) => setNovoCupom((at) => ({ ...at, descricao: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+              <div>
+                <span style={{ fontSize: 10.5, display: "block", marginBottom: 6 }}>Planos permitidos</span>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                  {Object.entries(PLANOS_ASAAS).map(([k, nome]) => (
+                    <label key={k} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11 }}>
+                      <input type="checkbox" checked={novoCupom.planos.includes(k)} onChange={() => alternarPlanoCupom(k)} />
+                      {nome}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div><Botao disabled={salvandoCupom}>{salvandoCupom ? "Salvando..." : "Salvar cupom"}</Botao></div>
+            </form>
+          </Card>
+
+          <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000 }}>
+              <thead><tr>
+                <th style={thStyle}>Código</th>
+                <th style={thStyle}>Tipo</th>
+                <th style={thStyle}>Desconto</th>
+                <th style={thStyle}>Planos</th>
+                <th style={thStyle}>Validade</th>
+                <th style={thStyle}>Usos</th>
+                <th style={thStyle}>Desconto concedido</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Ações</th>
+              </tr></thead>
+              <tbody>
+                {(carregandoCupons ? [] : cupons).map((c) => (
+                  <tr key={c.codigo}>
+                    <td style={tdStyle}><strong>{c.codigo}</strong><br /><span style={{ color: MUTED }}>{c.descricao || ""}</span></td>
+                    <td style={tdStyle}>{c.tipo === "PERCENTUAL" ? "Percentual" : "Valor fixo"}</td>
+                    <td style={tdStyle}>{c.tipo === "PERCENTUAL" ? `${c.valor}%` : moedaAdmin(c.valor)}</td>
+                    <td style={tdStyle}>{(c.planos || []).join(", ")}</td>
+                    <td style={tdStyle}>{c.fim_em ? `até ${formatarData(c.fim_em)}` : "sem prazo"}</td>
+                    <td style={tdStyle}>{c.usos || 0}{c.limite_total ? ` / ${c.limite_total}` : ""}</td>
+                    <td style={tdStyle}>{moedaAdmin(c.desconto_concedido)}</td>
+                    <td style={tdStyle}><span style={{ background: c.ativo ? "#EAF7EE" : "#FAECE7", color: c.ativo ? "#1F7A44" : "#993C1D", borderRadius: 999, padding: "4px 9px", fontSize: 10.5, fontWeight: 800 }}>{c.ativo ? "Ativo" : "Inativo"}</span></td>
+                    <td style={tdStyle}>
+                      <button type="button" onClick={() => alternarCupom(c.codigo, !c.ativo)} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer", marginRight: 6 }}>{c.ativo ? "Desativar" : "Ativar"}</button>
+                      <button type="button" onClick={() => excluirCupom(c.codigo)} style={{ border: "1px solid #F3C6B4", background: "#fff", color: "#993C1D", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>Excluir</button>
+                    </td>
+                  </tr>
+                ))}
+                {!carregandoCupons && !cupons.length && <tr><td colSpan={9} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum cupom cadastrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {abaAsaas === "eventos" && (
+        <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
+            <thead><tr>
+              <th style={thStyle}>Recebido em</th>
+              <th style={thStyle}>Evento</th>
+              <th style={thStyle}>Status</th>
+              <th style={thStyle}>Pagamento</th>
+            </tr></thead>
+            <tbody>
+              {(dados.eventos || []).map((ev) => (
+                <tr key={ev.evento_id}>
+                  <td style={tdStyle}>{formatarData(ev.recebido_em)}</td>
+                  <td style={tdStyle}>{ev.evento}</td>
+                  <td style={tdStyle}>{ev.status || "-"}</td>
+                  <td style={tdStyle}>{ev.payment_id || "-"}</td>
+                </tr>
+              ))}
+              {!(dados.eventos || []).length && <tr><td colSpan={4} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum evento recebido ainda.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // =========================================================
 // AGENDA (admin)
@@ -19838,6 +20166,23 @@ const STATUS_AGENDA = {
   NAO_COMPARECEU: { label: "Não compareceu", bg: "#FDF3D8", color: "#8A5A00" },
 };
 
+function chaveDia(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function gerarGradeMes(mesRef) {
+  const primeiroDia = new Date(mesRef.getFullYear(), mesRef.getMonth(), 1);
+  const inicioGrade = new Date(primeiroDia);
+  inicioGrade.setDate(primeiroDia.getDate() - primeiroDia.getDay());
+  const dias = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(inicioGrade);
+    d.setDate(inicioGrade.getDate() + i);
+    dias.push(d);
+  }
+  return dias;
+}
+
 function AgendaAdmin({ token }) {
   const [agendamentos, setAgendamentos] = useState([]);
   const [filtroStatus, setFiltroStatus] = useState("");
@@ -19845,6 +20190,13 @@ function AgendaAdmin({ token }) {
   const [carregando, setCarregando] = useState(false);
   const [atualizando, setAtualizando] = useState("");
   const [erro, setErro] = useState("");
+
+  const [visualizacao, setVisualizacao] = useState("lista");
+  const [mesRef, setMesRef] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+  const [diaSelecionado, setDiaSelecionado] = useState(null);
+  const [reagendando, setReagendando] = useState(null);
+  const [novaData, setNovaData] = useState("");
+  const [novaHora, setNovaHora] = useState("");
 
   async function carregar() {
     setCarregando(true);
@@ -19863,23 +20215,44 @@ function AgendaAdmin({ token }) {
 
   useEffect(() => { carregar(); }, []);
 
-  async function mudarStatus(id, status) {
+  async function salvarAgendamento(id, alteracoes) {
     setAtualizando(id);
     setErro("");
     try {
       const r = await fetch("/api/crm?action=atualizar-agendamento", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, ...alteracoes }),
       });
       const d = await r.json().catch(() => null);
       if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro ao atualizar o agendamento.");
       await carregar();
+      setReagendando(null);
     } catch (e) {
       setErro(e.message);
     } finally {
       setAtualizando("");
     }
+  }
+
+  function mudarStatus(id, status) {
+    return salvarAgendamento(id, { status });
+  }
+
+  function cancelar(a) {
+    if (!window.confirm(`Cancelar a reunião de ${a.nome || "este cliente"} em ${a.data_agenda ? new Date(a.data_agenda).toLocaleDateString("pt-BR") : "-"}?`)) return;
+    mudarStatus(a.id, "CANCELADO");
+  }
+
+  function iniciarReagendamento(a) {
+    setReagendando(a.id);
+    setNovaData(a.data_agenda ? String(a.data_agenda).slice(0, 10) : "");
+    setNovaHora(a.hora_agenda || "");
+  }
+
+  function confirmarReagendamento(id) {
+    if (!novaData || !novaHora) { setErro("Informe a nova data e hora."); return; }
+    salvarAgendamento(id, { status: "AGENDADO", data: novaData, hora: novaHora });
   }
 
   const lista = agendamentos.filter((a) => {
@@ -19888,9 +20261,66 @@ function AgendaAdmin({ token }) {
     return true;
   });
 
+  const porDia = useMemo(() => {
+    const mapa = {};
+    lista.forEach((a) => {
+      if (!a.data_agenda) return;
+      const chave = String(a.data_agenda).slice(0, 10);
+      (mapa[chave] = mapa[chave] || []).push(a);
+    });
+    return mapa;
+  }, [lista]);
+
+  const listaExibida = visualizacao === "calendario" && diaSelecionado
+    ? (porDia[diaSelecionado] || [])
+    : lista;
+
+  function linhaAgendamento(a) {
+    const s = STATUS_AGENDA[a.status] || { label: a.status || "-", bg: "#EEF0F4", color: MUTED };
+    const emReagendamento = reagendando === a.id;
+    return (
+      <tr key={a.id}>
+        <td style={tdStyle}>{a.data_agenda ? new Date(a.data_agenda).toLocaleDateString("pt-BR") : "-"}</td>
+        <td style={tdStyle}>{a.hora_agenda || "-"}</td>
+        <td style={tdStyle}><strong>{a.nome || "-"}</strong><br /><span style={{ color: MUTED }}>{a.email || ""}</span></td>
+        <td style={tdStyle}>{a.empresa || "-"}</td>
+        <td style={tdStyle}>{a.telefone || "-"}</td>
+        <td style={tdStyle}>{a.origem || "-"}</td>
+        <td style={tdStyle}><span style={{ background: s.bg, color: s.color, borderRadius: 999, padding: "4px 9px", fontSize: 10.5, fontWeight: 800 }}>{s.label}</span></td>
+        <td style={tdStyle}>
+          {emReagendamento ? (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <input type="date" value={novaData} onChange={(e) => setNovaData(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "6px 8px", fontSize: 10.5 }} />
+              <input type="time" value={novaHora} onChange={(e) => setNovaHora(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "6px 8px", fontSize: 10.5 }} />
+              <button type="button" onClick={() => confirmarReagendamento(a.id)} disabled={atualizando === a.id} style={{ border: 0, background: CORAL, color: WHITE, borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>Salvar</button>
+              <button type="button" onClick={() => setReagendando(null)} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>Cancelar</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <select
+                value={a.status || "AGENDADO"}
+                disabled={atualizando === a.id}
+                onChange={(e) => mudarStatus(a.id, e.target.value)}
+                style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "6px 8px", fontSize: 10.5 }}
+              >
+                {Object.entries(STATUS_AGENDA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <button type="button" onClick={() => iniciarReagendamento(a)} disabled={atualizando === a.id} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>Reagendar</button>
+              {a.status !== "CANCELADO" && <button type="button" onClick={() => cancelar(a)} disabled={atualizando === a.id} style={{ border: "1px solid #F3C6B4", background: "#fff", color: "#993C1D", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>Cancelar</button>}
+            </div>
+          )}
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", border: "1px solid #D8DEEA", borderRadius: 9, overflow: "hidden" }}>
+          <button type="button" onClick={() => setVisualizacao("lista")} style={{ border: 0, padding: "9px 14px", fontSize: 11, fontWeight: 800, cursor: "pointer", background: visualizacao === "lista" ? NAVY : "#fff", color: visualizacao === "lista" ? WHITE : NAVY }}>Lista</button>
+          <button type="button" onClick={() => setVisualizacao("calendario")} style={{ border: 0, padding: "9px 14px", fontSize: 11, fontWeight: 800, cursor: "pointer", background: visualizacao === "calendario" ? NAVY : "#fff", color: visualizacao === "calendario" ? WHITE : NAVY }}>Calendário</button>
+        </div>
         <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
           <option value="">Todos os status</option>
           {Object.entries(STATUS_AGENDA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -19901,8 +20331,54 @@ function AgendaAdmin({ token }) {
 
       {erro && <div style={{ background: "#FAECE7", color: "#993C1D", padding: 10, borderRadius: 9, marginBottom: 12 }}>{erro}</div>}
 
+      {visualizacao === "calendario" && (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <button type="button" onClick={() => setMesRef((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}>‹</button>
+            <strong>{mesRef.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>
+            <button type="button" onClick={() => setMesRef((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}>›</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, fontSize: 9.5, color: MUTED, marginBottom: 4, textAlign: "center" }}>
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => <div key={d}>{d}</div>)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+            {gerarGradeMes(mesRef).map((dia, i) => {
+              const chave = chaveDia(dia);
+              const doMes = dia.getMonth() === mesRef.getMonth();
+              const eventos = porDia[chave] || [];
+              const selecionado = diaSelecionado === chave;
+              return (
+                <div
+                  key={i}
+                  onClick={() => setDiaSelecionado(selecionado ? null : chave)}
+                  style={{
+                    minHeight: 64, borderRadius: 8, padding: 5, cursor: "pointer",
+                    border: selecionado ? `2px solid ${CORAL}` : "1px solid #EEF0F4",
+                    background: doMes ? "#fff" : "#FAFBFC",
+                    opacity: doMes ? 1 : 0.5,
+                  }}
+                >
+                  <div style={{ fontSize: 10, fontWeight: 800, color: doMes ? NAVY : MUTED }}>{dia.getDate()}</div>
+                  {eventos.slice(0, 2).map((ev) => {
+                    const s = STATUS_AGENDA[ev.status] || { bg: "#EEF0F4", color: MUTED };
+                    return <div key={ev.id} style={{ fontSize: 8.5, background: s.bg, color: s.color, borderRadius: 5, padding: "2px 4px", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.hora_agenda} {ev.nome || ""}</div>;
+                  })}
+                  {eventos.length > 2 && <div style={{ fontSize: 8.5, color: MUTED, marginTop: 2 }}>+{eventos.length - 2}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {visualizacao === "calendario" && diaSelecionado && (
+        <div style={{ marginBottom: 10, fontSize: 11, color: MUTED }}>
+          Mostrando reuniões de {new Date(diaSelecionado).toLocaleDateString("pt-BR")}. <button type="button" onClick={() => setDiaSelecionado(null)} style={{ border: 0, background: "none", color: CORAL, cursor: "pointer", fontWeight: 800 }}>Ver todas</button>
+        </div>
+      )}
+
       <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
           <thead><tr>
             <th style={thStyle}>Data</th>
             <th style={thStyle}>Hora</th>
@@ -19914,31 +20390,8 @@ function AgendaAdmin({ token }) {
             <th style={thStyle}>Ações</th>
           </tr></thead>
           <tbody>
-            {lista.map((a) => {
-              const s = STATUS_AGENDA[a.status] || { label: a.status || "-", bg: "#EEF0F4", color: MUTED };
-              return (
-                <tr key={a.id}>
-                  <td style={tdStyle}>{a.data_agenda ? new Date(a.data_agenda).toLocaleDateString("pt-BR") : "-"}</td>
-                  <td style={tdStyle}>{a.hora_agenda || "-"}</td>
-                  <td style={tdStyle}><strong>{a.nome || "-"}</strong><br /><span style={{ color: MUTED }}>{a.email || ""}</span></td>
-                  <td style={tdStyle}>{a.empresa || "-"}</td>
-                  <td style={tdStyle}>{a.telefone || "-"}</td>
-                  <td style={tdStyle}>{a.origem || "-"}</td>
-                  <td style={tdStyle}><span style={{ background: s.bg, color: s.color, borderRadius: 999, padding: "4px 9px", fontSize: 10.5, fontWeight: 800 }}>{s.label}</span></td>
-                  <td style={tdStyle}>
-                    <select
-                      value={a.status || "AGENDADO"}
-                      disabled={atualizando === a.id}
-                      onChange={(e) => mudarStatus(a.id, e.target.value)}
-                      style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "6px 8px", fontSize: 10.5 }}
-                    >
-                      {Object.entries(STATUS_AGENDA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                    </select>
-                  </td>
-                </tr>
-              );
-            })}
-            {!lista.length && <tr><td colSpan={8} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum agendamento encontrado.</td></tr>}
+            {listaExibida.map(linhaAgendamento)}
+            {!listaExibida.length && <tr><td colSpan={8} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>Nenhum agendamento encontrado.</td></tr>}
           </tbody>
         </table>
       </div>
