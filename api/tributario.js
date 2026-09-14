@@ -1066,6 +1066,7 @@ async function listarProjetos(
         arquivado_em,
         arquivado_por_nome,
         versao_atual,
+        dados_manuais,
         criado_por_nome,
         validado_por_nome,
         criado_em,
@@ -1115,9 +1116,15 @@ async function listarProjetos(
     200,
     {
       sucesso: true,
-      projetos:
+        projetos:
         rows.map(
-          (row) => ({
+          (row) => {
+            const manuais = jsonSeguro(row.dados_manuais) || {};
+            const checklist = manuais.checklistDocumental || {};
+            const pendentes = Number.isFinite(Number(manuais.documentosPendentes))
+              ? Number(manuais.documentosPendentes)
+              : Number(checklist.total || 0) - Number(checklist.concluidos || 0);
+            return ({
             id:
               row.id,
             tipoProjeto:
@@ -1140,6 +1147,12 @@ async function listarProjetos(
               row.arquivado_por_nome,
             versaoAtual:
               row.versao_atual,
+            documentosEntregues:
+              Number(manuais.documentosEntregues ?? checklist.concluidos ?? 0),
+            documentosPendentes:
+              Math.max(0, pendentes),
+            checklistDocumental:
+              checklist,
             criadoPorNome:
               row.criado_por_nome,
             validadoPorNome:
@@ -1148,7 +1161,8 @@ async function listarProjetos(
               row.criado_em,
             atualizadoEm:
               row.atualizado_em,
-          })
+            });
+          }
         ),
     }
   );
