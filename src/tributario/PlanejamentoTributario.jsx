@@ -94,7 +94,9 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
   "pages","patch","pdf","pl","pm","pot","potm","potx","ppa","pps","ppsm","ppsx","ppt",
   "pptm","pptx","pwz","py","rst","rtf","scala","sh","shtml","srt","sty","svg","svgz",
   "tex","text","txt","tsv","vcf","vtt","wiz","xla","xlb","xlc","xlm","xls","xlsx","xlt",
-  "xlw","xml","yaml","yml"
+  "xlw","xml","yaml","yml",
+  // Fotos/scans de documentos fiscais (notas, comprovantes, PGDAS impresso etc.)
+  "jpg","jpeg","png","gif","webp","bmp","tif","tiff","heic","heif"
  ]);
 
  function extensaoArquivo(nome){
@@ -508,6 +510,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
      documentId:u.documentoId,
      fileId:u.fileId,
      filename:f.name,
+     mimeType:f.type,
      bytes:f.size
     });
    }
@@ -1197,7 +1200,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
      <input
       type="file"
       multiple
-      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.xml,.txt,.json,.md,.rtf,.odt,.ods,.ppt,.pptx,.html,.yaml,.yml,.eml,.msg"
+      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.xml,.txt,.json,.md,.rtf,.odt,.ods,.ppt,.pptx,.html,.yaml,.yml,.eml,.msg,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif"
       style={{display:"none"}}
       onChange={e=>{
        adicionarArquivos(e.target.files);
