@@ -19,6 +19,7 @@ import {
   Calculator,
   Scale,
   FileCheck2,
+  FileText,
   ShieldAlert,
   LogIn,
   BarChart3,
@@ -327,6 +328,10 @@ export default function Dashboard({
         )
     );
 
+    const documentosPendentes = projetos.filter(
+      (x) => num(x.documentosPendentes) > 0
+    );
+
     return {
       total: projetos.length,
       reforma: reforma.length,
@@ -334,6 +339,7 @@ export default function Dashboard({
       comDiagnostico: comDiagnostico.length,
       validados: validados.length,
       pendentes: pendentes.length,
+      documentosPendentes: documentosPendentes.length,
       recentes: [...projetos]
         .sort(
           (a, b) =>
@@ -574,6 +580,13 @@ export default function Dashboard({
             valor={tax.pendentes}
             subtitulo="Exigem continuidade"
             Icon={ShieldAlert}
+          />
+
+          <Kpi
+            titulo="DOCUMENTOS PENDENTES"
+            valor={tax.documentosPendentes}
+            subtitulo="Checklist documental"
+            Icon={FileText}
           />
         </div>
 
