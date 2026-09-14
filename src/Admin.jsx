@@ -14436,6 +14436,37 @@ function DetalheDiagnostico({
   const relatorioAdministracaoSegmentado =
     relatoriosSegmentados.administracao || null;
 
+  const relatorioAdministracaoReforma =
+    ["simulador_reforma", "reforma_tributaria"].includes(estruturaDiagnostico(item))
+      ? {
+          ...(relatorioAdministracaoSegmentado || {}),
+          titulo: "Relatório personalizado da Reforma Tributária — Administração",
+          leituraExecutiva: diagnosticoGeral.resumoExecutivo,
+          riscos: diagnosticoGeral.principaisDores || [],
+          oportunidadesConsultoria: diagnosticoGeral.oportunidades || [],
+          plano90Dias: (relatorioAdministracaoSegmentado || {}).plano90Dias || {
+            titulo: "Plano de preparação para a Reforma",
+            dias30: ["Sugerimos conferir PGDAS/DEFIS, CNAE e atividade efetiva."],
+            dias60: ["Sugerimos validar deduções, créditos e DAS residual."],
+            dias90: ["Sugerimos consolidar preços, margens e plano de transição."],
+          },
+          quickWins: (relatorioAdministracaoSegmentado || {}).quickWins || [
+            "Sugerimos confirmar o enquadramento legal da atividade.",
+            "Sugerimos separar IBS/CBS por dentro e por fora.",
+          ],
+          kpisRecomendados: (relatorioAdministracaoSegmentado || {}).kpisRecomendados || [
+            "Carga atual x cenário Reforma",
+            "DAS residual",
+            "Créditos aproveitáveis",
+            "Diferença anual",
+          ],
+          visaoConsultor: (relatorioAdministracaoSegmentado || {}).visaoConsultor || {
+            objetivo: "Sugerimos validar tecnicamente a simulação da Reforma.",
+            perguntas: ["Sugerimos confirmar a atividade efetiva e os requisitos das deduções."],
+          },
+        }
+      : relatorioAdministracaoSegmentado;
+
   const inteligenciaTributaria =
     resultado.inteligenciaTributaria ||
     (["simulador_reforma", "reforma_tributaria"].includes(estruturaDiagnostico(item))
@@ -15423,7 +15454,7 @@ function DetalheDiagnostico({
 
         {abaRelatorio === "administracao" && (
           <>
-            {relatorioAdministracaoSegmentado && (
+            {relatorioAdministracaoReforma && (
               <Card style={{ marginBottom: 16, borderLeft: "4px solid #31589C" }}>
                 <div
                   style={{
@@ -15437,10 +15468,10 @@ function DetalheDiagnostico({
                 </div>
 
                 <h3 style={{ margin: "0 0 6px" }}>
-                  {relatorioAdministracaoSegmentado.titulo}
+                  {relatorioAdministracaoReforma.titulo}
                 </h3>
 
-                {relatorioAdministracaoSegmentado.leituraExecutiva && (
+                {relatorioAdministracaoReforma.leituraExecutiva && (
                   <p
                     style={{
                       fontSize: 11,
@@ -15449,37 +15480,37 @@ function DetalheDiagnostico({
                       margin: "0 0 10px",
                     }}
                   >
-                    {relatorioAdministracaoSegmentado.leituraExecutiva}
+                    {relatorioAdministracaoReforma.leituraExecutiva}
                   </p>
                 )}
 
-                {(relatorioAdministracaoSegmentado.riscos || []).length > 0 && (
+                {(relatorioAdministracaoReforma.riscos || []).length > 0 && (
                   <>
                     <div style={{ fontSize: 10, fontWeight: 900, margin: "10px 0 6px" }}>
                       Riscos prioritários
                     </div>
-                    <ListaDossie itens={relatorioAdministracaoSegmentado.riscos} vazio="" />
+                    <ListaDossie itens={relatorioAdministracaoReforma.riscos} vazio="" />
                   </>
                 )}
 
-                {(relatorioAdministracaoSegmentado.oportunidadesConsultoria || []).length > 0 && (
+                {(relatorioAdministracaoReforma.oportunidadesConsultoria || []).length > 0 && (
                   <>
                     <div style={{ fontSize: 10, fontWeight: 900, margin: "12px 0 6px" }}>
                       Oportunidades de consultoria
                     </div>
                     <ListaDossie
-                      itens={relatorioAdministracaoSegmentado.oportunidadesConsultoria}
+                      itens={relatorioAdministracaoReforma.oportunidadesConsultoria}
                       vazio=""
                     />
                   </>
                 )}
 
-                {relatorioAdministracaoSegmentado.plano90Dias && (
+                {relatorioAdministracaoReforma.plano90Dias && (
                   <>
                     <div style={{ fontSize: 10, fontWeight: 900, margin: "12px 0 6px" }}>
                       Plano de 90 dias
                     </div>
-                    <Plano90Dias plano={relatorioAdministracaoSegmentado.plano90Dias} />
+                    <Plano90Dias plano={relatorioAdministracaoReforma.plano90Dias} />
                   </>
                 )}
               </Card>
