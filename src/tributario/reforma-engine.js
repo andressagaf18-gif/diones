@@ -384,6 +384,11 @@ export function estimarDasResidualPorFora(parametros = {}) {
         "SOMA_COMPONENTES_RESIDUAIS_DOCUMENTAIS";
 
       confianca = "MEDIA";
+    } else if (dasAtual > 0) {
+      // Proxy conservador quando o DAS foi informado sem composição por tributo.
+      residual = dasAtual;
+      metodo = "DAS_ATUAL_SEM_COMPOSICAO_PROXY";
+      confianca = "BAIXA";
     }
   }
 
