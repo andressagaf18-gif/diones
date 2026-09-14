@@ -23242,7 +23242,7 @@ export default function Admin() {
     tributario: {
       titulo: "Inteligência Tributária",
       subtitulo:
-        "Reforma Tributária, planejamento tributário, documentos e análise assistida por IA",
+        "Análise tributária consolidada: Reforma, planejamento, documentos e IA",
     },
   };
 
