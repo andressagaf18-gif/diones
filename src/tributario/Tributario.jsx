@@ -24,6 +24,7 @@ const DISPLAY_FONT =
 function Card({
   children,
   style = {},
+  onClick,
 }) {
   return (
     <div
@@ -34,8 +35,10 @@ function Card({
         padding: 18,
         boxShadow:
           "0 8px 24px rgba(15,31,56,.05)",
+        cursor: onClick ? "pointer" : undefined,
         ...style,
       }}
+      onClick={onClick}
     >
       {children}
     </div>
@@ -4408,7 +4411,7 @@ export default function Tributario({
     }
   }
 
-  function escolherProjeto(
+  async function escolherProjeto(
     tipo
   ) {
     setTipoProjeto(tipo);
@@ -4422,6 +4425,32 @@ export default function Tributario({
         tipoProjeto: tipo,
       }
     );
+
+    // Cria o rascunho imediatamente para que a análise apareça no histórico
+    // do Admin mesmo antes do preenchimento dos dados.
+    try {
+      setCarregandoProjetos(true);
+      await apiTributarioJson("salvar-projeto", {
+        method: "POST",
+        body: {
+          ...payloadProjetoAtual(),
+          id: projetoId,
+          tipoProjeto: tipo,
+          status: "EM_ANALISE",
+          dadosManuais: {
+            ...dadosManuais,
+            aberturaModulo: "INTELIGENCIA_TRIBUTARIA_CONSOLIDADA",
+            iniciadoEm: new Date().toISOString(),
+          },
+        },
+      });
+      setProjetoInicialModulo({ id: projetoId, tipoProjeto: tipo });
+      await carregarProjetosSalvos();
+    } catch (error) {
+      setErro(error?.message || "Não foi possível registrar a análise no histórico.");
+    } finally {
+      setCarregandoProjetos(false);
+    }
 
     if (tipo === "planejamento") {
       setTela("planejamento-v2");
@@ -4962,13 +4991,14 @@ export default function Tributario({
 
         <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${CORAL}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>ANÁLISE TRIBUTÁRIA CONSOLIDADA</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:24}}>Planejamento + Reforma Tributária</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>Uma única análise da empresa, usando CNPJ, CNAE, atividade, documentos e dados econômicos para comparar regimes atuais e impactos de IBS/CBS.</p><div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:12}}><Botao onClick={()=>escolherProjeto("reforma")}>Iniciar análise consolidada</Botao><Botao secundario onClick={()=>escolherProjeto("planejamento")}>Abrir análise existente</Botao></div></div><div
           style={{
-            display: "none",
+            display: "grid",
             gridTemplateColumns:
               "repeat(auto-fit,minmax(300px,1fr))",
             gap: 14,
           }}
         >
           <Card
+            onClick={() => escolherProjeto("reforma")}
             style={{
               borderTop:
                 `4px solid ${CORAL}`,
@@ -5019,6 +5049,7 @@ export default function Tributario({
           </Card>
 
           <Card
+            onClick={() => escolherProjeto("planejamento")}
             style={{
               borderTop:
                 "4px solid #31589C",
@@ -5437,7 +5468,7 @@ export default function Tributario({
                       background:projeto.arquivado ? "#F7F8FA" : WHITE,
                       padding:12,
                       display:"grid",
-                      gridTemplateColumns:"minmax(220px,2fr) minmax(150px,1fr) minmax(130px,1fr) 60px 105px 245px",
+                      gridTemplateColumns:"minmax(220px,2fr) minmax(150px,1fr) minmax(130px,1fr) 60px 105px 125px 245px",
                       gap:10,
                       alignItems:"center",
                       color:NAVY,
@@ -5479,6 +5510,11 @@ export default function Tributario({
                     }}>
                       {projeto.status || "EM_ANALISE"}
                     </span>
+
+                    <div style={{fontSize:8.5,color:MUTED,lineHeight:1.35}}>
+                      <b style={{display:"block",color:NAVY}}>Última atualização</b>
+                      {formatarDataHora(projeto.atualizadoEm || projeto.criadoEm)}
+                    </div>
 
                     <div style={{display:"flex",gap:5,justifyContent:"flex-end",flexWrap:"wrap"}}>
                       <button type="button" onClick={()=>editarProjetoSalvo(projeto.id)}
