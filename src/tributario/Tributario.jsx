@@ -1435,6 +1435,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       extracao,
       simulacao:simulacaoEfetiva||simulacao,
       analiseDesatualizada,
+      checklistDocumental:checklistTributario,
+      documentosEntregues:checklistTributario.concluidos,
+      documentosPendentes:checklistTributario.total-checklistTributario.concluidos,
       documentosSnapshot:documentosBanco.map(d=>({
        id:d.id,
        filename:d.filename,
@@ -6998,7 +7001,7 @@ export default function Tributario({
               lineHeight: 1.55,
             }}
           >
-            A seleção agora pode avançar normalmente. Na próxima versão, este botão enviará os documentos ao banco próprio do módulo e iniciará a extração e conferência pela IA.
+            A seleção será arquivada no dossiê do cliente e consolidada pela IA com os dados cadastrais, documentos e informações econômicas confirmadas.
           </div>
 
           <Botao
