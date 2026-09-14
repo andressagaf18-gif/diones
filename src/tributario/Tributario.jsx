@@ -499,7 +499,7 @@ function UploadDocumentos({
         <input
           type="file"
           multiple
-          accept=".pdf,.xml,.xlsx,.xls,.csv,.txt,.json,.docx,.zip"
+          accept=".pdf,.xml,.xlsx,.xls,.csv,.txt,.json,.docx,.zip,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif"
           onChange={(e) =>
             adicionarArquivos(
               e.target.files
@@ -1151,7 +1151,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   "pages","patch","pdf","pl","pm","pot","potm","potx","ppa","pps","ppsm","ppsx","ppt",
   "pptm","pptx","pwz","py","rst","rtf","scala","sh","shtml","srt","sty","svg","svgz",
   "tex","text","txt","tsv","vcf","vtt","wiz","xla","xlb","xlc","xlm","xls","xlsx","xlt",
-  "xlw","xml","yaml","yml"
+  "xlw","xml","yaml","yml",
+  // Fotos/scans de documentos fiscais (notas, comprovantes, PGDAS impresso etc.)
+  "jpg","jpeg","png","gif","webp","bmp","tif","tiff","heic","heif"
  ]);
 
  function extensaoArquivo(nome){
@@ -1244,8 +1246,11 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   if(op.exportacaoPct!=null)setExportacao(String(op.exportacaoPct));
 
   if(ec.receitaPeriodo!=null)setReceita(String(ec.receitaPeriodo));
-  if(ec.faturamentoAnual!=null)setFaturamentoAnual(String(ec.faturamentoAnual));
-  else if(ec.rbt12!=null)setFaturamentoAnual(String(ec.rbt12));
+  // RBT12 documental (Simples Nacional) prevalece sobre faturamentoAnual:
+  // faturamentoAnual pode ser apenas a soma do período extraído e não deve
+  // sobrescrever o RBT12 real comprovado nos documentos (ex.: PGDAS).
+  if(ec.rbt12!=null)setFaturamentoAnual(String(ec.rbt12));
+  else if(ec.faturamentoAnual!=null)setFaturamentoAnual(String(ec.faturamentoAnual));
   if(ec.comprasPeriodo!=null)setCompras(String(ec.comprasPeriodo));
   if(ec.servicosTomadosPeriodo!=null)setServicosTomados(String(ec.servicosTomadosPeriodo));
   if(ec.custosDespesasAnuais!=null)setDespesasDedutiveis(String(ec.custosDespesasAnuais));
@@ -1396,6 +1401,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      setOk(`IA consolidou ${up.length} documento(s). A consulta cadastral precisa ser validada.`);
     }
    }else{
+    // Mesmo sem identificar o CNPJ, os documentos já foram vinculados a
+    // este projeto (projetoId) — atualiza a lista local para refletir isso.
+    await carregarArquivoCliente(cnpjAtual);
     setOk(`IA consolidou ${up.length} documento(s). Confirme o CNPJ manualmente.`);
    }
 
@@ -2586,7 +2594,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",marginTop:12}}>
      <label style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7,padding:"11px 13px",border:"1px dashed #AEB8C8",borderRadius:11,background:"#F8FAFD",fontSize:10,fontWeight:850,cursor:"pointer"}}>
       + Adicionar novos documentos
-      <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json,.xml,.md,.rtf,.odt,.ods,.ppt,.pptx,.html,.yaml,.yml,.eml,.msg" style={{display:"none"}} onChange={e=>{adicionarDocumentos(e.target.files);e.target.value=""}}/>
+      <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json,.xml,.md,.rtf,.odt,.ods,.ppt,.pptx,.html,.yaml,.yml,.eml,.msg,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif" style={{display:"none"}} onChange={e=>{adicionarDocumentos(e.target.files);e.target.value=""}}/>
      </label>
      <button type="button" onClick={()=>carregarArquivoCliente()} disabled={carregandoDocumentos} style={{padding:"10px 12px",border:"1px solid #D8DEEA",borderRadius:10,background:"#fff",fontWeight:800,cursor:"pointer"}}>{carregandoDocumentos?"Atualizando...":"Atualizar arquivo"}</button>
     </div>
