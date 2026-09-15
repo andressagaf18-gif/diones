@@ -13,6 +13,17 @@ const txt = (v, n = 500) => String(v ?? "").trim().slice(0, n);
 const digits = (v) => String(v ?? "").replace(/\D/g, "");
 const money = (v) => Math.round(Number(v || 0) * 100) / 100;
 
+function regrasDeCupom(cupom) {
+  let regras = cupom?.descontos_planos;
+  if (typeof regras === "string") {
+    try { regras = JSON.parse(regras); } catch { regras = {}; }
+  }
+  if (!regras || typeof regras !== "object" || Array.isArray(regras)) regras = {};
+  return Object.fromEntries(Object.entries(regras).map(([chave, valor]) => [
+    String(chave).trim().toUpperCase(), money(valor),
+  ]));
+}
+
 function bodyOf(req) {
   if (!req.body) return {};
   if (typeof req.body === "object") return req.body;
@@ -105,8 +116,11 @@ async function calcularCupom(codigoRecebido, plano, documento) {
   `;
   if (cupom.limite_total !== null && usados[0].total >= cupom.limite_total) throw new Error("Limite de utilizações do cupom atingido.");
   if (cupom.limite_documento !== null && usados[0].documento >= cupom.limite_documento) throw new Error("Este CPF/CNPJ já utilizou o cupom.");
-  const regraPlano = Number(cupom.descontos_planos?.[plano.codigo]);
-  const valorRegra = Number.isFinite(regraPlano) && regraPlano > 0 ? regraPlano : Number(cupom.valor);
+  const regras = regrasDeCupom(cupom);
+  const regraPlano = regras[plano.codigo];
+  const valorRegra = Number.isFinite(regraPlano) && regraPlano > 0
+    ? regraPlano
+    : money(cupom.valor);
   const desconto = cupom.tipo === "PERCENTUAL"
     ? money(plano.valor * valorRegra / 100)
     : money(valorRegra);
@@ -204,6 +218,13 @@ async function createCharge(req, res) {
     const pago = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(statusRemoto);
     const mesmoCupom = txt(anterior.cupom_codigo, 50).toUpperCase() === txt(cupom.codigo, 50).toUpperCase();
     const mesmoValor = money(payment.value) === money(plan.valor);
+
+    if (pago && !mesmoCupom) {
+      return res.status(409).json({
+        ok: false,
+        error: "Já existe um pagamento confirmado para este plano. O cupom não pode ser aplicado a uma cobrança já paga.",
+      });
+    }
 
     if (pago || (mesmoCupom && mesmoValor)) {
       const qr = pago ? {} : await asaas(`/payments/${encodeURIComponent(anterior.payment_id)}/pixQrCode`, { method: "GET" });
