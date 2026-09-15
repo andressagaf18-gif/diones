@@ -19755,6 +19755,7 @@ function PillTabs({ abas, ativa, onChange }) {
 
 const CUPOM_VAZIO = {
   codigo: "", descricao: "", tipo: "PERCENTUAL", valor: "",
+  descontosPlanos: { INICIAL: "", COMPLETO: "", ESPECIALISTA: "" },
   planos: ["INICIAL", "COMPLETO", "ESPECIALISTA"], valorMinimo: "",
   inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: "1", ativo: true,
 };
@@ -19765,6 +19766,7 @@ function AsaasFinanceiroAdmin({ token }) {
   const [financeiro, setFinanceiro] = useState({ saldo: null, extrato: { data: [] }, avisos: [] });
   const [cupons, setCupons] = useState([]);
   const [novoCupom, setNovoCupom] = useState(CUPOM_VAZIO);
+  const [editandoCupom, setEditandoCupom] = useState("");
 
   const [status, setStatus] = useState("");
   const [busca, setBusca] = useState("");
@@ -19778,6 +19780,8 @@ function AsaasFinanceiroAdmin({ token }) {
   const [salvandoCupom, setSalvandoCupom] = useState(false);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
+
+  const dataFormularioCupom = (valor) => valor ? new Date(valor).toISOString().slice(0, 16) : "";
 
   async function carregar() {
     setCarregando(true);
@@ -19872,6 +19876,17 @@ function AsaasFinanceiroAdmin({ token }) {
     setSalvandoCupom(true);
     setErro("");
     setOk("");
+    const valores = novoCupom.planos.map((plano) => Number(novoCupom.descontosPlanos?.[plano] || novoCupom.valor));
+    if (!novoCupom.planos.length) {
+      setErro("Selecione ao menos um plano para o cupom.");
+      setSalvandoCupom(false);
+      return;
+    }
+    if (novoCupom.tipo === "PERCENTUAL" && valores.some((valor) => !Number.isFinite(valor) || valor <= 0 || valor > 90)) {
+      setErro("Informe descontos percentuais válidos por plano. O máximo permitido é 90%.");
+      setSalvandoCupom(false);
+      return;
+    }
     try {
       const r = await fetch("/api/asaas?acao=admin-cupons", {
         method: "POST",
@@ -19882,12 +19897,41 @@ function AsaasFinanceiroAdmin({ token }) {
       if (!r.ok || !d?.ok) throw new Error(d?.error || "Erro ao salvar o cupom.");
       setOk(`Cupom ${d.codigo} salvo.`);
       setNovoCupom(CUPOM_VAZIO);
+      setEditandoCupom("");
       await carregarCupons();
     } catch (e) {
       setErro(e.message);
     } finally {
       setSalvandoCupom(false);
     }
+  }
+
+  function editarCupom(cupom) {
+    let regras = cupom.descontos_planos || {};
+    if (typeof regras === "string") {
+      try { regras = JSON.parse(regras); } catch { regras = {}; }
+    }
+    setNovoCupom({
+      codigo: cupom.codigo,
+      descricao: cupom.descricao || "",
+      tipo: cupom.tipo,
+      valor: String(cupom.valor ?? ""),
+      descontosPlanos: {
+        INICIAL: String(regras.INICIAL ?? cupom.valor ?? ""),
+        COMPLETO: String(regras.COMPLETO ?? cupom.valor ?? ""),
+        ESPECIALISTA: String(regras.ESPECIALISTA ?? cupom.valor ?? ""),
+      },
+      planos: cupom.planos || [],
+      valorMinimo: String(cupom.valor_minimo ?? ""),
+      inicioEm: dataFormularioCupom(cupom.inicio_em),
+      fimEm: dataFormularioCupom(cupom.fim_em),
+      limiteTotal: cupom.limite_total == null ? "" : String(cupom.limite_total),
+      limiteDocumento: String(cupom.limite_documento || 1),
+      ativo: cupom.ativo !== false,
+    });
+    setEditandoCupom(cupom.codigo);
+    setErro("");
+    setOk("");
   }
 
   async function alternarCupom(codigo, ativo) {
@@ -20062,10 +20106,10 @@ function AsaasFinanceiroAdmin({ token }) {
       {abaAsaas === "cupons" && (
         <div>
           <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Novo cupom</h3>
+            <h3 style={{ marginTop: 0 }}>{editandoCupom ? `Editar cupom ${editandoCupom}` : "Novo cupom"}</h3>
             <form onSubmit={salvarCupom} style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
-                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Código<input required value={novoCupom.codigo} onChange={(e) => setNovoCupom((at) => ({ ...at, codigo: e.target.value.toUpperCase() }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+                <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Código<input required disabled={Boolean(editandoCupom)} value={novoCupom.codigo} onChange={(e) => setNovoCupom((at) => ({ ...at, codigo: e.target.value.toUpperCase() }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
                 <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Tipo<select value={novoCupom.tipo} onChange={(e) => setNovoCupom((at) => ({ ...at, tipo: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }}><option value="PERCENTUAL">Percentual</option><option value="FIXO">Valor fixo</option></select></label>
                 <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>{novoCupom.tipo === "PERCENTUAL" ? "Desconto (%)" : "Desconto (R$)"}<input required type="number" step="0.01" value={novoCupom.valor} onChange={(e) => setNovoCupom((at) => ({ ...at, valor: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
                 <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Valor mínimo (R$)<input type="number" step="0.01" value={novoCupom.valorMinimo} onChange={(e) => setNovoCupom((at) => ({ ...at, valorMinimo: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
@@ -20073,6 +20117,17 @@ function AsaasFinanceiroAdmin({ token }) {
                 <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Validade até<input type="datetime-local" value={novoCupom.fimEm} onChange={(e) => setNovoCupom((at) => ({ ...at, fimEm: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
                 <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Limite total de usos<input type="number" min="1" value={novoCupom.limiteTotal} onChange={(e) => setNovoCupom((at) => ({ ...at, limiteTotal: e.target.value }))} placeholder="Sem limite" style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
                 <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Limite por CPF/CNPJ<input type="number" min="1" value={novoCupom.limiteDocumento} onChange={(e) => setNovoCupom((at) => ({ ...at, limiteDocumento: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
+              </div>
+              <div>
+                <span style={{ fontSize: 10.5, display: "block", marginBottom: 6, fontWeight: 800 }}>Desconto específico por plano</span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+                  {Object.keys(PLANOS_ASAAS).map((plano) => (
+                    <label key={plano} style={{ display: "grid", gap: 4, fontSize: 10.5 }}>
+                      {PLANOS_ASAAS[plano]}
+                      <input required={novoCupom.planos.includes(plano)} disabled={!novoCupom.planos.includes(plano)} type="number" min="0.01" max={novoCupom.tipo === "PERCENTUAL" ? 90 : undefined} step="0.01" value={novoCupom.descontosPlanos?.[plano] || ""} onChange={(e) => setNovoCupom((at) => ({ ...at, descontosPlanos: { ...at.descontosPlanos, [plano]: e.target.value } }))} placeholder={novoCupom.tipo === "PERCENTUAL" ? "%" : "R$"} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} />
+                    </label>
+                  ))}
+                </div>
               </div>
               <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>Descrição<input value={novoCupom.descricao} onChange={(e) => setNovoCupom((at) => ({ ...at, descricao: e.target.value }))} style={{ border: "1px solid #D8DEEA", borderRadius: 8, padding: "8px 10px" }} /></label>
               <div>
@@ -20086,7 +20141,7 @@ function AsaasFinanceiroAdmin({ token }) {
                   ))}
                 </div>
               </div>
-              <div><Botao disabled={salvandoCupom}>{salvandoCupom ? "Salvando..." : "Salvar cupom"}</Botao></div>
+              <div style={{ display: "flex", gap: 8 }}><Botao disabled={salvandoCupom}>{salvandoCupom ? "Salvando..." : editandoCupom ? "Salvar alterações" : "Salvar cupom"}</Botao>{editandoCupom && <button type="button" onClick={() => { setNovoCupom(CUPOM_VAZIO); setEditandoCupom(""); }} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "8px 12px", fontWeight: 800, cursor: "pointer" }}>Cancelar</button>}</div>
             </form>
           </Card>
 
@@ -20095,7 +20150,7 @@ function AsaasFinanceiroAdmin({ token }) {
               <thead><tr>
                 <th style={thStyle}>Código</th>
                 <th style={thStyle}>Tipo</th>
-                <th style={thStyle}>Desconto</th>
+                <th style={thStyle}>Regra por plano</th>
                 <th style={thStyle}>Planos</th>
                 <th style={thStyle}>Validade</th>
                 <th style={thStyle}>Usos</th>
@@ -20108,13 +20163,14 @@ function AsaasFinanceiroAdmin({ token }) {
                   <tr key={c.codigo}>
                     <td style={tdStyle}><strong>{c.codigo}</strong><br /><span style={{ color: MUTED }}>{c.descricao || ""}</span></td>
                     <td style={tdStyle}>{c.tipo === "PERCENTUAL" ? "Percentual" : "Valor fixo"}</td>
-                    <td style={tdStyle}>{c.tipo === "PERCENTUAL" ? `${c.valor}%` : moedaAdmin(c.valor)}</td>
+                    <td style={tdStyle}>{Object.entries(c.descontos_planos || {}).map(([plano, valor]) => <div key={plano}><strong>{plano}:</strong> {c.tipo === "PERCENTUAL" ? `${valor}%` : moedaAdmin(valor)}</div>)}{!Object.keys(c.descontos_planos || {}).length && (c.tipo === "PERCENTUAL" ? `${c.valor}%` : moedaAdmin(c.valor))}</td>
                     <td style={tdStyle}>{(c.planos || []).join(", ")}</td>
                     <td style={tdStyle}>{c.fim_em ? `até ${formatarData(c.fim_em)}` : "sem prazo"}</td>
                     <td style={tdStyle}>{c.usos || 0}{c.limite_total ? ` / ${c.limite_total}` : ""}</td>
                     <td style={tdStyle}>{moedaAdmin(c.desconto_concedido)}</td>
                     <td style={tdStyle}><span style={{ background: c.ativo ? "#EAF7EE" : "#FAECE7", color: c.ativo ? "#1F7A44" : "#993C1D", borderRadius: 999, padding: "4px 9px", fontSize: 10.5, fontWeight: 800 }}>{c.ativo ? "Ativo" : "Inativo"}</span></td>
                     <td style={tdStyle}>
+                      <button type="button" onClick={() => editarCupom(c)} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer", marginRight: 6 }}>Editar</button>
                       <button type="button" onClick={() => alternarCupom(c.codigo, !c.ativo)} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer", marginRight: 6 }}>{c.ativo ? "Desativar" : "Ativar"}</button>
                       <button type="button" onClick={() => excluirCupom(c.codigo)} style={{ border: "1px solid #F3C6B4", background: "#fff", color: "#993C1D", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>Excluir</button>
                     </td>
