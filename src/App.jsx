@@ -4646,7 +4646,10 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
         paymentId:salvo.paymentId,
         plano:salvo.plano,
         nomePlano:plano?.nome||"Diagnóstico Finder",
-        valor:plano?.valor||0,
+        valor:Number(salvo.valor||plano?.valor||0),
+        valorOriginal:Number(salvo.valorOriginal||plano?.valor||0),
+        desconto:Number(salvo.desconto||0),
+        cupom:salvo.cupom||null,
         status:"PENDING",
         pix:{},
       });
@@ -4684,7 +4687,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
       const data=await r.json().catch(()=>null);
       if(!r.ok||!data?.ok)throw new Error(data?.error||"Não foi possível gerar a cobrança.");
       setCobranca(data);
-      try{localStorage.setItem(`finder_pagamento_${diagnosticoId}`,JSON.stringify({paymentId:data.paymentId,plano:data.plano,cupom:data.cupom||null,desconto:Number(data.desconto||0),valor:Number(data.valor||0)}))}catch{}
+      try{localStorage.setItem(`finder_pagamento_${diagnosticoId}`,JSON.stringify({paymentId:data.paymentId,plano:data.plano,cupom:data.cupom||null,desconto:Number(data.desconto||0),valor:Number(data.valor||0),valorOriginal:Number(data.valorOriginal||plano.valor||0)}))}catch{}
     }catch(e){setErro(e?.message||"Falha ao gerar o Pix.")}
     finally{setCarregando("")}
   }
@@ -4698,7 +4701,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
     const pago=["RECEIVED","CONFIRMED","RECEIVED_IN_CASH"].includes(cobranca.status);
     return <div style={{border:"1px solid #DDE2EA",borderRadius:14,padding:15,background:WHITE,marginBottom:16,textAlign:"center"}}>
       <p style={{fontFamily:DISPLAY_FONT,fontSize:18,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>{pago?"Pagamento confirmado":"Finalize o pagamento por Pix"}</p>
-      <p style={{fontSize:11,color:MUTED,margin:"0 0 12px"}}>{cobranca.nomePlano} · {Number(cobranca.valor).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
+      <p style={{fontSize:11,color:MUTED,margin:"0 0 12px"}}>{cobranca.nomePlano} · {Number(cobranca.desconto)>0&&Number(cobranca.valorOriginal)>Number(cobranca.valor)&&<><s style={{color:"#8A93A3",marginRight:6}}>{Number(cobranca.valorOriginal).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</s><strong style={{color:"#0F6E56"}}>{Number(cobranca.valor).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</strong></>}{!(Number(cobranca.desconto)>0&&Number(cobranca.valorOriginal)>Number(cobranca.valor))&&Number(cobranca.valor).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
       {Number(cobranca.desconto)>0&&<p style={{fontSize:10,color:"#0F6E56",fontWeight:800,margin:"-7px 0 10px"}}>Cupom {cobranca.cupom} aplicado · economia de {Number(cobranca.desconto).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>}
       {pago?<div style={{background:"#E1F5EE",color:"#0F6E56",padding:12,borderRadius:10,fontWeight:800}}>Relatório liberado com sucesso.</div>:<>
         {cobranca.pix?.encodedImage&&<img alt="QR Code Pix" src={`data:image/png;base64,${cobranca.pix.encodedImage}`} style={{width:210,maxWidth:"80%",display:"block",margin:"0 auto 10px"}}/>}
