@@ -1,7 +1,11 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App.jsx";
-import Admin from "./Admin.jsx";
+
+// App (formulário público) e Admin (painel interno) são carregados sob
+// demanda: quem acessa o site nunca baixa o painel administrativo, e quem
+// acessa /admin nunca baixa o formulário público de diagnóstico.
+const App = lazy(() => import("./App.jsx"));
+const Admin = lazy(() => import("./Admin.jsx"));
 
 const caminho = window.location.pathname;
 
@@ -14,6 +18,8 @@ ReactDOM.createRoot(
   document.getElementById("root")
 ).render(
   <React.StrictMode>
-    <Componente />
+    <Suspense fallback={null}>
+      <Componente />
+    </Suspense>
   </React.StrictMode>
 );
