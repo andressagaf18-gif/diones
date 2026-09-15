@@ -643,6 +643,83 @@ async function publicarReformaNosDiagnosticos(body, user) {
   return { diagnosticoId: rows?.[0]?.id || null, versoes: ["cliente", "administrador"] };
 }
 
+// Espelha o diagnóstico de PLANEJAMENTO TRIBUTÁRIO (Simples x Presumido x
+// Real) na tabela geral "diagnosticos", exatamente como já é feito para a
+// Reforma — sem isso, o diagnóstico só existe em tax_diagnostics e nunca
+// aparece na aba Diagnósticos do admin nem no Dashboard.
+async function publicarPlanejamentoNosDiagnosticos({ projetoId, diagnostico, clienteNome, cnpj, user }) {
+  const d = diagnostico || {};
+
+  const dadosCompletos = {
+    tipoDiagnostico: "PLANEJAMENTO_TRIBUTARIO",
+    projetoTributarioId: projetoId,
+    responsavel: { nome: txt(user?.nome || user?.login || "Consultor Finder", 200) },
+    empresa: { cnpj: txt(cnpj, 30), razaoSocial: txt(clienteNome, 300) },
+    perfil: {
+      estruturaNegocio: "planejamento_tributario",
+      descricaoNegocio: "Comparação de regimes: Simples Nacional, Lucro Presumido e Lucro Real.",
+    },
+    resultado: {
+      tipoDiagnostico: "PLANEJAMENTO_TRIBUTARIO",
+      resumoExecutivo: d.resumoExecutivo || "",
+      recomendacao: d.recomendacao || d.regimeRecomendado || "",
+      regimeAtual: d.regimeAtual || "",
+      regimeRecomendado: d.regimeRecomendado || "",
+      statusRecomendacao: d.statusRecomendacao || "",
+      motivosRecomendacao: d.motivosRecomendacao || [],
+      riscos: d.riscos || [],
+      oportunidades: d.oportunidades || [],
+      proximosPassos: d.proximosPassos || [],
+      confiancaGeral: d.confiancaGeral || "",
+    },
+  };
+
+  await sql`ALTER TABLE diagnosticos ADD COLUMN IF NOT EXISTS tax_project_id TEXT`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_diagnosticos_tax_project_id ON diagnosticos (tax_project_id) WHERE tax_project_id IS NOT NULL`;
+
+  const existentes = await sql`SELECT id FROM diagnosticos WHERE tax_project_id = ${projetoId} LIMIT 1`;
+  let rows;
+  if (existentes.length) {
+    rows = await sql`
+      UPDATE diagnosticos SET
+        nome = ${txt(clienteNome, 300)}, cnpj = ${txt(cnpj, 30)}, razao_social = ${txt(clienteNome, 300)},
+        descricao_negocio = 'Comparação de regimes: Simples Nacional, Lucro Presumido e Lucro Real.',
+        segmento = 'Planejamento Tributário', subsegmento = ${txt(d.regimeRecomendado || d.regimeAtual || "", 120)},
+        score = ${null}, dores = ${JSON.stringify(d.riscos || [])}::jsonb,
+        areas_selecionadas = ${JSON.stringify(["Inteligência Tributária"])}::jsonb,
+        negocio_interpretado = ${JSON.stringify({ tipo: "planejamento_tributario" })}::jsonb,
+        diagnostico = ${JSON.stringify(dadosCompletos.resultado)}::jsonb,
+        dados_completos = ${JSON.stringify(dadosCompletos)}::jsonb,
+        arquivado = FALSE, arquivado_em = NULL
+      WHERE tax_project_id = ${projetoId}
+      RETURNING id
+    `;
+  } else {
+    rows = await sql`
+      INSERT INTO diagnosticos (
+        nome, cargo, telefone, email, cnpj, razao_social, descricao_negocio,
+        segmento, subsegmento, score, dores, areas_selecionadas, empresas,
+        negocio_interpretado, perguntas_respostas, diagnostico, dados_completos,
+        tax_project_id
+      ) VALUES (
+        ${txt(clienteNome, 300)}, '', '', '',
+        ${txt(cnpj, 30)}, ${txt(clienteNome, 300)},
+        'Comparação de regimes: Simples Nacional, Lucro Presumido e Lucro Real.',
+        'Planejamento Tributário', ${txt(d.regimeRecomendado || d.regimeAtual || "", 120)}, ${null},
+        ${JSON.stringify(d.riscos || [])}::jsonb,
+        ${JSON.stringify(["Inteligência Tributária"])}::jsonb,
+        '[]'::jsonb,
+        ${JSON.stringify({ tipo: "planejamento_tributario" })}::jsonb,
+        '[]'::jsonb, ${JSON.stringify(dadosCompletos.resultado)}::jsonb,
+        ${JSON.stringify(dadosCompletos)}::jsonb, ${projetoId}
+      ) RETURNING id
+    `;
+  }
+
+  await addHistory(projetoId, "RELATORIO_PUBLICADO_ADMIN", "Diagnóstico de planejamento publicado na aba Diagnósticos.", { diagnosticoId: rows?.[0]?.id || null }, user);
+  return { diagnosticoId: rows?.[0]?.id || null };
+}
+
 async function salvarProjeto(
   req,
   res
@@ -847,7 +924,7 @@ async function salvarProjeto(
   let publicacaoDiagnostico = null;
   if (
     txt(body.tipoProjeto, 80).toLowerCase() === "reforma" &&
-    ["FINALIZADO", "CONCLUIDO", "VALIDADO"].includes(txt(body.status, 80).toUpperCase())
+    ["FINALIZADO", "CONCLUIDO", "VALIDADO", "DIAGNOSTICO_GERADO"].includes(txt(body.status, 80).toUpperCase())
   ) {
     publicacaoDiagnostico = await publicarReformaNosDiagnosticos(body, user);
   }
@@ -926,7 +1003,9 @@ async function salvarDiagnostico(
   const projetoRows =
     await sql`
       SELECT
-        tipo_projeto
+        tipo_projeto,
+        cliente_nome,
+        cnpj
       FROM tax_projects
       WHERE id =
         ${projetoId}
@@ -1021,6 +1100,17 @@ async function salvarDiagnostico(
     user
   );
 
+  let publicacaoDiagnostico = null;
+  if (tipoProjeto.toLowerCase() === "planejamento") {
+    publicacaoDiagnostico = await publicarPlanejamentoNosDiagnosticos({
+      projetoId,
+      diagnostico: jsonSeguro(body.diagnostico) || {},
+      clienteNome: projetoRows?.[0]?.cliente_nome || "",
+      cnpj: projetoRows?.[0]?.cnpj || "",
+      user,
+    });
+  }
+
   return send(
     res,
     200,
@@ -1030,6 +1120,7 @@ async function salvarDiagnostico(
       diagnostico:
         inserted?.[0] ||
         null,
+      publicacaoDiagnostico,
     }
   );
 }
@@ -2942,9 +3033,11 @@ REGRAS OBRIGATÓRIAS:
 8. No Lucro Real, se o lucro fiscal do período for zero ou negativo, IRPJ, adicional e CSLL devem ser zero.
 9. Compare todos os regimes no mesmo período e sobre a mesma receita.
 10. Informe claramente tudo que impedir recomendação conclusiva.
+11. Toda alíquota, limite, percentual de presunção, teto ou prazo legal citado deve estar de acordo com a legislação vigente na data de hoje — confirme por pesquisa antes de afirmar. Se não for possível confirmar que o dado ainda está vigente, registre em "pontosValidacao" ou "dadosFaltantes" como "base legal a confirmar" em vez de declarar o valor como certo.
+12. Nunca cite lei, artigo, instrução normativa ou percentual de memória sem verificar; se pesquisar e não encontrar confirmação, diga isso explicitamente em vez de aproximar.
 `}];
   try{
-    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoConferenciaSchema,nomeSchema:"finder_planejamento_conferencia",effort:"medium",webSearch:false});
+    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoConferenciaSchema,nomeSchema:"finder_planejamento_conferencia",effort:"medium",webSearch:true});
     return send(res,200,{sucesso:true,modelo:MODEL,conferencia:result,usage});
   }catch(error){
     console.error("[tributario][planejamento-conferir]",error);
@@ -2973,9 +3066,10 @@ REGRAS:
 7. IPI sem NCM/TIPI confirmado é pendência material.
 8. Menor carga matemática não é automaticamente o melhor regime.
 9. Destaque riscos, dados faltantes e validações necessárias.
+10. Não cite lei, artigo, limite ou alíquota que não esteja nos CÁLCULOS DO MOTOR ou na BASE informada sem confirmar por pesquisa que ainda está vigente; se não puder confirmar, registre como pendência de validação em vez de afirmar.
 `}];
   try{
-    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoAnaliseSchema,nomeSchema:"finder_planejamento_analise",effort:"high",webSearch:false});
+    const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoAnaliseSchema,nomeSchema:"finder_planejamento_analise",effort:"high",webSearch:true});
     return send(res,200,{sucesso:true,modelo:MODEL,analise:result,usage});
   }catch(error){
     console.error("[tributario][planejamento-analisar]",error);
@@ -3047,6 +3141,8 @@ REGRAS OBRIGATÓRIAS:
 5. Para serviços de contabilidade, confronte o art. 127 da LC 214/2025 e seus requisitos; não use 28% integral silenciosamente.
 6. Liste riscos, oportunidades, divergências, dados faltantes e perguntas de validação.
 7. Cite título, artigo e URL oficial dentro de dadosExtraidos quando houver enquadramento legal relevante.
+8. Nunca informe um percentual, prazo, artigo de lei ou limite legal sem confirmar por pesquisa que ele está vigente na data de hoje. Se a pesquisa não confirmar, registre em dadosFaltantes/pontosParaValidacao como "sem confirmação legal atual" em vez de apresentar o dado como fato.
+9. Alíquotas nominais do IBS/CBS ainda dependem de Resolução do Senado: sempre identifique explicitamente qualquer percentual de referência como estimativa sujeita a alteração, nunca como valor final.
 ` }];
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:diagnosticSchema,nomeSchema:"finder_reforma_analise",effort:"high",webSearch:true});
