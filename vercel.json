@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/origem=:origem",
+      "destination": "/index.html"
+    },
+    {
       "source": "/sistema",
       "destination": "/index.html"
     },
