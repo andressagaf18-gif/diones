@@ -1015,9 +1015,17 @@ async function verCliente(
       )
       .filter(Boolean);
 
-  const propostas =
-    atendimentoIds.length
-      ? await consultaSegura(
+  // As 4 consultas abaixo são independentes entre si (todas dependem só de
+  // atendimentoIds) e antes rodavam uma atrás da outra. Rodando em paralelo,
+  // o tempo de resposta passa a ser o da mais lenta das 4, não a soma delas.
+  const [
+    propostas,
+    documentos,
+    analises,
+    historico,
+  ] = atendimentoIds.length
+    ? await Promise.all([
+        consultaSegura(
           () =>
             sql`
               SELECT *
@@ -1034,12 +1042,8 @@ async function verCliente(
                 criado_em DESC
             `,
           []
-        )
-      : [];
-
-  const documentos =
-    atendimentoIds.length
-      ? await consultaSegura(
+        ),
+        consultaSegura(
           () =>
             sql`
               SELECT
@@ -1068,12 +1072,8 @@ async function verCliente(
                 criado_em DESC
             `,
           []
-        )
-      : [];
-
-  const analises =
-    atendimentoIds.length
-      ? await consultaSegura(
+        ),
+        consultaSegura(
           () =>
             sql`
               SELECT
@@ -1104,12 +1104,8 @@ async function verCliente(
               LIMIT 20
             `,
           []
-        )
-      : [];
-
-  const historico =
-    atendimentoIds.length
-      ? await consultaSegura(
+        ),
+        consultaSegura(
           () =>
             sql`
               SELECT *
@@ -1128,8 +1124,9 @@ async function verCliente(
               LIMIT 200
             `,
           []
-        )
-      : [];
+        ),
+      ])
+    : [[], [], [], []];
 
   const diagnosticos =
     diagnosticoIds.length
@@ -1153,8 +1150,14 @@ async function verCliente(
         )
       : [];
 
-  const contatos =
-    await consultaSegura(
+  // Estas 3 consultas também só dependem de cliente.id, sem depender uma da
+  // outra — mesma otimização acima, agrupadas em paralelo.
+  const [
+    contatos,
+    tarefas,
+    pendencias,
+  ] = await Promise.all([
+    consultaSegura(
       () =>
         sql`
           SELECT *
@@ -1172,10 +1175,8 @@ async function verCliente(
             criado_em ASC
         `,
       []
-    );
-
-  const tarefas =
-    await consultaSegura(
+    ),
+    consultaSegura(
       () =>
         sql`
           SELECT *
@@ -1209,10 +1210,8 @@ async function verCliente(
             criado_em DESC
         `,
       []
-    );
-
-  const pendencias =
-    await consultaSegura(
+    ),
+    consultaSegura(
       () =>
         sql`
           SELECT *
@@ -1245,7 +1244,8 @@ async function verCliente(
             criado_em DESC
         `,
       []
-    );
+    ),
+  ]);
 
   const leadsAtivos =
     (leads || [])
