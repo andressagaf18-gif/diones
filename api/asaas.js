@@ -534,9 +534,18 @@ async function adminSync(req, res) {
     : await sql`SELECT * FROM asaas_pagamentos WHERE status NOT IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH','REFUNDED','DELETED') ORDER BY atualizado_em ASC LIMIT 50`;
   let atualizados = 0;
   const erros = [];
-  for (const row of rows) {
-    try { await syncPaymentRow(row); atualizados += 1; }
-    catch (error) { erros.push({ paymentId: row.payment_id, erro: error.message }); }
+  // Cada linha faz uma chamada independente à API do Asaas + 1 UPDATE; antes
+  // rodava uma de cada vez (até 50 chamadas em série). Agora roda em lotes
+  // paralelos, respeitando um limite de concorrência para não sobrecarregar
+  // a API do Asaas.
+  const TAMANHO_LOTE = 8;
+  for (let i = 0; i < rows.length; i += TAMANHO_LOTE) {
+    const lote = rows.slice(i, i + TAMANHO_LOTE);
+    const resultados = await Promise.allSettled(lote.map((row) => syncPaymentRow(row)));
+    resultados.forEach((resultado, indice) => {
+      if (resultado.status === "fulfilled") atualizados += 1;
+      else erros.push({ paymentId: lote[indice].payment_id, erro: resultado.reason?.message || "Falha ao sincronizar." });
+    });
   }
   return res.status(200).json({ ok: true, atualizados, erros });
 }
