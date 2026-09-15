@@ -1,10 +1,10 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useState,
 } from "react";
-
-import * as XLSX from "xlsx";
 
 import {
   Search,
@@ -37,12 +37,27 @@ import {
   Pencil,
   Sparkles,
 } from "lucide-react";
-import Dashboard from "./Dashboard";
-import OperacionalBI from "./OperacionalBI";
-import PropostaPDFButton from "./PropostaPDF";
+
 import { FinderSidebar, FinderTopbar } from "./TechShell";
 import { finderStyles } from "./Theme";
-import Tributario from "./tributario/Tributario";
+
+// Essas quatro telas são pesadas (Tributário sozinho carrega mais de 350KB de
+// código-fonte, incluindo jsPDF) e cada uma só é necessária quando a aba
+// correspondente é aberta. Carregá-las sob demanda evita que todo mundo que
+// entra no admin baixe o painel inteiro (Dashboard + BI + Tributário +
+// PDFs) só para ver, por exemplo, a lista de clientes.
+const Dashboard = lazy(() => import("./Dashboard"));
+const OperacionalBI = lazy(() => import("./OperacionalBI"));
+const PropostaPDFButton = lazy(() => import("./PropostaPDF"));
+const Tributario = lazy(() => import("./tributario/Tributario"));
+
+function CarregandoAba() {
+  return (
+    <div style={{ padding: 40, textAlign: "center", color: "#5B667A", fontSize: 12 }}>
+      Carregando...
+    </div>
+  );
+}
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -1511,6 +1526,9 @@ function ListaDiagnosticos({
     setErro("");
 
     try {
+      // Carregado sob demanda: a biblioteca xlsx é pesada e só é necessária
+      // quando o usuário realmente clica em exportar.
+      const XLSX = await import("xlsx");
       const resposta =
         await fetch(
           "/api/diagnosticos?action=exportar",
@@ -10269,16 +10287,18 @@ async function salvarPropostaCaso() {
                                     Editar
                                   </Botao>
 
-                                  <PropostaPDFButton
-                                    proposta={proposta}
-                                    atendimento={atendimentoAberto}
-                                    lead={leadDoAtendimento(
-                                      atendimentoAberto
-                                    )}
-                                    onErro={setErro}
-                                  >
-                                    Gerar PDF
-                                  </PropostaPDFButton>
+                                  <Suspense fallback={null}>
+                                    <PropostaPDFButton
+                                      proposta={proposta}
+                                      atendimento={atendimentoAberto}
+                                      lead={leadDoAtendimento(
+                                        atendimentoAberto
+                                      )}
+                                      onErro={setErro}
+                                    >
+                                      Gerar PDF
+                                    </PropostaPDFButton>
+                                  </Suspense>
 
                                   <button
                                     type="button"
@@ -19760,7 +19780,7 @@ const CUPOM_VAZIO = {
   inicioEm: "", fimEm: "", limiteTotal: "", limiteDocumento: "1", ativo: true,
 };
 
-function AsaasFinanceiroAdmin({ token }) {
+function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
   const [abaAsaas, setAbaAsaas] = useState("visao");
   const [dados, setDados] = useState({ resumo: {}, pagamentos: [], eventos: [], atualizadoEm: null });
   const [financeiro, setFinanceiro] = useState({ saldo: null, extrato: { data: [] }, avisos: [] });
@@ -20046,7 +20066,13 @@ function AsaasFinanceiroAdmin({ token }) {
                     <td style={tdStyle}>{moedaAdmin(p.valor_liquido)}</td>
                     <td style={tdStyle}>{p.cupom_codigo || "-"}</td>
                     <td style={tdStyle}>{p.forma_pagamento || "-"}</td>
-                    <td style={tdStyle}>{p.diagnostico_id || "-"}</td>
+                    <td style={tdStyle}>
+                      {p.diagnostico_id ? (
+                        <button type="button" onClick={() => onAbrirDiagnostico?.(p.diagnostico_id)} style={{ border: 0, background: "none", color: CORAL, fontWeight: 800, cursor: "pointer", padding: 0, fontSize: 10.5, textAlign: "left" }}>
+                          Ver diagnóstico →
+                        </button>
+                      ) : "-"}
+                    </td>
                     <td style={tdStyle}>{p.status}</td>
                     <td style={tdStyle}>
                       <button type="button" onClick={() => sincronizar(p.payment_id)} disabled={sincronizando === p.payment_id} style={{ border: "1px solid #D8DEEA", background: "#fff", borderRadius: 8, padding: "6px 9px", fontSize: 10.5, cursor: "pointer" }}>
@@ -23942,17 +23968,19 @@ export default function Admin() {
         titulo="Visão Geral"
         subtitulo="Indicadores, operação comercial e inteligência Finder"
       >
-        <Dashboard
-          onAbrirLead={
-            abrirLeadDashboard
-          }
-          onAbrirDiagnostico={
-            abrirDiagnosticoDashboard
-          }
-          onAbrirAtendimento={
-            abrirAtendimentoDashboard
-          }
-        />
+        <Suspense fallback={<CarregandoAba/>}>
+          <Dashboard
+            onAbrirLead={
+              abrirLeadDashboard
+            }
+            onAbrirDiagnostico={
+              abrirDiagnosticoDashboard
+            }
+            onAbrirAtendimento={
+              abrirAtendimentoDashboard
+            }
+          />
+        </Suspense>
       </FinderTechLayout>
     );
   }
@@ -24062,13 +24090,15 @@ export default function Admin() {
           maxWidth="none"
           padding="18px 18px 44px"
         >
-          <OperacionalBI
-            token={token}
-            modo="diagnosticos"
-            onAbrirDiagnostico={
-              setDiagnosticoId
-            }
-          />
+          <Suspense fallback={<CarregandoAba/>}>
+            <OperacionalBI
+              token={token}
+              modo="diagnosticos"
+              onAbrirDiagnostico={
+                setDiagnosticoId
+              }
+            />
+          </Suspense>
         </ConteudoPadrao>
       </FinderTechLayout>
     );
@@ -24139,16 +24169,18 @@ export default function Admin() {
           maxWidth="none"
           padding="18px 18px 44px"
         >
-          <OperacionalBI
-            token={token}
-            modo="atendimentos"
-            onAbrirDiagnostico={
-              setDiagnosticoId
-            }
-            onAbrirAtendimento={
-              abrirAtendimentoDashboard
-            }
-          />
+          <Suspense fallback={<CarregandoAba/>}>
+            <OperacionalBI
+              token={token}
+              modo="atendimentos"
+              onAbrirDiagnostico={
+                setDiagnosticoId
+              }
+              onAbrirAtendimento={
+                abrirAtendimentoDashboard
+              }
+            />
+          </Suspense>
         </ConteudoPadrao>
       </FinderTechLayout>
     );
@@ -24200,9 +24232,11 @@ export default function Admin() {
         subtitulo={paginas.tributario.subtitulo}
       >
         <ConteudoPadrao>
-          <Tributario
-            token={token}
-          />
+          <Suspense fallback={<CarregandoAba/>}>
+            <Tributario
+              token={token}
+            />
+          </Suspense>
         </ConteudoPadrao>
       </FinderTechLayout>
     );
@@ -24220,6 +24254,7 @@ export default function Admin() {
         <ConteudoPadrao>
           <AsaasFinanceiroAdmin
             token={token}
+            onAbrirDiagnostico={abrirDiagnosticoDashboard}
           />
         </ConteudoPadrao>
       </FinderTechLayout>
