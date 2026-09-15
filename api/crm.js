@@ -6112,28 +6112,32 @@ async function excluirAtendimentosLote(req, res) {
   const casosProcessados = new Set();
 
   try {
-    for (const atendimentoId of ids) {
-      const existente = await sql`
-        SELECT id, lead_id, diagnostico_id
-        FROM crm_atendimentos_departamento
-        WHERE id = ${atendimentoId}
-        LIMIT 1
-      `;
+    // Antes: 1 SELECT por atendimento (até 500 idas ao banco em sequência).
+    // Agora: 1 SELECT único trazendo todos os atendimentos de uma vez.
+    const existentes = await sql`
+      SELECT id, lead_id, diagnostico_id
+      FROM crm_atendimentos_departamento
+      WHERE id = ANY(${ids})
+    `;
+    const porId = new Map(existentes.map((row) => [row.id, row]));
 
-      if (!existente?.[0]) continue;
+    for (const atendimentoId of ids) {
+      const existente = porId.get(atendimentoId);
+
+      if (!existente) continue;
 
       const chaveCaso =
-        existente[0].diagnostico_id ||
-        existente[0].lead_id ||
-        existente[0].id;
+        existente.diagnostico_id ||
+        existente.lead_id ||
+        existente.id;
 
       if (casosProcessados.has(chaveCaso)) continue;
       casosProcessados.add(chaveCaso);
 
       await excluirRegistroLead({
         atendimentoId,
-        leadId: existente[0].lead_id || "",
-        diagnosticoId: existente[0].diagnostico_id || "",
+        leadId: existente.lead_id || "",
+        diagnosticoId: existente.diagnostico_id || "",
       });
 
       excluidos += 1;
