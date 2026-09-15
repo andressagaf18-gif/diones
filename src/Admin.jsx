@@ -19030,7 +19030,7 @@ function EventosOrigens({ token }) {
 
   function link(origem) {
     if (!origem) return "";
-    return `${window.location.origin}/?origem=${encodeURIComponent(origem)}`;
+    return `https://diagnosticofinderofsolutions.vercel.app/origem=${encodeURIComponent(origem)}`;
   }
 
   async function carregar() {
