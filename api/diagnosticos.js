@@ -155,6 +155,14 @@ async function garantirArquivamento() {
       ADD COLUMN IF NOT EXISTS
         arquivado_em TIMESTAMPTZ
     `;
+
+    // A listagem padrão filtra por arquivado e ordena por criado_em — sem
+    // este índice, toda abertura da aba Diagnósticos faz varredura completa
+    // da tabela (e mais um COUNT(*) igual, para a paginação).
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_diagnosticos_arquivado_criado
+      ON diagnosticos (arquivado, criado_em DESC)
+    `;
   } catch (error) {
     console.warn(
       "[diagnosticos] Não foi possível validar campos de arquivamento:",
@@ -221,8 +229,8 @@ async function listarDiagnosticos(
     `%${busca}%`;
 
   try {
-    const rows =
-      await sql`
+    const [rows, contagemRows] = await Promise.all([
+      sql`
         SELECT
           id,
           criado_em,
@@ -284,10 +292,8 @@ async function listarDiagnosticos(
           criado_em DESC
         LIMIT ${limite}
         OFFSET ${offset}
-      `;
-
-    const contagem =
-      await sql`
+      `,
+      sql`
         SELECT
           COUNT(*)::INTEGER
             AS total
@@ -330,7 +336,9 @@ async function listarDiagnosticos(
               ) = FALSE
             )
           )
-      `;
+      `,
+    ]);
+    const contagem = contagemRows;
 
     const diagnosticos =
       (rows || []).map(
