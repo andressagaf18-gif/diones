@@ -14261,6 +14261,14 @@ export default function App() {
       if (caminho.startsWith("/origem=")) {
         const origem = lerOrigemDaUrl() || "link-direto";
         sessionStorage.setItem("finder_origem_atual", origem);
+        // Compatibilidade com links antigos no formato /origem=sebrae.
+        // Após a entrada, normaliza para a URL canônica com query string.
+        try {
+          const url = new URL(window.location.href);
+          url.pathname = "/";
+          url.searchParams.set("origem", origem);
+          window.history.replaceState({}, "", url.toString());
+        } catch {}
         return "diagnostico";
       }
 
