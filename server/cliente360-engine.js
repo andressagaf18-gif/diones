@@ -2786,6 +2786,71 @@ async function salvarPendencia(
 }
 
 // =========================================================
+// BUSCA GLOBAL RÁPIDA
+// Usada pelo campo de busca do topo do admin — 1 chamada, resultados de
+// clientes, leads e diagnósticos ao mesmo tempo (em paralelo).
+// =========================================================
+
+async function buscaRapida(req, res) {
+  if (!autorizado(req)) {
+    return res.status(401).json({ sucesso: false, error: "Não autorizado." });
+  }
+
+  const termo = texto(req.query?.q, 140).trim();
+
+  if (termo.length < 2) {
+    return res.status(200).json({ sucesso: true, clientes: [], leads: [], diagnosticos: [] });
+  }
+
+  const like = `%${termo}%`;
+  const cnpjDigits = somenteDigitos(termo);
+
+  const [clientes, leads, diagnosticos] = await Promise.all([
+    consultaSegura(
+      () => sql`
+        SELECT id, nome, cnpj
+        FROM crm_clientes
+        WHERE nome ILIKE ${like}
+          OR (${cnpjDigits} <> '' AND REGEXP_REPLACE(COALESCE(cnpj,''), '[^0-9]', '', 'g') LIKE ${cnpjDigits + "%"})
+        ORDER BY nome ASC
+        LIMIT 5
+      `,
+      []
+    ),
+    consultaSegura(
+      () => sql`
+        SELECT id, nome, cnpj, status_comercial
+        FROM diagnostico_leads
+        WHERE nome ILIKE ${like}
+          OR (${cnpjDigits} <> '' AND REGEXP_REPLACE(COALESCE(cnpj,''), '[^0-9]', '', 'g') LIKE ${cnpjDigits + "%"})
+        ORDER BY created_at DESC
+        LIMIT 5
+      `,
+      []
+    ),
+    consultaSegura(
+      () => sql`
+        SELECT id, nome, cnpj, razao_social, segmento
+        FROM diagnosticos
+        WHERE nome ILIKE ${like}
+          OR razao_social ILIKE ${like}
+          OR (${cnpjDigits} <> '' AND REGEXP_REPLACE(COALESCE(cnpj,''), '[^0-9]', '', 'g') LIKE ${cnpjDigits + "%"})
+        ORDER BY criado_em DESC
+        LIMIT 5
+      `,
+      []
+    ),
+  ]);
+
+  return res.status(200).json({
+    sucesso: true,
+    clientes: clientes.map((c) => ({ id: c.id, nome: c.nome, meta: c.cnpj || "" })),
+    leads: leads.map((l) => ({ id: l.id, nome: l.nome, meta: l.status_comercial || l.cnpj || "" })),
+    diagnosticos: diagnosticos.map((d) => ({ id: d.id, nome: d.razao_social || d.nome, meta: d.segmento || d.cnpj || "" })),
+  });
+}
+
+// =========================================================
 // HANDLER
 // =========================================================
 
@@ -2864,6 +2929,12 @@ export default async function cliente360Handler(
 
       case "salvar-pendencia":
         return salvarPendencia(
+          req,
+          res
+        );
+
+      case "busca-rapida":
+        return buscaRapida(
           req,
           res
         );
