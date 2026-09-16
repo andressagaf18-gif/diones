@@ -7167,6 +7167,7 @@ export default async function handler(req, res) {
       case "sincronizar-clientes":
       case "listar-clientes":
       case "ver-cliente":
+      case "busca-rapida":
       case "salvar-contato":
       case "salvar-tarefa":
       case "salvar-pendencia":
