@@ -20489,6 +20489,7 @@ function Cliente360({
   token,
   onAbrirDiagnostico,
   onAbrirAtendimento,
+  clienteIdParaAbrir,
 }) {
   const [
     clientes,
@@ -20787,6 +20788,15 @@ function Cliente360({
       );
     }
   }
+
+  // Permite abrir um cliente específico vindo de fora (ex.: resultado da
+  // busca global do topo), sem depender da lista já estar carregada/filtrada.
+  useEffect(() => {
+    if (clienteIdParaAbrir) {
+      abrirCliente({ id: clienteIdParaAbrir });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteIdParaAbrir]);
 
   useEffect(
     () => {
@@ -23554,48 +23564,6 @@ function Cliente360({
 }
 
 
-function FinderTechLayout({
-  aba,
-  setAba,
-  logout,
-  titulo,
-  subtitulo,
-  children,
-}) {
-  return (
-    <div
-      style={
-        finderStyles.page
-      }
-    >
-      <div
-        style={
-          finderStyles.shell
-        }
-      >
-        <FinderSidebar
-          aba={aba}
-          setAba={setAba}
-          onLogout={logout}
-        />
-
-        <section
-          style={
-            finderStyles.content
-          }
-        >
-          <FinderTopbar
-            titulo={titulo}
-            subtitulo={subtitulo}
-          />
-
-          {children}
-        </section>
-      </div>
-    </div>
-  );
-}
-
 // =========================================================
 // COMPONENTE PRINCIPAL
 // =========================================================
@@ -23713,6 +23681,60 @@ export default function Admin() {
         id
       );
     }
+  }
+
+  // Estado + roteamento para abrir um cliente específico vindo da busca
+  // global do topo (o mesmo prop que Cliente360 já usa para deep-link).
+  const [clienteIdBusca, setClienteIdBusca] = useState(null);
+
+  function abrirResultadoBusca(tipo, item) {
+    if (!item?.id) return;
+    if (tipo === "cliente") {
+      setDiagnosticoId(null);
+      setClienteIdBusca(item.id);
+      setAba("clientes");
+    } else if (tipo === "lead") {
+      abrirLeadDashboard(item.id);
+    } else if (tipo === "diagnostico") {
+      abrirDiagnosticoDashboard(item.id);
+    }
+  }
+
+  // Movido para dentro de Admin() (em vez de módulo) para poder repassar
+  // token e a navegação da busca global ao topbar, sem precisar alterar
+  // nenhum dos lugares que já chamam <FinderTechLayout ...> com as mesmas
+  // props de sempre (aba, setAba, logout, titulo, subtitulo).
+  function FinderTechLayout({
+    aba,
+    setAba,
+    logout,
+    titulo,
+    subtitulo,
+    children,
+  }) {
+    return (
+      <div style={finderStyles.page}>
+        <div style={finderStyles.shell}>
+          <FinderSidebar
+            aba={aba}
+            setAba={setAba}
+            onLogout={logout}
+          />
+
+          <section style={finderStyles.content}>
+            <FinderTopbar
+              titulo={titulo}
+              subtitulo={subtitulo}
+              usuarioNome={usuarioSessao?.nome || "Finder"}
+              token={token}
+              onAbrirResultado={abrirResultadoBusca}
+            />
+
+            {children}
+          </section>
+        </div>
+      </div>
+    );
   }
 
   function BarraAbas() {
@@ -24071,6 +24093,7 @@ export default function Admin() {
             onAbrirAtendimento={
               abrirAtendimentoDashboard
             }
+            clienteIdParaAbrir={clienteIdBusca}
           />
         </ConteudoPadrao>
       </FinderTechLayout>
