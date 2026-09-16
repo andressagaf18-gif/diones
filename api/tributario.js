@@ -3358,9 +3358,19 @@ Se os documentos enviados pertencerem a mais de uma empresa (CNPJs diferentes, s
     const parametros=base.parametros||{};
     const tributos=base.tributos||{};
     const faturamento=base.faturamento||{};
+    const despesas=base.despesas||{};
+    const folha=base.folha||{};
     const simples=result.simplesNacional||{};
     const totalMeses=(mapa)=>Object.values(mapa||{}).reduce((s,v)=>s+(Number(v)||0),0)||null;
+    const somaGrupos=(obj,chaves)=>chaves.reduce((s,k)=>s+(totalMeses(obj?.[k])||0),0)||null;
     const receitaExtraida=totalMeses(faturamento.naoSegregado)||totalMeses(faturamento.servicos)||totalMeses(faturamento.comercio)||totalMeses(faturamento.industria);
+    // Despesas/custos e folha vinham no schema (base.despesas, base.folha) mas
+    // ficavam presas aqui: nunca chegavam ao objeto "economicos" devolvido ao
+    // front, então a etapa de Regimes tributários nunca via esses valores,
+    // mesmo quando a IA já os havia extraído dos documentos.
+    const despesasAnuais=somaGrupos(despesas,["operacionais","comerciais","administrativas","tributarias","diretoria","logistica","ocupacao","outras"]);
+    const folhaMensal=(()=>{const s=somaGrupos(folha,["folha13","inssFgts","outros","encargosPatronais"]);return s!=null?s/12:null})();
+    const proLaboreMensal=(()=>{const s=totalMeses(folha.proLabore);return s!=null?s/12:null})();
     const extracao={
       ...result,
       identificacao:{...identificacao,regime:identificacao.regimeAtual||parametros.regimeAtual||null},
@@ -3372,6 +3382,9 @@ Se os documentos enviados pertencerem a mais de uma empresa (CNPJs diferentes, s
         // documental na tela.
         rbt12:simples.rbt12||null,
         faturamentoAnual:simples.rbt12||receitaExtraida,
+        custosDespesasAnuais:despesasAnuais,
+        folhaMensal,
+        proLaboreMensal,
       },
       tributos:{
         pis:totalMeses(tributos.pis),cofins:totalMeses(tributos.cofins),icms:totalMeses(tributos.icms),
@@ -3379,7 +3392,7 @@ Se os documentos enviados pertencerem a mais de uma empresa (CNPJs diferentes, s
         cpp:simples.composicaoDas?.cppInss||null,irpj:simples.composicaoDas?.irpj||null,
         csll:simples.composicaoDas?.csll||null,outros:null,
       },
-      simples:{anexo:simples.anexo||null,aliquotaEfetivaPct:simples.aliquotaEfetivaObservada||parametros.simplesAliquotaEfetiva,dasPeriodo:simples.dasTotal||totalMeses(parametros.simplesDas),fatorRPct:simples.fatorR||null},
+      simples:{anexo:simples.anexo||null,aliquotaEfetivaPct:simples.aliquotaEfetivaObservada||parametros.simplesAliquotaEfetiva,dasPeriodo:simples.dasTotal||totalMeses(parametros.simplesDas),fatorRPct:simples.fatorR||null,fatorRAplicavel:simples.fatorRAplicavel??null},
       confiancaGeral:result.dadosFaltantes?.length?"BAIXA":"MEDIA",
     };
     return send(res,200,{sucesso:true,modelo:MODEL,extracao,usage});
