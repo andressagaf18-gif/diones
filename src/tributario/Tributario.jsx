@@ -1416,7 +1416,22 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    setExtraindo(false);
   }
  }
- const classificacaoAtividade=useMemo(()=>String(empresa?.cnaePrincipal?.classificacao||empresa?.classificacao||"").toUpperCase(),[empresa]);
+ function classificarNaturezaTributaria(codigoCnae){
+  // Classificação por divisão do CNAE (2 primeiros dígitos), específica para
+  // fins de presunção de IRPJ/CSLL — não confundir com a classificação usada
+  // no questionário do diagnóstico geral (que tem outro propósito e outro
+  // formato de retorno).
+  const divisao=Number(String(codigoCnae||"").replace(/\D/g,"").slice(0,2));
+  if(!divisao)return"";
+  if(divisao>=10&&divisao<=33)return"INDUSTRIA"; // indústria de transformação
+  if(divisao>=45&&divisao<=47)return"COMERCIO"; // comércio atacadista/varejista
+  return"SERVICOS"; // demais divisões (serviços, construção, transporte, financeiro etc.)
+ }
+
+ const classificacaoAtividade=useMemo(()=>{
+  const cnaePrincipal=cnaes.find(c=>c.codigo===principal);
+  return classificarNaturezaTributaria(cnaePrincipal?.codigo||principal);
+ },[cnaes,principal]);
 
  const presuncaoPadrao=useMemo(()=>{
   if(classificacaoAtividade==="COMERCIO"||classificacaoAtividade==="INDUSTRIA")return{irpj:8,csll:12};
@@ -1588,7 +1603,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     }
    }else{
     recomendacao="Estratégia IBS/CBS do regime atual — validar";
-    explicacao="O módulo da Reforma avalia consumo, créditos, cadeia B2B/B2C e transição. A troca entre Simples, Presumido e Real permanece no Planejamento Tributário.";
+    explicacao=calcRegimes.melhor
+     ?`O módulo avalia consumo, créditos, cadeia B2B/B2C e transição do regime atual. A comparação entre Simples, Presumido e Real (etapa "Regimes tributários") aponta ${{SIMPLES_NACIONAL:"Simples Nacional",LUCRO_PRESUMIDO:"Lucro Presumido",LUCRO_REAL:"Lucro Real"}[calcRegimes.melhor.regime]||calcRegimes.melhor.regime} como menor carga matemática — validação técnica ainda necessária antes de qualquer mudança.`
+     :"O módulo avalia consumo, créditos, cadeia B2B/B2C e transição do regime atual. Complete a etapa \"Regimes tributários\" para comparar Simples, Presumido e Real dentro desta mesma análise.";
     recomendado="REGIME_ATUAL";
    }
   }
@@ -2432,7 +2449,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     "O DAS residual e uma estimativa gerencial quando construida a partir da composicao documental atual; a apuracao oficial futura prevalece.",
     "Aliquotas, reducoes, beneficios, regimes especificos e regras do Simples devem ser validados com a legislacao vigente na data da decisao.",
     "A recomendacao depende da documentacao disponibilizada; campos pendentes reduzem a confianca e podem alterar o resultado.",
-    "A comparacao Simples x Lucro Presumido x Lucro Real pertence ao Planejamento Tributario e nao deve ser confundida com este diagnostico da Reforma."
+    "A comparacao Simples x Lucro Presumido x Lucro Real integra esta mesma analise, na etapa \"Regimes tributarios\", e usa premissas proprias (presuncao, PIS/Cofins, CPP patronal) sujeitas a validacao."
    ],C.amber);
 
    // Final footers/numbers
@@ -2735,11 +2752,13 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>SIMPLES NACIONAL</div>
       <div style={{fontSize:19,fontWeight:900,marginTop:4}}>{calcRegimes.simples.completo?moedaMotor(calcRegimes.simples.total):"Pendente"}</div>
       <div style={{fontSize:8.5,color:"#697386",marginTop:3}}>{calcRegimes.simples.fonte||"Informe a alíquota efetiva ou o DAS do período na etapa 1."}</div>
+      {classificacaoAtividade==="SERVICOS"&&<div style={{fontSize:8,color:"#697386",marginTop:4}}>Fator R: {n(fatorR)>0?`${fatorR}% · ${n(fatorR)>=28?"Anexo III":"Anexo V"}`:"não informado — necessário p/ decidir Anexo III × V"}</div>}
+      {(classificacaoAtividade==="COMERCIO"||classificacaoAtividade==="INDUSTRIA")&&<div style={{fontSize:8,color:"#697386",marginTop:4}}>Fator R não se aplica — atividade não é de serviços.</div>}
      </div>
      <div style={{...card,borderTop:calcRegimes.melhor?.regime==="LUCRO_PRESUMIDO"?"4px solid #176B47":"4px solid transparent"}}>
       <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>LUCRO PRESUMIDO</div>
       <div style={{fontSize:19,fontWeight:900,marginTop:4}}>{calcRegimes.presumido.completo?moedaMotor(calcRegimes.presumido.total):"Pendente"}</div>
-      <div style={{fontSize:8.5,color:"#697386",marginTop:3}}>Presunção {calcRegimes.presumido.presuncaoIrpj}% IRPJ / {calcRegimes.presumido.presuncaoCsll}% CSLL{classificacaoAtividade?` · CNAE: ${classificacaoAtividade}`:" · sem classificação oficial, confirme abaixo"}</div>
+      <div style={{fontSize:8.5,color:"#697386",marginTop:3}}>Presunção {calcRegimes.presumido.presuncaoIrpj}% IRPJ / {calcRegimes.presumido.presuncaoCsll}% CSLL{classificacaoAtividade?` · Atividade: ${{COMERCIO:"Comércio",INDUSTRIA:"Indústria",SERVICOS:"Serviços"}[classificacaoAtividade]||classificacaoAtividade}`:" · sem CNAE confirmado, ajuste abaixo se necessário"}</div>
      </div>
      <div style={{...card,borderTop:calcRegimes.melhor?.regime==="LUCRO_REAL"?"4px solid #176B47":"4px solid transparent"}}>
       <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>LUCRO REAL</div>
