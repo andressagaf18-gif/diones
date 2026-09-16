@@ -19703,18 +19703,203 @@ function CentralUsuariosAcessos({
 // =========================================================
 // AUDITORIA
 // =========================================================
+function formatarBytesSaude(bytes) {
+  const n = Number(bytes || 0);
+  if (!n) return "0 MB";
+  const mb = n / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 2 : 0)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}
+
+function tempoRelativoSaude(valor) {
+  if (!valor) return "sem registro";
+  const diffMs = Date.now() - new Date(valor).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "agora mesmo";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d}d`;
+}
+
+const CORES_STATUS_SAUDE = {
+  OK: "#2FD68F",
+  LENTO: "#F4B740",
+  ERRO: "#EF5B5B",
+  SEM_DADOS: "#5C6788",
+};
+
+const LABELS_STATUS_SAUDE = {
+  OK: "Rodando normalmente",
+  LENTO: "Mais lento que o normal",
+  ERRO: "Com erro",
+  SEM_DADOS: "Sem execuções recentes",
+};
+
+function SaudeSistemaPainel({ token }) {
+  const [armazenamento, setArmazenamento] = useState(null);
+  const [saudeModulos, setSaudeModulos] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const [rArm, rMod] = await Promise.all([
+        fetch("/api/crm?action=saude-armazenamento", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/crm?action=saude-modulos", { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      const [dArm, dMod] = await Promise.all([rArm.json().catch(() => null), rMod.json().catch(() => null)]);
+      if (!rArm.ok || !dArm?.sucesso) throw new Error(dArm?.error || "Erro ao carregar armazenamento.");
+      if (!rMod.ok || !dMod?.sucesso) throw new Error(dMod?.error || "Erro ao carregar saúde dos módulos.");
+      setArmazenamento(dArm);
+      setSaudeModulos(dMod);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  const dark = {
+    bg: "#0A0E17",
+    panel: "linear-gradient(165deg, #12172A, #161C32)",
+    border: "rgba(255,255,255,.08)",
+    text: "#EEF1F8",
+    muted: "#8B96B4",
+  };
+
+  const maiorTabela = armazenamento?.maioresTabelas?.[0]?.bytes || 1;
+  const alertas = saudeModulos?.alertas || [];
+
+  return (
+    <div style={{ background: dark.bg, borderRadius: 22, padding: 20, color: dark.text }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>Saúde do sistema</div>
+          <div style={{ fontSize: 10.5, color: dark.muted, marginTop: 2 }}>Armazenamento do banco e status dos módulos que dependem de serviços externos (IA, Asaas, e-mail, CNPJ).</div>
+        </div>
+        <Botao secundario onClick={carregar}><RefreshCcw size={14} />Atualizar</Botao>
+      </div>
+
+      {erro && (
+        <div style={{ background: "rgba(239,91,91,.15)", border: "1px solid rgba(239,91,91,.3)", color: "#FF9B8F", padding: 12, borderRadius: 12, marginBottom: 14, fontSize: 12 }}>
+          {erro}
+        </div>
+      )}
+
+      {carregando && !armazenamento && (
+        <div style={{ color: dark.muted, fontSize: 12, padding: 20, textAlign: "center" }}>Carregando...</div>
+      )}
+
+      {alertas.length > 0 && (
+        <div style={{ marginBottom: 16, display: "grid", gap: 8 }}>
+          {alertas.map((a, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12,
+                background: a.nivel === "erro" ? "rgba(239,91,91,.14)" : "rgba(244,183,64,.14)",
+                border: `1px solid ${a.nivel === "erro" ? "rgba(239,91,91,.3)" : "rgba(244,183,64,.3)"}`,
+              }}
+            >
+              <AlertTriangle size={15} color={a.nivel === "erro" ? "#EF5B5B" : "#F4B740"} />
+              <div style={{ fontSize: 11.5 }}>{a.mensagem}</div>
+              {a.quando && <div style={{ marginLeft: "auto", fontSize: 9.5, color: dark.muted, flex: "none" }}>{tempoRelativoSaude(a.quando)}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {armazenamento && (
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 14, marginBottom: 14 }}>
+          <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 18 }}>
+            <div style={{ fontSize: 10, color: dark.muted, fontWeight: 700 }}>BANCO DE DADOS</div>
+            <div style={{ fontSize: 26, fontWeight: 800, margin: "6px 0 14px" }}>{formatarBytesSaude(armazenamento.bancoBytes)}</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {(armazenamento.maioresTabelas || []).map((t) => (
+                <div key={t.tabela}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: dark.muted, marginBottom: 3 }}>
+                    <span>{t.tabela}</span>
+                    <span>{formatarBytesSaude(t.bytes)} · {t.linhas.toLocaleString("pt-BR")} linhas</span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 4, background: "rgba(255,255,255,.06)" }}>
+                    <div style={{ height: "100%", width: `${Math.max(3, (t.bytes / maiorTabela) * 100)}%`, borderRadius: 4, background: "linear-gradient(90deg,#4F7CFF,#8B6BFF)" }} />
+                  </div>
+                </div>
+              ))}
+              {!armazenamento.maioresTabelas?.length && <div style={{ fontSize: 11, color: dark.muted }}>Sem dados de tabelas.</div>}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 16 }}>
+              <div style={{ fontSize: 10, color: dark.muted, fontWeight: 700 }}>DOCUMENTOS NO BLOB (CLIENTE 360)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{formatarBytesSaude(armazenamento.blobClientes?.bytes)}</div>
+              <div style={{ fontSize: 10.5, color: dark.muted, marginTop: 3 }}>{Number(armazenamento.blobClientes?.totalArquivos || 0).toLocaleString("pt-BR")} arquivos · fora do banco</div>
+            </div>
+            <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 16 }}>
+              <div style={{ fontSize: 10, color: dark.muted, fontWeight: 700 }}>DOCUMENTOS NO BANCO (INTELIGÊNCIA TRIBUTÁRIA)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{formatarBytesSaude(armazenamento.documentosTributarioNoBanco?.bytes)}</div>
+              <div style={{ fontSize: 10.5, color: dark.muted, marginTop: 3 }}>{Number(armazenamento.documentosTributarioNoBanco?.totalArquivos || 0).toLocaleString("pt-BR")} arquivos · salvos como base64, pesam no banco</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {saudeModulos && (
+        <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 6 }}>
+          {saudeModulos.modulos.map((m, i) => (
+            <div
+              key={m.modulo}
+              style={{
+                display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+                borderTop: i ? `1px solid ${dark.border}` : "none",
+              }}
+            >
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: CORES_STATUS_SAUDE[m.status], flex: "none" }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>{m.modulo}</div>
+                <div style={{ fontSize: 10, color: dark.muted, marginTop: 1 }}>{LABELS_STATUS_SAUDE[m.status]} · última execução {tempoRelativoSaude(m.ultimaExecucao)}</div>
+              </div>
+              {m.mediaDuracaoMs != null && (
+                <div style={{ textAlign: "right", fontSize: 10, color: dark.muted, flex: "none" }}>
+                  <div style={{ color: dark.text, fontWeight: 700, fontSize: 12 }}>{m.ultimaDuracaoMs?.toLocaleString("pt-BR")}ms</div>
+                  <div>média {m.mediaDuracaoMs.toLocaleString("pt-BR")}ms</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AuditoriaSistema({ token }) {
+  const [subaba, setSubaba] = useState("eventos");
   const [eventos,setEventos]=useState([]),[erro,setErro]=useState(""),[filtro,setFiltro]=useState("");
   async function carregar(){try{const r=await fetch("/api/acessos?action=auditoria&limite=500",{headers:{Authorization:`Bearer ${token}`}});const d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao carregar auditoria.");setEventos(d.eventos||[])}catch(e){setErro(e.message)}}
-  useEffect(()=>{carregar()},[]);
+  useEffect(()=>{if(subaba==="eventos")carregar()},[subaba]);
   const lista=eventos.filter(e=>!filtro||JSON.stringify(e).toLowerCase().includes(filtro.toLowerCase()));
   return <div>
-    <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}><input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="Filtrar usuário, ação, módulo ou registro..." style={{flex:1,minWidth:260,border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 12px"}}/><Botao secundario onClick={carregar}><RefreshCcw size={14}/>Atualizar</Botao></div>
-    {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,marginBottom:12}}>{erro}</div>}
-    <div style={{background:WHITE,borderRadius:16,overflow:"auto",boxShadow:"0 8px 24px rgba(23,35,61,.06)"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:1000}}><thead><tr><th style={thStyle}>Data/hora</th><th style={thStyle}>Usuário</th><th style={thStyle}>Ação</th><th style={thStyle}>Módulo</th><th style={thStyle}>Registro</th><th style={thStyle}>Detalhes</th></tr></thead><tbody>
-      {lista.map(e=><tr key={e.id}><td style={tdStyle}>{formatarData(e.criado_em)}</td><td style={tdStyle}><strong>{e.usuario_nome||e.usuario_login||"-"}</strong><br/><span style={{color:MUTED}}>{e.usuario_login||""}</span></td><td style={tdStyle}>{e.acao}</td><td style={tdStyle}>{e.modulo||"-"}</td><td style={tdStyle}>{[e.recurso,e.recurso_id].filter(Boolean).join(" #")||"-"}</td><td style={tdStyle}><div>{e.descricao||"-"}</div>{(e.antes||e.depois)&&<details style={{marginTop:5}}><summary style={{cursor:"pointer",color:CORAL}}>Antes / depois</summary><pre style={{whiteSpace:"pre-wrap",fontSize:10,maxWidth:460}}>{JSON.stringify({antes:e.antes,depois:e.depois},null,2)}</pre></details>}</td></tr>)}
-      {!lista.length&&<tr><td colSpan={6} style={{...tdStyle,padding:24,textAlign:"center",color:MUTED}}>Nenhum evento encontrado.</td></tr>}
-    </tbody></table></div>
+    <div style={{display:"flex",gap:8,marginBottom:16}}>
+      <Botao secundario={subaba!=="eventos"} onClick={()=>setSubaba("eventos")}>Eventos</Botao>
+      <Botao secundario={subaba!=="saude"} onClick={()=>setSubaba("saude")}><Activity size={14}/>Saúde do sistema</Botao>
+    </div>
+    {subaba==="saude" && <SaudeSistemaPainel token={token} />}
+    {subaba==="eventos" && <>
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}><input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="Filtrar usuário, ação, módulo ou registro..." style={{flex:1,minWidth:260,border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 12px"}}/><Botao secundario onClick={carregar}><RefreshCcw size={14}/>Atualizar</Botao></div>
+      {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,marginBottom:12}}>{erro}</div>}
+      <div style={{background:WHITE,borderRadius:16,overflow:"auto",boxShadow:"0 8px 24px rgba(23,35,61,.06)"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:1000}}><thead><tr><th style={thStyle}>Data/hora</th><th style={thStyle}>Usuário</th><th style={thStyle}>Ação</th><th style={thStyle}>Módulo</th><th style={thStyle}>Registro</th><th style={thStyle}>Detalhes</th></tr></thead><tbody>
+        {lista.map(e=><tr key={e.id}><td style={tdStyle}>{formatarData(e.criado_em)}</td><td style={tdStyle}><strong>{e.usuario_nome||e.usuario_login||"-"}</strong><br/><span style={{color:MUTED}}>{e.usuario_login||""}</span></td><td style={tdStyle}>{e.acao}</td><td style={tdStyle}>{e.modulo||"-"}</td><td style={tdStyle}>{[e.recurso,e.recurso_id].filter(Boolean).join(" #")||"-"}</td><td style={tdStyle}><div>{e.descricao||"-"}</div>{(e.antes||e.depois)&&<details style={{marginTop:5}}><summary style={{cursor:"pointer",color:CORAL}}>Antes / depois</summary><pre style={{whiteSpace:"pre-wrap",fontSize:10,maxWidth:460}}>{JSON.stringify({antes:e.antes,depois:e.depois},null,2)}</pre></details>}</td></tr>)}
+        {!lista.length&&<tr><td colSpan={6} style={{...tdStyle,padding:24,textAlign:"center",color:MUTED}}>Nenhum evento encontrado.</td></tr>}
+      </tbody></table></div>
+    </>}
   </div>;
 }
 
