@@ -1,6 +1,10 @@
 // cnpj.js
 
+import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
+
 export default async function handler(req, res) {
+  const inicioSaude = Date.now();
+
   // =========================================================
   // 1. VALIDAR MÉTODO
   // =========================================================
@@ -838,7 +842,7 @@ export default async function handler(req, res) {
     // 15. RETORNO FINAL
     // =========================================================
 
-    return res.status(200).json({
+    const respostaFinal = {
       sucesso: true,
 
       empresa,
@@ -885,7 +889,15 @@ export default async function handler(req, res) {
         cnaePrincipal.classificacao,
 
       endereco,
+    };
+
+    await registrarSaudeModulo({
+      modulo: MODULOS_SAUDE.CONSULTA_CNPJ,
+      status: "OK",
+      duracaoMs: Date.now() - inicioSaude,
     });
+
+    return res.status(200).json(respostaFinal);
 
   } catch (error) {
     // =========================================================
@@ -896,6 +908,13 @@ export default async function handler(req, res) {
       "[CNPJ] Erro interno:",
       error
     );
+
+    await registrarSaudeModulo({
+      modulo: MODULOS_SAUDE.CONSULTA_CNPJ,
+      status: "ERRO",
+      duracaoMs: Date.now() - inicioSaude,
+      mensagemErro: String(error?.message || error || "erro desconhecido"),
+    });
 
     return res.status(500).json({
       sucesso: false,
