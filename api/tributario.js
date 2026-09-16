@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { createHash } from "node:crypto";
 import { usuarioAutenticado } from "../server/auth.js";
+import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
 
 const sql =
   neon(
@@ -2903,6 +2904,7 @@ const planejamentoAnaliseSchema = {
 };
 
 async function respostaPlanejamentoIA({content,schema,nomeSchema,effort="medium",webSearch=false}) {
+  const inicioSaude = Date.now();
   const payload={
     model:MODEL,
     input:[{role:"user",content}],
@@ -2928,18 +2930,24 @@ async function respostaPlanejamentoIA({content,schema,nomeSchema,effort="medium"
     }];
   }
 
-  const response = await fetch(`${OPENAI_URL}/responses`, {
-    method:"POST",
-    headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"content-type":"application/json"},
-    body:JSON.stringify(payload)
-  });
-  const data = await response.json().catch(()=>null);
-  if(!response.ok) throw new Error(data?.error?.message || "Falha na análise estruturada pela IA.");
-  const raw = outputText(data);
-  let result;
-  try { result = JSON.parse(raw); }
-  catch { console.error("[tributario][planejamento][json]",raw); throw new Error("A IA respondeu, mas a estrutura do planejamento veio inválida."); }
-  return {result,usage:data?.usage||null};
+  try {
+    const response = await fetch(`${OPENAI_URL}/responses`, {
+      method:"POST",
+      headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"content-type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    const data = await response.json().catch(()=>null);
+    if(!response.ok) throw new Error(data?.error?.message || "Falha na análise estruturada pela IA.");
+    const raw = outputText(data);
+    let result;
+    try { result = JSON.parse(raw); }
+    catch { console.error("[tributario][planejamento][json]",raw); throw new Error("A IA respondeu, mas a estrutura do planejamento veio inválida."); }
+    registrarSaudeModulo({modulo:MODULOS_SAUDE.TRIBUTARIO_IA,status:"OK",duracaoMs:Date.now()-inicioSaude}).catch(()=>{});
+    return {result,usage:data?.usage||null};
+  } catch (error) {
+    registrarSaudeModulo({modulo:MODULOS_SAUDE.TRIBUTARIO_IA,status:"ERRO",duracaoMs:Date.now()-inicioSaude,mensagemErro:String(error?.message||error)}).catch(()=>{});
+    throw error;
+  }
 }
 
 async function planejamentoExtrair(req,res){
