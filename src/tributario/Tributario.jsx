@@ -826,6 +826,16 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
  const [documentosBanco,setDocumentosBanco]=useState([]);
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
+ const n=v=>{
+  if(typeof v==="number")return Number.isFinite(v)?v:0;
+  const s=String(v??"").trim();
+  if(!s)return 0;
+  const normalizado=s.includes(",")
+    ? s.replace(/\./g,"").replace(",",".")
+    : s;
+  const valor=Number(normalizado.replace(/[^\d.-]/g,""));
+  return Number.isFinite(valor)?valor:0;
+ };
  const checklistTributario=useMemo(()=>{
   const nomes=documentosBanco.map(d=>String(d.nome||d.filename||d.name||"").toLowerCase());
   const possui=(...termos)=>nomes.some(nome=>termos.some(t=>nome.includes(t)));
@@ -850,16 +860,6 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}})());
  const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["regimes","5. Regimes tributários"],["ibscbs","6. IBS / CBS"],["simulacao","7. Simulações"],["motor","8. Recomendação"],["impacto","9. Impactos"],["transicao","10. Transição"],["relatorio","11. Relatório"]];
- const n=v=>{
-  if(typeof v==="number")return Number.isFinite(v)?v:0;
-  const s=String(v??"").trim();
-  if(!s)return 0;
-  const normalizado=s.includes(",")
-    ? s.replace(/\./g,"").replace(",",".")
-    : s;
-  const valor=Number(normalizado.replace(/[^\d.-]/g,""));
-  return Number.isFinite(valor)?valor:0;
- };
  const componentesDasTotal=(fonte=extracao)=>{
   const t=fonte?.tributos||{};
   return [
