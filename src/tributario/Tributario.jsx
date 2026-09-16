@@ -1,5 +1,5 @@
 import ReformaSimulador from "./ReformaSimulador";
-import { estimarDasResidualPorFora } from "./reforma-engine.js";
+import { estimarDasResidualPorFora, calcularIrpjCsllPresumido, calcularIrpjCsllReal } from "./reforma-engine.js";
 import { jsPDF } from "jspdf";
 import PlanejamentoTributario from "./PlanejamentoTributario";
 import {
@@ -808,6 +808,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [gerandoPdfCliente,setGerandoPdfCliente]=useState(false);
  const [faturamentoAnual,setFaturamentoAnual]=useState(""),[margem,setMargem]=useState(""),[folha,setFolha]=useState(""),[proLabore,setProLabore]=useState(""),[despesasDedutiveis,setDespesasDedutiveis]=useState("");
  const [aliquotaAtual,setAliquotaAtual]=useState(""),[incentivoAtual,setIncentivoAtual]=useState("NORMAL"),[reducaoIbsCbs,setReducaoIbsCbs]=useState("0"),[exportacao,setExportacao]=useState("0"),[tratamentoEspecial,setTratamentoEspecial]=useState("");
+ const [presIrpj,setPresIrpj]=useState(""),[presCsll,setPresCsll]=useState("");
  const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
  const [documentosBanco,setDocumentosBanco]=useState([]);
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
@@ -830,7 +831,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [analiseDesatualizada,setAnaliseDesatualizada]=useState(false);
  const [erro,setErro]=useState(""),[ok,setOk]=useState(""),[carregando,setCarregando]=useState(false),[extraindo,setExtraindo]=useState(false);
  const [projetoId]=useState(()=>projetoInicial?.id||(()=>{try{return crypto.randomUUID()}catch{return `reforma_${Date.now()}`}})());
- const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["ibscbs","5. IBS / CBS"],["simulacao","6. Simulações"],["motor","7. Recomendação"],["impacto","8. Impactos"],["transicao","9. Transição"],["relatorio","10. Relatório"]];
+ const tabs=[["identificacao","1. Empresa"],["operacao","2. Operação"],["dados","3. Dados econômicos"],["documentos","4. Documentos IA"],["regimes","5. Regimes tributários"],["ibscbs","6. IBS / CBS"],["simulacao","7. Simulações"],["motor","8. Recomendação"],["impacto","9. Impactos"],["transicao","10. Transição"],["relatorio","11. Relatório"]];
  const n=v=>{
   if(typeof v==="number")return Number.isFinite(v)?v:0;
   const s=String(v??"").trim();
@@ -1415,7 +1416,71 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    setExtraindo(false);
   }
  }
- function baseAtual(){const base={identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),dasPeriodoFonte,fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},extracao,simulacao};base.inteligenciaTributaria={fonte:"CNPJ + documentos + dados informados",cnaePrincipal:principal,atividadeEfetiva:descricao,municipio,uf,regime,beneficiosPesquisar:true,compararRegimes:true,compararIbsCbs:true};return base}
+ const classificacaoAtividade=useMemo(()=>String(empresa?.cnaePrincipal?.classificacao||empresa?.classificacao||"").toUpperCase(),[empresa]);
+
+ const presuncaoPadrao=useMemo(()=>{
+  if(classificacaoAtividade==="COMERCIO"||classificacaoAtividade==="INDUSTRIA")return{irpj:8,csll:12};
+  return{irpj:32,csll:32}; // padrão de serviços quando não há classificação oficial confirmada
+ },[classificacaoAtividade]);
+
+ // Comparação anual entre os 3 regimes, usando os mesmos dados econômicos já
+ // coletados nesta análise (faturamento, margem, folha, despesas, Simples) —
+ // não é um motor separado: reaproveita as fórmulas de reforma-engine.js
+ // (as mesmas que já calculam IRPJ/CSLL na etapa de Reforma).
+ const calcRegimes=useMemo(()=>{
+  const faturamento=n(faturamentoAnual)||n(receita);
+  const pIrpj=n(presIrpj)||presuncaoPadrao.irpj;
+  const pCsll=n(presCsll)||presuncaoPadrao.csll;
+  const folhaAnual=n(folha)*12+n(proLabore)*12;
+  const despesasAnuais=n(despesasDedutiveis);
+  const margemPct=n(margem);
+
+  if(!faturamento)return{completo:false,motivo:"Informe o faturamento anual em Dados econômicos para comparar os regimes."};
+
+  // Simples: usa a alíquota efetiva já informada/extraída (etapa 1) ou o DAS
+  // do período anualizado — nunca inventa uma alíquota do zero.
+  const dasAnualPeriodo=n(dasPeriodo)?n(dasPeriodo)*12:null;
+  const simplesAliq=n(aliquotaEfetivaSimples);
+  const simplesTotal=simplesAliq>0?faturamento*simplesAliq/100:dasAnualPeriodo;
+  const simplesCompleto=simplesTotal!=null&&simplesTotal>0;
+
+  // Presumido: fórmula oficial já usada na Reforma (calcularIrpjCsllPresumido),
+  // + PIS/Cofins cumulativos padrão (0,65%/3%) + CPP patronal estimado (20% da folha).
+  const presumidoIrpjCsll=calcularIrpjCsllPresumido({receita:faturamento,presuncaoIrpj:pIrpj,presuncaoCsll:pCsll,mesesPeriodo:12});
+  const presumidoPisCofins=faturamento*(0.65+3)/100;
+  const cppPatronalEstimado=folhaAnual*0.20;
+  const presumidoTotal=presumidoIrpjCsll.total+presumidoPisCofins+cppPatronalEstimado;
+  const presumidoCompleto=faturamento>0;
+
+  // Real: lucro antes de IRPJ/CSLL a partir da margem informada (mesmo campo
+  // que já é coletado nesta etapa) — se não houver margem, usa despesas/folha
+  // documentadas; sem nenhuma das duas, fica pendente (nunca assume lucro).
+  const lucroPorMargem=margemPct>0?faturamento*margemPct/100:null;
+  const lucroPorDespesas=(despesasAnuais>0||folhaAnual>0)?Math.max(0,faturamento-despesasAnuais-folhaAnual):null;
+  const lucroAntesIrpjCsll=lucroPorMargem!=null?lucroPorMargem:lucroPorDespesas;
+  const realCompleto=lucroAntesIrpjCsll!=null;
+  const realIrpjCsll=realCompleto?calcularIrpjCsllReal({lucroAntesIrpjCsll,mesesPeriodo:12}):null;
+  const realPisCofins=faturamento*(1.65+7.6)/100;
+  const realTotal=realCompleto?realIrpjCsll.total+realPisCofins+cppPatronalEstimado:null;
+
+  const opcoes=[
+   simplesCompleto?{regime:"SIMPLES_NACIONAL",label:"Simples Nacional",total:simplesTotal}:null,
+   presumidoCompleto?{regime:"LUCRO_PRESUMIDO",label:"Lucro Presumido",total:presumidoTotal}:null,
+   realCompleto?{regime:"LUCRO_REAL",label:"Lucro Real",total:realTotal}:null,
+  ].filter(Boolean).sort((a,b)=>a.total-b.total);
+
+  return{
+   completo:true,
+   faturamento,
+   simples:{completo:simplesCompleto,total:simplesTotal,fonte:simplesAliq>0?"Alíquota efetiva informada":dasAnualPeriodo?"DAS do período anualizado":null},
+   presumido:{completo:presumidoCompleto,total:presumidoTotal,presuncaoIrpj:pIrpj,presuncaoCsll:pCsll,detalhe:presumidoIrpjCsll},
+   real:{completo:realCompleto,total:realTotal,lucroAntesIrpjCsll,fonteLuro:lucroPorMargem!=null?"Margem de lucro informada":lucroPorDespesas!=null?"Faturamento - despesas - folha":null,detalhe:realIrpjCsll},
+   melhor:opcoes[0]||null,
+   opcoesValidas:opcoes.length,
+  };
+ },[faturamentoAnual,receita,presIrpj,presCsll,presuncaoPadrao,folha,proLabore,despesasDedutiveis,margem,dasPeriodo,aliquotaEfetivaSimples]);
+
+ function baseAtual(){const base={identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),dasPeriodoFonte,fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},comparacaoRegimes:calcRegimes,extracao,simulacao};base.inteligenciaTributaria={fonte:"CNPJ + documentos + dados informados",cnaePrincipal:principal,atividadeEfetiva:descricao,municipio,uf,regime,beneficiosPesquisar:true,compararRegimes:true,compararIbsCbs:true};return base}
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(reconciliarAnaliseCadastral(d.analise));setAnaliseDesatualizada(false);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
  async function salvar(status="EM_ANALISE"){
   try{
@@ -2656,6 +2721,53 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    </div>}
   </div>}
 
+  {aba==="regimes"&&<div style={{display:"grid",gap:9}}>
+   <div style={card}>
+    <h3 style={{margin:"0 0 4px"}}>Comparação Simples × Presumido × Real</h3>
+    <p style={{fontSize:9,color:"#697386"}}>Usa os mesmos dados já informados nesta análise (faturamento, margem, folha, despesas, alíquota do Simples). Nenhum valor é inventado: o que faltar aparece como "Pendente".</p>
+   </div>
+
+   {!calcRegimes.completo?(
+    <div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B",color:"#805B10"}}>{calcRegimes.motivo}</div>
+   ):<>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
+     <div style={{...card,borderTop:calcRegimes.melhor?.regime==="SIMPLES_NACIONAL"?"4px solid #176B47":"4px solid transparent"}}>
+      <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>SIMPLES NACIONAL</div>
+      <div style={{fontSize:19,fontWeight:900,marginTop:4}}>{calcRegimes.simples.completo?moedaMotor(calcRegimes.simples.total):"Pendente"}</div>
+      <div style={{fontSize:8.5,color:"#697386",marginTop:3}}>{calcRegimes.simples.fonte||"Informe a alíquota efetiva ou o DAS do período na etapa 1."}</div>
+     </div>
+     <div style={{...card,borderTop:calcRegimes.melhor?.regime==="LUCRO_PRESUMIDO"?"4px solid #176B47":"4px solid transparent"}}>
+      <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>LUCRO PRESUMIDO</div>
+      <div style={{fontSize:19,fontWeight:900,marginTop:4}}>{calcRegimes.presumido.completo?moedaMotor(calcRegimes.presumido.total):"Pendente"}</div>
+      <div style={{fontSize:8.5,color:"#697386",marginTop:3}}>Presunção {calcRegimes.presumido.presuncaoIrpj}% IRPJ / {calcRegimes.presumido.presuncaoCsll}% CSLL{classificacaoAtividade?` · CNAE: ${classificacaoAtividade}`:" · sem classificação oficial, confirme abaixo"}</div>
+     </div>
+     <div style={{...card,borderTop:calcRegimes.melhor?.regime==="LUCRO_REAL"?"4px solid #176B47":"4px solid transparent"}}>
+      <div style={{fontSize:8,fontWeight:900,color:"#697386"}}>LUCRO REAL</div>
+      <div style={{fontSize:19,fontWeight:900,marginTop:4}}>{calcRegimes.real.completo?moedaMotor(calcRegimes.real.total):"Pendente"}</div>
+      <div style={{fontSize:8.5,color:"#697386",marginTop:3}}>{calcRegimes.real.fonteLuro||"Informe a margem de lucro estimada ou despesas/folha na etapa 3."}</div>
+     </div>
+    </div>
+
+    <div style={card}>
+     <h3 style={{margin:"0 0 8px"}}>Ajustar presunção do Lucro Presumido</h3>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>
+      {field("Presunção IRPJ %",presIrpj,setPresIrpj,String(presuncaoPadrao.irpj))}
+      {field("Presunção CSLL %",presCsll,setPresCsll,String(presuncaoPadrao.csll))}
+     </div>
+     <p style={{fontSize:8.5,color:"#697386",marginTop:6}}>Preenchido automaticamente a partir da classificação do CNAE principal (comércio/indústria = 8%/12%, serviços = 32%/32%). Ajuste se a atividade real for diferente.</p>
+    </div>
+
+    <div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B"}}>
+     <b style={{color:"#805B10",fontSize:9.5}}>Atenção — estimativas nesta comparação:</b>
+     <ul style={{margin:"5px 0 0",paddingLeft:16,fontSize:9,color:"#805B10",lineHeight:1.6}}>
+      <li>PIS/Cofins usa alíquotas padrão (cumulativo no Presumido, não cumulativo no Real) — créditos específicos não estão considerados aqui.</li>
+      <li>CPP patronal estimado em 20% da folha — pode variar conforme RAT e terceiros (Sistema S) da atividade real.</li>
+      <li>Esta é uma comparação matemática, não uma recomendação automática de mudança de regime.</li>
+     </ul>
+    </div>
+   </>}
+  </div>}
+
   {aba==="ibscbs"&&<div style={{display:"grid",gap:9}}>{analiseDesatualizada&&<div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B",color:"#805B10"}}><b>Diagnóstico desatualizado</b><div style={{fontSize:8.8,marginTop:3}}>CNPJ, CNAEs ou dados cadastrais foram atualizados depois da última análise. Pendências cadastrais já resolvidas foram removidas, mas gere novamente o diagnóstico para atualizar riscos e recomendação.</div></div>}<div style={card}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:0}}>Diagnóstico técnico IBS / CBS</h3><p style={{fontSize:9,color:"#697386"}}>A IA interpreta riscos, créditos, B2B/B2C e impactos. O cálculo financeiro fica separado e auditável.</p></div><button onClick={analisar} disabled={carregando} style={{padding:"9px 13px",fontWeight:800}}>{carregando?"Analisando...":"Gerar/atualizar diagnóstico"}</button></div></div>{analise&&<><div style={card}><p style={{fontSize:10,lineHeight:1.6}}>{analise.resumo}</p><p style={{fontSize:9,color:"#697386"}}><b>Confiança:</b> {analise.confianca} · <b>Data-base:</b> {analise.dataBase}</p></div>{list("Impactos identificados",analise.impactos)}{list("Créditos e validações",analise.creditos)}{list("Precificação e margem",analise.precificacao)}{list("Fundamentação / benefícios a validar",analise.fundamentacao)}{list("Dados faltantes",dadosFaltantesAtuais)}</>}</div>}
 
   {aba==="simulacao"&&<ReformaSimulador dadosIniciais={{faturamento:n(fatSim),tributosAtuais:n(tributosAtuais),dasAtual:n(dasPeriodo),aliquotaAtual:n(aliquotaAtual),creditoCBS:0,creditoIBS:n(creditosAtuais),reducaoCBS:n(reducaoIbsCbs),reducaoIBS:n(reducaoIbsCbs),b2b:n(b2b),b2c:n(b2c),componentesDas:{pis:n(extracao?.tributos?.pis),cofins:n(extracao?.tributos?.cofins),icms:n(extracao?.tributos?.icms),iss:n(extracao?.tributos?.iss),ipi:n(extracao?.tributos?.ipi),cpp:n(extracao?.tributos?.cpp),irpj:n(extracao?.tributos?.irpj),csll:n(extracao?.tributos?.csll),outros:n(extracao?.tributos?.outros)}}} onResultado={setSimulacao}/>}
@@ -3765,9 +3877,11 @@ export default function Tributario({
 
       const tipoNormalizado = String(p.tipoProjeto || "").toLowerCase();
       const parecePlanejamento =
-        Boolean(manuais.planejamentoV2) ||
-        tipoNormalizado.includes("planej");
+        tipoNormalizado !== "consolidado" &&
+        (Boolean(manuais.planejamentoV2) ||
+        tipoNormalizado.includes("planej"));
       const pareceReforma =
+        tipoNormalizado === "consolidado" ||
         Boolean(manuais.reformaV2) ||
         tipoNormalizado.includes("reforma");
 
@@ -5122,7 +5236,7 @@ export default function Tributario({
           </p>
         </div>
 
-        <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${CORAL}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>ANÁLISE TRIBUTÁRIA CONSOLIDADA</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:24}}>Planejamento + Reforma Tributária</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>Uma única análise da empresa, usando CNPJ, CNAE, atividade, documentos e dados econômicos para comparar regimes atuais e impactos de IBS/CBS.</p><div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:12}}><Botao onClick={()=>escolherProjeto("reforma")}>Iniciar análise consolidada</Botao><Botao secundario onClick={()=>escolherProjeto("planejamento")}>Abrir análise existente</Botao></div></div><div
+        <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${CORAL}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>INTELIGÊNCIA TRIBUTÁRIA</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:24}}>Uma única análise: regimes + Reforma Tributária</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>CNPJ, CNAE, documentos e dados econômicos alimentam a mesma base. A comparação entre Simples Nacional, Lucro Presumido e Lucro Real e o impacto do IBS/CBS ficam dentro da mesma análise — não são mais fluxos separados.</p><div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:12}}><Botao onClick={()=>escolherProjeto("reforma")}>Iniciar nova análise</Botao></div></div><div
           style={{
             display: "grid",
             gridTemplateColumns:
@@ -5145,7 +5259,7 @@ export default function Tributario({
                 marginBottom: 8,
               }}
             >
-              REFORMA TRIBUTÁRIA
+              ANÁLISE CONSOLIDADA
             </div>
 
             <h3
@@ -5156,7 +5270,7 @@ export default function Tributario({
                 fontSize: 22,
               }}
             >
-              IBS, CBS e transição
+              Regimes, IBS, CBS e transição
             </h3>
 
             <p
@@ -5167,7 +5281,7 @@ export default function Tributario({
                 minHeight: 66,
               }}
             >
-              Impactos por empresa ou grupo, créditos, perfil B2B/B2C, precificação, transição e pontos de atenção.
+              Empresa, CNAE, documentos, comparação Simples × Presumido × Real, impacto da Reforma, créditos, perfil B2B/B2C, transição e relatório — tudo em uma análise só.
             </p>
 
             <Botao
@@ -5177,63 +5291,7 @@ export default function Tributario({
                 )
               }
             >
-              Nova análise de Reforma
-            </Botao>
-          </Card>
-
-          <Card
-            onClick={() => escolherProjeto("planejamento")}
-            style={{
-              borderTop:
-                "4px solid #31589C",
-            }}
-          >
-            <div
-              style={{
-                color:
-                  "#31589C",
-                fontSize: 9,
-                fontWeight: 900,
-                marginBottom: 8,
-              }}
-            >
-              PLANEJAMENTO TRIBUTÁRIO
-            </div>
-
-            <h3
-              style={{
-                margin: 0,
-                fontFamily:
-                  DISPLAY_FONT,
-                fontSize: 22,
-              }}
-            >
-              Regime e eficiência tributária
-            </h3>
-
-            <p
-              style={{
-                color: MUTED,
-                fontSize: 10.5,
-                lineHeight: 1.55,
-                minHeight: 66,
-              }}
-            >
-              Base para comparar Simples Nacional, Lucro Presumido e Lucro Real usando dados reais da operação.
-            </p>
-
-            <Botao
-              onClick={() =>
-                escolherProjeto(
-                  "planejamento"
-                )
-              }
-              style={{
-                background:
-                  "#31589C",
-              }}
-            >
-              Novo planejamento
+              Iniciar nova análise
             </Botao>
           </Card>
         </div>
