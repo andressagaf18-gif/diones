@@ -924,7 +924,7 @@ async function salvarProjeto(
 
   let publicacaoDiagnostico = null;
   if (
-    txt(body.tipoProjeto, 80).toLowerCase() === "reforma" &&
+    ["reforma", "consolidado"].includes(txt(body.tipoProjeto, 80).toLowerCase()) &&
     ["FINALIZADO", "CONCLUIDO", "VALIDADO", "DIAGNOSTICO_GERADO"].includes(txt(body.status, 80).toUpperCase())
   ) {
     publicacaoDiagnostico = await publicarReformaNosDiagnosticos(body, user);
@@ -1102,7 +1102,7 @@ async function salvarDiagnostico(
   );
 
   let publicacaoDiagnostico = null;
-  if (tipoProjeto.toLowerCase() === "planejamento") {
+  if (["planejamento", "consolidado"].includes(tipoProjeto.toLowerCase())) {
     publicacaoDiagnostico = await publicarPlanejamentoNosDiagnosticos({
       projetoId,
       diagnostico: jsonSeguro(body.diagnostico) || {},
@@ -1690,6 +1690,19 @@ async function excluirProjetosLote(req,res){
 // de diagnóstico (renumeradas em ordem cronológica, nunca apagadas).
 // =========================================================
 
+function agregarAnualDoPlanejamento(base){
+  const MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  const somaMapa=(m)=>MESES.reduce((s,k)=>s+(Number(m?.[k])||0),0);
+  const somaGrupo=(obj)=>Object.values(obj||{}).reduce((s,m)=>s+somaMapa(m),0);
+  const fat=base?.faturamento||{};
+  const faturamentoAnual=somaMapa(fat.naoSegregado)+somaMapa(fat.industria)+somaMapa(fat.comercio)+somaMapa(fat.servicos);
+  const despesasAnuais=somaGrupo(base?.despesas);
+  const folha=base?.folha||{};
+  const folhaMensal=(somaMapa(folha.folha13)+somaMapa(folha.inssFgts)+somaMapa(folha.outros)+somaMapa(folha.encargosPatronais))/12;
+  const proLaboreMensal=somaMapa(folha.proLabore)/12;
+  return {faturamentoAnual,despesasAnuais,folhaMensal,proLaboreMensal};
+}
+
 async function migrarProjetosConsolidado(req,res){
   await ensureSchema();
   const body=req.body||{};
@@ -1709,8 +1722,8 @@ async function migrarProjetosConsolidado(req,res){
   for(const grupo of grupos){
     const ids=grupo.ids;
 
-    // Prioriza o projeto do tipo "reforma" como canônico (fluxo mais completo,
-    // com CNPJ/CNAE/documentos). Se não houver, usa o mais antigo.
+    // Prioriza um projeto já "consolidado" (reexecução da migração), depois
+    // "reforma" (fluxo mais completo), e só por último o mais antigo.
     const projetos=await sql`
       SELECT id, tipo_projeto, criado_em, cliente_nome
       FROM tax_projects
@@ -1719,18 +1732,21 @@ async function migrarProjetosConsolidado(req,res){
     `;
 
     const canonico=
+      projetos.find(p=>p.tipo_projeto==="consolidado")?.id ||
       projetos.find(p=>p.tipo_projeto==="reforma")?.id ||
       projetos[0].id;
 
     const outros=ids.filter(id=>id!==canonico);
 
-    plano.push({
+    const itemPlano={
       cnpj:grupo.cnpj,
       clienteNome:projetos[0]?.cliente_nome||"",
       canonico,
       mesclados:outros,
       totalProjetos:grupo.total,
-    });
+      dadosPlanejamentoEncontrados:false,
+    };
+    plano.push(itemPlano);
 
     if(modoTeste) continue;
 
@@ -1777,6 +1793,52 @@ async function migrarProjetosConsolidado(req,res){
     // vínculo de projeto para manter a associação coerente.
     await sql`UPDATE tax_documents SET projeto_id=${canonico} WHERE projeto_id = ANY(${outros})`;
 
+    // -------------------------------------------------------------------
+    // Traz os VALORES atuais do Planejamento (faturamento, despesas, folha
+    // — hoje guardados em formato mensal/por categoria) para os campos
+    // anuais que a etapa "Regimes tributários" da Reforma já lê. Sem isso,
+    // o histórico é preservado mas a tela de comparação continua vazia.
+    // Só preenche o que ainda estiver vazio no canônico — nunca sobrescreve
+    // dado que o consultor já tenha digitado ali.
+    // -------------------------------------------------------------------
+    const canonicoAtual=await sql`SELECT dados_manuais FROM tax_projects WHERE id=${canonico} LIMIT 1`;
+    const dadosCanonico=canonicoAtual?.[0]?.dados_manuais||{};
+    const reformaV2Atual=dadosCanonico.reformaV2||{};
+    const valoresAtuais=reformaV2Atual.valores||{};
+    const jaTemFaturamento=Number(valoresAtuais.faturamentoAnual)>0;
+
+    if(!jaTemFaturamento){
+      for(const outroId of outros){
+        const outroRow=await sql`SELECT dados_manuais FROM tax_projects WHERE id=${outroId} LIMIT 1`;
+        const planejamentoV2=outroRow?.[0]?.dados_manuais?.planejamentoV2;
+        if(!planejamentoV2)continue;
+
+        const agregado=agregarAnualDoPlanejamento(planejamentoV2);
+        if(agregado.faturamentoAnual<=0)continue;
+
+        const dadosAtualizados={
+          ...dadosCanonico,
+          reformaV2:{
+            ...reformaV2Atual,
+            valores:{
+              ...valoresAtuais,
+              faturamentoAnual:agregado.faturamentoAnual,
+              despesasDedutiveisAnuais:agregado.despesasAnuais,
+              folhaMensal:agregado.folhaMensal,
+              proLaboreMensal:agregado.proLaboreMensal,
+            },
+          },
+          // Preserva o detalhe mensal original do Planejamento — nada é
+          // descartado, só deixa de ser a fonte principal da tela.
+          planejamentoOrigemMesclado:planejamentoV2,
+        };
+
+        await sql`UPDATE tax_projects SET dados_manuais=${JSON.stringify(dadosAtualizados)}::jsonb WHERE id=${canonico}`;
+        itemPlano.dadosPlanejamentoEncontrados=true;
+        break;
+      }
+    }
+
     await sql`
       UPDATE tax_projects
       SET versao_atual=${novaVersao-1}, tipo_projeto='consolidado', atualizado_em=NOW()
@@ -1794,8 +1856,8 @@ async function migrarProjetosConsolidado(req,res){
     `;
 
     await addHistory(canonico,"PROJETOS_MESCLADOS",
-      `${outros.length} projeto(s) do mesmo CNPJ foram unificados aqui, preservando ${diagnosticos.length} versão(ões) de diagnóstico.`,
-      {mesclados:outros},user);
+      `${outros.length} projeto(s) do mesmo CNPJ foram unificados aqui, preservando ${diagnosticos.length} versão(ões) de diagnóstico.${itemPlano.dadosPlanejamentoEncontrados?" Faturamento, despesas e folha do Planejamento Tributário foram trazidos para a etapa de Regimes tributários.":""}`,
+      {mesclados:outros,dadosPlanejamentoEncontrados:itemPlano.dadosPlanejamentoEncontrados},user);
   }
 
   return send(res,200,{
