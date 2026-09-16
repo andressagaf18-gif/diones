@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { exigirAutenticacao } from "../server/auth.js";
+import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -526,6 +527,7 @@ async function adminFinance(req, res) {
 
 async function adminSync(req, res) {
   if (!exigirAutenticacao(req, res, { admin: true })) return;
+  const inicioSaude = Date.now();
   await ensureSchema();
   const body = bodyOf(req);
   const paymentId = txt(body.paymentId, 100);
@@ -547,6 +549,14 @@ async function adminSync(req, res) {
       else erros.push({ paymentId: lote[indice].payment_id, erro: resultado.reason?.message || "Falha ao sincronizar." });
     });
   }
+
+  await registrarSaudeModulo({
+    modulo: MODULOS_SAUDE.ASAAS_SYNC,
+    status: erros.length ? "ERRO" : "OK",
+    duracaoMs: Date.now() - inicioSaude,
+    mensagemErro: erros.length ? `${erros.length} de ${rows.length} cobranças falharam ao sincronizar.` : "",
+  });
+
   return res.status(200).json({ ok: true, atualizados, erros });
 }
 
