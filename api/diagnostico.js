@@ -8,6 +8,8 @@ import {
   instrucoesDoMotor,
 } from "../server/diagnostic-engine.js";
 
+import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
+
 function extrairOutputText(data) {
   if (
     typeof data?.output_text === "string" &&
@@ -370,6 +372,16 @@ function normalizarAreaOperacionalId(
 }
 
 export default async function handler(req, res) {
+  const inicioSaude = Date.now();
+  res.on("finish", () => {
+    registrarSaudeModulo({
+      modulo: MODULOS_SAUDE.DIAGNOSTICO_IA,
+      status: res.statusCode >= 200 && res.statusCode < 300 ? "OK" : "ERRO",
+      duracaoMs: Date.now() - inicioSaude,
+      mensagemErro: res.statusCode >= 400 ? `Respondeu HTTP ${res.statusCode}.` : "",
+    }).catch(() => {});
+  });
+
   if (req.method !== "POST") {
     return res.status(405).json({
       sucesso: false,
