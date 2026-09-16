@@ -1504,7 +1504,8 @@ function PrimaryButton({ children, onClick, disabled, style }) {
         padding: "13px 16px",
         borderRadius: 12,
         border: "none",
-        background: disabled ? "#D8DEEA" : CORAL,
+        background: disabled ? "#D8DEEA" : "linear-gradient(135deg,#4F7CFF,#8B6BFF 55%,#FF6B4A)",
+        boxShadow: disabled ? "none" : "0 10px 24px rgba(79,124,255,.28)",
         color: WHITE,
         fontFamily: BODY_FONT,
         fontSize: 15,
@@ -10435,7 +10436,7 @@ function DiagnosticoPrototipo() {
     <div
       className="finder-public-stage"
       style={{
-        background: "#EEF0F5",
+        background: "radial-gradient(circle at 18% -10%, rgba(79,124,255,.20), transparent 42%), radial-gradient(circle at 85% 110%, rgba(255,107,74,.14), transparent 45%), #0A0E17",
         minHeight: 760,
         display: "flex",
         justifyContent: "center",
@@ -10533,9 +10534,9 @@ function DiagnosticoPrototipo() {
         style={{
           width: 380,
           borderRadius: 40,
-          background: NAVY,
+          background: "linear-gradient(160deg, #101C33, #0A1220)",
           padding: 12,
-          boxShadow: "0 30px 60px rgba(23,35,61,0.25)",
+          boxShadow: "0 30px 70px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06), 0 0 40px rgba(79,124,255,.15)",
           boxSizing: "border-box",
         }}
       >
@@ -10544,7 +10545,7 @@ function DiagnosticoPrototipo() {
           style={{
             width: 120,
             height: 22,
-            background: NAVY,
+            background: "#0A1220",
             borderRadius: 12,
             margin: "0 auto 4px",
             position: "relative",
