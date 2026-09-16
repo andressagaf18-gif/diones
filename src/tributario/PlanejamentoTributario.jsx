@@ -665,7 +665,7 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
  }
 
  async function analisar(){
-  if(!calc.real?.completo){setErro("Preencha a base antes de gerar a análise.");return} setAnalisando(true);setErro("");
+  if(regimesValidos.length<2){setErro("Complete a base de ao menos dois regimes (Simples, Presumido ou Real) antes de gerar a análise. Hoje só é possível calcular: "+(regimesValidos.map(r=>r.label).join(", ")||"nenhum regime")+".");return} setAnalisando(true);setErro("");
   try{const d=await api("planejamento-analisar",{method:"POST",body:{projetoId,cliente:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||""},atividades:{cnaesSelecionados:cnaes.filter(x=>cnaesOperacionais.includes(x.codigo)),atividadePrincipalReal:principal,descricaoOperacao:descricao},base,calculos:calc,crescimento}});
    setIa(a=>({...a,analise:d.analise}));await salvar("DIAGNOSTICO_GERADO");await api("salvar-diagnostico",{method:"POST",body:{projetoId,tipoProjeto:"planejamento",diagnostico:d.analise,documentos:documentosBanco
     .filter(d=>d.ativo!==false&&documentosSelecionados[d.id]!==false)
@@ -945,7 +945,12 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
    );
 
    title("DRE comparativa por regime e por tributo");
-   const linhaPdf=(label,vs,vp,vr)=>[label,money(vs),money(vp),money(vr)];
+   const linhaPdf=(label,vs,vp,vr)=>[
+    label,
+    calc.simples.completo?money(vs):"Pendente",
+    calc.presumido.completo?money(vp):"Pendente",
+    calc.real.completo?money(vr):"Pendente"
+   ];
    table(["Indicador","Simples","Presumido","Real"],[
     linhaPdf("Receita bruta",calc.dre.simples.receitaBruta,calc.dre.presumido.receitaBruta,calc.dre.real.receitaBruta),
     ...dreTributos.map(x=>linhaPdf(x.label,x.simples,x.presumido,x.real)),
@@ -1550,7 +1555,11 @@ export default function PlanejamentoTributario({token,onVoltar,projetoInicial=nu
       const estilo={padding:importante?"7px 8px":"3px 0",background:importante?"#EAF1FF":"transparent",fontWeight:importante?900:500,borderLeft:importante?`4px solid ${C.blue}`:0};
       return [
        <span key={k+"l"} style={estilo}>{l}</span>,
-       ...valores.map((v,i)=><span key={k+i} style={estilo}>{moeda(v)}{tributo&&k!=="das"?` · ${pct(num(calc.dre.simples.receitaBruta)>0?num(v)/num(calc.dre.simples.receitaBruta)*100:0)}`:""}</span>)
+       ...valores.map((v,i)=>{
+        const completos=[calc.simples.completo,calc.presumido.completo,calc.real.completo];
+        if(!completos[i])return <span key={k+i} style={{...estilo,color:C.amber}}>Pendente</span>;
+        return <span key={k+i} style={estilo}>{moeda(v)}{tributo&&k!=="das"?` · ${pct(num(calc.dre.simples.receitaBruta)>0?num(v)/num(calc.dre.simples.receitaBruta)*100:0)}`:""}</span>;
+       })
       ];
      })}
     </div>
