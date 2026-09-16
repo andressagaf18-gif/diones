@@ -1617,6 +1617,195 @@ async function excluirProjeto(req,res){
   return send(res,200,{sucesso:true,id});
 }
 
+async function arquivarProjetosLote(req,res){
+  await ensureSchema();
+  const body=req.body||{};
+  const ids=Array.isArray(body.ids)?body.ids.map(x=>txt(x,200)).filter(Boolean):[];
+  const arquivado=body.arquivado!==false;
+  const user=authUser(req);
+
+  if(!ids.length) return send(res,400,{sucesso:false,error:"Selecione ao menos uma inteligência tributária."});
+
+  const resultado={sucesso:[],falha:[]};
+  for(const id of ids){
+    try{
+      const rows=await sql`SELECT id FROM tax_projects WHERE id=${id} LIMIT 1`;
+      if(!rows?.[0]){resultado.falha.push({id,error:"Não encontrado."});continue}
+      await sql`
+        UPDATE tax_projects
+        SET arquivado=${arquivado},
+            arquivado_em=${arquivado ? new Date() : null},
+            arquivado_por_nome=${arquivado ? txt(user?.nome||user?.login||"Usuário",200) : ""},
+            atualizado_em=NOW()
+        WHERE id=${id}
+      `;
+      await addHistory(id, arquivado?"PROJETO_ARQUIVADO":"PROJETO_REATIVADO",
+        arquivado?"Inteligência tributária arquivada (ação em lote).":"Inteligência tributária reativada (ação em lote).",
+        {},user);
+      resultado.sucesso.push(id);
+    }catch(error){
+      resultado.falha.push({id,error:error?.message||"Erro ao processar."});
+    }
+  }
+
+  return send(res,200,{sucesso:true,arquivado,...resultado});
+}
+
+async function excluirProjetosLote(req,res){
+  await ensureSchema();
+  const body=req.body||{};
+  const ids=Array.isArray(body.ids)?body.ids.map(x=>txt(x,200)).filter(Boolean):[];
+  const confirmacao=txt(body.confirmacao,300);
+  const user=authUser(req);
+
+  if(!ids.length) return send(res,400,{sucesso:false,error:"Selecione ao menos uma inteligência tributária."});
+  if(confirmacao!=="EXCLUIR"){
+    return send(res,400,{sucesso:false,error:'Para excluir definitivamente, envie confirmação "EXCLUIR".'});
+  }
+
+  const resultado={sucesso:[],falha:[]};
+  for(const id of ids){
+    try{
+      const rows=await sql`SELECT id, cliente_nome, cnpj FROM tax_projects WHERE id=${id} LIMIT 1`;
+      const projeto=rows?.[0];
+      if(!projeto){resultado.falha.push({id,error:"Não encontrado."});continue}
+
+      await sql`DELETE FROM tax_diagnostics WHERE projeto_id=${id}`;
+      await sql`DELETE FROM tax_history WHERE projeto_id=${id}`;
+      await sql`DELETE FROM tax_projects WHERE id=${id}`;
+
+      console.log("[tributario][excluir-projeto-lote]",{id,cliente:projeto.cliente_nome,cnpj:projeto.cnpj,usuario:user?.nome||user?.login||"Usuário"});
+      resultado.sucesso.push(id);
+    }catch(error){
+      resultado.falha.push({id,error:error?.message||"Erro ao processar."});
+    }
+  }
+
+  return send(res,200,{sucesso:true,...resultado});
+}
+
+// =========================================================
+// MIGRAÇÃO — unificar projetos duplicados (Reforma + Planejamento)
+// do mesmo CNPJ em um único projeto, preservando todas as versões
+// de diagnóstico (renumeradas em ordem cronológica, nunca apagadas).
+// =========================================================
+
+async function migrarProjetosConsolidado(req,res){
+  await ensureSchema();
+  const body=req.body||{};
+  const modoTeste=body.simular!==false; // por padrão SIMULA e não altera nada, até confirmação explícita simular:false
+  const user=authUser(req);
+
+  const grupos=await sql`
+    SELECT cnpj, ARRAY_AGG(id ORDER BY criado_em ASC) AS ids, COUNT(*)::int AS total
+    FROM tax_projects
+    WHERE cnpj <> ''
+    GROUP BY cnpj
+    HAVING COUNT(*) > 1
+  `;
+
+  const plano=[];
+
+  for(const grupo of grupos){
+    const ids=grupo.ids;
+
+    // Prioriza o projeto do tipo "reforma" como canônico (fluxo mais completo,
+    // com CNPJ/CNAE/documentos). Se não houver, usa o mais antigo.
+    const projetos=await sql`
+      SELECT id, tipo_projeto, criado_em, cliente_nome
+      FROM tax_projects
+      WHERE id = ANY(${ids})
+      ORDER BY criado_em ASC
+    `;
+
+    const canonico=
+      projetos.find(p=>p.tipo_projeto==="reforma")?.id ||
+      projetos[0].id;
+
+    const outros=ids.filter(id=>id!==canonico);
+
+    plano.push({
+      cnpj:grupo.cnpj,
+      clienteNome:projetos[0]?.cliente_nome||"",
+      canonico,
+      mesclados:outros,
+      totalProjetos:grupo.total,
+    });
+
+    if(modoTeste) continue;
+
+    // Renumera as versões de diagnóstico em ordem cronológica, unificando
+    // os dois históricos em um só, sem perder nenhuma versão.
+    const diagnosticos=await sql`
+      SELECT id, projeto_id, versao, tipo_projeto, criado_em
+      FROM tax_diagnostics
+      WHERE projeto_id = ANY(${ids})
+      ORDER BY criado_em ASC
+    `;
+
+    let novaVersao=1;
+    for(const diag of diagnosticos){
+      await sql`
+        UPDATE tax_diagnostics
+        SET projeto_id=${canonico}, versao=${novaVersao}
+        WHERE id=${diag.id}
+      `;
+      novaVersao++;
+    }
+
+    // Mesmo esquema de renumeração para os snapshots de versão do projeto.
+    const snapshots=await sql`
+      SELECT id, projeto_id, versao, criado_em
+      FROM tax_project_snapshots
+      WHERE projeto_id = ANY(${ids})
+      ORDER BY criado_em ASC
+    `;
+    let novaVersaoSnap=1;
+    for(const snap of snapshots){
+      await sql`
+        UPDATE tax_project_snapshots
+        SET projeto_id=${canonico}, versao=${novaVersaoSnap}
+        WHERE id=${snap.id}
+      `;
+      novaVersaoSnap++;
+    }
+
+    // Histórico de auditoria: preserva tudo, só reaponta para o projeto canônico.
+    await sql`UPDATE tax_history SET projeto_id=${canonico} WHERE projeto_id = ANY(${outros})`;
+
+    // Documentos já são compartilhados por CNPJ na consulta, mas reaponta o
+    // vínculo de projeto para manter a associação coerente.
+    await sql`UPDATE tax_documents SET projeto_id=${canonico} WHERE projeto_id = ANY(${outros})`;
+
+    await sql`
+      UPDATE tax_projects
+      SET versao_atual=${novaVersao-1}, tipo_projeto='consolidado', atualizado_em=NOW()
+      WHERE id=${canonico}
+    `;
+
+    // Os projetos mesclados não são apagados (preserva rastreabilidade);
+    // ficam marcados como mesclados e arquivados, sem diagnósticos próprios.
+    await sql`
+      UPDATE tax_projects
+      SET status='MESCLADO', arquivado=TRUE, arquivado_em=NOW(),
+          arquivado_por_nome=${txt(user?.nome||user?.login||"Migração automática",200)},
+          atualizado_em=NOW()
+      WHERE id = ANY(${outros})
+    `;
+
+    await addHistory(canonico,"PROJETOS_MESCLADOS",
+      `${outros.length} projeto(s) do mesmo CNPJ foram unificados aqui, preservando ${diagnosticos.length} versão(ões) de diagnóstico.`,
+      {mesclados:outros},user);
+  }
+
+  return send(res,200,{
+    sucesso:true,
+    simulado:modoTeste,
+    gruposEncontrados:plano.length,
+    plano,
+  });
+}
+
 async function validarProjeto(
   req,
   res
@@ -3094,6 +3283,11 @@ async function reformaExtrair(req,res){
 Você é o Finder Tax AI. Extraia somente dados comprovados nos documentos para uma simulação da Reforma Tributária.
 Não invente CNAE, regime, faturamento, DAS, tributos ou créditos. Quando não houver prova, devolva null/zero e registre a ausência nas fontes.
 Nos campos do schema de planejamento, use faturamento/tributos/creditos/parametros como memória documental; eles serão conferidos pelo consultor antes do motor calcular.
+
+REGRA CRÍTICA SOBRE CNPJ — identificação do titular:
+Documentos fiscais quase sempre contêm MAIS DE UM CNPJ (emitente e destinatário de nota fiscal, prestador e tomador de serviço, contador e cliente no cabeçalho, empresas relacionadas em um PGDAS consolidado, etc.). O CNPJ que você deve devolver em identificacao.cnpj é exclusivamente o da EMPRESA TITULAR DA ANÁLISE — ou seja, a empresa cujo resultado fiscal (faturamento, DAS, tributos) está sendo apurado no documento, nunca um fornecedor, cliente, contador, transportadora ou terceiro que apenas apareça citado.
+Sinais de que um CNPJ é o titular: é o "emitente"/"declarante"/"contribuinte" de uma guia de recolhimento (DAS, DARF), é quem consta como "CONTRIBUINTE" ou "RAZÃO SOCIAL" no cabeçalho de um PGDAS/extrato do Simples Nacional, ou é o CNPJ repetido consistentemente como o mesmo em todos os documentos enviados no lote.
+Se os documentos enviados pertencerem a mais de uma empresa (CNPJs diferentes, sem um titular claro e consistente entre eles), NÃO escolha um arbitrariamente: devolva identificacao.cnpj como null e registre em dadosFaltantes algo como "documentos enviados citam mais de um CNPJ sem um titular único identificável; confirmar manualmente qual é a empresa analisada".
 `});
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoExtracaoSchema,nomeSchema:"finder_reforma_extracao",effort:"medium",webSearch:false});
@@ -3185,6 +3379,9 @@ export default async function handler(req,res){
     "obter-projeto":obterProjeto,
     "arquivar-projeto":arquivarProjeto,
     "excluir-projeto":excluirProjeto,
+    "arquivar-projetos-lote":arquivarProjetosLote,
+    "excluir-projetos-lote":excluirProjetosLote,
+    "migrar-projetos-consolidado":migrarProjetosConsolidado,
     "validar-projeto":validarProjeto,
     "upload-file":uploadFile,
     "listar-documentos":listarDocumentos,
