@@ -7176,6 +7176,13 @@ export default async function handler(req, res) {
           res
         );
 
+      case "saude-armazenamento":
+      case "saude-modulos":
+        return (await import("../server/system-health.js")).default(
+          req,
+          res
+        );
+
       default:
         return res.status(400).json({
           sucesso: false,
