@@ -1,6 +1,7 @@
 // api/enviar-relatorio.js
 
 import { neon } from "@neondatabase/serverless";
+import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
 
 // =========================================================
 // FUNÇÕES AUXILIARES
@@ -709,6 +710,16 @@ export default async function handler(
   req,
   res
 ) {
+  const inicioSaude = Date.now();
+  res.on("finish", () => {
+    registrarSaudeModulo({
+      modulo: MODULOS_SAUDE.ENVIO_RELATORIO,
+      status: res.statusCode >= 200 && res.statusCode < 300 ? "OK" : "ERRO",
+      duracaoMs: Date.now() - inicioSaude,
+      mensagemErro: res.statusCode >= 400 ? `Respondeu HTTP ${res.statusCode}.` : "",
+    }).catch(() => {});
+  });
+
   console.log(
     "[enviar-relatorio] INICIO"
   );
