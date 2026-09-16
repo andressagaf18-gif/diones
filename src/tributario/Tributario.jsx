@@ -13,6 +13,19 @@ const CORAL = "#FF6B4A";
 const MUTED = "#5B667A";
 const WHITE = "#FFFFFF";
 const BG = "#F6F8FC";
+
+// Alíquota interna geral de ICMS por estado — estimativa consolidada de
+// fontes públicas, usada só como ponto de partida editável assim que o
+// CNPJ é consultado. Produtos específicos, ST, benefícios setoriais e
+// diferenciais por operação podem mudar o valor real; sempre confirmar
+// antes de uma decisão final. ISS é municipal (não estadual) e não entra
+// nesta tabela — para serviços, a alíquota vem da pesquisa de benefícios
+// fiscais (etapa "IBS/CBS"), que já pesquisa o município específico.
+const ALIQUOTA_ICMS_POR_UF = {
+  AC:19, AL:20.5, AP:18, AM:20, BA:20.5, CE:20, DF:20, ES:17, GO:19,
+  MA:22, MT:17, MS:17, MG:18, PA:19, PB:20, PR:19.5, PE:20.5, PI:21,
+  RJ:22, RN:20, RS:17, RO:19.5, RR:20, SC:17, SP:18, SE:19, TO:20,
+};
 const BORDER = "#E3E7EF";
 
 const BODY_FONT =
@@ -809,6 +822,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  const [faturamentoAnual,setFaturamentoAnual]=useState(""),[margem,setMargem]=useState(""),[folha,setFolha]=useState(""),[proLabore,setProLabore]=useState(""),[despesasDedutiveis,setDespesasDedutiveis]=useState("");
  const [aliquotaAtual,setAliquotaAtual]=useState(""),[incentivoAtual,setIncentivoAtual]=useState("NORMAL"),[reducaoIbsCbs,setReducaoIbsCbs]=useState("0"),[exportacao,setExportacao]=useState("0"),[tratamentoEspecial,setTratamentoEspecial]=useState("");
  const [presIrpj,setPresIrpj]=useState(""),[presCsll,setPresCsll]=useState("");
+ const [creditosIcmsAnuais,setCreditosIcmsAnuais]=useState(""),[creditosPisCofinsAnuais,setCreditosPisCofinsAnuais]=useState("");
  const [documentos,setDocumentos]=useState([]),[documentosIa,setDocumentosIa]=useState([]),[extracao,setExtracao]=useState(null),[analise,setAnalise]=useState(null),[simulacao,setSimulacao]=useState(null);
  const [documentosBanco,setDocumentosBanco]=useState([]);
  const [documentosSelecionados,setDocumentosSelecionados]=useState({});
@@ -821,12 +835,13 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    ["Notas fiscais de venda",possui("nf-e","nfe","nfs-e","nfse","venda")],
    ["Notas fiscais de compra",possui("compra","entrada","fornecedor")],
    ["Folha e pró-labore",possui("folha","prolabore","pro-labore")],
+   ["DRE / balancete / despesas",possui("dre","balancete","despesa","demonstra")||n(despesasDedutiveis)>0],
    ["Composição dos tributos atuais",Boolean(tributosAtuais)||possui("tributo","imposto","apuracao","apuração")],
    ["Documentos para créditos e deduções",possui("credito","crédito","dedu","benef")],
    ["Contratos e perfil B2B/B2C",possui("contrato","b2b","b2c")],
   ];
   return {itens,concluidos:itens.filter(([,ok])=>ok).length,total:itens.length};
- },[documentosBanco,cnpj,tributosAtuais]);
+ },[documentosBanco,cnpj,tributosAtuais,despesasDedutiveis]);
  const [carregandoDocumentos,setCarregandoDocumentos]=useState(false);
  const [analiseDesatualizada,setAnaliseDesatualizada]=useState(false);
  const [pesquisaTributaria,setPesquisaTributaria]=useState(null);
@@ -989,7 +1004,19 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   }
  },[cnpj]);
  function normalizarCnaes(data){const p=data?.cnaePrincipal||data?.cnae?.principal||null,s=data?.cnaesSecundarios||data?.cnae?.secundarios||[],todos=data?.todosCnaes||data?.cnae?.todos||[p,...s].filter(Boolean);return(todos||[]).map((x,i)=>({codigo:String(x?.codigo||x?.cnae||""),descricao:x?.descricao||"",principal:Boolean(x?.principal||x?.tipo==="principal"||i===0&&p)})).filter(x=>x.codigo||x.descricao)}
- async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");setUf(d.uf||d.endereco?.uf||"");const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");return{dados:d,cnaes:lista}}
+ async function consultarCnpj(valor=cnpj){const c=digits(valor);if(c.length!==14)throw new Error("CNPJ inválido para consulta cadastral.");const r=await fetch(`/api/cnpj?cnpj=${c}`),d=await r.json().catch(()=>null);if(!r.ok||!d?.sucesso)throw new Error(d?.error||"CNPJ não localizado.");setEmpresa(d);setCnpj(c);setMunicipio(d.municipio||d.endereco?.municipio||"");const ufEncontrada=d.uf||d.endereco?.uf||"";setUf(ufEncontrada);const lista=normalizarCnaes(d);setCnaes(lista);const p=lista.find(x=>x.principal)||lista[0];setPrincipal(p?.codigo||"");
+  // Alíquota de ICMS estimada pelo estado assim que o CNPJ é consultado —
+  // só preenche se o campo ainda estiver vazio (nunca sobrescreve o que já
+  // foi digitado, extraído de documento ou validado por pesquisa) e só faz
+  // sentido para comércio/indústria (ISS de serviços é municipal, não estadual).
+  if(!n(aliquotaAtual)&&ufEncontrada){
+   const classificacaoEncontrada=classificarNaturezaTributaria(p?.codigo);
+   const aliqEstado=ALIQUOTA_ICMS_POR_UF[String(ufEncontrada).toUpperCase()];
+   if((classificacaoEncontrada==="COMERCIO"||classificacaoEncontrada==="INDUSTRIA")&&aliqEstado){
+    setAliquotaAtual(String(aliqEstado));
+   }
+  }
+  return{dados:d,cnaes:lista}}
  function pendenciaReformaResolvida(texto,{
   cnpjAtual=cnpj,
   cnaesAtuais=cnaes,
@@ -1089,6 +1116,8 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   setFolha(val.folhaMensal!=null?String(val.folhaMensal):"");
   setProLabore(val.proLaboreMensal!=null?String(val.proLaboreMensal):"");
   setDespesasDedutiveis(val.despesasDedutiveisAnuais!=null?String(val.despesasDedutiveisAnuais):"");
+  setCreditosIcmsAnuais(val.creditosIcmsAnuais!=null?String(val.creditosIcmsAnuais):"");
+  setCreditosPisCofinsAnuais(val.creditosPisCofinsAnuais!=null?String(val.creditosPisCofinsAnuais):"");
   setAliquotaAtual(val.aliquotaAtualIssIcmsPct!=null?String(val.aliquotaAtualIssIcmsPct):"");
 
   setAnexoSimples(sm.anexo||"");
@@ -1445,50 +1474,50 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
  // coletados nesta análise (faturamento, margem, folha, despesas, Simples) —
  // não é um motor separado: reaproveita as fórmulas de reforma-engine.js
  // (as mesmas que já calculam IRPJ/CSLL na etapa de Reforma).
- const calcRegimes=useMemo(()=>{
-  const faturamento=n(faturamentoAnual)||n(receita);
-  const pIrpj=n(presIrpj)||presuncaoPadrao.irpj;
-  const pCsll=n(presCsll)||presuncaoPadrao.csll;
-  const folhaAnual=n(folha)*12+n(proLabore)*12;
-  const despesasAnuais=n(despesasDedutiveis);
-  const margemPct=n(margem);
-  const icmsIssAliq=n(aliquotaAtual);
-  const temIcmsIss=classificacaoAtividade==="COMERCIO"||classificacaoAtividade==="INDUSTRIA"||classificacaoAtividade==="SERVICOS";
-
+ // Função pura para poder reaproveitar no cenário atual e nos cenários de
+ // crescimento (mesma fórmula, só o faturamento muda — custos, despesas,
+ // folha e créditos ficam constantes até o consultor definir premissa própria).
+ function calcularRegimesAno({faturamento,despesasAnuais,folhaAnual,margemPct,pIrpj,pCsll,icmsIssAliq,simplesAliq,dasAnualPeriodo,creditoIcmsAnual,creditoPisCofinsAnual,anexoSimplesAtual,classificacao}){
   if(!faturamento)return{completo:false,motivo:"Informe o faturamento anual em Dados econômicos para comparar os regimes."};
 
-  // ICMS (comércio/indústria) ou ISS (serviços) — tributo separado do DAS
-  // no Presumido/Real. Sem a alíquota informada, o total desses dois
-  // regimes fica avisado como incompleto, para não parecer mais barato do
-  // que realmente é.
-  const icmsIssEstimado=icmsIssAliq>0?faturamento*icmsIssAliq/100:0;
+  const rotuloIcmsIss=classificacao==="SERVICOS"?"ISS":"ICMS";
+  const icmsIssDebito=icmsIssAliq>0?faturamento*icmsIssAliq/100:0;
   const icmsIssInformado=icmsIssAliq>0;
+  // Créditos de ICMS (compras/insumos) valem para Presumido e Real igualmente —
+  // a não cumulatividade do ICMS é regra estadual, não depende do regime de IRPJ/CSLL.
+  const icmsIssLiquido=Math.max(0,icmsIssDebito-Math.max(0,creditoIcmsAnual));
 
-  // Simples: usa a alíquota efetiva já informada/extraída (etapa 1) ou o DAS
-  // do período anualizado — nunca inventa uma alíquota do zero.
-  const dasAnualPeriodo=n(dasPeriodo)?n(dasPeriodo)*12:null;
-  const simplesAliq=n(aliquotaEfetivaSimples);
-  const simplesTotal=simplesAliq>0?faturamento*simplesAliq/100:dasAnualPeriodo;
-  const simplesCompleto=simplesTotal!=null&&simplesTotal>0;
+  const cppPatronalEstimado=folhaAnual*0.20;
 
-  // Presumido: fórmula oficial já usada na Reforma (calcularIrpjCsllPresumido),
-  // + PIS/Cofins cumulativos padrão (0,65%/3%) + CPP patronal estimado (20% da folha) + ICMS/ISS.
+  // Simples: usa a alíquota efetiva já informada/extraída ou o DAS anualizado —
+  // nunca inventa uma alíquota do zero. No Anexo IV, o CPP patronal NÃO está
+  // dentro do DAS (é recolhido à parte); sem somar isso, o Simples pareceria
+  // artificialmente mais barato do que realmente é para essa atividade.
+  const anexoIV=String(anexoSimplesAtual||"").toUpperCase()==="IV";
+  const simplesBase=simplesAliq>0?faturamento*simplesAliq/100:dasAnualPeriodo;
+  const simplesCompleto=simplesBase!=null&&simplesBase>0;
+  const simplesTotal=simplesCompleto?simplesBase+(anexoIV?cppPatronalEstimado:0):null;
+
+  // Presumido: fórmula oficial já usada na Reforma (calcularIrpjCsllPresumido)
+  // + PIS/Cofins cumulativos padrão (sem direito a crédito, por definição do
+  // regime cumulativo) + CPP patronal estimado + ICMS/ISS líquido de crédito.
   const presumidoIrpjCsll=calcularIrpjCsllPresumido({receita:faturamento,presuncaoIrpj:pIrpj,presuncaoCsll:pCsll,mesesPeriodo:12});
   const presumidoPisCofins=faturamento*(0.65+3)/100;
-  const cppPatronalEstimado=folhaAnual*0.20;
-  const presumidoTotal=presumidoIrpjCsll.total+presumidoPisCofins+cppPatronalEstimado+icmsIssEstimado;
+  const presumidoTotal=presumidoIrpjCsll.total+presumidoPisCofins+cppPatronalEstimado+icmsIssLiquido;
   const presumidoCompleto=faturamento>0;
 
-  // Real: lucro antes de IRPJ/CSLL a partir da margem informada (mesmo campo
-  // que já é coletado nesta etapa) — se não houver margem, usa despesas/folha
-  // documentadas; sem nenhuma das duas, fica pendente (nunca assume lucro).
+  // Real: lucro antes de IRPJ/CSLL a partir da margem informada (mesmo campo já
+  // coletado nesta etapa) — se não houver margem, usa despesas/folha documentadas;
+  // sem nenhuma das duas, fica pendente (nunca assume lucro). PIS/Cofins não
+  // cumulativos descontam o crédito informado sobre insumos/compras.
   const lucroPorMargem=margemPct>0?faturamento*margemPct/100:null;
   const lucroPorDespesas=(despesasAnuais>0||folhaAnual>0)?Math.max(0,faturamento-despesasAnuais-folhaAnual):null;
   const lucroAntesIrpjCsll=lucroPorMargem!=null?lucroPorMargem:lucroPorDespesas;
   const realCompleto=lucroAntesIrpjCsll!=null;
   const realIrpjCsll=realCompleto?calcularIrpjCsllReal({lucroAntesIrpjCsll,mesesPeriodo:12}):null;
-  const realPisCofins=faturamento*(1.65+7.6)/100;
-  const realTotal=realCompleto?realIrpjCsll.total+realPisCofins+cppPatronalEstimado+icmsIssEstimado:null;
+  const realPisCofinsDebito=faturamento*(1.65+7.6)/100;
+  const realPisCofinsLiquido=Math.max(0,realPisCofinsDebito-Math.max(0,creditoPisCofinsAnual));
+  const realTotal=realCompleto?realIrpjCsll.total+realPisCofinsLiquido+cppPatronalEstimado+icmsIssLiquido:null;
 
   const opcoes=[
    simplesCompleto?{regime:"SIMPLES_NACIONAL",label:"Simples Nacional",total:simplesTotal}:null,
@@ -1499,8 +1528,8 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   return{
    completo:true,
    faturamento,
-   icmsIss:{aliquota:icmsIssAliq,valor:icmsIssEstimado,informado:icmsIssInformado,rotulo:classificacaoAtividade==="SERVICOS"?"ISS":"ICMS"},
-   simples:{completo:simplesCompleto,total:simplesTotal,fonte:simplesAliq>0?"Alíquota efetiva informada":dasAnualPeriodo?"DAS do período anualizado":null},
+   icmsIss:{aliquota:icmsIssAliq,valor:icmsIssLiquido,bruto:icmsIssDebito,credito:Math.max(0,creditoIcmsAnual),informado:icmsIssInformado,rotulo:rotuloIcmsIss},
+   simples:{completo:simplesCompleto,total:simplesTotal,anexoIV,fonte:simplesAliq>0?"Alíquota efetiva informada":dasAnualPeriodo?"DAS do período anualizado":null},
    presumido:{
     completo:presumidoCompleto,total:presumidoTotal,presuncaoIrpj:pIrpj,presuncaoCsll:pCsll,detalhe:presumidoIrpjCsll,
     memoria:[
@@ -1509,9 +1538,10 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      {label:"IRPJ (15%)",valor:presumidoIrpjCsll.irpj},
      {label:"Adicional de IRPJ (10%)",valor:presumidoIrpjCsll.adicionalIrpj},
      {label:"CSLL (9%)",valor:presumidoIrpjCsll.csll},
-     {label:"PIS + Cofins (3,65% cumulativo)",valor:presumidoPisCofins},
+     {label:"PIS + Cofins (3,65% cumulativo, sem crédito)",valor:presumidoPisCofins},
      {label:"CPP patronal (estimado 20% da folha)",valor:cppPatronalEstimado},
-     {label:`${classificacaoAtividade==="SERVICOS"?"ISS":"ICMS"}${icmsIssInformado?"":" (não informado)"}`,valor:icmsIssEstimado},
+     {label:`${rotuloIcmsIss} débito${icmsIssInformado?"":" (não informado)"}`,valor:icmsIssDebito},
+     {label:`(-) Crédito de ${rotuloIcmsIss} informado`,valor:-Math.max(0,creditoIcmsAnual)},
     ],
    },
    real:{
@@ -1522,15 +1552,61 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
      {label:"IRPJ (15%)",valor:realIrpjCsll.irpj},
      {label:"Adicional de IRPJ (10%)",valor:realIrpjCsll.adicionalIrpj},
      {label:"CSLL (9%)",valor:realIrpjCsll.csll},
-     {label:"PIS + Cofins (9,25% não cumulativo)",valor:realPisCofins},
+     {label:"PIS + Cofins débito (9,25% não cumulativo)",valor:realPisCofinsDebito},
+     {label:"(-) Crédito de PIS/Cofins informado",valor:-Math.max(0,creditoPisCofinsAnual)},
      {label:"CPP patronal (estimado 20% da folha)",valor:cppPatronalEstimado},
-     {label:`${classificacaoAtividade==="SERVICOS"?"ISS":"ICMS"}${icmsIssInformado?"":" (não informado)"}`,valor:icmsIssEstimado},
+     {label:`${rotuloIcmsIss} débito${icmsIssInformado?"":" (não informado)"}`,valor:icmsIssDebito},
+     {label:`(-) Crédito de ${rotuloIcmsIss} informado`,valor:-Math.max(0,creditoIcmsAnual)},
     ]:[],
    },
    melhor:opcoes[0]||null,
    opcoesValidas:opcoes.length,
   };
- },[faturamentoAnual,receita,presIrpj,presCsll,presuncaoPadrao,folha,proLabore,despesasDedutiveis,margem,dasPeriodo,aliquotaEfetivaSimples,aliquotaAtual,classificacaoAtividade]);
+ }
+
+ const calcRegimes=useMemo(()=>calcularRegimesAno({
+  faturamento:n(faturamentoAnual)||n(receita),
+  despesasAnuais:n(despesasDedutiveis),
+  folhaAnual:n(folha)*12+n(proLabore)*12,
+  margemPct:n(margem),
+  pIrpj:n(presIrpj)||presuncaoPadrao.irpj,
+  pCsll:n(presCsll)||presuncaoPadrao.csll,
+  icmsIssAliq:n(aliquotaAtual),
+  simplesAliq:n(aliquotaEfetivaSimples),
+  dasAnualPeriodo:n(dasPeriodo)?n(dasPeriodo)*12:null,
+  creditoIcmsAnual:n(creditosIcmsAnuais),
+  creditoPisCofinsAnual:n(creditosPisCofinsAnuais),
+  anexoSimplesAtual:anexoSimples,
+  classificacao:classificacaoAtividade,
+ }),[faturamentoAnual,receita,despesasDedutiveis,folha,proLabore,margem,presIrpj,presCsll,presuncaoPadrao,aliquotaAtual,aliquotaEfetivaSimples,dasPeriodo,creditosIcmsAnuais,creditosPisCofinsAnuais,anexoSimples,classificacaoAtividade]);
+
+ // Cenários de crescimento — mesma fórmula, só o faturamento escala. Despesas,
+ // folha e créditos ficam constantes até o consultor definir premissa própria
+ // (mesmo critério já usado nos cenários da Reforma).
+ const cenariosRegimes=useMemo(()=>{
+  const faturamentoBase=n(faturamentoAnual)||n(receita);
+  if(!faturamentoBase)return[];
+  return[0,10,20,30,50].map(pct=>({
+   crescimento:pct,
+   ...calcularRegimesAno({
+    faturamento:faturamentoBase*(1+pct/100),
+    despesasAnuais:n(despesasDedutiveis),
+    folhaAnual:n(folha)*12+n(proLabore)*12,
+    margemPct:n(margem),
+    pIrpj:n(presIrpj)||presuncaoPadrao.irpj,
+    pCsll:n(presCsll)||presuncaoPadrao.csll,
+    icmsIssAliq:n(aliquotaAtual),
+    simplesAliq:n(aliquotaEfetivaSimples),
+    dasAnualPeriodo:n(dasPeriodo)?n(dasPeriodo)*12:null,
+    creditoIcmsAnual:n(creditosIcmsAnuais),
+    creditoPisCofinsAnual:n(creditosPisCofinsAnuais),
+    anexoSimplesAtual:anexoSimples,
+    classificacao:classificacaoAtividade,
+   }),
+  }));
+ },[faturamentoAnual,receita,despesasDedutiveis,folha,proLabore,margem,presIrpj,presCsll,presuncaoPadrao,aliquotaAtual,aliquotaEfetivaSimples,dasPeriodo,creditosIcmsAnuais,creditosPisCofinsAnuais,anexoSimples,classificacaoAtividade]);
+
+
 
  async function pesquisarBeneficioFiscal(){
   const cnaePrincipal=cnaes.find(c=>c.codigo===principal)||cnaes[0];
@@ -1557,6 +1633,15 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    const d=await r.json().catch(()=>null);
    if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Não foi possível pesquisar benefícios fiscais e alíquota.");
    setPesquisaTributaria({id:d.pesquisaId,tokenPublico:d.tokenPublico,status:d.status,resultado:d.resultado,premissasConfirmadas:d.premissasConfirmadas||null});
+   // ISS é municipal — sem tabela fixa confiável por cidade. Quando a
+   // pesquisa encontra a alíquota local (nominal ou efetiva) do município
+   // específico, preenche o campo automaticamente, só se ainda estiver
+   // vazio (nunca sobrescreve o que já foi digitado ou extraído de documento).
+   const tribLocal=d.resultado?.tributacao_local;
+   const aliqLocal=tribLocal?.aliquota_efetiva_pct??tribLocal?.aliquota_nominal_pct;
+   if(!n(aliquotaAtual)&&aliqLocal!=null&&Number(aliqLocal)>0){
+    setAliquotaAtual(String(aliqLocal));
+   }
   }catch(e){
    setErroPesquisaBeneficio(e.message);
   }finally{
@@ -1564,7 +1649,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
   }
  }
 
- function baseAtual(){const base={identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),dasPeriodoFonte,fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},comparacaoRegimes:calcRegimes,extracao,simulacao};base.inteligenciaTributaria={fonte:"CNPJ + documentos + dados informados",cnaePrincipal:principal,atividadeEfetiva:descricao,municipio,uf,regime,beneficiosPesquisar:true,compararRegimes:true,compararIbsCbs:true};return base}
+ function baseAtual(){const base={identificacao:{cnpj:digits(cnpj),razaoSocial:empresa?.razaoSocial||empresa?.razao_social||empresa?.nome||"",municipio,uf,regime,responsavel,origem},atividades:{cnaes,principal,descricaoReal:descricao},operacao:{descricao,setorAtividade,tipoEstabelecimento,quantidadeEstabelecimentos:n(quantidadeEstabelecimentos),municipiosOperacao,ufsOperacao,b2b:n(b2b),b2c:n(b2c),exportacaoPct:n(exportacao)},valores:{receita:n(receita),faturamentoAnual:n(faturamentoAnual),compras:n(compras),servicosTomados:n(servicosTomados),creditosAtuais:n(creditosAtuais),tributosAtuais:n(tributosAtuais),margemRealPct:n(margem),folhaMensal:n(folha),proLaboreMensal:n(proLabore),despesasDedutiveisAnuais:n(despesasDedutiveis),aliquotaAtualIssIcmsPct:n(aliquotaAtual),creditosIcmsAnuais:n(creditosIcmsAnuais),creditosPisCofinsAnuais:n(creditosPisCofinsAnuais)},simples:{anexo:anexoSimples,anexoFonte,aliquotaEfetivaPct:n(aliquotaEfetivaSimples),dasPeriodo:n(dasPeriodo),dasPeriodoFonte,fatorRPct:n(fatorR)},tratamentos:{incentivoAtual,reducaoIbsCbsPct:n(reducaoIbsCbs),tratamentoEspecial},comparacaoRegimes:calcRegimes,extracao,simulacao};base.inteligenciaTributaria={fonte:"CNPJ + documentos + dados informados",cnaePrincipal:principal,atividadeEfetiva:descricao,municipio,uf,regime,beneficiosPesquisar:true,compararRegimes:true,compararIbsCbs:true};return base}
  async function analisar(){setCarregando(true);setErro("");setOk("");try{const d=await apiCall("reforma-analisar",{method:"POST",body:{projetoId,base:baseAtual(),extracaoOriginal:extracao,documentos:documentosIa.length?documentosIa:documentos.map(x=>({filename:x.name,mimeType:x.type,bytes:x.size}))}});setAnalise(reconciliarAnaliseCadastral(d.analise));setAnaliseDesatualizada(false);setAba("ibscbs");setOk("Diagnóstico da Reforma Tributária atualizado.")}catch(e){setErro(e.message)}finally{setCarregando(false)}}
  async function salvar(status="EM_ANALISE"){
   try{
@@ -2781,7 +2866,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
   {aba==="operacao"&&<div style={card}><h3>Operação real</h3><textarea value={descricao} onChange={e=>setDescricao(e.target.value)} rows={5} style={{...input,resize:"vertical"}} placeholder="O que vende/presta, clientes, fornecedores, local da operação, particularidades..."/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:8}}>{field("Setor da atividade",setorAtividade,setSetorAtividade)}{field("Tipo de estabelecimento",tipoEstabelecimento,setTipoEstabelecimento,"Empresa única / múltiplos estabelecimentos")}{field("Quantidade de estabelecimentos",quantidadeEstabelecimentos,setQuantidadeEstabelecimentos)}{field("Municípios de operação",municipiosOperacao,setMunicipiosOperacao)}{field("UFs de operação",ufsOperacao,setUfsOperacao)}{field("% B2B",b2b,setB2b)}{field("% B2C",b2c,setB2c)}{field("% exportação",exportacao,setExportacao)}</div><p style={{fontSize:9,color:"#697386"}}>A IA preenche apenas o que conseguir comprovar. CNAE continua vindo da consulta oficial do CNPJ.</p></div>}
 
-  {aba==="dados"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados econômicos para simulação</h3><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{field("Receita do período",receita,setReceita,"R$")}{field("Faturamento anual / RBT12",faturamentoAnual,setFaturamentoAnual,"R$")}{field("Compras do período",compras,setCompras,"R$")}{field("Serviços tomados",servicosTomados,setServicosTomados,"R$")}{field("Margem de lucro real estimada %",margem,setMargem,"%")}{field("Folha mensal — empregados",folha,setFolha,"R$")}{field("Pró-labore mensal",proLabore,setProLabore,"R$")}{field("Despesas/custos anuais dedutíveis",despesasDedutiveis,setDespesasDedutiveis,"R$")}{field("Tributos atuais do período",tributosAtuais,setTributosAtuais,"R$")}{field("Créditos atuais",creditosAtuais,setCreditosAtuais,"R$")}{field("Alíquota atual ISS/ICMS %",aliquotaAtual,setAliquotaAtual,"%")}</div></div><div style={card}>
+  {aba==="dados"&&<div style={{display:"grid",gap:10}}><div style={card}><h3>Dados econômicos para simulação</h3><p style={{fontSize:8.5,color:"#697386",marginTop:-4,marginBottom:8}}>Pode digitar manualmente aqui, ou deixar em branco e preencher pela IA: envie um DRE, balancete ou folha de pagamento na etapa 4 "Documentos IA" e clique em "Interpretar documentos" — despesas, folha e pró-labore são preenchidos automaticamente quando o documento tiver essa informação.</p><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{field("Receita do período",receita,setReceita,"R$")}{field("Faturamento anual / RBT12",faturamentoAnual,setFaturamentoAnual,"R$")}{field("Compras do período",compras,setCompras,"R$")}{field("Serviços tomados",servicosTomados,setServicosTomados,"R$")}{field("Margem de lucro real estimada %",margem,setMargem,"%")}{field("Folha mensal — empregados",folha,setFolha,"R$")}{field("Pró-labore mensal",proLabore,setProLabore,"R$")}{field("Despesas/custos anuais dedutíveis",despesasDedutiveis,setDespesasDedutiveis,"R$")}{field("Tributos atuais do período",tributosAtuais,setTributosAtuais,"R$")}{field("Créditos atuais",creditosAtuais,setCreditosAtuais,"R$")}{field("Alíquota atual ISS/ICMS %",aliquotaAtual,setAliquotaAtual,"%")}</div></div><div style={card}>
  <h3>Simples Nacional — dados encontrados</h3>
  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
   <label style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>
@@ -2958,16 +3043,39 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       {field("Despesas/custos dedutíveis anuais (R$)",despesasDedutiveis,setDespesasDedutiveis)}
       {field("Folha de pagamento mensal (R$)",folha,setFolha)}
       {field("Pró-labore mensal (R$)",proLabore,setProLabore)}
-      {field(`Alíquota atual de ${classificacaoAtividade==="SERVICOS"?"ISS":"ICMS"} (%)`,aliquotaAtual,setAliquotaAtual,"Ex: 18")}
+      {field(`Alíquota atual de ${classificacaoAtividade==="SERVICOS"?"ISS":"ICMS"} (%)`,aliquotaAtual,setAliquotaAtual,classificacaoAtividade==="SERVICOS"?"Preenchido pela pesquisa de benefícios (etapa IBS/CBS), se disponível":"Preenchido automaticamente pelo estado ao consultar o CNPJ — confira")}
       <div style={{display:"grid",gap:4,fontSize:9,fontWeight:800}}>Presunção IRPJ / CSLL %
        <div style={{display:"flex",gap:6}}>
         <input value={presIrpj} onChange={e=>setPresIrpj(e.target.value)} placeholder={String(presuncaoPadrao.irpj)} style={input}/>
         <input value={presCsll} onChange={e=>setPresCsll(e.target.value)} placeholder={String(presuncaoPadrao.csll)} style={input}/>
        </div>
       </div>
+      {field(`Créditos de ${classificacaoAtividade==="SERVICOS"?"ISS":"ICMS"} anuais (R$)`,creditosIcmsAnuais,setCreditosIcmsAnuais,"Compras/insumos com direito a crédito")}
+      {field("Créditos de PIS/Cofins anuais — Lucro Real (R$)",creditosPisCofinsAnuais,setCreditosPisCofinsAnuais,"Insumos com direito a crédito não cumulativo")}
      </div>
      {!calcRegimes.icmsIss.informado&&<div style={{marginTop:8,padding:"7px 9px",background:"#FFF4EF",border:"1px solid #F7C9B8",borderRadius:8,fontSize:8.5,color:"#A33A2B"}}>Sem {calcRegimes.icmsIss.rotulo} informado, o comparativo do Presumido e do Real fica incompleto — esses regimes pagam esse tributo por fora do que está calculado aqui.</div>}
+     {calcRegimes.simples.anexoIV&&<div style={{marginTop:8,padding:"7px 9px",background:"#EEF3FF",border:"1px solid #C9D9F5",borderRadius:8,fontSize:8.5,color:"#31589C"}}>Anexo IV identificado: o CPP patronal não está dentro do DAS neste anexo — foi somado à parte no total do Simples, para refletir o custo completo.</div>}
     </div>
+
+    {cenariosRegimes.length>0&&<div style={card}>
+     <h3 style={{margin:"0 0 4px"}}>Cenários de crescimento</h3>
+     <p style={{fontSize:8.5,color:"#697386",marginBottom:10}}>Mesma fórmula, só o faturamento cresce — despesas, folha e créditos permanecem constantes até você ajustar premissas específicas.</p>
+     <div style={{overflowX:"auto"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,minWidth:640}}>
+       {cenariosRegimes.map(c=>{
+        const max=Math.max(c.simples.completo?c.simples.total:0,c.presumido.completo?c.presumido.total:0,c.real.completo?c.real.total:0,1);
+        return <div key={c.crescimento} style={{padding:9,background:"#F7F9FC",borderRadius:9}}>
+         <div style={{fontSize:8.5,fontWeight:900,color:"#697386",marginBottom:6}}>{c.crescimento===0?"Atual":`+${c.crescimento}%`}</div>
+         {[["Simples",c.simples,"#31589C"],["Presumido",c.presumido,"#FF6B4A"],["Real",c.real,"#17233D"]].map(([label,dados,cor])=><div key={label} style={{marginBottom:6}}>
+          <div style={{fontSize:7.5,color:"#697386"}}>{label}</div>
+          <div style={{height:8,background:"#EEF1F5",borderRadius:4,margin:"2px 0"}}><div style={{height:"100%",width:`${dados.completo?Math.max(2,(dados.total/max)*100):0}%`,background:dados.completo?cor:"#D8DEEA",borderRadius:4}}/></div>
+          <b style={{fontSize:8}}>{dados.completo?moedaMotor(dados.total):"Pendente"}</b>
+         </div>)}
+        </div>;
+       })}
+      </div>
+     </div>
+    </div>}
 
     {(calcRegimes.presumido.completo||calcRegimes.real.completo)&&<div style={card}>
      <h3 style={{margin:"0 0 8px"}}>Base de cálculo utilizada</h3>
@@ -2988,9 +3096,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     <div style={{...card,background:"#FFF8E7",borderColor:"#F3D99B"}}>
      <b style={{color:"#805B10",fontSize:9.5}}>Atenção — estimativas nesta comparação:</b>
      <ul style={{margin:"5px 0 0",paddingLeft:16,fontSize:9,color:"#805B10",lineHeight:1.6}}>
-      <li>PIS/Cofins usa alíquotas padrão (cumulativo no Presumido, não cumulativo no Real) — créditos específicos não estão considerados aqui.</li>
-      <li>CPP patronal estimado em 20% da folha — pode variar conforme RAT e terceiros (Sistema S) da atividade real.</li>
-      <li>{calcRegimes.icmsIss.rotulo} usa a alíquota informada acima, sem considerar créditos, substituição tributária ou benefícios específicos.</li>
+      <li>PIS/Cofins usa alíquota padrão, descontado o crédito informado (Presumido é cumulativo e não tem direito a crédito por definição do regime).</li>
+      <li>CPP patronal estimado em 20% da folha — pode variar conforme RAT e terceiros (Sistema S) da atividade real. No Simples, só entra no total quando o Anexo é IV.</li>
+      <li>{calcRegimes.icmsIss.rotulo} descontado do crédito informado sobre compras/insumos — sem considerar substituição tributária ou benefícios específicos.</li>
       <li>Esta é uma comparação matemática, não uma recomendação automática de mudança de regime.</li>
      </ul>
     </div>
