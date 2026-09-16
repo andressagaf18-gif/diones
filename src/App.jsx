@@ -1493,6 +1493,103 @@ function StepDots({ step }) {
   );
 }
 
+const TERMOS_USO_FINDER = `
+Termos de Uso — Diagnóstico Empresarial e Inteligência Tributária Finder of Solutions
+
+A Finder of Solutions disponibiliza, através deste site e de suas plataformas, ferramentas de diagnóstico empresarial e de inteligência tributária ("Ferramentas"), com o objetivo de apoiar empresários e empresas na avaliação de sua situação fiscal, societária, financeira e operacional, incluindo simulações relacionadas à Reforma Tributária (IBS/CBS), ao regime de tributação vigente e a outros aspectos do negócio informados pelo próprio usuário.
+
+1. Objeto e funcionamento
+
+As Ferramentas processam as informações fornecidas pelo usuário (dados cadastrais, CNPJ, faturamento, estrutura societária, respostas a questionários e documentos eventualmente enviados) para gerar um diagnóstico, relatório ou simulação. Parte desse processamento pode utilizar inteligência artificial para interpretar as respostas e apresentar um resultado consultivo.
+
+O resultado apresentado tem caráter informativo e consultivo, servindo como ponto de partida para uma análise mais aprofundada junto à equipe da Finder of Solutions ou a outros profissionais habilitados (contadores, advogados). O diagnóstico não substitui uma auditoria formal, parecer jurídico ou consultoria tributária individualizada.
+
+2. Responsabilidade pelas informações
+
+É de responsabilidade exclusiva do usuário a exatidão, a veracidade e a atualidade dos dados e documentos fornecidos. A Finder of Solutions não se responsabiliza por resultados incorretos, incompletos ou distorcidos que decorram de informações equivocadas, desatualizadas ou incompletas fornecidas pelo próprio usuário.
+
+3. Propriedade intelectual
+
+O software, os fluxos de perguntas, os modelos de relatório, as marcas e demais elementos das Ferramentas são de propriedade da Finder of Solutions ou de seus licenciantes, sendo vedados a cópia, engenharia reversa, redistribuição ou uso para finalidade diversa da prevista nestes Termos.
+
+4. Proteção de dados pessoais (LGPD)
+
+Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018), os dados pessoais e empresariais informados serão utilizados exclusivamente para a geração do diagnóstico, para contato comercial relacionado a ele e para o cumprimento de obrigações legais e contratuais da Finder of Solutions. Os dados não serão vendidos a terceiros e serão tratados com as medidas de segurança técnicas e organizacionais cabíveis. O usuário pode, a qualquer momento, solicitar informações sobre o tratamento de seus dados ou requerer sua exclusão, observados os prazos e obrigações legais de guarda de documentos fiscais e contábeis.
+
+5. Limitação de responsabilidade
+
+As Ferramentas são fornecidas "no estado em que se encontram". A Finder of Solutions envida seus melhores esforços para manter as informações e cálculos atualizados de acordo com a legislação vigente, mas não garante a ausência de instabilidades, interrupções ou eventuais desatualizações normativas. A interpretação final do resultado e a tomada de decisão com base nele são de responsabilidade do usuário.
+
+6. Comunicações
+
+Ao aceitar estes Termos, o usuário concorda em receber comunicações relacionadas ao diagnóstico solicitado (e-mail, telefone, WhatsApp), podendo solicitar o descadastramento a qualquer momento.
+
+7. Alterações e vigência
+
+Estes Termos podem ser atualizados periodicamente para refletir mudanças legislativas ou nas próprias Ferramentas. A versão vigente é sempre a disponibilizada no momento do uso.
+
+8. Foro
+
+Fica eleito o foro do domicílio da Finder of Solutions para dirimir eventuais controvérsias oriundas destes Termos, com renúncia a qualquer outro, por mais privilegiado que seja.
+
+Ao clicar em "Aceitar", o usuário declara ter lido e concordado com todas as condições acima.
+`.trim();
+
+function ModalTermosUso({ onAceitar }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(23,35,61,.55)",
+        backdropFilter: "blur(3px)",
+        zIndex: 500,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 18,
+      }}
+    >
+      <div
+        style={{
+          width: 440,
+          maxWidth: "100%",
+          maxHeight: "85vh",
+          background: WHITE,
+          borderRadius: 20,
+          boxShadow: "0 30px 70px rgba(0,0,0,.35)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "20px 24px 14px", borderBottom: "1px solid #EEF0F4" }}>
+          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY }}>
+            Termos e condições de uso
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: "18px 24px",
+            overflowY: "auto",
+            fontSize: 12.5,
+            lineHeight: 1.7,
+            color: NAVY,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {TERMOS_USO_FINDER}
+        </div>
+
+        <div style={{ padding: "14px 24px 20px", borderTop: "1px solid #EEF0F4" }}>
+          <PrimaryButton onClick={onAceitar}>Aceitar</PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PrimaryButton({ children, onClick, disabled, style }) {
   return (
     <button
@@ -4751,6 +4848,13 @@ function DiagnosticoPrototipo() {
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
   const [consentimentoEmail, setConsentimentoEmail] = useState(true);
+  const [termosAceitos, setTermosAceitos] = useState(() => {
+    try {
+      return localStorage.getItem("finder_termos_uso_aceitos_v1") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [envioRelatorio, setEnvioRelatorio] = useState("idle");
   const relatorioEnviadoRef = useRef(false);
   const [cnpjInput, setCnpjInput] = useState("");
@@ -10445,6 +10549,17 @@ function DiagnosticoPrototipo() {
         boxSizing: "border-box",
       }}
     >
+      {!termosAceitos && (
+        <ModalTermosUso
+          onAceitar={() => {
+            try {
+              localStorage.setItem("finder_termos_uso_aceitos_v1", "1");
+            } catch {}
+            setTermosAceitos(true);
+          }}
+        />
+      )}
+
       <style>{`
         .finder-public-stage {
           width: 100%;
