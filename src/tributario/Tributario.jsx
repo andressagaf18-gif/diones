@@ -2506,9 +2506,9 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
    <div className="fr-hero" style={{background:"linear-gradient(135deg,#0E1A33 0%,#17233D 56%,#253D68 100%)",color:"#fff",borderRadius:22,padding:22,marginBottom:12,boxShadow:"0 18px 45px rgba(23,35,61,.16)"}}>
     <div>
-     <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7",letterSpacing:.65}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA</div>
+     <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7",letterSpacing:.65}}>FINDER INTELLIGENCE · REFORMA TRIBUTÁRIA + PLANEJAMENTO</div>
      <h1 style={{margin:"7px 0 5px",fontSize:28,lineHeight:1.08}}>Da documentação à decisão tributária</h1>
-     <div style={{fontSize:10,color:"#D8DEEA",lineHeight:1.65,maxWidth:760}}>A IA interpreta os arquivos do cliente, cruza CNPJ, operação real, CNAEs, dados econômicos, créditos e perfil B2B/B2C. O motor calcula os cenários e transforma o resultado em recomendação, transição e laudo executivo.</div>
+     <div style={{fontSize:10,color:"#D8DEEA",lineHeight:1.65,maxWidth:760}}>A IA interpreta os arquivos do cliente, cruza CNPJ, operação real, CNAEs, dados econômicos, créditos e perfil B2B/B2C. O motor calcula os cenários — Simples, Presumido, Real e o impacto do IBS/CBS — e transforma o resultado em recomendação, transição e laudo executivo.</div>
      <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:13}}>
       <span style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.13)",borderRadius:9,padding:"7px 9px",fontSize:8.5}}>1. Documentos</span>
       <span style={{color:"#AEB8C9",alignSelf:"center"}}>→</span>
@@ -2960,7 +2960,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
    <div style={{...card,background:"linear-gradient(135deg,#101B33,#17233D)",color:"#fff",border:0,padding:20}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"start",flexWrap:"wrap"}}>
      <div>
-      <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · LAUDO GERENCIAL DA REFORMA TRIBUTÁRIA</div>
+      <div style={{fontSize:8.5,fontWeight:900,color:"#FFB7A7"}}>FINDER INTELLIGENCE · LAUDO GERENCIAL — REFORMA TRIBUTÁRIA + PLANEJAMENTO</div>
       <h2 style={{margin:"5px 0 3px",fontSize:24}}>{empresa?.razaoSocial||empresa?.razao_social||"Cliente"}</h2>
       <div style={{fontSize:9,color:"#D8DEEA"}}>CNPJ {digits(cnpj)||"-"} · {regime||"Regime não informado"} · {municipio||"-"}/{uf||"-"}</div>
      </div>
@@ -5236,65 +5236,7 @@ export default function Tributario({
           </p>
         </div>
 
-        <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${CORAL}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>INTELIGÊNCIA TRIBUTÁRIA</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:24}}>Uma única análise: regimes + Reforma Tributária</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>CNPJ, CNAE, documentos e dados econômicos alimentam a mesma base. A comparação entre Simples Nacional, Lucro Presumido e Lucro Real e o impacto do IBS/CBS ficam dentro da mesma análise — não são mais fluxos separados.</p><div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:12}}><Botao onClick={()=>escolherProjeto("reforma")}>Iniciar nova análise</Botao></div></div><div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit,minmax(300px,1fr))",
-            gap: 14,
-          }}
-        >
-          <Card
-            onClick={() => escolherProjeto("reforma")}
-            style={{
-              borderTop:
-                `4px solid ${CORAL}`,
-            }}
-          >
-            <div
-              style={{
-                color: CORAL,
-                fontSize: 9,
-                fontWeight: 900,
-                marginBottom: 8,
-              }}
-            >
-              ANÁLISE CONSOLIDADA
-            </div>
-
-            <h3
-              style={{
-                margin: 0,
-                fontFamily:
-                  DISPLAY_FONT,
-                fontSize: 22,
-              }}
-            >
-              Regimes, IBS, CBS e transição
-            </h3>
-
-            <p
-              style={{
-                color: MUTED,
-                fontSize: 10.5,
-                lineHeight: 1.55,
-                minHeight: 66,
-              }}
-            >
-              Empresa, CNAE, documentos, comparação Simples × Presumido × Real, impacto da Reforma, créditos, perfil B2B/B2C, transição e relatório — tudo em uma análise só.
-            </p>
-
-            <Botao
-              onClick={() =>
-                escolherProjeto(
-                  "reforma"
-                )
-              }
-            >
-              Iniciar nova análise
-            </Botao>
-          </Card>
-        </div>
+        <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${CORAL}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>INTELIGÊNCIA TRIBUTÁRIA</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:24}}>Uma única análise: regimes + Reforma Tributária</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>CNPJ, CNAE, documentos e dados econômicos alimentam a mesma base. A comparação entre Simples Nacional, Lucro Presumido e Lucro Real e o impacto do IBS/CBS ficam dentro da mesma análise — não são mais fluxos separados.</p><p style={{color:MUTED,fontSize:9,marginTop:4}}>Empresa → CNAE → documentos → comparação de regimes → impacto da Reforma → transição → relatório, tudo em um só lugar.</p><div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:12}}><Botao onClick={()=>escolherProjeto("reforma")}>Iniciar nova análise</Botao></div></div>
 
         <div
           style={{
