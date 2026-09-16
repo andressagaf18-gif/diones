@@ -6637,7 +6637,7 @@ export default function Tributario({
                     10,
                 }}
               >
-                {projetoAberto.diagnosticos.map(
+                {(projetoAberto.diagnosticos || []).map(
                   (
                     diag
                   ) => (
