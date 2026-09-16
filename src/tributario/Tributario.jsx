@@ -3154,6 +3154,21 @@ export default function Tributario({
   ] = useState([]);
 
   const [
+    selecionadosLote,
+    setSelecionadosLote,
+  ] = useState(() => new Set());
+
+  const [
+    processandoLote,
+    setProcessandoLote,
+  ] = useState(false);
+
+  const [
+    planoMigracao,
+    setPlanoMigracao,
+  ] = useState(null);
+
+  const [
     carregandoProjetos,
     setCarregandoProjetos,
   ] = useState(false);
@@ -3827,6 +3842,116 @@ export default function Tributario({
       await carregarProjetosSalvos();
     } catch (error) {
       setErro(error?.message || "Não foi possível excluir a inteligência tributária.");
+    }
+  }
+
+  function alternarSelecaoLote(id) {
+    setSelecionadosLote((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }
+
+  function alternarSelecaoTodosLote() {
+    setSelecionadosLote((atual) =>
+      atual.size === projetosSalvos.length
+        ? new Set()
+        : new Set(projetosSalvos.map((p) => p.id))
+    );
+  }
+
+  async function arquivarSelecionadosLote(arquivado = true) {
+    const ids = Array.from(selecionadosLote);
+    if (!ids.length) return;
+    setProcessandoLote(true);
+    setErro("");
+    try {
+      const r = await apiTributarioJson("arquivar-projetos-lote", {
+        method: "POST",
+        body: { ids, arquivado },
+      });
+      if (r.falha?.length) {
+        setErro(`${r.falha.length} item(ns) não puderam ser processados.`);
+      } else {
+        setOk(`${r.sucesso.length} inteligência(s) tributária(s) ${arquivado ? "arquivada(s)" : "reativada(s)"}.`);
+      }
+      setSelecionadosLote(new Set());
+      await carregarProjetosSalvos();
+    } catch (error) {
+      setErro(error?.message || "Não foi possível processar a ação em lote.");
+    } finally {
+      setProcessandoLote(false);
+    }
+  }
+
+  async function excluirSelecionadosLote() {
+    const ids = Array.from(selecionadosLote);
+    if (!ids.length) return;
+
+    const confirmou = window.confirm(
+      `Excluir definitivamente ${ids.length} inteligência(s) tributária(s) selecionada(s)?\\n\\nEsta ação exclui projeto, diagnósticos, versões e histórico de cada uma. Não poderá ser desfeita.`
+    );
+    if (!confirmou) return;
+
+    const segundaConfirmacao = window.prompt('Para confirmar a exclusão definitiva, digite EXCLUIR');
+    if (segundaConfirmacao !== "EXCLUIR") return;
+
+    setProcessandoLote(true);
+    setErro("");
+    try {
+      const r = await apiTributarioJson("excluir-projetos-lote", {
+        method: "POST",
+        body: { ids, confirmacao: "EXCLUIR" },
+      });
+      if (r.falha?.length) {
+        setErro(`${r.falha.length} item(ns) não puderam ser excluídos.`);
+      } else {
+        setOk(`${r.sucesso.length} inteligência(s) tributária(s) excluída(s).`);
+      }
+      setSelecionadosLote(new Set());
+      await carregarProjetosSalvos();
+    } catch (error) {
+      setErro(error?.message || "Não foi possível excluir os itens selecionados.");
+    } finally {
+      setProcessandoLote(false);
+    }
+  }
+
+  async function verPlanoMigracao() {
+    setErro("");
+    try {
+      const r = await apiTributarioJson("migrar-projetos-consolidado", {
+        method: "POST",
+        body: { simular: true },
+      });
+      setPlanoMigracao(r);
+    } catch (error) {
+      setErro(error?.message || "Não foi possível calcular o plano de migração.");
+    }
+  }
+
+  async function executarMigracao() {
+    const confirmou = window.confirm(
+      `Confirma unificar ${planoMigracao?.gruposEncontrados || 0} CNPJ(s) com projetos duplicados?\\n\\nTodas as versões de diagnóstico serão preservadas e reorganizadas em ordem cronológica dentro de um único projeto por CNPJ. Os projetos antigos ficarão marcados como mesclados/arquivados (não serão apagados).`
+    );
+    if (!confirmou) return;
+
+    setProcessandoLote(true);
+    setErro("");
+    try {
+      const r = await apiTributarioJson("migrar-projetos-consolidado", {
+        method: "POST",
+        body: { simular: false },
+      });
+      setPlanoMigracao(null);
+      setOk(`${r.gruposEncontrados} CNPJ(s) unificado(s) com sucesso, versões preservadas.`);
+      await carregarProjetosSalvos();
+    } catch (error) {
+      setErro(error?.message || "Não foi possível executar a migração.");
+    } finally {
+      setProcessandoLote(false);
     }
   }
 
@@ -5433,7 +5558,54 @@ export default function Tributario({
             >
               Filtrar
             </Botao>
+
+            <Botao secundario onClick={verPlanoMigracao}>
+              Verificar CNPJs duplicados
+            </Botao>
           </div>
+
+          {planoMigracao && (
+            <div style={{border:"1px solid #F0D49C",background:"#FFF9EE",borderRadius:12,padding:14,marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <strong style={{fontSize:11}}>
+                  {planoMigracao.gruposEncontrados
+                    ? `${planoMigracao.gruposEncontrados} CNPJ(s) com projetos duplicados (Reforma + Planejamento separados)`
+                    : "Nenhum CNPJ duplicado encontrado."}
+                </strong>
+                <div style={{display:"flex",gap:8}}>
+                  <Botao secundario onClick={() => setPlanoMigracao(null)}>Fechar</Botao>
+                  {Boolean(planoMigracao.gruposEncontrados) && (
+                    <Botao onClick={executarMigracao} disabled={processandoLote}>
+                      {processandoLote ? "Unificando..." : "Unificar agora (preserva versões)"}
+                    </Botao>
+                  )}
+                </div>
+              </div>
+              {Boolean(planoMigracao.plano?.length) && (
+                <div style={{marginTop:10,display:"grid",gap:6}}>
+                  {planoMigracao.plano.map((g) => (
+                    <div key={g.cnpj} style={{fontSize:9.5,padding:"7px 9px",background:WHITE,borderRadius:8,border:"1px solid #EEE0BE"}}>
+                      <b>{g.clienteNome || "Cliente"}</b> · {g.cnpj} — {g.totalProjetos} projetos serão unificados em 1 (mantendo todas as versões).
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {selecionadosLote.size > 0 && (
+            <div style={{display:"flex",alignItems:"center",gap:10,background:"#EEF3FF",border:"1px solid #C9D9F5",borderRadius:12,padding:"9px 14px",marginBottom:12,flexWrap:"wrap"}}>
+              <strong style={{fontSize:10.5}}>{selecionadosLote.size} selecionado(s)</strong>
+              <div style={{display:"flex",gap:8,marginLeft:"auto"}}>
+                <Botao secundario disabled={processandoLote} onClick={() => arquivarSelecionadosLote(true)}>Arquivar selecionados</Botao>
+                <Botao secundario disabled={processandoLote} onClick={() => arquivarSelecionadosLote(false)}>Reativar selecionados</Botao>
+                <button type="button" disabled={processandoLote} onClick={excluirSelecionadosLote}
+                  style={{border:"1px solid #E7B9B9",background:"#FFF7F7",color:"#A22",borderRadius:7,padding:"9px 12px",cursor:"pointer",fontSize:9.5,fontWeight:800}}>
+                  Excluir selecionados
+                </button>
+              </div>
+            </div>
+          )}
 
           {!projetosSalvos.length ? (
             <div
@@ -5463,6 +5635,15 @@ export default function Tributario({
                   8,
               }}
             >
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 4px 2px",fontSize:9,color:MUTED,fontWeight:800}}>
+                <input
+                  type="checkbox"
+                  checked={selecionadosLote.size > 0 && selecionadosLote.size === projetosSalvos.length}
+                  onChange={alternarSelecaoTodosLote}
+                  style={{width:15,height:15}}
+                />
+                Selecionar todos
+              </div>
               {projetosSalvos.map(
                 (
                   projeto
@@ -5471,18 +5652,25 @@ export default function Tributario({
                     key={projeto.id}
                     style={{
                       width:"100%",
-                      border:"1px solid #E3E7EF",
+                      border: selecionadosLote.has(projeto.id) ? "1px solid #7FA6E8" : "1px solid #E3E7EF",
                       borderRadius:12,
-                      background:projeto.arquivado ? "#F7F8FA" : WHITE,
+                      background:projeto.arquivado ? "#F7F8FA" : (selecionadosLote.has(projeto.id) ? "#F4F8FF" : WHITE),
                       padding:12,
                       display:"grid",
-                      gridTemplateColumns:"minmax(220px,2fr) minmax(150px,1fr) minmax(130px,1fr) 60px 105px 125px 245px",
+                      gridTemplateColumns:"24px minmax(220px,2fr) minmax(150px,1fr) minmax(130px,1fr) 60px 105px 125px 245px",
                       gap:10,
                       alignItems:"center",
                       color:NAVY,
                       opacity:projeto.arquivado ? .72 : 1,
                     }}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selecionadosLote.has(projeto.id)}
+                      onChange={() => alternarSelecaoLote(projeto.id)}
+                      style={{width:15,height:15}}
+                    />
+
                     <button
                       type="button"
                       onClick={() => abrirProjetoSalvo(projeto.id)}
@@ -5501,7 +5689,7 @@ export default function Tributario({
                     </button>
 
                     <strong style={{fontSize:9.5}}>
-                      {projeto.tipoProjeto === "reforma" ? "Reforma Tributária" : "Planejamento Tributário"}
+                      {projeto.tipoProjeto === "consolidado" ? "Reforma + Planejamento" : projeto.tipoProjeto === "reforma" ? "Reforma Tributária" : projeto.status === "MESCLADO" ? "Mesclado (ver projeto atual)" : "Planejamento Tributário"}
                     </strong>
 
                     <strong style={{fontSize:9.5}}>
@@ -5620,10 +5808,11 @@ export default function Tributario({
                 900,
             }}
           >
-            {projetoAberto.tipoProjeto ===
-            "reforma"
-              ? "REFORMA TRIBUTÁRIA"
-              : "PLANEJAMENTO TRIBUTÁRIO"}
+            {projetoAberto.tipoProjeto === "consolidado"
+              ? "REFORMA + PLANEJAMENTO"
+              : projetoAberto.tipoProjeto === "reforma"
+                ? "REFORMA TRIBUTÁRIA"
+                : "PLANEJAMENTO TRIBUTÁRIO"}
           </div>
 
           <h2
