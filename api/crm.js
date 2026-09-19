@@ -255,6 +255,20 @@ async function prepararSchema() {
   `;
 
   await sql`
+    CREATE TABLE IF NOT EXISTS diagnostico_leads_eventos (
+      id BIGSERIAL PRIMARY KEY,
+      lead_id TEXT NOT NULL,
+      etapa TEXT NOT NULL,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_eventos_lead
+    ON diagnostico_leads_eventos (lead_id, criado_em)
+  `;
+
+  await sql`
     ALTER TABLE diagnostico_leads
     ADD COLUMN IF NOT EXISTS contexto_cliente
     JSONB NOT NULL DEFAULT '{}'::jsonb
@@ -1172,6 +1186,15 @@ async function atualizarLead(req, res) {
 
   const lead =
     linhas?.[0];
+
+  // Regista a mudança de etapa como um evento, para dar uma jornada real
+  // (com data/hora de cada passo) em vez de só a etapa atual sobrescrita.
+  if (lead && etapaAtual && etapaAtual !== atual.etapa_atual) {
+    await sql`
+      INSERT INTO diagnostico_leads_eventos (lead_id, etapa)
+      VALUES (${atual.id}, ${etapaAtual})
+    `.catch(() => {});
+  }
 
   return res.status(200).json({
     sucesso: true,
@@ -5923,6 +5946,12 @@ async function excluirRegistroLead({
     `;
 
     await sql`
+      DELETE FROM diagnostico_leads_eventos
+      WHERE lead_id =
+        ${leadIdFinal}
+    `;
+
+    await sql`
       DELETE FROM diagnostico_leads
       WHERE id =
         ${leadIdFinal}
@@ -5930,6 +5959,13 @@ async function excluirRegistroLead({
   }
 
   if (diagnosticoIdFinal) {
+    await sql`
+      DELETE FROM diagnostico_leads_eventos
+      WHERE lead_id IN (
+        SELECT id FROM diagnostico_leads WHERE diagnostico_id = ${diagnosticoIdFinal}
+      )
+    `;
+
     await sql`
       DELETE FROM diagnostico_leads
       WHERE diagnostico_id =
@@ -6332,6 +6368,27 @@ async function arquivarAtendimento(req, res) {
     sucesso: true,
     atendimentoId,
     arquivado,
+  });
+}
+
+async function eventosLead(req, res) {
+  if (!exigirAdmin(req, res)) return;
+
+  const leadId = texto(req.query?.leadId, 140);
+  if (!leadId) {
+    return res.status(400).json({ sucesso: false, error: "leadId é obrigatório." });
+  }
+
+  const eventos = await sql`
+    SELECT etapa, criado_em
+    FROM diagnostico_leads_eventos
+    WHERE lead_id = ${leadId}
+    ORDER BY criado_em ASC
+  `;
+
+  return res.status(200).json({
+    sucesso: true,
+    eventos: eventos.map((e) => ({ etapa: e.etapa, criadoEm: e.criado_em })),
   });
 }
 
@@ -7061,6 +7118,9 @@ export default async function handler(req, res) {
 
       case "excluir-lead":
         return excluirLead(req, res);
+
+      case "eventos-lead":
+        return eventosLead(req, res);
 
       case "excluir-leads-lote":
         return excluirLeadsLote(
