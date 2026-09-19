@@ -3220,6 +3220,33 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [selecoesResponsavel, setSelecoesResponsavel] = useState({});
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
+  const [leadDetalheAberto, setLeadDetalheAberto] = useState(null);
+  const [eventosLeadDetalhe, setEventosLeadDetalhe] = useState([]);
+  const [carregandoEventosLead, setCarregandoEventosLead] = useState(false);
+
+  function linkWhatsapp(telefone) {
+    const digitsOnly = String(telefone || "").replace(/\D/g, "");
+    if (!digitsOnly) return null;
+    const comDdi = digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
+    return `https://wa.me/${comDdi}`;
+  }
+
+  async function abrirDetalheLead(lead) {
+    setLeadDetalheAberto(lead);
+    setEventosLeadDetalhe([]);
+    setCarregandoEventosLead(true);
+    try {
+      const r = await fetch(`/api/crm?action=eventos-lead&leadId=${encodeURIComponent(lead.leadId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json().catch(() => null);
+      if (d?.sucesso) setEventosLeadDetalhe(d.eventos || []);
+    } catch {
+      // painel de detalhes é auxiliar; falha silenciosa não deve travar a tela
+    } finally {
+      setCarregandoEventosLead(false);
+    }
+  }
 
   const [
     arquivamentoLeads,
@@ -4623,8 +4650,33 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                         Abrir diagnóstico →
                       </button>
                     ) : (
-                      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 7 }}>
-                        Diagnóstico ainda não vinculado
+                      <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
+                        {linkWhatsapp(lead.telefone) ? (
+                          <a
+                            href={linkWhatsapp(lead.telefone)}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                              background: "#22C55E", color: WHITE, borderRadius: 8, padding: "7px 8px",
+                              fontSize: 9.8, fontWeight: 800, textDecoration: "none",
+                            }}
+                          >
+                            WhatsApp
+                          </a>
+                        ) : (
+                          <div style={{ fontSize: 9.5, color: MUTED }}>Sem telefone informado</div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => abrirDetalheLead(lead)}
+                          style={{
+                            border: "1px solid #D8DEEA", background: WHITE, color: NAVY,
+                            borderRadius: 8, padding: "7px 8px", fontSize: 9.8, fontWeight: 800, cursor: "pointer",
+                          }}
+                        >
+                          Ver detalhes
+                        </button>
                       </div>
                     )}
                   </div>
@@ -4632,6 +4684,68 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {leadDetalheAberto && (
+        <div
+          onClick={() => setLeadDetalheAberto(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(23,35,61,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: WHITE, borderRadius: 18, padding: 24, maxWidth: 560, width: "100%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(23,35,61,.25)" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 900 }}>{leadDetalheAberto.razaoSocial || leadDetalheAberto.nome || "Lead sem identificação"}</div>
+                <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2 }}>
+                  Iniciado em {leadDetalheAberto.primeiroAcesso ? formatarData(leadDetalheAberto.primeiroAcesso) : "-"} · origem: {leadDetalheAberto.origem || "direto"}
+                </div>
+              </div>
+              <button type="button" onClick={() => setLeadDetalheAberto(null)} style={{ border: 0, background: "#F1F3F7", borderRadius: 8, width: 28, height: 28, cursor: "pointer", color: MUTED, fontSize: 13 }}>✕</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+              <div style={{ background: "#F7F9FC", borderRadius: 10, padding: "9px 11px" }}>
+                <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>CNPJ</div>
+                <div style={{ fontSize: 11.5, fontStyle: leadDetalheAberto.cnpj ? "normal" : "italic", color: leadDetalheAberto.cnpj ? NAVY : "#B8C0CF" }}>{leadDetalheAberto.cnpj || "Ainda não informado"}</div>
+              </div>
+              <div style={{ background: "#F7F9FC", borderRadius: 10, padding: "9px 11px" }}>
+                <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>Telefone</div>
+                <div style={{ fontSize: 11.5, fontStyle: leadDetalheAberto.telefone ? "normal" : "italic", color: leadDetalheAberto.telefone ? NAVY : "#B8C0CF" }}>{leadDetalheAberto.telefone || "Ainda não informado"}</div>
+              </div>
+              {Object.entries(leadDetalheAberto.contextoCliente || {}).filter(([, v]) => v !== "" && v != null).slice(0, 6).map(([chave, valor]) => (
+                <div key={chave} style={{ background: "#F7F9FC", borderRadius: 10, padding: "9px 11px" }}>
+                  <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>{chave}</div>
+                  <div style={{ fontSize: 11.5 }}>{typeof valor === "object" ? JSON.stringify(valor) : String(valor)}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, marginBottom: 6 }}>JORNADA NO FORMULÁRIO</div>
+            {carregandoEventosLead && <div style={{ fontSize: 11, color: MUTED }}>Carregando...</div>}
+            {!carregandoEventosLead && !eventosLeadDetalhe.length && (
+              <div style={{ fontSize: 11, color: MUTED }}>Etapa atual: {leadDetalheAberto.etapaAtual || "-"} {leadDetalheAberto.progressoPercentual != null ? `(${leadDetalheAberto.progressoPercentual}%)` : ""}</div>
+            )}
+            {eventosLeadDetalhe.map((ev, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, padding: "7px 0", borderTop: i ? "1px solid #EEF0F4" : "none", fontSize: 10.5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", marginTop: 4, flex: "none", background: i === eventosLeadDetalhe.length - 1 ? CORAL : "#0F6E56" }} />
+                <span>{ev.etapa} — {formatarData(ev.criadoEm)}</span>
+              </div>
+            ))}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              {linkWhatsapp(leadDetalheAberto.telefone) && (
+                <a href={linkWhatsapp(leadDetalheAberto.telefone)} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: "center", background: "#22C55E", color: WHITE, borderRadius: 10, padding: "11px", fontWeight: 800, fontSize: 11.5, textDecoration: "none" }}>
+                  Chamar no WhatsApp
+                </a>
+              )}
+              <button type="button" onClick={() => setLeadDetalheAberto(null)} style={{ background: WHITE, border: "1px solid #D8DEEA", color: NAVY, borderRadius: 10, padding: "11px 16px", fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}>
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -19880,6 +19994,143 @@ function SaudeSistemaPainel({ token }) {
   );
 }
 
+const ETAPAS_FLUXO_LABELS_CURTO = ["Criado","Documentos","Diagnóstico","Validado","Publicado"];
+
+function FluxoOperacoesPainel({ token }) {
+  const [modo, setModo] = useState("funil");
+  const [busca, setBusca] = useState("");
+  const [resultadosBusca, setResultadosBusca] = useState([]);
+  const [projetoSelecionado, setProjetoSelecionado] = useState(null);
+  const [fluxo, setFluxo] = useState(null);
+  const [funil, setFunil] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const dark = { bg:"#0A0E17", panel:"linear-gradient(165deg,#12172A,#161C32)", border:"rgba(255,255,255,.08)", text:"#EEF1F8", muted:"#8B96B4" };
+  const corStatus = { ok:"#2FD68F", warn:"#F4B740", bad:"#EF5B5B" };
+
+  async function carregarFunil(){
+    setCarregando(true);setErro("");
+    try{
+      const r=await fetch("/api/tributario?action=fluxo-operacao",{headers:{Authorization:`Bearer ${token}`}});
+      const d=await r.json().catch(()=>null);
+      if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao carregar o funil.");
+      setFunil(d);
+    }catch(e){setErro(e.message)}finally{setCarregando(false)}
+  }
+
+  async function buscarProjetos(){
+    if(busca.trim().length<2)return;
+    try{
+      const r=await fetch(`/api/tributario?action=listar-projetos&busca=${encodeURIComponent(busca)}`,{headers:{Authorization:`Bearer ${token}`}});
+      const d=await r.json().catch(()=>null);
+      setResultadosBusca(d?.projetos||[]);
+    }catch{}
+  }
+
+  async function verFluxoDe(projeto){
+    setProjetoSelecionado(projeto);setModo("registro");setCarregando(true);setErro("");setFluxo(null);
+    try{
+      const r=await fetch(`/api/tributario?action=fluxo-operacao&projetoId=${encodeURIComponent(projeto.id)}`,{headers:{Authorization:`Bearer ${token}`}});
+      const d=await r.json().catch(()=>null);
+      if(!r.ok||!d?.sucesso)throw new Error(d?.error||"Erro ao carregar o fluxo deste registro.");
+      setFluxo(d);
+    }catch(e){setErro(e.message)}finally{setCarregando(false)}
+  }
+
+  useEffect(()=>{ if(modo==="funil"){ carregarFunil(); const iv=setInterval(carregarFunil,30000); return ()=>clearInterval(iv); } },[modo]);
+
+  return (
+    <div style={{ background: dark.bg, borderRadius: 22, padding: 20, color: dark.text }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:15, fontWeight:800 }}>Fluxo de operações — Inteligência Tributária</div>
+          <div style={{ fontSize:10.5, color:dark.muted, marginTop:2 }}>Construído a partir do histórico que o sistema já registra. Atualiza a cada 30s no modo funil.</div>
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={()=>setModo("funil")} style={{ padding:"8px 14px", borderRadius:9, border:`1px solid ${dark.border}`, background: modo==="funil"?"linear-gradient(135deg,#4F7CFF,#8B6BFF)":"transparent", color:"#fff", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>Visão funil (todos)</button>
+          <button onClick={()=>setModo("registro")} style={{ padding:"8px 14px", borderRadius:9, border:`1px solid ${dark.border}`, background: modo==="registro"?"linear-gradient(135deg,#4F7CFF,#8B6BFF)":"transparent", color:"#fff", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>Fluxo de um registro</button>
+        </div>
+      </div>
+
+      {erro && <div style={{ background:"rgba(239,91,91,.14)", border:"1px solid rgba(239,91,91,.3)", color:"#FF9B8F", padding:12, borderRadius:12, marginBottom:14, fontSize:12 }}>{erro}</div>}
+
+      {modo==="registro" && (
+        <div style={{ background:dark.panel, border:`1px solid ${dark.border}`, borderRadius:16, padding:16, marginBottom:14 }}>
+          <div style={{ display:"flex", gap:8 }}>
+            <input value={busca} onChange={e=>setBusca(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscarProjetos()} placeholder="Buscar por cliente ou CNPJ..." style={{ flex:1, background:"rgba(255,255,255,.05)", border:`1px solid ${dark.border}`, borderRadius:9, padding:"9px 12px", color:dark.text, fontSize:11.5 }}/>
+            <button onClick={buscarProjetos} style={{ padding:"9px 16px", borderRadius:9, border:0, background:"#4F7CFF", color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer" }}>Buscar</button>
+          </div>
+          {resultadosBusca.length>0 && !projetoSelecionado && (
+            <div style={{ marginTop:10, display:"grid", gap:6 }}>
+              {resultadosBusca.slice(0,6).map(p=>(
+                <div key={p.id} onClick={()=>verFluxoDe(p)} style={{ padding:"8px 10px", borderRadius:9, background:"rgba(255,255,255,.04)", cursor:"pointer", fontSize:11 }}>
+                  <b>{p.clienteNome||p.cnpj}</b> <span style={{ color:dark.muted }}>· {p.cnpj}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {modo==="registro" && carregando && <div style={{ textAlign:"center", padding:30, color:dark.muted, fontSize:12 }}>Carregando...</div>}
+
+      {modo==="registro" && fluxo && (
+        <div style={{ background:dark.panel, border:`1px solid ${dark.border}`, borderRadius:18, padding:20 }}>
+          <div style={{ fontSize:13, fontWeight:800 }}>{fluxo.projeto.clienteNome || "Cliente"}</div>
+          <div style={{ fontSize:10, color:dark.muted, marginBottom:18 }}>{fluxo.projeto.cnpj} · {fluxo.projeto.tipoProjeto}</div>
+
+          <div style={{ display:"flex", overflowX:"auto", paddingBottom:8 }}>
+            {fluxo.etapas.map((et, i) => (
+              <div key={i} style={{ display:"flex", alignItems:"flex-start" }}>
+                <div style={{ width:160, textAlign:"center", flex:"none" }}>
+                  <div style={{
+                    width:36, height:36, borderRadius:"50%", margin:"0 auto 7px", display:"grid", placeItems:"center", fontSize:14,
+                    background: et.alcancado ? `rgba(47,214,143,.15)` : "rgba(255,255,255,.04)",
+                    border: `2px solid ${et.alcancado ? corStatus[et.status]||corStatus.ok : dark.border}`,
+                  }}>{et.alcancado ? "✓" : "○"}</div>
+                  <b style={{ fontSize:10 }}>{et.label}</b>
+                  <div style={{ fontSize:8.5, color:dark.muted, marginTop:2 }}>{et.criadoEm ? new Date(et.criadoEm).toLocaleString("pt-BR") : "— pendente —"}</div>
+                  {et.usuarioNome && <div style={{ fontSize:8, color:"#5C6788" }}>{et.usuarioNome}</div>}
+                  {et.duracaoHoras!=null && <div style={{ display:"inline-block", marginTop:5, fontSize:7.5, fontWeight:800, padding:"2px 7px", borderRadius:999, background:`${corStatus[et.status]}22`, color:corStatus[et.status] }}>{et.duracaoHoras>=24?`${Math.round(et.duracaoHoras/24)}d`:`${et.duracaoHoras}h`}</div>}
+                </div>
+                {i<fluxo.etapas.length-1 && <div style={{ width:34, height:36, display:"flex", alignItems:"center" }}><div style={{ width:"100%", height:2, background: fluxo.etapas[i+1].alcancado ? (corStatus[fluxo.etapas[i+1].status]||dark.border) : dark.border }}/></div>}
+              </div>
+            ))}
+          </div>
+
+          {fluxo.paradoNaEtapaAtual && (
+            <div style={{ marginTop:14, padding:"10px 14px", borderRadius:12, background:`${corStatus[fluxo.paradoNaEtapaAtual]}18`, border:`1px solid ${corStatus[fluxo.paradoNaEtapaAtual]}55`, fontSize:11 }}>
+              ⚠ Parado há {fluxo.horasDesdeUltimaEtapa>=24?`${Math.round(fluxo.horasDesdeUltimaEtapa/24)} dias`:`${fluxo.horasDesdeUltimaEtapa}h`} nesta etapa.
+            </div>
+          )}
+        </div>
+      )}
+
+      {modo==="funil" && carregando && !funil && <div style={{ textAlign:"center", padding:30, color:dark.muted, fontSize:12 }}>Carregando...</div>}
+
+      {modo==="funil" && funil && (
+        <div style={{ background:dark.panel, border:`1px solid ${dark.border}`, borderRadius:18, padding:20 }}>
+          <div style={{ fontSize:10.5, color:dark.muted, marginBottom:14 }}>{funil.totalProjetos} projetos ativos (não arquivados)</div>
+          {(() => {
+            const max = Math.max(...funil.etapas.map(e=>e.total), 1);
+            return funil.etapas.map((et,i)=>(
+              <div key={i} style={{ display:"grid", gridTemplateColumns:"160px 1fr 60px 90px", gap:10, alignItems:"center", padding:"10px 0", borderTop: i?`1px solid ${dark.border}`:"none" }}>
+                <b style={{ fontSize:11 }}>{et.label}</b>
+                <div style={{ height:20, background:"rgba(255,255,255,.05)", borderRadius:6, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${Math.max(2,(et.total/max)*100)}%`, background:"linear-gradient(90deg,#4F7CFF,#16C7D9)", borderRadius:6 }}/>
+                </div>
+                <div style={{ textAlign:"right", fontWeight:800, fontSize:12 }}>{et.total}</div>
+                <div style={{ textAlign:"right", fontSize:9.5, color: et.parados?corStatus.bad:dark.muted }}>{et.parados?`${et.parados} parado(s)`:""}</div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AuditoriaSistema({ token }) {
   const [subaba, setSubaba] = useState("eventos");
   const [eventos,setEventos]=useState([]),[erro,setErro]=useState(""),[filtro,setFiltro]=useState("");
@@ -19890,8 +20141,10 @@ function AuditoriaSistema({ token }) {
     <div style={{display:"flex",gap:8,marginBottom:16}}>
       <Botao secundario={subaba!=="eventos"} onClick={()=>setSubaba("eventos")}>Eventos</Botao>
       <Botao secundario={subaba!=="saude"} onClick={()=>setSubaba("saude")}><Activity size={14}/>Saúde do sistema</Botao>
+      <Botao secundario={subaba!=="fluxo"} onClick={()=>setSubaba("fluxo")}>Fluxo de operações</Botao>
     </div>
     {subaba==="saude" && <SaudeSistemaPainel token={token} />}
+    {subaba==="fluxo" && <FluxoOperacoesPainel token={token} />}
     {subaba==="eventos" && <>
       <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}><input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="Filtrar usuário, ação, módulo ou registro..." style={{flex:1,minWidth:260,border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 12px"}}/><Botao secundario onClick={carregar}><RefreshCcw size={14}/>Atualizar</Botao></div>
       {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,marginBottom:12}}>{erro}</div>}
