@@ -1257,7 +1257,41 @@ export default function OperacionalBI({
   }
 
   async function excluirAtendimentosSelecionados() {
-    if (ehDiagnostico || !selecionados.length) return;
+    if (!selecionados.length) return;
+
+    if (ehDiagnostico) {
+      const confirmou = window.confirm(
+        `Excluir definitivamente ${selecionados.length} diagnóstico(s) selecionado(s)?\n\nTambém serão excluídos os leads, atendimentos, históricos e propostas vinculados. Os registros financeiros do Asaas serão preservados para auditoria.`
+      );
+      if (!confirmou) return;
+
+      setExcluindoSelecionados(true);
+      setErro("");
+      try {
+        const resposta = await fetch("/api/diagnosticos?action=excluir-lote", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ diagnosticoIds: selecionados }),
+        });
+        const data = await resposta.json().catch(() => null);
+        if (!resposta.ok && resposta.status !== 207) {
+          throw new Error(data?.error || "Não foi possível excluir os diagnósticos selecionados.");
+        }
+        if (data?.falhas > 0) {
+          setErro(`${data.excluidos || 0} registro(s) excluído(s), mas ${data.falhas} apresentaram erro.`);
+        }
+        setSelecionados([]);
+        await carregar();
+      } catch (error) {
+        setErro(error?.message || "Erro ao excluir diagnósticos em lote.");
+      } finally {
+        setExcluindoSelecionados(false);
+      }
+      return;
+    }
 
     const casosSelecionados = listaFila.filter((item) =>
       selecionados.includes(item._casoId || item.id)
@@ -1318,14 +1352,54 @@ export default function OperacionalBI({
   }
 
   async function alternarArquivamentoSelecionados() {
-    if (ehDiagnostico || !selecionados.length) return;
+    if (!selecionados.length) return;
+
+    const arquivar = arquivamento !== "ARQUIVADOS";
+    const verbo = arquivar ? "arquivar" : "desarquivar";
+
+    if (ehDiagnostico) {
+      if (
+        !window.confirm(
+          `${arquivar ? "Arquivar" : "Desarquivar"} ${selecionados.length} diagnóstico(s) selecionado(s)?`
+        )
+      ) {
+        return;
+      }
+
+      setArquivandoSelecionados(true);
+      setErro("");
+      try {
+        const resposta = await fetch(
+          `/api/diagnosticos?action=${arquivar ? "arquivar-lote" : "desarquivar-lote"}`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ diagnosticoIds: selecionados }),
+          }
+        );
+        const data = await resposta.json().catch(() => null);
+        if (!resposta.ok && resposta.status !== 207) {
+          throw new Error(data?.error || `Não foi possível ${verbo} os diagnósticos selecionados.`);
+        }
+        if (data?.falhas > 0) {
+          setErro(`${data.alterados || 0} registro(s) atualizado(s), mas ${data.falhas} apresentaram erro.`);
+        }
+        setSelecionados([]);
+        await carregar();
+      } catch (error) {
+        setErro(error?.message || `Erro ao ${verbo} os diagnósticos selecionados.`);
+      } finally {
+        setArquivandoSelecionados(false);
+      }
+      return;
+    }
 
     const casosSelecionados = listaFila.filter((item) =>
       selecionados.includes(item._casoId || item.id)
     );
-
-    const arquivar = arquivamento !== "ARQUIVADOS";
-    const verbo = arquivar ? "arquivar" : "desarquivar";
 
     if (
       !window.confirm(
@@ -2056,7 +2130,7 @@ export default function OperacionalBI({
             {selecionados.length} selecionado(s)
           </span>
 
-          {!ehDiagnostico && selecionados.length > 0 && (
+          {selecionados.length > 0 && (
             <button
               type="button"
               disabled={arquivandoSelecionados || excluindoSelecionados}
@@ -2089,7 +2163,7 @@ export default function OperacionalBI({
             </button>
           )}
 
-          {!ehDiagnostico && selecionados.length > 0 && (
+          {selecionados.length > 0 && (
             <button
               type="button"
               disabled={excluindoSelecionados}
