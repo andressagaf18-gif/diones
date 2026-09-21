@@ -2,6 +2,16 @@ import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 import dashboardHandler from "../server/dashboard-engine.js";
 import { usuarioAutenticado } from "../server/auth.js";
+import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.js";
+
+// Ordem real das etapas do formulário público (App.jsx,
+// progressoDoDiagnostico). Só serve para ordenar o funil — uma etapa que
+// nunca aparece nos dados simplesmente não entra na lista.
+const ORDEM_ETAPAS_JORNADA = [
+  "intro", "cadastro", "estrutura", "simuladorReforma", "cnpj", "porte",
+  "reforma_detalhes", "dor", "gerandoPerguntas", "confirmarNegocio",
+  "checklist", "analisando", "resultado",
+];
 
 const sql = process.env.DATABASE_URL
   ? neon(process.env.DATABASE_URL)
@@ -263,9 +273,28 @@ async function prepararSchema() {
     )
   `;
 
+  // Colunas adicionadas depois: guardam a estrutura de negócio escolhida
+  // e o percentual de progresso no momento do evento, para o funil
+  // "Jornada do diagnóstico" da Auditoria poder segmentar por escolha e
+  // calcular taxa de conclusão sem precisar de outra tabela.
+  await sql`
+    ALTER TABLE diagnostico_leads_eventos
+    ADD COLUMN IF NOT EXISTS estrutura_negocio TEXT NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE diagnostico_leads_eventos
+    ADD COLUMN IF NOT EXISTS progresso_percentual INTEGER NOT NULL DEFAULT 0
+  `;
+
   await sql`
     CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_eventos_lead
     ON diagnostico_leads_eventos (lead_id, criado_em)
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_diagnostico_leads_eventos_etapa
+    ON diagnostico_leads_eventos (etapa, criado_em DESC)
   `;
 
   await sql`
@@ -1187,12 +1216,19 @@ async function atualizarLead(req, res) {
   const lead =
     linhas?.[0];
 
-  // Regista a mudança de etapa como um evento, para dar uma jornada real
-  // (com data/hora de cada passo) em vez de só a etapa atual sobrescrita.
-  if (lead && etapaAtual && etapaAtual !== atual.etapa_atual) {
+  // Regista a mudança de etapa (ou da estrutura escolhida) como um evento,
+  // para dar uma jornada real (com data/hora de cada passo) em vez de só
+  // a etapa atual sobrescrita.
+  if (
+    lead &&
+    (
+      (etapaAtual && etapaAtual !== atual.etapa_atual) ||
+      (estruturaNegocio && estruturaNegocio !== (atual.estrutura_negocio || ""))
+    )
+  ) {
     await sql`
-      INSERT INTO diagnostico_leads_eventos (lead_id, etapa)
-      VALUES (${atual.id}, ${etapaAtual})
+      INSERT INTO diagnostico_leads_eventos (lead_id, etapa, estrutura_negocio, progresso_percentual)
+      VALUES (${atual.id}, ${etapaAtual || atual.etapa_atual || "intro"}, ${estruturaNegocio || ""}, ${percentual(progressoPercentual)})
     `.catch(() => {});
   }
 
@@ -6269,6 +6305,16 @@ async function arquivarLead(req, res) {
     `;
   }
 
+  await registrarEventoSistema(req, usuarioAutenticado(req), {
+    acao: arquivado ? "lead_arquivado" : "lead_desarquivado",
+    modulo: "leads",
+    recurso: "lead",
+    recursoId: leadId,
+    descricao: arquivado ? "Lead arquivado." : "Lead desarquivado.",
+    antes: { arquivado: !arquivado },
+    depois: { arquivado },
+  });
+
   return res.status(200).json({
     sucesso: true,
     leadId,
@@ -6380,7 +6426,7 @@ async function eventosLead(req, res) {
   }
 
   const eventos = await sql`
-    SELECT etapa, criado_em
+    SELECT etapa, estrutura_negocio, progresso_percentual, criado_em
     FROM diagnostico_leads_eventos
     WHERE lead_id = ${leadId}
     ORDER BY criado_em ASC
@@ -6388,8 +6434,82 @@ async function eventosLead(req, res) {
 
   return res.status(200).json({
     sucesso: true,
-    eventos: eventos.map((e) => ({ etapa: e.etapa, criadoEm: e.criado_em })),
+    eventos: eventos.map((e) => ({
+      etapa: e.etapa,
+      estruturaNegocio: e.estrutura_negocio || "",
+      progressoPercentual: Number(e.progresso_percentual || 0),
+      criadoEm: e.criado_em,
+    })),
   });
+}
+
+async function jornadaFunil(req, res) {
+  if (!exigirAdmin(req, res)) return;
+
+  const dias = Math.max(1, Math.min(180, numero(req.query?.dias, 30)));
+
+  try {
+    const [porEtapa, porEstrutura, ultimaEtapaPorLead] = await Promise.all([
+      sql`
+        SELECT etapa, COUNT(DISTINCT lead_id)::INTEGER AS total
+        FROM diagnostico_leads_eventos
+        WHERE criado_em > NOW() - (${dias} || ' days')::interval
+        GROUP BY etapa
+      `,
+      sql`
+        SELECT DISTINCT ON (lead_id) lead_id, estrutura_negocio
+        FROM diagnostico_leads_eventos
+        WHERE estrutura_negocio <> ''
+          AND criado_em > NOW() - (${dias} || ' days')::interval
+        ORDER BY lead_id, criado_em DESC
+      `,
+      sql`
+        SELECT DISTINCT ON (lead_id) lead_id, etapa, criado_em
+        FROM diagnostico_leads_eventos
+        WHERE criado_em > NOW() - (${dias} || ' days')::interval
+        ORDER BY lead_id, criado_em DESC
+      `,
+    ]);
+
+    const mapaEtapas = Object.fromEntries(porEtapa.map((r) => [r.etapa, Number(r.total || 0)]));
+    const etapasComDados = ORDEM_ETAPAS_JORNADA.filter((e) => mapaEtapas[e]);
+    for (const e of Object.keys(mapaEtapas)) {
+      if (!etapasComDados.includes(e)) etapasComDados.push(e);
+    }
+
+    const contagemEstrutura = {};
+    for (const r of porEstrutura) {
+      const k = r.estrutura_negocio || "não informado";
+      contagemEstrutura[k] = (contagemEstrutura[k] || 0) + 1;
+    }
+
+    const LIMITE_PARADO_HORAS = 48;
+    const agora = Date.now();
+    const paradosPorEtapa = {};
+    for (const r of ultimaEtapaPorLead) {
+      if (r.etapa === "resultado") continue;
+      const horas = (agora - new Date(r.criado_em).getTime()) / 36e5;
+      if (horas >= LIMITE_PARADO_HORAS) {
+        paradosPorEtapa[r.etapa] = (paradosPorEtapa[r.etapa] || 0) + 1;
+      }
+    }
+
+    return res.status(200).json({
+      sucesso: true,
+      janelaDias: dias,
+      etapas: etapasComDados.map((etapa) => ({
+        etapa,
+        total: mapaEtapas[etapa] || 0,
+        parados: paradosPorEtapa[etapa] || 0,
+      })),
+      estruturaNegocio: Object.entries(contagemEstrutura)
+        .map(([estrutura, total]) => ({ estrutura, total }))
+        .sort((a, b) => b.total - a.total),
+    });
+  } catch (error) {
+    console.error("[crm] jornada-funil:", error);
+    return res.status(500).json({ sucesso: false, error: "Não foi possível calcular o funil da jornada." });
+  }
 }
 
 async function excluirLead(req, res) {
@@ -6729,6 +6849,25 @@ async function atribuirLead(req, res) {
       ${responsavel.nome}
     )
   `;
+
+  {
+    const u = usuarioAutenticado(req);
+    const { antes, depois, mudou } = calcularDiferenca(
+      { responsavel: lead.responsavel_finder || null },
+      { responsavel: responsavel.nome }
+    );
+    if (mudou) {
+      await registrarEventoSistema(req, u, {
+        acao: "lead_reatribuido",
+        modulo: "leads",
+        recurso: "lead",
+        recursoId: leadId,
+        descricao: `Lead reatribuído para ${responsavel.nome}.`,
+        antes,
+        depois,
+      });
+    }
+  }
 
   return res.status(200).json({
     sucesso: true,
@@ -7121,6 +7260,9 @@ export default async function handler(req, res) {
 
       case "eventos-lead":
         return eventosLead(req, res);
+
+      case "jornada-funil":
+        return jornadaFunil(req, res);
 
       case "excluir-leads-lote":
         return excluirLeadsLote(
