@@ -53,11 +53,8 @@ function jsonSeguro(v) {
   }
 }
 
-// =========================================================
-// Estágios do funil de "Inteligência Tributária". A ordem aqui é a ordem
-// mostrada no funil — cada projeto conta como tendo alcançado o estágio
-// mais avançado dentre os eventos que ele já teve.
-// =========================================================
+// Estágios do funil de "Inteligência Tributária" — usado pela Auditoria >
+// Fluxo de operações. A ordem aqui é a ordem mostrada no funil.
 export const ACOES_FUNIL_TRIBUTARIO = [
   { acao: "projeto_salvo", rotulo: "Projeto criado/salvo" },
   { acao: "documento_enviado", rotulo: "Documento enviado" },
@@ -66,9 +63,8 @@ export const ACOES_FUNIL_TRIBUTARIO = [
 ];
 
 // Nunca lança erro: se a gravação da auditoria falhar, só loga no console
-// e segue — auditoria é acessória, não pode derrubar a operação principal
-// (upload, geração de diagnóstico etc.).
-export async function registrarEventoTributario(req, u, dados = {}) {
+// e segue — auditoria é acessória, não pode derrubar a operação principal.
+export async function registrarEventoSistema(req, u, dados = {}) {
   if (!sql) return;
   try {
     await garantirTabela();
@@ -79,7 +75,7 @@ export async function registrarEventoTributario(req, u, dados = {}) {
          ip, user_agent)
       VALUES
         (${crypto.randomUUID()}, ${u?.sub || null}, ${u?.nome || ""}, ${u?.login || ""}, ${u?.tipo || ""},
-         ${txt(dados.acao, 120) || "ACAO"}, ${"tributario"}, ${txt(dados.recurso, 160) || "projeto_tributario"},
+         ${txt(dados.acao, 120) || "ACAO"}, ${txt(dados.modulo, 120) || "sistema"}, ${txt(dados.recurso, 160) || ""},
          ${txt(dados.recursoId, 160)}, ${txt(dados.descricao, 2000)},
          ${JSON.stringify(jsonSeguro(dados.antes))}::jsonb,
          ${JSON.stringify(jsonSeguro(dados.depois))}::jsonb,
@@ -88,6 +84,24 @@ export async function registrarEventoTributario(req, u, dados = {}) {
          ${txt(req?.headers?.["user-agent"], 500)})
     `;
   } catch (error) {
-    console.warn("[auditoria-tributario] falha ao registrar evento:", error?.message || error);
+    console.warn("[auditoria] falha ao registrar evento:", error?.message || error);
   }
+}
+
+// Atalho: compara dois objetos "planos" (chave -> valor simples) e devolve
+// só os campos que realmente mudaram, prontos para virar antes/depois.
+// Usado para não gravar o registro inteiro quando só 1-2 campos mudaram.
+export function calcularDiferenca(camposAntes = {}, camposDepois = {}) {
+  const antes = {};
+  const depois = {};
+  const chaves = new Set([...Object.keys(camposAntes), ...Object.keys(camposDepois)]);
+  for (const chave of chaves) {
+    const a = camposAntes[chave] ?? null;
+    const d = camposDepois[chave] ?? null;
+    if (JSON.stringify(a) !== JSON.stringify(d)) {
+      antes[chave] = a;
+      depois[chave] = d;
+    }
+  }
+  return { antes, depois, mudou: Object.keys(antes).length > 0 };
 }
