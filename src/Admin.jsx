@@ -20175,9 +20175,9 @@ function JornadaDiagnosticoPainel({ token }) {
   const [erro, setErro] = useState("");
 
   const dark = { bg: "#0A0E17", panel: "linear-gradient(165deg,#12172A,#161C32)", border: "rgba(255,255,255,.08)", text: "#EEF1F8", muted: "#8B96B4" };
+  const corConversao = (pct) => (pct >= 70 ? "#2FD68F" : pct >= 40 ? "#F4B740" : "#EF5B5B");
 
   async function carregarFunil() {
-    setCarregando(true);
     setErro("");
     try {
       const r = await fetch("/api/crm?action=jornada-funil&dias=30", { headers: { Authorization: `Bearer ${token}` } });
@@ -20191,7 +20191,13 @@ function JornadaDiagnosticoPainel({ token }) {
     }
   }
 
-  useEffect(() => { if (modo === "funil") carregarFunil(); }, [modo]);
+  useEffect(() => {
+    if (modo !== "funil") return;
+    setCarregando(true);
+    carregarFunil();
+    const iv = setInterval(carregarFunil, 30000);
+    return () => clearInterval(iv);
+  }, [modo]);
 
   async function buscarLeads() {
     if (busca.trim().length < 2) return;
@@ -20219,14 +20225,28 @@ function JornadaDiagnosticoPainel({ token }) {
     }
   }
 
-  const maiorContagem = Math.max(1, ...(funil?.etapas || []).map((e) => e.total));
+  const etapasComTaxa = (funil?.etapas || []).map((et, i, arr) => {
+    const anterior = i ? arr[i - 1].total : et.total;
+    const taxa = i && anterior ? Math.round((et.total / anterior) * 100) : 100;
+    return { ...et, taxa };
+  });
+  const maiorContagem = Math.max(1, ...etapasComTaxa.map((e) => e.total));
+  const totalEntradas = etapasComTaxa[0]?.total || 0;
+  const totalConcluidos = etapasComTaxa.find((e) => e.etapa === "resultado")?.total || 0;
+  const taxaConclusaoGeral = totalEntradas ? Math.round((totalConcluidos / totalEntradas) * 100) : 0;
+  const maiorGargalo = etapasComTaxa.slice(1).sort((a, b) => a.taxa - b.taxa)[0];
+
+  const ultimoEventoLead = jornadaLead?.[jornadaLead.length - 1];
+  const paradoHoras = ultimoEventoLead && ultimoEventoLead.etapa !== "resultado"
+    ? Math.round((Date.now() - new Date(ultimoEventoLead.criadoEm).getTime()) / 36e5)
+    : 0;
 
   return (
     <div style={{ background: dark.bg, borderRadius: 22, padding: 20, color: dark.text }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800 }}>Jornada do diagnóstico — formulário público</div>
-          <div style={{ fontSize: 10.5, color: dark.muted, marginTop: 2 }}>Cada etapa que o cliente realmente passou, tela por tela. Últimos 30 dias.</div>
+          <div style={{ fontSize: 10.5, color: dark.muted, marginTop: 2 }}>Cada etapa que o cliente realmente passou, tela por tela. Últimos 30 dias · atualiza a cada 30s.</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setModo("funil")} style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid ${dark.border}`, background: modo === "funil" ? "linear-gradient(135deg,#4F7CFF,#8B6BFF)" : "transparent", color: "#fff", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Funil (todos)</button>
@@ -20240,34 +20260,65 @@ function JornadaDiagnosticoPainel({ token }) {
 
       {modo === "funil" && funil && (
         <>
-          {!funil.etapas.length && (
+          {!etapasComTaxa.length && (
             <div style={{ background: "rgba(239,91,91,.1)", border: "1px solid rgba(239,91,91,.25)", color: "#FF9B8F", padding: 16, borderRadius: 14, fontSize: 12.5 }}>
               Ainda não há jornadas registradas. A partir de agora, cada mudança de etapa no formulário público passa a alimentar esse funil.
             </div>
           )}
-          {!!funil.etapas.length && (
-            <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 20, marginBottom: 14 }}>
-              {funil.etapas.map((et, i) => (
-                <div key={et.etapa} style={{ display: "grid", gridTemplateColumns: "170px 1fr 50px 100px", gap: 10, alignItems: "center", padding: "10px 0", borderTop: i ? `1px solid ${dark.border}` : "none" }}>
-                  <b style={{ fontSize: 11 }}>{RUBRICA_ETAPAS_JORNADA[et.etapa] || et.etapa}</b>
-                  <div style={{ height: 20, background: "rgba(255,255,255,.05)", borderRadius: 6, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${Math.max(2, (et.total / maiorContagem) * 100)}%`, background: "linear-gradient(90deg,#4F7CFF,#16C7D9)", borderRadius: 6 }} />
-                  </div>
-                  <div style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{et.total}</div>
-                  <div style={{ textAlign: "right", fontSize: 9.5, color: et.parados ? "#EF5B5B" : dark.muted }}>{et.parados ? `${et.parados} parado(s) 48h+` : ""}</div>
+
+          {!!etapasComTaxa.length && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
+                <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 14, padding: 14 }}>
+                  <div style={{ fontSize: 9, color: dark.muted, fontWeight: 700 }}>ENTRARAM NO FORMULÁRIO</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4 }}>{totalEntradas}</div>
                 </div>
-              ))}
-            </div>
+                <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 14, padding: 14 }}>
+                  <div style={{ fontSize: 9, color: dark.muted, fontWeight: 700 }}>CHEGARAM NO RELATÓRIO</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4, color: "#2FD68F" }}>{taxaConclusaoGeral}%</div>
+                </div>
+                {maiorGargalo && (
+                  <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 14, padding: 14 }}>
+                    <div style={{ fontSize: 9, color: dark.muted, fontWeight: 700 }}>MAIOR GARGALO</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: corConversao(maiorGargalo.taxa) }}>{RUBRICA_ETAPAS_JORNADA[maiorGargalo.etapa] || maiorGargalo.etapa}</div>
+                    <div style={{ fontSize: 9.5, color: dark.muted, marginTop: 2 }}>só {maiorGargalo.taxa}% passa dessa etapa</div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 20, marginBottom: 14 }}>
+                {etapasComTaxa.map((et, i) => (
+                  <div key={et.etapa} style={{ display: "grid", gridTemplateColumns: "170px 1fr 44px 56px 96px", gap: 10, alignItems: "center", padding: "10px 0", borderTop: i ? `1px solid ${dark.border}` : "none" }}>
+                    <b style={{ fontSize: 11 }}>{RUBRICA_ETAPAS_JORNADA[et.etapa] || et.etapa}</b>
+                    <div style={{ height: 20, background: "rgba(255,255,255,.05)", borderRadius: 6, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.max(2, (et.total / maiorContagem) * 100)}%`, background: `linear-gradient(90deg,#4F7CFF,${corConversao(et.taxa)})`, borderRadius: 6, transition: "width .4s" }} />
+                    </div>
+                    <div style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{et.total}</div>
+                    <div style={{ textAlign: "right", fontSize: 10, fontWeight: 700, color: i ? corConversao(et.taxa) : dark.muted }}>{i ? `${et.taxa}%` : "base"}</div>
+                    <div style={{ textAlign: "right", fontSize: 9.5, color: et.parados ? "#EF5B5B" : dark.muted }}>{et.parados ? `${et.parados} parado(s) 48h+` : ""}</div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
+
           {!!funil.estruturaNegocio?.length && (
             <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 20 }}>
               <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 10 }}>Estrutura escolhida</div>
-              {funil.estruturaNegocio.map((e) => (
-                <div key={e.estrutura} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "6px 0" }}>
-                  <span>{e.estrutura}</span>
-                  <span style={{ color: dark.muted }}>{e.total}</span>
-                </div>
-              ))}
+              {(() => {
+                const maiorEstrutura = Math.max(1, ...funil.estruturaNegocio.map((e) => e.total));
+                return funil.estruturaNegocio.map((e) => (
+                  <div key={e.estrutura} style={{ padding: "7px 0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                      <span>{e.estrutura}</span>
+                      <span style={{ color: dark.muted }}>{e.total}</span>
+                    </div>
+                    <div style={{ height: 6, background: "rgba(255,255,255,.05)", borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.max(2, (e.total / maiorEstrutura) * 100)}%`, background: "linear-gradient(90deg,#8B6BFF,#4F7CFF)", borderRadius: 4 }} />
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </>
@@ -20300,7 +20351,7 @@ function JornadaDiagnosticoPainel({ token }) {
               {!jornadaLead.length && <div style={{ fontSize: 11, color: dark.muted }}>Nenhum evento de jornada registrado para esse lead ainda.</div>}
               {jornadaLead.map((ev, i) => (
                 <div key={i} style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: i ? `1px solid ${dark.border}` : "none" }}>
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#4F7CFF", flex: "none", marginTop: 4 }} />
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: i === jornadaLead.length - 1 ? "#4F7CFF" : "#2FD68F", flex: "none", marginTop: 4 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, fontWeight: 700 }}>
                       {RUBRICA_ETAPAS_JORNADA[ev.etapa] || ev.etapa}
@@ -20310,10 +20361,124 @@ function JornadaDiagnosticoPainel({ token }) {
                   </div>
                 </div>
               ))}
+              {!!jornadaLead.length && ultimoEventoLead?.etapa !== "resultado" && paradoHoras >= 24 && (
+                <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 12, background: "rgba(239,91,91,.1)", border: "1px solid rgba(239,91,91,.33)", fontSize: 11, color: "#FF9B8F" }}>
+                  Parado há {paradoHoras >= 24 ? `${Math.round(paradoHoras / 24)} dia(s)` : `${paradoHoras}h`} nessa etapa — não chegou no relatório final.
+                </div>
+              )}
             </div>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function humanizarCampoAlteracao(chave) {
+  const mapa = {
+    status: "Status",
+    responsavel: "Responsável",
+    responsavelFinder: "Responsável",
+    arquivado: "Arquivado",
+  };
+  return mapa[chave] || chave;
+}
+
+function formatarValorAlteracao(v) {
+  if (v === null || v === undefined || v === "") return "vazio";
+  if (v === true) return "sim";
+  if (v === false) return "não";
+  return String(v);
+}
+
+function AlteracoesPainel({ token }) {
+  const [eventos, setEventos] = useState([]);
+  const [deploys, setDeploys] = useState(null);
+  const [avisoDeploys, setAvisoDeploys] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(true);
+
+  async function carregar() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const [rEv, rDep] = await Promise.all([
+        fetch("/api/acessos?action=auditoria&limite=300", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/deploys", { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      const [dEv, dDep] = await Promise.all([rEv.json().catch(() => null), rDep.json().catch(() => null)]);
+      if (!rEv.ok || !dEv?.sucesso) throw new Error(dEv?.error || "Erro ao carregar as alterações.");
+      setEventos((dEv.eventos || []).filter((e) => e.antes || e.depois));
+      if (dDep?.sucesso) {
+        setDeploys(dDep.deploys || []);
+        setAvisoDeploys(dDep.configurado ? "" : dDep.aviso || "");
+      }
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ color: MUTED, fontSize: 10.5 }}>O que foi alterado nos registros do sistema, por quem e quando — e os últimos deploys de código.</div>
+        <Botao secundario onClick={carregar}><RefreshCcw size={14} />Atualizar</Botao>
+      </div>
+
+      {erro && <div style={{ background: "#FAECE7", color: "#993C1D", padding: 10, borderRadius: 9, marginBottom: 12 }}>{erro}</div>}
+
+      <div style={{ marginBottom: 8, fontWeight: 800, fontSize: 12 }}>Deploys recentes</div>
+      {avisoDeploys && (
+        <div style={{ background: "#FFF8E7", color: "#805B10", padding: 10, borderRadius: 9, marginBottom: 14, fontSize: 11 }}>{avisoDeploys}</div>
+      )}
+      {!avisoDeploys && (
+        <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)", marginBottom: 20 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+            <thead><tr><th style={thStyle}>Data/hora</th><th style={thStyle}>Branch</th><th style={thStyle}>Commit</th><th style={thStyle}>Autor</th><th style={thStyle}>Status</th></tr></thead>
+            <tbody>
+              {(deploys || []).slice(0, 15).map((d) => (
+                <tr key={d.id}>
+                  <td style={tdStyle}>{formatarData(d.criadoEm)}</td>
+                  <td style={tdStyle}>{d.branch || "-"}{d.producao ? " · produção" : ""}</td>
+                  <td style={tdStyle}>{d.mensagemCommit || "-"}</td>
+                  <td style={tdStyle}>{d.autor}</td>
+                  <td style={tdStyle}>{d.estado}</td>
+                </tr>
+              ))}
+              {!deploys?.length && <tr><td colSpan={5} style={{ ...tdStyle, padding: 20, textAlign: "center", color: MUTED }}>{carregando ? "Carregando..." : "Nenhum deploy encontrado."}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 8, fontWeight: 800, fontSize: 12 }}>Alterações em registros</div>
+      <div style={{ background: WHITE, borderRadius: 16, overflow: "auto", boxShadow: "0 8px 24px rgba(23,35,61,.06)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+          <thead><tr><th style={thStyle}>Data/hora</th><th style={thStyle}>Usuário</th><th style={thStyle}>Módulo</th><th style={thStyle}>Registro</th><th style={thStyle}>O que mudou</th></tr></thead>
+          <tbody>
+            {eventos.map((e) => (
+              <tr key={e.id}>
+                <td style={tdStyle}>{formatarData(e.criado_em)}</td>
+                <td style={tdStyle}><strong>{e.usuario_nome || e.usuario_login || "-"}</strong></td>
+                <td style={tdStyle}>{e.modulo || "-"}</td>
+                <td style={tdStyle}>{[e.recurso, e.recurso_id].filter(Boolean).join(" #") || "-"}</td>
+                <td style={tdStyle}>
+                  {Object.keys(e.depois || {}).map((campo) => (
+                    <div key={campo} style={{ marginBottom: 3 }}>
+                      <b>{humanizarCampoAlteracao(campo)}:</b> {formatarValorAlteracao(e.antes?.[campo])} <span style={{ color: MUTED }}>→</span> <b style={{ color: CORAL }}>{formatarValorAlteracao(e.depois?.[campo])}</b>
+                    </div>
+                  ))}
+                </td>
+              </tr>
+            ))}
+            {!eventos.length && <tr><td colSpan={5} style={{ ...tdStyle, padding: 24, textAlign: "center", color: MUTED }}>{carregando ? "Carregando..." : "Nenhuma alteração registrada ainda."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -20330,10 +20495,12 @@ function AuditoriaSistema({ token }) {
       <Botao secundario={subaba!=="saude"} onClick={()=>setSubaba("saude")}><Activity size={14}/>Saúde do sistema</Botao>
       <Botao secundario={subaba!=="fluxo"} onClick={()=>setSubaba("fluxo")}>Fluxo de operações</Botao>
       <Botao secundario={subaba!=="jornada"} onClick={()=>setSubaba("jornada")}>Jornada do diagnóstico</Botao>
+      <Botao secundario={subaba!=="alteracoes"} onClick={()=>setSubaba("alteracoes")}>Alterações</Botao>
     </div>
     {subaba==="saude" && <SaudeSistemaPainel token={token} />}
     {subaba==="fluxo" && <FluxoOperacoesPainel token={token} />}
     {subaba==="jornada" && <JornadaDiagnosticoPainel token={token} />}
+    {subaba==="alteracoes" && <AlteracoesPainel token={token} />}
     {subaba==="eventos" && <>
       <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}><input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="Filtrar usuário, ação, módulo ou registro..." style={{flex:1,minWidth:260,border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 12px"}}/><Botao secundario onClick={carregar}><RefreshCcw size={14}/>Atualizar</Botao></div>
       {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,marginBottom:12}}>{erro}</div>}
