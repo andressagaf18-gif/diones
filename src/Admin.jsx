@@ -3230,6 +3230,11 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
     const comDdi = digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
     return `https://wa.me/${comDdi}`;
   }
+  function humanizarChave(chave) {
+    return String(chave || "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/^./, (c) => c.toUpperCase());
+  }
 
   async function abrirDetalheLead(lead) {
     setLeadDetalheAberto(lead);
@@ -4632,41 +4637,42 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                         : "Arquivar lead"}
                     </button>
 
-                    {lead.diagnosticoId ? (
-                      <button
-                        type="button"
-                        onClick={() => onAbrirDiagnostico(lead.diagnosticoId)}
-                        style={{
-                          marginTop: 7,
-                          border: 0,
-                          padding: 0,
-                          background: "transparent",
-                          color: CORAL,
-                          fontSize: 10.5,
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Abrir diagnóstico →
-                      </button>
-                    ) : (
-                      <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
-                        {linkWhatsapp(lead.telefone) ? (
-                          <a
-                            href={linkWhatsapp(lead.telefone)}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                              background: "#22C55E", color: WHITE, borderRadius: 8, padding: "7px 8px",
-                              fontSize: 9.8, fontWeight: 800, textDecoration: "none",
-                            }}
-                          >
-                            WhatsApp
-                          </a>
-                        ) : (
-                          <div style={{ fontSize: 9.5, color: MUTED }}>Sem telefone informado</div>
-                        )}
+                    <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
+                      {lead.diagnosticoId && (
+                        <button
+                          type="button"
+                          onClick={() => onAbrirDiagnostico(lead.diagnosticoId)}
+                          style={{
+                            border: 0,
+                            padding: 0,
+                            background: "transparent",
+                            color: CORAL,
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          Abrir diagnóstico →
+                        </button>
+                      )}
+                      {linkWhatsapp(lead.telefone) ? (
+                        <a
+                          href={linkWhatsapp(lead.telefone)}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            background: "#22C55E", color: WHITE, borderRadius: 8, padding: "7px 8px",
+                            fontSize: 9.8, fontWeight: 800, textDecoration: "none",
+                          }}
+                        >
+                          WhatsApp
+                        </a>
+                      ) : (
+                        <div style={{ fontSize: 9.5, color: MUTED }}>Sem telefone informado</div>
+                      )}
+                      {!lead.diagnosticoId && (
                         <button
                           type="button"
                           onClick={() => abrirDetalheLead(lead)}
@@ -4677,8 +4683,8 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                         >
                           Ver detalhes
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -4715,10 +4721,21 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                 <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>Telefone</div>
                 <div style={{ fontSize: 11.5, fontStyle: leadDetalheAberto.telefone ? "normal" : "italic", color: leadDetalheAberto.telefone ? NAVY : "#B8C0CF" }}>{leadDetalheAberto.telefone || "Ainda não informado"}</div>
               </div>
-              {Object.entries(leadDetalheAberto.contextoCliente || {}).filter(([, v]) => v !== "" && v != null).slice(0, 6).map(([chave, valor]) => (
-                <div key={chave} style={{ background: "#F7F9FC", borderRadius: 10, padding: "9px 11px" }}>
+              {Object.entries(leadDetalheAberto.contextoCliente || {}).filter(([, v]) => v !== "" && v != null && !(typeof v === "object" && !Array.isArray(v) && !Object.values(v).some((x) => x !== "" && x != null && !(Array.isArray(x) && !x.length)))).slice(0, 6).map(([chave, valor]) => (
+                <div key={chave} style={{ background: "#F7F9FC", borderRadius: 10, padding: "9px 11px", gridColumn: (typeof valor === "object" && valor !== null) ? "1 / -1" : "auto" }}>
                   <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>{chave}</div>
-                  <div style={{ fontSize: 11.5 }}>{typeof valor === "object" ? JSON.stringify(valor) : String(valor)}</div>
+                  {typeof valor === "object" && valor !== null && !Array.isArray(valor) ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 14px", marginTop: 4 }}>
+                      {Object.entries(valor).filter(([, v]) => v !== "" && v != null && !(Array.isArray(v) && !v.length) && v !== false).map(([subChave, subValor]) => (
+                        <div key={subChave} style={{ fontSize: 11, display: "flex", gap: 5, minWidth: 0 }}>
+                          <span style={{ color: MUTED, flex: "none" }}>{humanizarChave(subChave)}:</span>
+                          <span style={{ overflowWrap: "anywhere" }}>{Array.isArray(subValor) ? subValor.join(", ") : subValor === true ? "Sim" : String(subValor)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11.5, overflowWrap: "anywhere" }}>{Array.isArray(valor) ? valor.join(", ") : String(valor)}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -24121,6 +24138,20 @@ export default function Admin() {
     }
   }
 
+  function abrirTributarioDashboard(
+    projetoId
+  ) {
+    setDiagnosticoId(null);
+    setAba("tributario");
+
+    if (projetoId) {
+      sessionStorage.setItem(
+        "finder_dashboard_projeto_tributario_id",
+        String(projetoId)
+      );
+    }
+  }
+
   // Estado + roteamento para abrir um cliente específico vindo da busca
   // global do topo (o mesmo prop que Cliente360 já usa para deep-link).
   const [clienteIdBusca, setClienteIdBusca] = useState(null);
@@ -24438,6 +24469,9 @@ export default function Admin() {
             }
             onAbrirAtendimento={
               abrirAtendimentoDashboard
+            }
+            onAbrirTributario={
+              abrirTributarioDashboard
             }
           />
         </Suspense>
