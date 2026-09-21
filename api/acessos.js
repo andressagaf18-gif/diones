@@ -2355,16 +2355,34 @@ export default async function handler(
           )
         );
 
-      const rows =
-        await sql`
-          SELECT *
-          FROM
-            finder_auditoria
-          ORDER BY
-            criado_em DESC
-          LIMIT
-            ${limite}
-        `;
+      const modulo = txt(req.query?.modulo, 120);
+      const recursoId = txt(req.query?.recursoId, 160);
+
+      // Filtros opcionais: usados pelo painel "Fluxo de operações" da
+      // Auditoria para olhar só os eventos de um módulo (ex.: tributario)
+      // ou o histórico completo de um registro específico.
+      const rows = recursoId
+        ? await sql`
+            SELECT *
+            FROM finder_auditoria
+            WHERE recurso_id = ${recursoId}
+            ORDER BY criado_em DESC
+            LIMIT ${limite}
+          `
+        : modulo
+        ? await sql`
+            SELECT *
+            FROM finder_auditoria
+            WHERE modulo = ${modulo}
+            ORDER BY criado_em DESC
+            LIMIT ${limite}
+          `
+        : await sql`
+            SELECT *
+            FROM finder_auditoria
+            ORDER BY criado_em DESC
+            LIMIT ${limite}
+          `;
 
       res.json({
         sucesso:
