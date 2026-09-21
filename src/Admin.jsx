@@ -20148,6 +20148,176 @@ function FluxoOperacoesPainel({ token }) {
   );
 }
 
+const RUBRICA_ETAPAS_JORNADA = {
+  intro: "Abriu o formulário",
+  cadastro: "Cadastro inicial",
+  estrutura: "Escolheu a estrutura",
+  simuladorReforma: "Simulador da Reforma",
+  cnpj: "Informou o CNPJ",
+  porte: "Porte da empresa",
+  reforma_detalhes: "Detalhes da Reforma",
+  dor: "Dores e impactos",
+  gerandoPerguntas: "Gerando perguntas",
+  confirmarNegocio: "Confirmou o negócio",
+  checklist: "Checklist de perguntas",
+  analisando: "IA analisando",
+  resultado: "Relatório final",
+};
+
+function JornadaDiagnosticoPainel({ token }) {
+  const [modo, setModo] = useState("funil");
+  const [funil, setFunil] = useState(null);
+  const [busca, setBusca] = useState("");
+  const [resultadosBusca, setResultadosBusca] = useState([]);
+  const [leadSelecionado, setLeadSelecionado] = useState(null);
+  const [jornadaLead, setJornadaLead] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const dark = { bg: "#0A0E17", panel: "linear-gradient(165deg,#12172A,#161C32)", border: "rgba(255,255,255,.08)", text: "#EEF1F8", muted: "#8B96B4" };
+
+  async function carregarFunil() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const r = await fetch("/api/crm?action=jornada-funil&dias=30", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro ao carregar a jornada.");
+      setFunil(d);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { if (modo === "funil") carregarFunil(); }, [modo]);
+
+  async function buscarLeads() {
+    if (busca.trim().length < 2) return;
+    try {
+      const r = await fetch(`/api/crm?action=listar-leads&busca=${encodeURIComponent(busca)}&arquivamento=TODOS`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(() => null);
+      setResultadosBusca(d?.leads || []);
+    } catch { /* busca é auxiliar */ }
+  }
+
+  async function verJornadaDe(lead) {
+    setLeadSelecionado(lead);
+    setCarregando(true);
+    setErro("");
+    setJornadaLead(null);
+    try {
+      const r = await fetch(`/api/crm?action=eventos-lead&leadId=${encodeURIComponent(lead.leadId || lead.id)}`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro ao carregar a jornada deste lead.");
+      setJornadaLead(d.eventos || []);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  const maiorContagem = Math.max(1, ...(funil?.etapas || []).map((e) => e.total));
+
+  return (
+    <div style={{ background: dark.bg, borderRadius: 22, padding: 20, color: dark.text }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>Jornada do diagnóstico — formulário público</div>
+          <div style={{ fontSize: 10.5, color: dark.muted, marginTop: 2 }}>Cada etapa que o cliente realmente passou, tela por tela. Últimos 30 dias.</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setModo("funil")} style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid ${dark.border}`, background: modo === "funil" ? "linear-gradient(135deg,#4F7CFF,#8B6BFF)" : "transparent", color: "#fff", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Funil (todos)</button>
+          <button onClick={() => setModo("registro")} style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid ${dark.border}`, background: modo === "registro" ? "linear-gradient(135deg,#4F7CFF,#8B6BFF)" : "transparent", color: "#fff", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Jornada de um lead</button>
+        </div>
+      </div>
+
+      {erro && <div style={{ background: "rgba(239,91,91,.14)", border: "1px solid rgba(239,91,91,.3)", color: "#FF9B8F", padding: 12, borderRadius: 12, marginBottom: 14, fontSize: 12 }}>{erro}</div>}
+
+      {modo === "funil" && carregando && !funil && <div style={{ textAlign: "center", padding: 30, color: dark.muted, fontSize: 12 }}>Carregando...</div>}
+
+      {modo === "funil" && funil && (
+        <>
+          {!funil.etapas.length && (
+            <div style={{ background: "rgba(239,91,91,.1)", border: "1px solid rgba(239,91,91,.25)", color: "#FF9B8F", padding: 16, borderRadius: 14, fontSize: 12.5 }}>
+              Ainda não há jornadas registradas. A partir de agora, cada mudança de etapa no formulário público passa a alimentar esse funil.
+            </div>
+          )}
+          {!!funil.etapas.length && (
+            <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 20, marginBottom: 14 }}>
+              {funil.etapas.map((et, i) => (
+                <div key={et.etapa} style={{ display: "grid", gridTemplateColumns: "170px 1fr 50px 100px", gap: 10, alignItems: "center", padding: "10px 0", borderTop: i ? `1px solid ${dark.border}` : "none" }}>
+                  <b style={{ fontSize: 11 }}>{RUBRICA_ETAPAS_JORNADA[et.etapa] || et.etapa}</b>
+                  <div style={{ height: 20, background: "rgba(255,255,255,.05)", borderRadius: 6, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${Math.max(2, (et.total / maiorContagem) * 100)}%`, background: "linear-gradient(90deg,#4F7CFF,#16C7D9)", borderRadius: 6 }} />
+                  </div>
+                  <div style={{ textAlign: "right", fontWeight: 800, fontSize: 12 }}>{et.total}</div>
+                  <div style={{ textAlign: "right", fontSize: 9.5, color: et.parados ? "#EF5B5B" : dark.muted }}>{et.parados ? `${et.parados} parado(s) 48h+` : ""}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!!funil.estruturaNegocio?.length && (
+            <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 10 }}>Estrutura escolhida</div>
+              {funil.estruturaNegocio.map((e) => (
+                <div key={e.estrutura} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "6px 0" }}>
+                  <span>{e.estrutura}</span>
+                  <span style={{ color: dark.muted }}>{e.total}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {modo === "registro" && (
+        <>
+          <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === "Enter" && buscarLeads()} placeholder="Buscar por cliente ou CNPJ..." style={{ flex: 1, background: "rgba(255,255,255,.05)", border: `1px solid ${dark.border}`, borderRadius: 9, padding: "9px 12px", color: dark.text, fontSize: 11.5 }} />
+              <button onClick={buscarLeads} style={{ padding: "9px 16px", borderRadius: 9, border: 0, background: "#4F7CFF", color: "#fff", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>Buscar</button>
+            </div>
+            {resultadosBusca.length > 0 && !leadSelecionado && (
+              <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                {resultadosBusca.slice(0, 6).map((l) => (
+                  <div key={l.leadId || l.id} onClick={() => verJornadaDe(l)} style={{ padding: "8px 10px", borderRadius: 9, background: "rgba(255,255,255,.04)", cursor: "pointer", fontSize: 11 }}>
+                    <b>{l.razaoSocial || l.nome || l.cnpj}</b> <span style={{ color: dark.muted }}>· {l.cnpj}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {carregando && <div style={{ textAlign: "center", padding: 30, color: dark.muted, fontSize: 12 }}>Carregando...</div>}
+
+          {jornadaLead && (
+            <div style={{ background: dark.panel, border: `1px solid ${dark.border}`, borderRadius: 18, padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>{leadSelecionado?.razaoSocial || leadSelecionado?.nome || "Lead"}</div>
+              <div style={{ fontSize: 10, color: dark.muted, marginBottom: 16 }}>{leadSelecionado?.cnpj}</div>
+              {!jornadaLead.length && <div style={{ fontSize: 11, color: dark.muted }}>Nenhum evento de jornada registrado para esse lead ainda.</div>}
+              {jornadaLead.map((ev, i) => (
+                <div key={i} style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: i ? `1px solid ${dark.border}` : "none" }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#4F7CFF", flex: "none", marginTop: 4 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>
+                      {RUBRICA_ETAPAS_JORNADA[ev.etapa] || ev.etapa}
+                      {ev.estruturaNegocio ? ` — ${ev.estruturaNegocio}` : ""}
+                    </div>
+                    <div style={{ fontSize: 10, color: dark.muted, marginTop: 1 }}>{formatarData(ev.criadoEm)} · {ev.progressoPercentual}% concluído</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function AuditoriaSistema({ token }) {
   const [subaba, setSubaba] = useState("eventos");
   const [eventos,setEventos]=useState([]),[erro,setErro]=useState(""),[filtro,setFiltro]=useState("");
@@ -20155,13 +20325,15 @@ function AuditoriaSistema({ token }) {
   useEffect(()=>{if(subaba==="eventos")carregar()},[subaba]);
   const lista=eventos.filter(e=>!filtro||JSON.stringify(e).toLowerCase().includes(filtro.toLowerCase()));
   return <div>
-    <div style={{display:"flex",gap:8,marginBottom:16}}>
+    <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
       <Botao secundario={subaba!=="eventos"} onClick={()=>setSubaba("eventos")}>Eventos</Botao>
       <Botao secundario={subaba!=="saude"} onClick={()=>setSubaba("saude")}><Activity size={14}/>Saúde do sistema</Botao>
       <Botao secundario={subaba!=="fluxo"} onClick={()=>setSubaba("fluxo")}>Fluxo de operações</Botao>
+      <Botao secundario={subaba!=="jornada"} onClick={()=>setSubaba("jornada")}>Jornada do diagnóstico</Botao>
     </div>
     {subaba==="saude" && <SaudeSistemaPainel token={token} />}
     {subaba==="fluxo" && <FluxoOperacoesPainel token={token} />}
+    {subaba==="jornada" && <JornadaDiagnosticoPainel token={token} />}
     {subaba==="eventos" && <>
       <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}><input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="Filtrar usuário, ação, módulo ou registro..." style={{flex:1,minWidth:260,border:"1px solid #D8DEEA",borderRadius:9,padding:"10px 12px"}}/><Botao secundario onClick={carregar}><RefreshCcw size={14}/>Atualizar</Botao></div>
       {erro&&<div style={{background:"#FAECE7",color:"#993C1D",padding:10,borderRadius:9,marginBottom:12}}>{erro}</div>}
