@@ -157,7 +157,7 @@ export default async function dashboardHandler(req, res) {
         prioridade:lead.prioridade_comercial||"",temperatura:lead.temperatura_comercial||"",proximaAcao:lead.proxima_acao||"",
         prazoAtendimento:lead.prazo_atendimento||"",responsavelFinder:lead.responsavel_finder||"",
         estruturaNegocio:lead.estrutura_negocio||"operacional",criado_em:lead.created_at,atualizado_em:lead.updated_at,
-        ultima_atividade:lead.ultima_atividade
+        ultima_atividade:lead.ultima_atividade,primeiroAcesso:lead.primeiro_acesso||lead.created_at
       })),
       atendimentos:(atendimentosRows||[]).map(item=>({
         id:item.id,atendimento_id:item.id,diagnosticoId:item.diagnostico_id,leadId:item.lead_id,area:item.area||"",
