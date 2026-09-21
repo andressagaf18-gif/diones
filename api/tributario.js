@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { createHash } from "node:crypto";
 import { usuarioAutenticado } from "../server/auth.js";
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
+import { registrarEventoTributario } from "../server/auditoria.js";
 
 const sql =
   neon(
@@ -921,6 +922,12 @@ async function salvarProjeto(
     },
     user
   );
+
+  await registrarEventoTributario(req, user, {
+    acao: "projeto_salvo",
+    recursoId: id,
+    descricao: `Projeto salvo/atualizado (${txt(body.tipoProjeto, 80)}).`,
+  });
 
   let publicacaoDiagnostico = null;
   if (
@@ -1929,6 +1936,12 @@ async function validarProjeto(
     user
   );
 
+  await registrarEventoTributario(req, user, {
+    acao: "projeto_validado",
+    recursoId: id,
+    descricao: "Projeto validado pelo responsável.",
+  });
+
   return send(
     res,
     200,
@@ -2208,6 +2221,14 @@ async function uploadFile(req, res) {
     filename,
     mimeType,
   });
+
+  if (txt(projetoId, 200) && !duplicado) {
+    await registrarEventoTributario(req, authUser(req), {
+      acao: "documento_enviado",
+      recursoId: txt(projetoId, 200),
+      descricao: `Documento enviado: ${filename}.`,
+    });
+  }
 
   return send(res, 200, {
     sucesso: true,
@@ -3329,6 +3350,9 @@ REGRAS:
 `}];
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoAnaliseSchema,nomeSchema:"finder_planejamento_analise",effort:"high",webSearch:true});
+    if(txt(body.projetoId,200)){
+      await registrarEventoTributario(req,authUser(req),{acao:"analise_gerada",recursoId:txt(body.projetoId,200),descricao:"Análise de Planejamento Tributário gerada."});
+    }
     return send(res,200,{sucesso:true,modelo:MODEL,analise:result,usage});
   }catch(error){
     console.error("[tributario][planejamento-analisar]",error);
@@ -3435,6 +3459,9 @@ REGRAS OBRIGATÓRIAS:
       transicao:[],
       planoAcao:result.oportunidades||[],
     };
+    if(txt(body.projetoId,200)){
+      await registrarEventoTributario(req,authUser(req),{acao:"analise_gerada",recursoId:txt(body.projetoId,200),descricao:"Análise da Reforma Tributária gerada."});
+    }
     return send(res,200,{sucesso:true,modelo:MODEL,analise,usage,statusPesquisa:"AGUARDANDO_VALIDACAO_CONSULTOR"});
   }catch(error){
     console.error("[tributario][reforma-analisar]",error);
