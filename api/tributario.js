@@ -2,7 +2,6 @@ import { neon } from "@neondatabase/serverless";
 import { createHash } from "node:crypto";
 import { usuarioAutenticado } from "../server/auth.js";
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
-import { registrarEventoTributario } from "../server/auditoria.js";
 
 const sql =
   neon(
@@ -922,12 +921,6 @@ async function salvarProjeto(
     },
     user
   );
-
-  await registrarEventoTributario(req, user, {
-    acao: "projeto_salvo",
-    recursoId: id,
-    descricao: `Projeto salvo/atualizado (${txt(body.tipoProjeto, 80)}).`,
-  });
 
   let publicacaoDiagnostico = null;
   if (
@@ -1875,6 +1868,128 @@ async function migrarProjetosConsolidado(req,res){
   });
 }
 
+// =========================================================
+// FLUXO DE OPERAÇÕES (painel de Auditoria)
+// Sem projetoId: funil agregado de todos os projetos ativos.
+// Com projetoId: linha do tempo de um projeto específico.
+// Estágios: Criado -> Documentos -> Diagnóstico -> Validado -> Publicado.
+// =========================================================
+
+const LIMIAR_PARADO_HORAS = 48;
+
+async function fluxoOperacao(req, res) {
+  await ensureSchema();
+
+  const projetoId = txt(req.query?.projetoId, 200);
+
+  if (projetoId) {
+    const [projetoRow] = await sql`
+      SELECT id, cliente_nome, cnpj, tipo_projeto, status,
+             criado_por_nome, criado_em, validado_por_nome, validado_em
+      FROM tax_projects
+      WHERE id = ${projetoId}
+      LIMIT 1
+    `;
+
+    if (!projetoRow) {
+      return send(res, 404, { sucesso: false, error: "Projeto não encontrado." });
+    }
+
+    const [[doc], [diag], [pub]] = await Promise.all([
+      sql`SELECT criado_em, criado_por_nome FROM tax_documents WHERE projeto_id = ${projetoId} AND ativo = TRUE ORDER BY criado_em ASC LIMIT 1`,
+      sql`SELECT criado_em, criado_por_nome FROM tax_diagnostics WHERE projeto_id = ${projetoId} ORDER BY criado_em ASC LIMIT 1`,
+      sql`SELECT criado_em, usuario_nome FROM tax_history WHERE projeto_id = ${projetoId} AND tipo = 'RELATORIO_PUBLICADO_ADMIN' ORDER BY criado_em ASC LIMIT 1`,
+    ]);
+
+    const marcos = [
+      { label: "Criado", criadoEm: projetoRow.criado_em, usuarioNome: projetoRow.criado_por_nome },
+      { label: "Documentos", criadoEm: doc?.criado_em || null, usuarioNome: doc?.criado_por_nome || null },
+      { label: "Diagnóstico", criadoEm: diag?.criado_em || null, usuarioNome: diag?.criado_por_nome || null },
+      { label: "Validado", criadoEm: projetoRow.validado_em || null, usuarioNome: projetoRow.validado_por_nome || null },
+      { label: "Publicado", criadoEm: pub?.criado_em || null, usuarioNome: pub?.usuario_nome || null },
+    ];
+
+    let ultimaAlcancadaIdx = -1;
+    let tempoAnterior = null;
+    const etapas = marcos.map((m, i) => {
+      const alcancado = Boolean(m.criadoEm);
+      let duracaoHoras = null;
+      if (alcancado) {
+        ultimaAlcancadaIdx = i;
+        if (tempoAnterior) {
+          duracaoHoras = Math.max(0, Math.round((new Date(m.criadoEm).getTime() - tempoAnterior) / 36e5));
+        }
+        tempoAnterior = new Date(m.criadoEm).getTime();
+      }
+      return {
+        label: m.label,
+        alcancado,
+        criadoEm: m.criadoEm,
+        usuarioNome: m.usuarioNome,
+        status: alcancado ? "ok" : null,
+        duracaoHoras,
+      };
+    });
+
+    let paradoNaEtapaAtual = null;
+    let horasDesdeUltimaEtapa = null;
+    if (ultimaAlcancadaIdx >= 0 && ultimaAlcancadaIdx < etapas.length - 1 && projetoRow.status !== "ARQUIVADO") {
+      const horas = Math.round((Date.now() - new Date(etapas[ultimaAlcancadaIdx].criadoEm).getTime()) / 36e5);
+      horasDesdeUltimaEtapa = horas;
+      if (horas >= LIMIAR_PARADO_HORAS * 2) paradoNaEtapaAtual = "bad";
+      else if (horas >= LIMIAR_PARADO_HORAS) paradoNaEtapaAtual = "warn";
+    }
+
+    return send(res, 200, {
+      sucesso: true,
+      projeto: {
+        id: projetoRow.id,
+        clienteNome: projetoRow.cliente_nome,
+        cnpj: projetoRow.cnpj,
+        tipoProjeto: projetoRow.tipo_projeto,
+      },
+      etapas,
+      paradoNaEtapaAtual,
+      horasDesdeUltimaEtapa,
+    });
+  }
+
+  const [projetos, docsPrimeiro, diagsPrimeiro, pubsPrimeiro] = await Promise.all([
+    sql`SELECT id, status, criado_em, validado_em FROM tax_projects WHERE arquivado = FALSE`,
+    sql`SELECT projeto_id, MIN(criado_em) AS primeiro FROM tax_documents WHERE ativo = TRUE GROUP BY projeto_id`,
+    sql`SELECT projeto_id, MIN(criado_em) AS primeiro FROM tax_diagnostics GROUP BY projeto_id`,
+    sql`SELECT projeto_id, MIN(criado_em) AS primeiro FROM tax_history WHERE tipo = 'RELATORIO_PUBLICADO_ADMIN' GROUP BY projeto_id`,
+  ]);
+
+  const mapaDocs = Object.fromEntries(docsPrimeiro.map((r) => [r.projeto_id, r.primeiro]));
+  const mapaDiags = Object.fromEntries(diagsPrimeiro.map((r) => [r.projeto_id, r.primeiro]));
+  const mapaPubs = Object.fromEntries(pubsPrimeiro.map((r) => [r.projeto_id, r.primeiro]));
+
+  const rotulos = ["Criado", "Documentos", "Diagnóstico", "Validado", "Publicado"];
+  const contagem = rotulos.map(() => ({ total: 0, parados: 0 }));
+
+  for (const p of projetos) {
+    const marcos = [p.criado_em, mapaDocs[p.id] || null, mapaDiags[p.id] || null, p.validado_em || null, mapaPubs[p.id] || null];
+    let ultimaIdx = -1;
+    marcos.forEach((m, i) => {
+      if (m) {
+        contagem[i].total += 1;
+        ultimaIdx = i;
+      }
+    });
+    if (ultimaIdx >= 0 && ultimaIdx < marcos.length - 1 && p.status !== "ARQUIVADO") {
+      const horas = (Date.now() - new Date(marcos[ultimaIdx]).getTime()) / 36e5;
+      if (horas >= LIMIAR_PARADO_HORAS) contagem[ultimaIdx].parados += 1;
+    }
+  }
+
+  return send(res, 200, {
+    sucesso: true,
+    totalProjetos: projetos.length,
+    etapas: rotulos.map((label, i) => ({ label, total: contagem[i].total, parados: contagem[i].parados })),
+  });
+}
+
 async function validarProjeto(
   req,
   res
@@ -1935,12 +2050,6 @@ async function validarProjeto(
     {},
     user
   );
-
-  await registrarEventoTributario(req, user, {
-    acao: "projeto_validado",
-    recursoId: id,
-    descricao: "Projeto validado pelo responsável.",
-  });
 
   return send(
     res,
@@ -2221,14 +2330,6 @@ async function uploadFile(req, res) {
     filename,
     mimeType,
   });
-
-  if (txt(projetoId, 200) && !duplicado) {
-    await registrarEventoTributario(req, authUser(req), {
-      acao: "documento_enviado",
-      recursoId: txt(projetoId, 200),
-      descricao: `Documento enviado: ${filename}.`,
-    });
-  }
 
   return send(res, 200, {
     sucesso: true,
@@ -3350,9 +3451,6 @@ REGRAS:
 `}];
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:planejamentoAnaliseSchema,nomeSchema:"finder_planejamento_analise",effort:"high",webSearch:true});
-    if(txt(body.projetoId,200)){
-      await registrarEventoTributario(req,authUser(req),{acao:"analise_gerada",recursoId:txt(body.projetoId,200),descricao:"Análise de Planejamento Tributário gerada."});
-    }
     return send(res,200,{sucesso:true,modelo:MODEL,analise:result,usage});
   }catch(error){
     console.error("[tributario][planejamento-analisar]",error);
@@ -3459,9 +3557,6 @@ REGRAS OBRIGATÓRIAS:
       transicao:[],
       planoAcao:result.oportunidades||[],
     };
-    if(txt(body.projetoId,200)){
-      await registrarEventoTributario(req,authUser(req),{acao:"analise_gerada",recursoId:txt(body.projetoId,200),descricao:"Análise da Reforma Tributária gerada."});
-    }
     return send(res,200,{sucesso:true,modelo:MODEL,analise,usage,statusPesquisa:"AGUARDANDO_VALIDACAO_CONSULTOR"});
   }catch(error){
     console.error("[tributario][reforma-analisar]",error);
@@ -3479,6 +3574,7 @@ export default async function handler(req,res){
     "salvar-diagnostico":salvarDiagnostico,
     "listar-projetos":listarProjetos,
     "obter-projeto":obterProjeto,
+    "fluxo-operacao":fluxoOperacao,
     "arquivar-projeto":arquivarProjeto,
     "excluir-projeto":excluirProjeto,
     "arquivar-projetos-lote":arquivarProjetosLote,
