@@ -1514,6 +1514,122 @@ async function alterarArquivamento(
 // POST /api/diagnosticos?action=excluir
 // =========================================================
 
+async function excluirDiagnosticoPorId(
+  diagnosticoId
+) {
+  // Remove dados relacionados primeiro.
+  // Cada bloco é isolado para preservar
+  // compatibilidade com bancos antigos.
+
+  try {
+    await sql`
+      DELETE FROM
+        crm_atendimento_historico
+      WHERE
+        diagnostico_id =
+          ${diagnosticoId}
+    `;
+  } catch (error) {
+    console.warn(
+      "[diagnosticos] histórico CRM:",
+      error?.message || error
+    );
+  }
+
+  try {
+    await sql`
+      DELETE FROM
+        crm_proposta_versoes
+      WHERE
+        proposta_id IN (
+          SELECT id
+          FROM crm_propostas
+          WHERE diagnostico_id = ${diagnosticoId}
+        )
+    `;
+  } catch (error) {
+    console.warn(
+      "[diagnosticos] versões das propostas CRM:",
+      error?.message || error
+    );
+  }
+
+  try {
+    await sql`
+      DELETE FROM
+        crm_propostas
+      WHERE
+        diagnostico_id =
+          ${diagnosticoId}
+    `;
+  } catch (error) {
+    console.warn(
+      "[diagnosticos] propostas CRM:",
+      error?.message || error
+    );
+  }
+
+  try {
+    await sql`
+      DELETE FROM
+        crm_atendimentos_departamento
+      WHERE
+        diagnostico_id =
+          ${diagnosticoId}
+    `;
+  } catch (error) {
+    console.warn(
+      "[diagnosticos] atendimentos CRM:",
+      error?.message || error
+    );
+  }
+
+  try {
+    await sql`
+      DELETE FROM
+        crm_atribuicoes
+      WHERE
+        lead_id IN (
+          SELECT id
+          FROM diagnostico_leads
+          WHERE diagnostico_id = ${diagnosticoId}
+        )
+    `;
+  } catch (error) {
+    console.warn(
+      "[diagnosticos] atribuições CRM:",
+      error?.message || error
+    );
+  }
+
+  try {
+    await sql`
+      DELETE FROM
+        diagnostico_leads
+      WHERE
+        diagnostico_id =
+          ${diagnosticoId}
+    `;
+  } catch (error) {
+    console.warn(
+      "[diagnosticos] leads CRM:",
+      error?.message || error
+    );
+  }
+
+  const rows =
+    await sql`
+      DELETE FROM
+        diagnosticos
+      WHERE
+        id::text =
+          ${diagnosticoId}
+      RETURNING id
+    `;
+
+  return Boolean(rows?.[0]);
+}
+
 async function excluirDiagnostico(
   req,
   res
@@ -1545,117 +1661,12 @@ async function excluirDiagnostico(
   }
 
   try {
-    // Remove dados relacionados primeiro.
-    // Cada bloco é isolado para preservar
-    // compatibilidade com bancos antigos.
-
-    try {
-      await sql`
-        DELETE FROM
-          crm_atendimento_historico
-        WHERE
-          diagnostico_id =
-            ${diagnosticoId}
-      `;
-    } catch (error) {
-      console.warn(
-        "[diagnosticos] histórico CRM:",
-        error?.message || error
+    const excluido =
+      await excluirDiagnosticoPorId(
+        diagnosticoId
       );
-    }
 
-    try {
-      await sql`
-        DELETE FROM
-          crm_proposta_versoes
-        WHERE
-          proposta_id IN (
-            SELECT id
-            FROM crm_propostas
-            WHERE diagnostico_id = ${diagnosticoId}
-          )
-      `;
-    } catch (error) {
-      console.warn(
-        "[diagnosticos] versões das propostas CRM:",
-        error?.message || error
-      );
-    }
-
-    try {
-      await sql`
-        DELETE FROM
-          crm_propostas
-        WHERE
-          diagnostico_id =
-            ${diagnosticoId}
-      `;
-    } catch (error) {
-      console.warn(
-        "[diagnosticos] propostas CRM:",
-        error?.message || error
-      );
-    }
-
-    try {
-      await sql`
-        DELETE FROM
-          crm_atendimentos_departamento
-        WHERE
-          diagnostico_id =
-            ${diagnosticoId}
-      `;
-    } catch (error) {
-      console.warn(
-        "[diagnosticos] atendimentos CRM:",
-        error?.message || error
-      );
-    }
-
-    try {
-      await sql`
-        DELETE FROM
-          crm_atribuicoes
-        WHERE
-          lead_id IN (
-            SELECT id
-            FROM diagnostico_leads
-            WHERE diagnostico_id = ${diagnosticoId}
-          )
-      `;
-    } catch (error) {
-      console.warn(
-        "[diagnosticos] atribuições CRM:",
-        error?.message || error
-      );
-    }
-
-    try {
-      await sql`
-        DELETE FROM
-          diagnostico_leads
-        WHERE
-          diagnostico_id =
-            ${diagnosticoId}
-      `;
-    } catch (error) {
-      console.warn(
-        "[diagnosticos] leads CRM:",
-        error?.message || error
-      );
-    }
-
-    const rows =
-      await sql`
-        DELETE FROM
-          diagnosticos
-        WHERE
-          id::text =
-            ${diagnosticoId}
-        RETURNING id
-      `;
-
-    if (!rows?.[0]) {
+    if (!excluido) {
       return res
         .status(404)
         .json({
@@ -1689,6 +1700,149 @@ async function excluirDiagnostico(
           "Não foi possível excluir o diagnóstico.",
       });
   }
+}
+
+async function excluirDiagnosticosLote(
+  req,
+  res
+) {
+  const usuario =
+    exigirAutenticacao(
+      req,
+      res
+    );
+
+  if (!usuario) {
+    return;
+  }
+
+  const ids =
+    Array.isArray(req.body?.diagnosticoIds)
+      ? [...new Set(req.body.diagnosticoIds.map((v) => texto(v)).filter(Boolean))]
+      : [];
+
+  if (!ids.length) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "Selecione ao menos um diagnóstico para excluir.",
+      });
+  }
+
+  if (ids.length > 300) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "O limite por exclusão é de 300 registros.",
+      });
+  }
+
+  const excluidos = [];
+  const falhas = [];
+
+  for (const diagnosticoId of ids) {
+    try {
+      const ok = await excluirDiagnosticoPorId(diagnosticoId);
+      if (ok) {
+        excluidos.push(diagnosticoId);
+      } else {
+        falhas.push({ diagnosticoId, erro: "Diagnóstico não encontrado." });
+      }
+    } catch (error) {
+      console.error("[diagnosticos] exclusão em lote:", error);
+      falhas.push({ diagnosticoId, erro: error?.message || "Erro desconhecido" });
+    }
+  }
+
+  return res
+    .status(falhas.length ? 207 : 200)
+    .json({
+      sucesso: falhas.length === 0,
+      excluidos: excluidos.length,
+      falhas: falhas.length,
+      detalhesFalhas: falhas,
+    });
+}
+
+async function alterarArquivamentoLote(
+  req,
+  res,
+  arquivado
+) {
+  const usuario =
+    exigirAutenticacao(
+      req,
+      res
+    );
+
+  if (!usuario) {
+    return;
+  }
+
+  await garantirArquivamento();
+
+  const ids =
+    Array.isArray(req.body?.diagnosticoIds)
+      ? [...new Set(req.body.diagnosticoIds.map((v) => texto(v)).filter(Boolean))]
+      : [];
+
+  if (!ids.length) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "Selecione ao menos um diagnóstico.",
+      });
+  }
+
+  if (ids.length > 300) {
+    return res
+      .status(400)
+      .json({
+        sucesso: false,
+        error:
+          "O limite por operação é de 300 registros.",
+      });
+  }
+
+  const alterados = [];
+  const falhas = [];
+
+  for (const diagnosticoId of ids) {
+    try {
+      const rows =
+        await sql`
+          UPDATE diagnosticos
+          SET
+            arquivado = ${arquivado},
+            arquivado_em = CASE WHEN ${arquivado} THEN NOW() ELSE NULL END
+          WHERE id::text = ${diagnosticoId}
+          RETURNING id
+        `;
+      if (rows?.[0]) {
+        alterados.push(diagnosticoId);
+      } else {
+        falhas.push({ diagnosticoId, erro: "Diagnóstico não encontrado." });
+      }
+    } catch (error) {
+      console.error("[diagnosticos] arquivamento em lote:", error);
+      falhas.push({ diagnosticoId, erro: error?.message || "Erro desconhecido" });
+    }
+  }
+
+  return res
+    .status(falhas.length ? 207 : 200)
+    .json({
+      sucesso: falhas.length === 0,
+      alterados: alterados.length,
+      falhas: falhas.length,
+      detalhesFalhas: falhas,
+    });
 }
 
 // =========================================================
@@ -1800,6 +1954,38 @@ export default async function handler(
     return excluirDiagnostico(
       req,
       res
+    );
+  }
+
+  if (
+    req.method === "POST" &&
+    action === "excluir-lote"
+  ) {
+    return excluirDiagnosticosLote(
+      req,
+      res
+    );
+  }
+
+  if (
+    req.method === "POST" &&
+    action === "arquivar-lote"
+  ) {
+    return alterarArquivamentoLote(
+      req,
+      res,
+      true
+    );
+  }
+
+  if (
+    req.method === "POST" &&
+    action === "desarquivar-lote"
+  ) {
+    return alterarArquivamentoLote(
+      req,
+      res,
+      false
     );
   }
 
