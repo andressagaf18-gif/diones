@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { createHash } from "node:crypto";
 import { usuarioAutenticado } from "../server/auth.js";
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
+import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.js";
 
 const sql =
   neon(
@@ -752,6 +753,14 @@ async function salvarProjeto(
     );
   }
 
+  const [projetoAntes] =
+    await sql`
+      SELECT status, responsavel_finder, cliente_nome
+      FROM tax_projects
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+
   const empresas =
     Array.isArray(
       body.empresas
@@ -921,6 +930,31 @@ async function salvarProjeto(
     },
     user
   );
+
+  {
+    const statusNovo = body.status || "EM_ANALISE";
+    const { antes, depois, mudou } = calcularDiferenca(
+      {
+        status: projetoAntes?.status || null,
+        responsavelFinder: projetoAntes?.responsavel_finder || null,
+      },
+      {
+        status: statusNovo,
+        responsavelFinder: body.responsavelFinder || null,
+      }
+    );
+    if (mudou) {
+      await registrarEventoSistema(req, user, {
+        acao: projetoAntes ? "projeto_editado" : "projeto_criado",
+        modulo: "tributario",
+        recurso: "projeto_tributario",
+        recursoId: id,
+        descricao: `${clienteNome} — ${projetoAntes ? "projeto atualizado" : "projeto criado"}.`,
+        antes,
+        depois,
+      });
+    }
+  }
 
   let publicacaoDiagnostico = null;
   if (
@@ -2021,6 +2055,14 @@ async function validarProjeto(
     );
   }
 
+  const [projetoAntesValidar] =
+    await sql`
+      SELECT status, cliente_nome
+      FROM tax_projects
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+
   await sql`
     UPDATE tax_projects
     SET
@@ -2050,6 +2092,16 @@ async function validarProjeto(
     {},
     user
   );
+
+  await registrarEventoSistema(req, user, {
+    acao: "projeto_validado",
+    modulo: "tributario",
+    recurso: "projeto_tributario",
+    recursoId: id,
+    descricao: `${projetoAntesValidar?.cliente_nome || "Projeto"} — validado.`,
+    antes: { status: projetoAntesValidar?.status || null },
+    depois: { status: "VALIDADO" },
+  });
 
   return send(
     res,
