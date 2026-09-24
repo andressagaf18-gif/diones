@@ -576,24 +576,46 @@ async function adminCoupons(req, res) {
   const body = bodyOf(req);
   const codigo = txt(body.codigo, 50).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
   const tipo = txt(body.tipo, 20).toUpperCase();
-  const valor = money(body.valor);
+  const valorInformado = body.valor !== "" && body.valor != null;
+  const valor = valorInformado ? money(body.valor) : 0;
   const planos = (Array.isArray(body.planos) ? body.planos : []).map(v => txt(v, 30).toUpperCase()).filter(v => PLANOS[v]);
+
+  if (codigo.length < 3) return res.status(400).json({ ok: false, error: "Código deve ter pelo menos 3 caracteres." });
+  if (!["PERCENTUAL", "FIXO"].includes(tipo)) return res.status(400).json({ ok: false, error: "Tipo inválido." });
+  if (!planos.length) return res.status(400).json({ ok: false, error: "Selecione ao menos um plano." });
+
+  // O desconto geral ("valor") é só um valor de referência/atalho — só
+  // precisa ser válido quando algum plano selecionado NÃO tiver um desconto
+  // específico próprio preenchido. Se todo plano já tem seu próprio
+  // desconto (como no caso de descontos diferentes por plano), o campo
+  // geral pode ficar em branco sem travar o salvamento.
+  const faltaDescontoEspecificoParaAlgumPlano = planos.some(
+    (plano) => body.descontosPlanos?.[plano] === "" || body.descontosPlanos?.[plano] == null
+  );
+  if (faltaDescontoEspecificoParaAlgumPlano && (valor <= 0 || (tipo === "PERCENTUAL" && valor > 90))) {
+    return res.status(400).json({ ok: false, error: "Informe um desconto geral válido, ou um desconto específico para cada plano selecionado. Percentual máximo: 90%." });
+  }
+
   const descontosPlanos = Object.fromEntries(planos.map((plano) => [
     plano,
     body.descontosPlanos?.[plano] === "" || body.descontosPlanos?.[plano] == null
       ? valor
       : money(body.descontosPlanos[plano]),
   ]));
-  if (codigo.length < 3) return res.status(400).json({ ok: false, error: "Código deve ter pelo menos 3 caracteres." });
-  if (!["PERCENTUAL", "FIXO"].includes(tipo)) return res.status(400).json({ ok: false, error: "Tipo inválido." });
-  if (valor <= 0 || (tipo === "PERCENTUAL" && valor > 90)) return res.status(400).json({ ok: false, error: "Desconto inválido. Percentual máximo: 90%." });
-  if (!planos.length) return res.status(400).json({ ok: false, error: "Selecione ao menos um plano." });
   if (Object.values(descontosPlanos).some(v => v <= 0 || (tipo === "PERCENTUAL" && v > 90))) return res.status(400).json({ ok: false, error: "Informe descontos válidos por plano. Percentual máximo: 90%." });
+
+  // Guarda no campo geral um valor de referência coerente mesmo quando ele
+  // veio em branco (evita salvar "valor: 0" para um cupom com descontos
+  // por plano válidos).
+  const valorParaSalvar = valorInformado
+    ? valor
+    : Math.round((Object.values(descontosPlanos).reduce((a, b) => a + b, 0) / Object.values(descontosPlanos).length) * 100) / 100;
+
   await sql`
     INSERT INTO asaas_cupons
       (codigo, descricao, tipo, valor, planos, descontos_planos, valor_minimo, inicio_em, fim_em,
        limite_total, limite_documento, ativo, atualizado_em)
-    VALUES (${codigo}, ${txt(body.descricao, 200)}, ${tipo}, ${valor},
+    VALUES (${codigo}, ${txt(body.descricao, 200)}, ${tipo}, ${valorParaSalvar},
       string_to_array(${planos.join(",")}, ','), ${JSON.stringify(descontosPlanos)}::jsonb, ${money(body.valorMinimo)},
       ${body.inicioEm || null}, ${body.fimEm || null},
       ${body.limiteTotal === "" || body.limiteTotal == null ? null : Math.max(1, Number(body.limiteTotal))},
