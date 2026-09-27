@@ -12,7 +12,20 @@ const PLANOS = Object.freeze({
 
 const txt = (v, n = 500) => String(v ?? "").trim().slice(0, n);
 const digits = (v) => String(v ?? "").replace(/\D/g, "");
-const money = (v) => Math.round(Number(v || 0) * 100) / 100;
+const money = (v) => {
+  if (typeof v === "number") return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+  const texto = String(v ?? "").trim();
+  if (!texto) return 0;
+  // Aceita formato brasileiro (vírgula decimal, ponto como milhar) além do
+  // formato com ponto decimal — sem isso, "66,89" digitado no formulário
+  // virava um número inválido (NaN) de forma silenciosa, sem erro visível,
+  // e só quebrava mais tarde ao tentar gravar no banco.
+  const normalizado = texto.includes(",")
+    ? texto.replace(/\./g, "").replace(",", ".")
+    : texto;
+  const n = Number(normalizado);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+};
 
 function regrasDeCupom(cupom) {
   let regras = cupom?.descontos_planos;
