@@ -215,7 +215,42 @@ async function createCharge(req, res) {
 
   // O cupom precisa ser validado antes da busca por cobrança existente.
   // Caso contrário, um Pix antigo sem desconto sempre seria reutilizado.
-  const cupom = await calcularCupom(body.cupom, { ...planBase, codigo: planCode }, documento);
+  //
+  // Quando o cliente não digitou nenhum cupom, verifica se o diagnóstico
+  // veio de um evento/origem com cupom vinculado (Usuários e Acessos >
+  // Eventos e Origens) e aplica automaticamente — sem exigir nada do
+  // cliente. Se esse cupom vinculado estiver expirado/inválido por algum
+  // motivo, isso nunca deve travar o pagamento: só segue sem desconto.
+  let codigoCupomEfetivo = body.cupom;
+  if (!codigoCupomEfetivo) {
+    try {
+      const [leadOrigem] = await sql`
+        SELECT origem FROM diagnostico_leads
+        WHERE diagnostico_id::text = ${diagnosticoId}
+        ORDER BY criado_em DESC LIMIT 1
+      `;
+      if (leadOrigem?.origem) {
+        const [eventoVinculado] = await sql`
+          SELECT cupom_codigo FROM finder_eventos_origens
+          WHERE origem = ${leadOrigem.origem} AND ativo = TRUE AND cupom_codigo IS NOT NULL
+          LIMIT 1
+        `;
+        if (eventoVinculado?.cupom_codigo) codigoCupomEfetivo = eventoVinculado.cupom_codigo;
+      }
+    } catch (error) {
+      console.warn("[asaas] falha ao buscar cupom vinculado à origem:", error?.message || error);
+    }
+  }
+
+  let cupom;
+  try {
+    cupom = await calcularCupom(codigoCupomEfetivo, { ...planBase, codigo: planCode }, documento);
+  } catch (error) {
+    // Cupom digitado explicitamente pelo cliente: erro deve aparecer normalmente.
+    // Cupom aplicado automaticamente pela origem: nunca trava o pagamento.
+    if (body.cupom) throw error;
+    cupom = { codigo: null, desconto: 0, valorFinal: planBase.valor };
+  }
   const plan = { ...planBase, valor: cupom.valorFinal };
 
   const existing = await sql`
