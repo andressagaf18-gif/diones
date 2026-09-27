@@ -19146,6 +19146,10 @@ function EventosOrigens({ token }) {
     metaLeads: "",
     descricao: "",
     ativo: true,
+    criarCupom: false,
+    cupomTipo: "PERCENTUAL",
+    cupomDescontosPlanos: { INICIAL: "", COMPLETO: "", ESPECIALISTA: "" },
+    cupomValidadeAte: "",
   };
 
   const [form, setForm] = useState({ ...vazio });
@@ -19240,6 +19244,13 @@ function EventosOrigens({ token }) {
       metaLeads: e?.metaLeads || "",
       descricao: e?.descricao || "",
       ativo: e?.ativo !== false,
+      // O cupom já vinculado não é reenviado por padrão ao editar — só a
+      // checkbox reflete que existe um. Marcá-la de novo e preencher os
+      // descontos atualiza/recria o cupom com os novos valores.
+      criarCupom: false,
+      cupomTipo: "PERCENTUAL",
+      cupomDescontosPlanos: { INICIAL: "", COMPLETO: "", ESPECIALISTA: "" },
+      cupomValidadeAte: "",
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -19284,6 +19295,10 @@ function EventosOrigens({ token }) {
         metaLeads: Number(form.metaLeads || 0),
         descricao: String(form.descricao || "").trim(),
         ativo: Boolean(form.ativo),
+        criarCupom: Boolean(form.criarCupom),
+        cupomTipo: form.cupomTipo,
+        cupomDescontosPlanos: form.cupomDescontosPlanos,
+        cupomValidadeAte: form.cupomValidadeAte || null,
       };
 
       if (editando?.id) payload.id = editando.id;
@@ -19611,6 +19626,82 @@ function EventosOrigens({ token }) {
           </div>
         </div>
 
+        <div
+          style={{
+            marginTop: 14,
+            border: "1.5px dashed " + CORAL,
+            background: "#FFF8F5",
+            borderRadius: 12,
+            padding: 14,
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", fontSize: 11.5, fontWeight: 800 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(form.criarCupom)}
+              onChange={(ev) => setForm({ ...form, criarCupom: ev.target.checked })}
+              style={{ width: 16, height: 16 }}
+            />
+            🎟️ Criar cupom de desconto vinculado a este evento
+          </label>
+
+          {form.criarCupom && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+                <div>
+                  <label style={label}>CÓDIGO DO CUPOM</label>
+                  <input disabled value={slug(form.origem || form.nome).toUpperCase()} style={{ ...input, background: "#F7F9FC", color: "#8A93A6" }} />
+                </div>
+                <div>
+                  <label style={label}>TIPO</label>
+                  <select
+                    value={form.cupomTipo}
+                    onChange={(ev) => setForm({ ...form, cupomTipo: ev.target.value })}
+                    style={input}
+                  >
+                    <option value="PERCENTUAL">Percentual</option>
+                    <option value="FIXO">Valor fixo (R$)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={label}>VALIDADE ATÉ</label>
+                  <input
+                    type="datetime-local"
+                    value={form.cupomValidadeAte}
+                    onChange={(ev) => setForm({ ...form, cupomValidadeAte: ev.target.value })}
+                    style={input}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 10 }}>
+                {[["INICIAL", "Diagnóstico Inicial"], ["COMPLETO", "Diagnóstico Completo"], ["ESPECIALISTA", "Diagnóstico + Especialista"]].map(([chave, rotulo]) => (
+                  <div key={chave}>
+                    <label style={label}>{rotulo.toUpperCase()}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={form.cupomTipo === "PERCENTUAL" ? 90 : undefined}
+                      step="0.01"
+                      value={form.cupomDescontosPlanos?.[chave] || ""}
+                      onChange={(ev) => setForm({ ...form, cupomDescontosPlanos: { ...form.cupomDescontosPlanos, [chave]: ev.target.value } })}
+                      placeholder={form.cupomTipo === "PERCENTUAL" ? "%" : "R$"}
+                      style={input}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 10, color: "#0F6E56", fontWeight: 700 }}>
+                ✓ Código do cupom sincronizado automaticamente com o código da origem
+              </div>
+              <div style={{ fontSize: 9.5, color: MUTED, marginTop: 6, lineHeight: 1.5 }}>
+                Sempre que alguém acessar o formulário por este evento, esse desconto será aplicado sozinho na hora de pagar — sem precisar digitar cupom nenhum. Deixe algum campo de plano em branco se ele não deve ter desconto.
+              </div>
+            </div>
+          )}
+        </div>
+
         {form.origem && (
           <div
             style={{
@@ -19721,6 +19812,30 @@ function EventosOrigens({ token }) {
               <div>Responsável: {e.responsavel || "-"}</div>
               <div>Local: {e.localEvento || "-"}</div>
               <div>Meta: {e.metaLeads || 0} leads</div>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              {e.cupomCodigo ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    background: "#E9F7EF",
+                    color: "#0F6E56",
+                    fontSize: 9,
+                    fontWeight: 800,
+                    padding: "3px 9px",
+                    borderRadius: 999,
+                  }}
+                >
+                  🎟️ Cupom {e.cupomCodigo} vinculado
+                </span>
+              ) : (
+                <span style={{ fontSize: 9.5, color: "#B8C0CF", fontStyle: "italic" }}>
+                  sem cupom vinculado
+                </span>
+              )}
             </div>
 
             <div
