@@ -20402,17 +20402,16 @@ function AlteracoesPainel({ token }) {
     setCarregando(true);
     setErro("");
     try {
-      const [rEv, rDep] = await Promise.all([
-        fetch("/api/acessos?action=auditoria&limite=300", { headers: { Authorization: `Bearer ${token}` } }),
-        fetch("/api/deploys", { headers: { Authorization: `Bearer ${token}` } }),
-      ]);
-      const [dEv, dDep] = await Promise.all([rEv.json().catch(() => null), rDep.json().catch(() => null)]);
+      const rEv = await fetch("/api/acessos?action=auditoria&limite=300", { headers: { Authorization: `Bearer ${token}` } });
+      const dEv = await rEv.json().catch(() => null);
       if (!rEv.ok || !dEv?.sucesso) throw new Error(dEv?.error || "Erro ao carregar as alterações.");
       setEventos((dEv.eventos || []).filter((e) => e.antes || e.depois));
-      if (dDep?.sucesso) {
-        setDeploys(dDep.deploys || []);
-        setAvisoDeploys(dDep.configurado ? "" : dDep.aviso || "");
-      }
+      // O histórico de deploys ainda depende de uma integração com a API da
+      // Vercel que não existe no backend — em vez de chamar um endpoint
+      // inexistente e mostrar "nenhum deploy encontrado" (o que sugere que
+      // já foi checado e está tudo limpo), deixa isso explícito por ora.
+      setDeploys([]);
+      setAvisoDeploys("Histórico de deploys ainda não conectado — depende de uma integração com a API da Vercel a ser configurada.");
     } catch (e) {
       setErro(e.message);
     } finally {
