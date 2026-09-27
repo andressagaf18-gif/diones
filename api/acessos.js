@@ -244,6 +244,59 @@ function dataOuNull(valor) {
   return d.toISOString();
 }
 
+// Mesma lógica de conversão usada em api/asaas.js — aceita "66,89" (formato
+// brasileiro) e "66.89", sem transformar entrada inválida em erro silencioso.
+function moneyOrigem(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
+  const texto = String(v ?? "").trim();
+  if (!texto) return 0;
+  const normalizado = texto.includes(",")
+    ? texto.replace(/\./g, "").replace(",", ".")
+    : texto;
+  const n = Number(normalizado);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+const PLANOS_CODIGOS_ORIGEM = ["INICIAL", "COMPLETO", "ESPECIALISTA"];
+
+// Cria (ou atualiza) o cupom do Asaas vinculado a um evento/origem. Nunca
+// lança: se algo der errado aqui, o evento/origem ainda é salvo normalmente,
+// só sem o cupom vinculado — e o erro específico é registrado no console
+// para depuração, sem quebrar o fluxo principal.
+async function salvarCupomVinculadoOrigem({ origem, tipo, descontosPlanos, validadeAte }) {
+  try {
+    const codigo = String(origem || "").toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    if (codigo.length < 3) return null;
+
+    const tipoCupom = String(tipo || "PERCENTUAL").toUpperCase() === "FIXO" ? "FIXO" : "PERCENTUAL";
+    const descontos = Object.fromEntries(
+      PLANOS_CODIGOS_ORIGEM.map((plano) => [plano, moneyOrigem(descontosPlanos?.[plano])])
+        .filter(([, v]) => v > 0 && (tipoCupom !== "PERCENTUAL" || v <= 90))
+    );
+    if (!Object.keys(descontos).length) return null; // nada válido informado — não cria cupom vazio
+
+    const valorReferencia = Math.round(
+      (Object.values(descontos).reduce((a, b) => a + b, 0) / Object.values(descontos).length) * 100
+    ) / 100;
+
+    await sql`
+      INSERT INTO asaas_cupons
+        (codigo, descricao, tipo, valor, planos, descontos_planos, valor_minimo, fim_em, limite_documento, ativo, atualizado_em)
+      VALUES (${codigo}, ${`Vinculado automaticamente ao evento/origem "${origem}".`}, ${tipoCupom}, ${valorReferencia},
+        string_to_array(${Object.keys(descontos).join(",")}, ','), ${JSON.stringify(descontos)}::jsonb, 0,
+        ${dataOuNull(validadeAte)}, 1, TRUE, NOW())
+      ON CONFLICT (codigo) DO UPDATE SET
+        tipo = EXCLUDED.tipo, valor = EXCLUDED.valor, planos = EXCLUDED.planos,
+        descontos_planos = EXCLUDED.descontos_planos, fim_em = EXCLUDED.fim_em, ativo = TRUE, atualizado_em = NOW()
+    `;
+
+    return codigo;
+  } catch (error) {
+    console.warn("[eventos-origens] falha ao criar cupom vinculado:", error?.message || error);
+    return null;
+  }
+}
+
 // =========================================================
 // BANCO / SCHEMA
 // =========================================================
@@ -372,6 +425,15 @@ async function schema() {
         await sql`
           ALTER TABLE finder_eventos_origens
           ADD COLUMN IF NOT EXISTS diagnostico_inicial_gratuito BOOLEAN NOT NULL DEFAULT FALSE
+        `;
+
+        // Vincula (opcionalmente) um cupom de desconto do Asaas ao evento/
+        // origem — quando preenchido, alguém que acessa pelo link desse
+        // evento tem o desconto aplicado automaticamente na cobrança, sem
+        // precisar digitar código nenhum.
+        await sql`
+          ALTER TABLE finder_eventos_origens
+          ADD COLUMN IF NOT EXISTS cupom_codigo TEXT
         `;
       })();
   }
@@ -593,6 +655,10 @@ function eventoPublico(
 
     diagnosticoInicialGratuito:
       Boolean(row.diagnostico_inicial_gratuito),
+
+    cupomCodigo:
+      row.cupom_codigo ||
+      "",
 
     dataInicio:
       row.data_inicio ||
@@ -1504,6 +1570,7 @@ export default async function handler(
             local_evento,
             meta_leads,
             diagnostico_inicial_gratuito,
+            cupom_codigo,
             data_inicio,
             data_fim,
             ativo,
@@ -1655,6 +1722,15 @@ export default async function handler(
       const codigoInterno =
         crypto.randomUUID();
 
+      const cupomCodigo = req.body?.criarCupom
+        ? await salvarCupomVinculadoOrigem({
+            origem,
+            tipo: req.body?.cupomTipo,
+            descontosPlanos: req.body?.cupomDescontosPlanos,
+            validadeAte: req.body?.cupomValidadeAte,
+          })
+        : null;
+
       await sql`
         INSERT INTO
           finder_eventos_origens (
@@ -1671,6 +1747,7 @@ export default async function handler(
             diagnostico_inicial_gratuito,
             data_inicio,
             data_fim,
+            cupom_codigo,
             ativo,
             criado_por
           )
@@ -1690,6 +1767,7 @@ export default async function handler(
           ${diagnosticoInicialGratuito},
           ${dataInicio},
           ${dataFim},
+          ${cupomCodigo},
           TRUE,
           ${u?.sub || null}
         )
@@ -1728,6 +1806,7 @@ export default async function handler(
         sucesso:
           true,
         id,
+        cupomCodigo,
         evento: {
           id,
           nome,
@@ -1936,6 +2015,17 @@ export default async function handler(
         return;
       }
 
+      // Cria/atualiza o cupom vinculado quando solicitado; se não for
+      // solicitado, mantém o que já estava (não desvincula sozinho).
+      const cupomCodigo = req.body?.criarCupom
+        ? await salvarCupomVinculadoOrigem({
+            origem,
+            tipo: req.body?.cupomTipo,
+            descontosPlanos: req.body?.cupomDescontosPlanos,
+            validadeAte: req.body?.cupomValidadeAte,
+          })
+        : anterior.cupom_codigo;
+
       await sql`
         UPDATE
           finder_eventos_origens
@@ -1951,6 +2041,7 @@ export default async function handler(
           diagnostico_inicial_gratuito = ${diagnosticoInicialGratuito},
           data_inicio = ${dataInicio},
           data_fim = ${dataFim},
+          cupom_codigo = ${cupomCodigo},
           ativo = ${ativo},
           atualizado_em = NOW()
         WHERE
