@@ -383,6 +383,30 @@ const AREAS_REFORMA = [
   { id: "reforma_transicao", label: "Cronograma de adequação", Icon: CalendarCheck },
 ];
 
+const DORES_ABERTURA = [
+  "Não sei qual CNAE escolher",
+  "Não sei qual tipo de empresa abrir (MEI, LTDA...)",
+  "Dúvida sobre o regime tributário",
+  "Medo de pagar imposto demais",
+  "Não sei quais licenças e alvarás preciso",
+  "Não sei quanto custa abrir e manter",
+  "Preciso abrir o mais rápido possível",
+  "Dúvidas sobre sociedade e sócios",
+  "Quero separar minha pessoa física da empresa",
+  "Vou contratar funcionários desde o início",
+  "Não sei se o negócio é viável",
+  "Não sei por onde começar",
+];
+
+const IMPACTOS_ABERTURA = [
+  "Atraso para começar a operar",
+  "Risco de abrir no enquadramento errado",
+  "Custo inicial maior que o previsto",
+  "Multas ou problemas de regularização",
+  "Perder uma oportunidade de mercado",
+  "Insegurança para investir",
+];
+
 const DORES_PF = [
   "Não consigo organizar minhas finanças",
   "Gasto mais do que gostaria",
@@ -4912,6 +4936,18 @@ function DiagnosticoPrototipo() {
   const [governancaGrupo, setGovernancaGrupo] = useState("");
 
   const [speConstituida, setSpeConstituida] = useState("");
+
+  // Trilha "Quero abrir uma empresa" — ainda não existe CNPJ; o que vale é
+  // a ideia do negócio e os CNAEs que o participante confirmar.
+  const [aberturaCategorias, setAberturaCategorias] = useState([]);
+  const [aberturaDescricao, setAberturaDescricao] = useState("");
+  const [aberturaSugestoes, setAberturaSugestoes] = useState([]);
+  const [aberturaLicencas, setAberturaLicencas] = useState([]);
+  const [aberturaAlertas, setAberturaAlertas] = useState([]);
+  const [aberturaCnaesEscolhidos, setAberturaCnaesEscolhidos] = useState([]);
+  const [aberturaCarregando, setAberturaCarregando] = useState(false);
+  const [aberturaErro, setAberturaErro] = useState("");
+  const [aberturaJaConsultou, setAberturaJaConsultou] = useState(false);
   const [nomeProjetoSPE, setNomeProjetoSPE] = useState("");
   const [finalidadeSPE, setFinalidadeSPE] = useState("");
   const [sociosSPE, setSociosSPE] = useState("");
@@ -5140,7 +5176,9 @@ function DiagnosticoPrototipo() {
       : AREAS;
 
   const doresDisponiveis =
-    trilhaPFAtiva
+    trilhaAberturaEmpresaAtiva
+      ? DORES_ABERTURA
+      : trilhaPFAtiva
       ? DORES_PF
       : trilhaHoldingAtiva
       ? DORES_HOLDING
@@ -5155,7 +5193,9 @@ function DiagnosticoPrototipo() {
       : DORES_EVENTO;
 
   const impactosDisponiveis =
-    trilhaPFAtiva
+    trilhaAberturaEmpresaAtiva
+      ? IMPACTOS_ABERTURA
+      : trilhaPFAtiva
       ? IMPACTOS_PF
       : trilhaHoldingAtiva
       ? IMPACTOS_HOLDING
@@ -5248,6 +5288,82 @@ function DiagnosticoPrototipo() {
     custosPrevistos: custosPrevistosSPE,
     faseProjeto: faseProjetoSPE,
   };
+
+  const categoriaAbertura = (() => {
+    const tipos = aberturaCategorias
+      .map((id) => ({ INDUSTRIA: "Indústria", COMERCIO: "Comércio", SERVICO: "Serviço" }[id]))
+      .filter(Boolean)
+      .join(" + ");
+    return tipos ? `Abertura de Empresa — ${tipos}` : "Abertura de Empresa";
+  })();
+
+  const perfilAbertura = {
+    ativo: trilhaAberturaEmpresaAtiva,
+    categorias: aberturaCategorias,
+    descricaoNegocio: aberturaDescricao,
+    cnaesSugeridos: aberturaSugestoes.map((x) => ({
+      codigo: x.codigo,
+      descricao: x.descricaoOficial,
+      categoria: x.categoria,
+    })),
+    cnaesConfirmados: aberturaSugestoes
+      .filter((x) => aberturaCnaesEscolhidos.includes(x.codigo))
+      .map((x) => ({
+        codigo: x.codigo,
+        descricao: x.descricaoOficial,
+        categoria: x.categoria,
+      })),
+    possiveisLicencas: aberturaLicencas,
+  };
+
+  function alternarCategoriaAbertura(id) {
+    setAberturaCategorias((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]
+    );
+  }
+
+  function alternarCnaeAbertura(codigo) {
+    setAberturaCnaesEscolhidos((atual) =>
+      atual.includes(codigo) ? atual.filter((x) => x !== codigo) : [...atual, codigo]
+    );
+  }
+
+  function formatarCnaeAbertura(codigo) {
+    const d = String(codigo || "").replace(/\D/g, "");
+    return d.length === 7 ? `${d.slice(0, 4)}-${d.slice(4, 5)}/${d.slice(5)}` : d;
+  }
+
+  async function sugerirCnaesAbertura() {
+    setAberturaErro("");
+    setAberturaCarregando(true);
+    try {
+      const r = await fetch("/api/sugerir-cnae", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descricaoNegocio: aberturaDescricao,
+          categoriaSugerida: aberturaCategorias.join(", "),
+        }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.sucesso) {
+        throw new Error(d?.error || "Não foi possível sugerir CNAEs agora.");
+      }
+      const sugestoes = Array.isArray(d.sugestoes) ? d.sugestoes : [];
+      setAberturaSugestoes(sugestoes);
+      setAberturaLicencas(Array.isArray(d.possiveisLicencas) ? d.possiveisLicencas : []);
+      setAberturaAlertas(Array.isArray(d.alertas) ? d.alertas : []);
+      // Pré-seleciona só a sugestão principal; o participante confirma ou ajusta.
+      setAberturaCnaesEscolhidos(
+        sugestoes.filter((x) => x.ehPrincipalSugerido).map((x) => x.codigo)
+      );
+      setAberturaJaConsultou(true);
+    } catch (e) {
+      setAberturaErro(e?.message || "Não foi possível sugerir CNAEs agora.");
+    } finally {
+      setAberturaCarregando(false);
+    }
+  }
 
   const atividadesSelecionadasObjetos = cnaesEmpresa.filter((atividade) =>
     atividadesSelecionadas.includes(String(atividade.codigo))
@@ -7367,6 +7483,9 @@ function DiagnosticoPrototipo() {
         spe:
           perfilSPE,
 
+        abertura:
+          perfilAbertura,
+
         reformaTributaria:
           perfilReformaTributaria,
 
@@ -7556,12 +7675,16 @@ function DiagnosticoPrototipo() {
     const payload = {
       responsavel: { nome, cargo, telefone, email },
       segmento:
-        trilhaPFAtiva
+        trilhaAberturaEmpresaAtiva
+          ? "Abertura de empresa / Empresa em constituição"
+          : trilhaPFAtiva
           ? "Pessoa Física / Consultoria Financeira"
           : segmentoPredominante,
 
       categoria:
-        trilhaPFAtiva
+        trilhaAberturaEmpresaAtiva
+          ? categoriaAbertura
+          : trilhaPFAtiva
           ? (
               objetivosPF
                 .map(
@@ -7621,6 +7744,7 @@ function DiagnosticoPrototipo() {
         pessoaFisica: perfilPF,
         grupo: perfilGrupo,
         spe: perfilSPE,
+        abertura: perfilAbertura,
         reformaTributaria: perfilReformaTributaria,
         simuladorReforma: simuladorReformaDados,
       },
@@ -7629,6 +7753,7 @@ function DiagnosticoPrototipo() {
       pessoaFisica: perfilPF,
       grupo: perfilGrupo,
       spe: perfilSPE,
+      abertura: perfilAbertura,
       reformaTributaria: perfilReformaTributaria,
       simuladorReforma: simuladorReformaDados,
 
@@ -8252,14 +8377,18 @@ function DiagnosticoPrototipo() {
 
     const payload = {
       segmentoAtual:
-        trilhaHoldingAtiva
+        trilhaAberturaEmpresaAtiva
+          ? "Abertura de empresa / Empresa em constituição"
+          : trilhaHoldingAtiva
           ? "Holding / Estrutura Patrimonial"
           : trilhaPFAtiva
           ? "Pessoa Física / Consultoria Financeira"
           : segmentoPredominante,
 
       categoriaAtual:
-        trilhaHoldingAtiva
+        trilhaAberturaEmpresaAtiva
+          ? categoriaAbertura
+          : trilhaHoldingAtiva
           ? (
               tiposHolding
                 .map(
@@ -8301,6 +8430,7 @@ function DiagnosticoPrototipo() {
         pessoaFisica: perfilPF,
         grupo: perfilGrupo,
         spe: perfilSPE,
+        abertura: perfilAbertura,
         reformaTributaria: perfilReformaTributaria,
         simuladorReforma: simuladorReformaDados,
       },
@@ -8309,8 +8439,20 @@ function DiagnosticoPrototipo() {
       pessoaFisica: perfilPF,
       grupo: perfilGrupo,
       spe: perfilSPE,
+      abertura: perfilAbertura,
 
-      instrucoesEspeciais: trilhaReformaAtiva
+      instrucoesEspeciais: trilhaAberturaEmpresaAtiva
+        ? [
+            "Tratar este fluxo como ABERTURA DE EMPRESA: o participante ainda NÃO possui CNPJ nem operação. Nunca perguntar sobre faturamento atual, clientes atuais, equipe atual, margem histórica ou processos existentes.",
+            "Usar perfilAbertura.cnaesConfirmados como a atividade pretendida e perfilAbertura.descricaoNegocio como contexto factual informado pelo participante. Não presumir CNAE além dos confirmados.",
+            "As perguntas devem ser pertinentes a quem vai abrir uma empresa naquela atividade: tipo societário (MEI, empresário individual, LTDA), sócios e participação, capital disponível, local de funcionamento, regime tributário pretendido e faturamento PROJETADO informado pelo próprio participante, funcionários desde o início, prazo desejado e orçamento para abrir.",
+            "Adaptar ao CNAE confirmado: investigar licenças, alvarás e registros típicos da atividade (vigilância sanitária, conselho de classe, licença ambiental, corpo de bombeiros, alvará municipal, ANVISA, etc.) e exigências específicas de local ou de responsável técnico.",
+            "Verificar impedimentos e enquadramento: atividade permitida no MEI ou no Simples Nacional, limite de faturamento projetado, sócio pessoa jurídica, atividade vedada e vínculo empregatício ou societário atual do participante.",
+            "Não recomendar regime tributário nem tipo societário como definitivos; apresentar como hipóteses a validar, com o que ainda falta para decidir.",
+            "Ao final, o diagnóstico deve conter: viabilidade preliminar, tipo societário e regime a avaliar, checklist de abertura, licenças e registros a providenciar, riscos de enquadramento, custos e prazos a estimar e próximos passos. Sem dados suficientes, marcar como não calculável em vez de estimar.",
+            "Priorizar perguntas compatíveis com resposta Sim / Parcialmente / Não / Não sei / N/A.",
+          ]
+        : trilhaReformaAtiva
         ? [
             "Tratar este fluxo como Diagnóstico da Reforma Tributária, com foco em IBS/CBS, transição, créditos, preço, margem, clientes, fornecedores, contratos e sistemas.",
             "Usar as respostas do perfilReformaTributaria como contexto factual informado pelo cliente.",
@@ -9151,7 +9293,9 @@ function DiagnosticoPrototipo() {
       empresa: fluxoSemCnpj
         ? {
             razao:
-              trilhaPFAtiva
+              trilhaAberturaEmpresaAtiva
+                ? `Abertura de empresa — ${nome || "Participante"}`
+                : trilhaPFAtiva
                 ? nome || "Pessoa Física"
                 : avaliarHoldingAtiva
                 ? `Avaliação de Holding — ${nome || "Participante"}`
@@ -9161,14 +9305,24 @@ function DiagnosticoPrototipo() {
 
             nomeFantasia: "",
             cnpj: "",
-            cnae: "",
-            cnaePrincipal: null,
-            cnaesSecundarios: [],
-            atividadesSelecionadas: [],
+            cnae: trilhaAberturaEmpresaAtiva
+              ? (perfilAbertura.cnaesConfirmados[0]?.codigo || "")
+              : "",
+            cnaePrincipal: trilhaAberturaEmpresaAtiva
+              ? (perfilAbertura.cnaesConfirmados[0] || null)
+              : null,
+            cnaesSecundarios: trilhaAberturaEmpresaAtiva
+              ? perfilAbertura.cnaesConfirmados.slice(1)
+              : [],
+            atividadesSelecionadas: trilhaAberturaEmpresaAtiva
+              ? perfilAbertura.cnaesConfirmados
+              : [],
             atividadePredominante: null,
 
             categoria:
-              trilhaPFAtiva
+              trilhaAberturaEmpresaAtiva
+                ? categoriaAbertura
+                : trilhaPFAtiva
                 ? "Pessoa Física"
                 : avaliarHoldingAtiva
                 ? "Avaliação de Holding"
@@ -9177,7 +9331,9 @@ function DiagnosticoPrototipo() {
                 : "Diagnóstico",
 
             segmento:
-              trilhaPFAtiva
+              trilhaAberturaEmpresaAtiva
+                ? "Abertura de empresa / Empresa em constituição"
+                : trilhaPFAtiva
                 ? "Pessoa Física / Consultoria Financeira"
                 : avaliarHoldingAtiva
                 ? "Holding / Estrutura Patrimonial"
@@ -9214,6 +9370,7 @@ function DiagnosticoPrototipo() {
         pessoaFisica: perfilPF,
         grupo: perfilGrupo,
         spe: perfilSPE,
+        abertura: perfilAbertura,
         reformaTributaria: perfilReformaTributaria,
         simuladorReforma: simuladorReformaDados,
         doresSelecionadas,
@@ -9229,6 +9386,7 @@ function DiagnosticoPrototipo() {
           pessoaFisica: perfilPF,
           grupo: perfilGrupo,
           spe: perfilSPE,
+          abertura: perfilAbertura,
           reformaTributaria: perfilReformaTributaria,
           simuladorReforma: simuladorReformaDados,
         },
@@ -9472,6 +9630,7 @@ function DiagnosticoPrototipo() {
           pessoaFisica: perfilPF,
           grupo: perfilGrupo,
           spe: perfilSPE,
+          abertura: perfilAbertura,
           reformaTributaria: perfilReformaTributaria,
           simuladorReforma: simuladorReformaDados,
         },
@@ -9865,6 +10024,14 @@ function DiagnosticoPrototipo() {
     setGovernancaGrupo("");
 
     setSpeConstituida("");
+    setAberturaCategorias([]);
+    setAberturaDescricao("");
+    setAberturaSugestoes([]);
+    setAberturaLicencas([]);
+    setAberturaAlertas([]);
+    setAberturaCnaesEscolhidos([]);
+    setAberturaErro("");
+    setAberturaJaConsultou(false);
     setNomeProjetoSPE("");
     setFinalidadeSPE("");
     setSociosSPE("");
@@ -11681,6 +11848,11 @@ function DiagnosticoPrototipo() {
                       return;
                     }
 
+                    if (trilhaAberturaEmpresaAtiva) {
+                      setStep("aberturaAtividade");
+                      return;
+                    }
+
                     if (trilhaPFAtiva || avaliarHoldingAtiva) {
                       setStep("dor");
                       return;
@@ -11692,6 +11864,160 @@ function DiagnosticoPrototipo() {
                     }
 
                     setStep("cnpj");
+                  }}
+                >
+                  Continuar
+                  <ArrowRight size={16} />
+                </PrimaryButton>
+              </div>
+            )}
+
+            {step === "aberturaAtividade" && trilhaAberturaEmpresaAtiva && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <p style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: NAVY, margin: "6px 0 4px" }}>
+                  O que você quer abrir?
+                </p>
+
+                <p style={{ fontSize: 12.5, color: MUTED, margin: "0 0 14px", lineHeight: 1.5 }}>
+                  Conte sobre o negócio. A IA sugere os CNAEs mais adequados e você confirma quais representam o que pretende fazer.
+                </p>
+
+                <label style={labelStyle}>Tipo de atividade (pode marcar mais de uma)</label>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  {[["INDUSTRIA", "Indústria"], ["COMERCIO", "Comércio"], ["SERVICO", "Serviço"]].map(([id, rotulo]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => alternarCategoriaAbertura(id)}
+                      style={{ ...chipStyle(aberturaCategorias.includes(id)), flex: 1, textAlign: "center" }}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+
+                <label style={labelStyle}>Descreva o que pretende abrir</label>
+                <textarea
+                  value={aberturaDescricao}
+                  onChange={(e) => setAberturaDescricao(e.target.value)}
+                  placeholder="Ex.: uma clínica de estética com procedimentos faciais e corporais; uma loja de material de construção; uma pequena fábrica de bolos e doces para revenda..."
+                  rows={4}
+                  style={{
+                    width: "100%",
+                    border: "1px solid #D8DEEA",
+                    borderRadius: 10,
+                    padding: "11px 12px",
+                    resize: "vertical",
+                    fontFamily: "inherit",
+                    fontSize: 12,
+                    color: NAVY,
+                    outline: "none",
+                    marginBottom: 10,
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={sugerirCnaesAbertura}
+                  disabled={aberturaCarregando || aberturaDescricao.trim().length < 15}
+                  style={{
+                    ...chipStyle(false),
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                    opacity: aberturaCarregando || aberturaDescricao.trim().length < 15 ? 0.5 : 1,
+                  }}
+                >
+                  {aberturaCarregando ? <Loader2 size={15} className="spin" /> : null}
+                  {aberturaCarregando
+                    ? "Pesquisando CNAEs oficiais..."
+                    : aberturaJaConsultou
+                    ? "Buscar sugestões novamente"
+                    : "Sugerir CNAEs com IA"}
+                </button>
+
+                {aberturaErro && (
+                  <p style={{ fontSize: 12, color: "#B3261E", margin: "0 0 10px", lineHeight: 1.4 }}>
+                    {aberturaErro}
+                  </p>
+                )}
+
+                {aberturaJaConsultou && !aberturaCarregando && aberturaSugestoes.length === 0 && (
+                  <div style={{ background: "#FFF8E6", border: "1px solid #F0D9A0", borderRadius: 10, padding: 11, fontSize: 11.5, color: "#7A5B00", lineHeight: 1.45, marginBottom: 10 }}>
+                    {(aberturaAlertas[0]) || "Não encontrei um CNAE oficial com confiança para essa descrição. Tente detalhar melhor o que será vendido ou prestado."}
+                  </div>
+                )}
+
+                {aberturaSugestoes.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ ...labelStyle, marginBottom: 6 }}>
+                      Marque os CNAEs que representam o seu negócio
+                    </p>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
+                      {aberturaSugestoes.map((sug) => {
+                        const marcado = aberturaCnaesEscolhidos.includes(sug.codigo);
+                        return (
+                          <button
+                            key={sug.codigo}
+                            type="button"
+                            onClick={() => alternarCnaeAbertura(sug.codigo)}
+                            style={{
+                              textAlign: "left",
+                              border: marcado ? `2px solid ${CORAL}` : "1px solid #D8DEEA",
+                              background: marcado ? "#FFF3EF" : "#FFFFFF",
+                              borderRadius: 10,
+                              padding: "10px 11px",
+                              cursor: "pointer",
+                              color: NAVY,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 800 }}>
+                                {marcado ? "✓ " : ""}{formatarCnaeAbertura(sug.codigo)}
+                              </span>
+                              {sug.ehPrincipalSugerido && (
+                                <span style={{ fontSize: 9.5, fontWeight: 800, color: CORAL }}>MAIS ADEQUADO</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.35 }}>{sug.descricaoOficial}</div>
+                            {sug.justificativa && (
+                              <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4, lineHeight: 1.35 }}>{sug.justificativa}</div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <p style={{ fontSize: 10.2, color: MUTED, margin: "8px 0 0", lineHeight: 1.4 }}>
+                      Sugestão feita por IA a partir de fontes oficiais. A escolha definitiva do CNAE deve ser validada por um contador antes da abertura.
+                    </p>
+                  </div>
+                )}
+
+                {aberturaLicencas.length > 0 && (
+                  <div style={{ background: ICE, borderRadius: 10, padding: 11, marginBottom: 10 }}>
+                    <p style={{ fontSize: 11.5, fontWeight: 800, color: NAVY, margin: "0 0 5px" }}>
+                      Licenças e registros que costumam ser exigidos
+                    </p>
+                    <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: NAVY, lineHeight: 1.5 }}>
+                      {aberturaLicencas.map((l, i) => <li key={i}>{l}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                <div style={{ flex: 1 }} />
+
+                <PrimaryButton
+                  disabled={aberturaCnaesEscolhidos.length === 0}
+                  onClick={() => {
+                    // A descrição do que será aberto alimenta o restante do
+                    // fluxo como a "atividade real" informada pelo participante.
+                    setDescricaoNegocio(aberturaDescricao);
+                    setStep("dor");
                   }}
                 >
                   Continuar
@@ -12308,7 +12634,7 @@ function DiagnosticoPrototipo() {
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
                   <p style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: NAVY, margin: "6px 0 5px" }}>
-                    {trilhaHoldingAtiva
+                    {trilhaAberturaEmpresaAtiva ? "Vamos entender o que te preocupa ao abrir" : trilhaHoldingAtiva
                       ? "Vamos entender os pontos críticos da holding"
                       : trilhaPFAtiva
                       ? "Vamos entender sua vida financeira"
@@ -12317,7 +12643,7 @@ function DiagnosticoPrototipo() {
                       : "Vamos entender sua principal dor"}
                   </p>
                   <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5, margin: 0 }}>
-                    {trilhaHoldingAtiva
+                    {trilhaAberturaEmpresaAtiva ? "Essas respostas serão cruzadas com a atividade e os CNAEs que você confirmou para montar perguntas e um diagnóstico específicos para a abertura da sua empresa." : trilhaHoldingAtiva
                       ? "Essas respostas serão cruzadas com patrimônio, finalidade da holding, CNAEs, sucessão e estrutura societária para gerar perguntas específicas."
                       : trilhaPFAtiva
                       ? "As respostas serão cruzadas com os objetivos escolhidos para que o diagnóstico e os próximos passos sejam personalizados."
@@ -12327,7 +12653,7 @@ function DiagnosticoPrototipo() {
 
                 <div>
                   <p style={{ ...labelStyle, fontSize: 12, marginBottom: 5 }}>
-                    {trilhaHoldingAtiva
+                    {trilhaAberturaEmpresaAtiva ? "O que mais te preocupa ou trava na hora de abrir sua empresa?" : trilhaHoldingAtiva
                       ? "Quais situações mais preocupam na holding ou no patrimônio hoje?"
                       : trilhaPFAtiva
                       ? "Quais situações mais incomodam sua vida financeira hoje?"
@@ -12374,7 +12700,7 @@ function DiagnosticoPrototipo() {
 
                 <div>
                   <label style={labelStyle}>
-                    {trilhaHoldingAtiva
+                    {trilhaAberturaEmpresaAtiva ? "Qual decisão sobre a abertura você gostaria de resolver primeiro?" : trilhaHoldingAtiva
                       ? "Qual decisão ou problema patrimonial você gostaria de resolver primeiro?"
                       : trilhaPFAtiva
                       ? "Qual objetivo financeiro você gostaria de priorizar agora?"
@@ -12385,7 +12711,7 @@ function DiagnosticoPrototipo() {
                     value={dor90Dias}
                     onChange={(e) => setDor90Dias(e.target.value)}
                     placeholder={
-                      trilhaHoldingAtiva
+                      trilhaAberturaEmpresaAtiva ? "Ex.: descobrir qual regime é melhor para começar; saber quais licenças preciso; abrir a empresa em até 30 dias..." : trilhaHoldingAtiva
                         ? "Ex.: definir se vale a pena integralizar os imóveis; organizar sucessão; revisar tributação dos aluguéis; estruturar regras entre os herdeiros..."
                         : trilhaPFAtiva
                         ? "Ex.: organizar meu orçamento; quitar dívidas; formar reserva; começar a investir; planejar aposentadoria..."
@@ -12408,7 +12734,7 @@ function DiagnosticoPrototipo() {
 
                 <div>
                   <p style={{ ...labelStyle, marginBottom: 8 }}>
-                    {trilhaPFAtiva
+                    {trilhaAberturaEmpresaAtiva ? "Qual impacto isso pode causar se não for bem resolvido?" : trilhaPFAtiva
                       ? "Como esse problema está afetando sua vida financeira?"
                       : trilhaHoldingAtiva
                       ? "Qual impacto essa situação está causando no patrimônio ou na estrutura?"
@@ -13490,9 +13816,12 @@ function DiagnosticoPrototipo() {
               const back = {
                 estrutura: "cadastro",
                 cnpj: "estrutura",
+                aberturaAtividade: "estrutura",
                 porte: "cnpj",
                 dor:
-                  trilhaPFAtiva ||
+                  trilhaAberturaEmpresaAtiva
+                    ? "aberturaAtividade"
+                    : trilhaPFAtiva ||
                   avaliarHoldingAtiva ||
                   (
                     trilhaSPEAtiva &&
