@@ -1,7 +1,8 @@
 // api/sugerir-cnae.js
 // Finder — sugestão de CNAE por IA para quem ainda vai abrir uma empresa.
-// Pesquisa em fontes oficiais (CONCLA/IBGE) em vez de responder só da
-// memória, para reduzir o risco de "inventar" um código que não existe.
+// Pesquisa em fontes oficiais (CONCLA/IBGE) e registra o histórico no banco de dados.
+
+import { salvarSugestaoCnae, registrarAuditoria } from "../server/auditoria.js";
 
 const FONTES_OFICIAIS_CNAE = [
   "concla.ibge.gov.br",
@@ -18,8 +19,8 @@ function limparJson(bruto) {
   return String(bruto || "")
     .trim()
     .replace(/^```json/i, "")
-    .replace(/^```/,"")
-    .replace(/```$/,"")
+    .replace(/^```/, "")
+    .replace(/```$/, "")
     .trim();
 }
 
@@ -53,7 +54,8 @@ export default async function handler(req, res) {
 
   const body = req.body || {};
   const descricaoNegocio = texto(body.descricaoNegocio, 1000);
-  const categoriaSugerida = texto(body.categoriaSugerida, 30).toUpperCase(); // INDUSTRIA | COMERCIO | SERVICO | opcional
+  const categoriaSugerida = texto(body.categoriaSugerida, 30).toUpperCase(); // INDUSTRIA | COMERCIO | SERVICO
+  const usuarioId = body.usuarioId || req.headers["x-user-id"] || "anonimo";
 
   if (descricaoNegocio.length < 15) {
     return res.status(400).json({
@@ -88,7 +90,7 @@ Responda SOMENTE com um objeto JSON válido, sem Markdown, comentários ou texto
 
   try {
     const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
-    const resposta = await fetch("https://api.openai.com/v1/responses", {
+    const resposta = await fetch("[https://api.openai.com/v1/responses](https://api.openai.com/v1/responses)", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -124,29 +126,53 @@ Responda SOMENTE com um objeto JSON válido, sem Markdown, comentários ou texto
         justificativa: texto(s?.justificativa, 300),
         ehPrincipalSugerido: Boolean(s?.ehPrincipalSugerido),
       }))
-      // Descarta qualquer sugestão sem um código de 7 dígitos válido — nunca
-      // repassa ao front algo que não seja um CNAE genuinamente identificável.
       .filter((s) => s.codigo && s.descricaoOficial);
+
+    const possiveisLicencas = (Array.isArray(bruto?.possiveisLicencas) ? bruto.possiveisLicencas : [])
+      .map((l) => texto(l, 150))
+      .filter(Boolean)
+      .slice(0, 10);
+
+    const alertas = (Array.isArray(bruto?.alertas) ? bruto.alertas : [])
+      .map((a) => texto(a, 300))
+      .filter(Boolean);
+
+    // REGISTRO NO BANCO DE DADOS
+    const payloadBanco = {
+      usuarioId,
+      descricaoNegocio,
+      categoriaSugerida,
+      sugestoes,
+      possiveisLicencas,
+      alertas,
+      dataConsulta: new Date().toISOString()
+    };
+
+    try {
+      await salvarSugestaoCnae(payloadBanco);
+      registrarAuditoria({
+        acao: "CONSULTA_SUGESTAO_CNAE",
+        usuarioId,
+        detalhes: { descricaoLength: descricaoNegocio.length, qtdSugestoes: sugestoes.length }
+      });
+    } catch (dbError) {
+      console.error("[sugerir-cnae] Erro ao gravar no banco de dados:", dbError);
+    }
 
     if (!sugestoes.length) {
       return res.status(200).json({
         sucesso: true,
         sugestoes: [],
         possiveisLicencas: [],
-        alertas: ["Não foi possível identificar um CNAE oficial com confiança para essa descrição. Tente detalhar melhor a atividade (produto, serviço prestado ou tipo de comércio)."],
+        alertas: ["Não foi possível identificar um CNAE oficial com confiança para essa descrição. Tente detalhar melhor a atividade."],
       });
     }
 
     return res.status(200).json({
       sucesso: true,
       sugestoes,
-      possiveisLicencas: (Array.isArray(bruto?.possiveisLicencas) ? bruto.possiveisLicencas : [])
-        .map((l) => texto(l, 150))
-        .filter(Boolean)
-        .slice(0, 10),
-      alertas: (Array.isArray(bruto?.alertas) ? bruto.alertas : [])
-        .map((a) => texto(a, 300))
-        .filter(Boolean),
+      possiveisLicencas,
+      alertas,
     });
   } catch (error) {
     console.error("[sugerir-cnae]", error);
