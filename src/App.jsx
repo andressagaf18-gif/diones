@@ -252,6 +252,7 @@ const REGIMES = ["Simples Nacional", "Lucro Presumido", "Lucro Real", "Não sei"
 // =========================================================
 const ESTRUTURAS_NEGOCIO = [
   { id: "operacional", label: "Empresa operacional" },
+  { id: "abertura_empresa", label: "Quero abrir uma empresa" },
   { id: "terceiro_setor", label: "Associação / Terceiro Setor" },
   { id: "holding", label: "Holding" },
   { id: "grupo", label: "Grupo empresarial" },
@@ -423,6 +424,15 @@ const AREAS_AVALIAR_HOLDING = [
   { id: "tributario", label: "Tributário patrimonial", Icon: Calculator },
   { id: "financiamentos", label: "Financiamentos e obrigações", Icon: Wallet },
   { id: "custos_viabilidade", label: "Custos e viabilidade", Icon: Percent },
+];
+
+const AREAS_ABERTURA_EMPRESA = [
+  { id: "atividade_pretendida", label: "Atividade pretendida e CNAE", Icon: Target },
+  { id: "enquadramento_societario", label: "Enquadramento societário", Icon: Users },
+  { id: "regime_tributario_abertura", label: "Regime tributário", Icon: Calculator },
+  { id: "licencas_registros", label: "Licenças e registros", Icon: ClipboardList },
+  { id: "estrutura_inicial", label: "Estrutura inicial", Icon: Building2 },
+  { id: "prazo_custos_abertura", label: "Prazo e custos de abertura", Icon: Wallet },
 ];
 
 const AREAS_GRUPO = [
@@ -5093,13 +5103,18 @@ function DiagnosticoPrototipo() {
   const trilhaSimuladorReformaAtiva =
     estruturaNegocio === "simulador_reforma";
 
+  const trilhaAberturaEmpresaAtiva =
+    estruturaNegocio === "abertura_empresa";
+
   // Regras de CNPJ por estrutura:
   // PF e avaliação de Holding não exigem CNPJ.
   // Holding existente e Grupo exigem CNPJ.
   // SPE exige CNPJ apenas quando já estiver constituída.
+  // Abertura de empresa nunca exige CNPJ — a empresa ainda não existe.
   const fluxoSemCnpj =
     trilhaPFAtiva ||
     avaliarHoldingAtiva ||
+    trilhaAberturaEmpresaAtiva ||
     (
       trilhaSPEAtiva &&
       speConstituida !== "sim"
@@ -5110,6 +5125,8 @@ function DiagnosticoPrototipo() {
       ? AREAS_PF
       : avaliarHoldingAtiva
       ? AREAS_AVALIAR_HOLDING
+      : trilhaAberturaEmpresaAtiva
+      ? AREAS_ABERTURA_EMPRESA
       : estruturaNegocio === "holding"
       ? AREAS_HOLDING
       : trilhaGrupoAtiva
