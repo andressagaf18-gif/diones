@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Target, Activity, CheckCircle2, AlertTriangle, Plus, RefreshCcw, Save, Trash2, Sparkles } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
 
-const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
 const MUTED = "#5B667A";
 const WHITE = "#FFFFFF";
@@ -14,7 +13,7 @@ function Card({ children, style = {} }) {
 
 function Botao({ children, onClick, disabled = false, secundario = false, style = {} }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} style={{ border: secundario ? "1px solid #D8DEEA" : "none", background: secundario ? WHITE : CORAL, color: secundario ? NAVY : WHITE, borderRadius: 10, padding: "10px 14px", fontFamily: BODY_FONT, fontSize: 13, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: 7, ...style }}>
+    <button type="button" onClick={onClick} disabled={disabled} style={{ border: secundario ? "1px solid #D8DEEA" : "none", background: secundario ? WHITE : CORAL, color: secundario ? "#17233D" : WHITE, borderRadius: 10, padding: "10px 14px", fontFamily: BODY_FONT, fontSize: 13, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: 7, ...style }}>
       {children}
     </button>
   );
