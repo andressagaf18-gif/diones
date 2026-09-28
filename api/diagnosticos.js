@@ -86,6 +86,17 @@ function estruturaDe(row) {
 
   if (
     segmento.includes(
+      "abertura de empresa"
+    ) ||
+    razao.includes(
+      "abertura de empresa"
+    )
+  ) {
+    return "abertura_empresa";
+  }
+
+  if (
+    segmento.includes(
       "pessoa física"
     ) ||
     segmento.includes(
