@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Users, Activity, Clock3, CheckCircle2, Flame, Search, RefreshCcw } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Users, Activity, CheckCircle2, Search } from "lucide-react";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -25,7 +25,6 @@ export default function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [busca, setBusca] = useState("");
   const [origem, setOrigem] = useState("");
   const [statusDiagnostico, setStatusDiagnostico] = useState("");
-  const [responsaveis, setResponsaveis] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
 
