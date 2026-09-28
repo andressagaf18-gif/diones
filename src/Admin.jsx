@@ -1,10 +1,10 @@
 // src/Admin.jsx
-import { useState, lazy, Suspense } from "react";
+import React, { useState, lazy, Suspense } from "react";
 import { 
   LayoutDashboard, Users, UserCog, Activity, LogOut 
 } from "lucide-react";
 
-// Importando os subcomponentes da pasta Admin
+// Importando os subcomponentes diretamente da pasta Admin
 const LoginAdmin = lazy(() => import("./Admin/LoginAdmin"));
 const ListaDiagnosticos = lazy(() => import("./Admin/ListaDiagnosticos"));
 const LeadsCRM = lazy(() => import("./Admin/LeadsCRM"));
@@ -41,7 +41,6 @@ export default function AdminMain() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#F3F5F8", fontFamily: "sans-serif" }}>
-      {/* Menu Superior de Navegação entre Módulos */}
       <header style={{ background: "#17233D", color: "#FFF", padding: "12px 24px" }}>
         <div style={{ maxWidth: 1320, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
@@ -67,7 +66,6 @@ export default function AdminMain() {
         </div>
       </header>
 
-      {/* Renderização das Telas por Demanda */}
       <main style={{ maxWidth: 1320, margin: "0 auto", padding: 24 }}>
         <Suspense fallback={<Carregando />}>
           {abaAtiva === "diagnosticos" && (
