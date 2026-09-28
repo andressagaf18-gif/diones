@@ -167,6 +167,32 @@ export const ESTRUTURAS = {
       "tratar percentuais nominais de referência ainda não fixados por Resolução do Senado como definitivos",
     ],
   },
+
+  abertura_empresa: {
+    id: "abertura_empresa",
+    label: "Abrir uma empresa",
+    tipo: "ABERTURA_EMPRESA",
+    exigeCnpj: false,
+    eixos: [
+      "atividade_pretendida", "enquadramento_societario", "regime_tributario_abertura",
+      "licencas_registros", "estrutura_inicial", "prazo_custos_abertura"
+    ],
+    foco: [
+      "atividade real que a pessoa pretende exercer e o(s) CNAE(s) pertinente(s)",
+      "tipo societário pretendido (MEI, Empresário Individual, LTDA, etc.) e sócios",
+      "regime tributário mais adequado para o início da atividade, considerando faturamento projetado",
+      "licenças, alvarás, registros em conselho de classe e demais exigências legais da atividade escolhida",
+      "capital social, local de funcionamento e necessidade de funcionários desde o início",
+      "prazo desejado para abertura e estimativa de custos de constituição e manutenção inicial",
+    ],
+    proibicoes: [
+      "presumir faturamento, margem, clientes ou histórico de uma empresa que ainda não existe",
+      "tratar como diagnóstico de empresa operacional em funcionamento",
+      "recomendar regime tributário sem considerar a atividade e o faturamento projetado informado pelo próprio participante",
+      "ignorar exigências legais específicas da atividade pretendida (licenças sanitárias, ambientais, registro em conselho de classe, corpo de bombeiros, etc.)",
+      "afirmar um CNAE como definitivo sem que o participante o tenha confirmado explicitamente",
+    ],
+  },
 };
 
 export function normalizarEstrutura(valor) {
@@ -193,6 +219,10 @@ export function normalizarEstrutura(valor) {
     reforma_tributaria: "reforma_tributaria",
     simulador_reforma: "reforma_tributaria",
     reforma: "reforma_tributaria",
+    abertura_empresa: "abertura_empresa",
+    abrir_empresa: "abertura_empresa",
+    nova_empresa: "abertura_empresa",
+    abertura: "abertura_empresa",
   };
 
   return aliases[v] || "operacional";
@@ -264,6 +294,13 @@ export const LABELS_EIXOS = {
   reforma_creditos: "Créditos de IBS/CBS",
   reforma_precos: "Preço, margem e repasse",
   reforma_transicao: "Transição e preparação",
+
+  atividade_pretendida: "Atividade pretendida e CNAE",
+  enquadramento_societario: "Enquadramento societário",
+  regime_tributario_abertura: "Regime tributário",
+  licencas_registros: "Licenças e registros",
+  estrutura_inicial: "Estrutura inicial",
+  prazo_custos_abertura: "Prazo e custos de abertura",
 };
 
 export function contratoSaida(
