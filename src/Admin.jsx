@@ -154,6 +154,10 @@ const ESTRUTURAS_DIAGNOSTICO = [
     label: "Empresa operacional",
   },
   {
+    id: "abertura_empresa",
+    label: "Abertura de empresa",
+  },
+  {
     id: "reforma_tributaria",
     label: "Diagnóstico da Reforma Tributária",
   },
@@ -201,6 +205,15 @@ function normalizarEstruturaDiagnostico(
       "operacional",
     operacional:
       "operacional",
+
+    abertura_empresa:
+      "abertura_empresa",
+    abrir_empresa:
+      "abertura_empresa",
+    nova_empresa:
+      "abertura_empresa",
+    abertura:
+      "abertura_empresa",
 
     reforma:
       "reforma_tributaria",
@@ -317,6 +330,13 @@ function estruturaDiagnostico(item = {}) {
       item?.empresa?.cnpj ||
       ""
     ).replace(/\D/g, "");
+
+  if (
+    segmento.includes("abertura de empresa") ||
+    razao.includes("abertura de empresa")
+  ) {
+    return "abertura_empresa";
+  }
 
   if (
     segmento.includes("simulador reforma") ||
@@ -440,6 +460,11 @@ function corEstruturaDiagnostico(
     pessoa_fisica: {
       bg: "#F1F3F7",
       color: NAVY,
+    },
+
+    abertura_empresa: {
+      bg: "#E4F6F8",
+      color: "#0B6B76",
     },
   };
 
