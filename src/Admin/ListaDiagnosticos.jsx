@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Search, RefreshCcw, AlertTriangle, ChevronRight, Download, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Search, RefreshCcw, ChevronRight, Download, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -21,11 +21,6 @@ function Botao({ children, onClick, disabled = false, secundario = false, style 
   );
 }
 
-function formatarData(valor) {
-  if (!valor) return "-";
-  try { return new Date(valor).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); } catch { return String(valor); }
-}
-
 function formatarCnpj(valor = "") {
   const digits = String(valor).replace(/\D/g, "");
   if (digits.length !== 14) return valor || "-";
@@ -41,19 +36,6 @@ function scoreInfo(score) {
   return { label: "Emergencial", color: "#791F1F", bg: "#FCEBEB" };
 }
 
-function normalizarLista(valor) { return Array.isArray(valor) ? valor : []; }
-
-const ESTRUTURAS_DIAGNOSTICO = [
-  { id: "operacional", label: "Empresa operacional" },
-  { id: "reforma_tributaria", label: "Diagnóstico da Reforma Tributária" },
-  { id: "simulador_reforma", label: "Simulador Reforma" },
-  { id: "holding", label: "Holding" },
-  { id: "avaliar_holding", label: "Avaliação de Holding" },
-  { id: "grupo", label: "Grupo empresarial" },
-  { id: "spe", label: "SPE" },
-  { id: "pessoa_fisica", label: "Pessoa Física" },
-];
-
 function normalizarEstruturaDiagnostico(valor = "") {
   const bruto = String(valor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[\s-]+/g, "_");
   const aliases = { empresa: "operacional", empresa_operacional: "operacional", operacional: "operacional", reforma: "reforma_tributaria", reforma_tributaria: "reforma_tributaria", ibs_cbs: "reforma_tributaria", simulador_reforma: "simulador_reforma", holding: "holding", avaliar_holding: "avaliar_holding", grupo: "grupo", spe: "spe", pessoa_fisica: "pessoa_fisica", pf: "pessoa_fisica" };
@@ -68,7 +50,17 @@ function estruturaDiagnostico(item = {}) {
 
 function labelEstruturaDiagnostico(valor) {
   const id = normalizarEstruturaDiagnostico(valor);
-  return ESTRUTURAS_DIAGNOSTICO.find((item) => item.id === id)?.label || valor || "Empresa operacional";
+  const estruturas = [
+    { id: "operacional", label: "Empresa operacional" },
+    { id: "reforma_tributaria", label: "Diagnóstico da Reforma Tributária" },
+    { id: "simulador_reforma", label: "Simulador Reforma" },
+    { id: "holding", label: "Holding" },
+    { id: "avaliar_holding", label: "Avaliação de Holding" },
+    { id: "grupo", label: "Grupo empresarial" },
+    { id: "spe", label: "SPE" },
+    { id: "pessoa_fisica", label: "Pessoa Física" },
+  ];
+  return estruturas.find((item) => item.id === id)?.label || valor || "Empresa operacional";
 }
 
 function corEstruturaDiagnostico(valor) {
@@ -92,7 +84,6 @@ export default function ListaDiagnosticos({ token, onAbrir, onLogout }) {
   const [carregando, setCarregando] = useState(true);
   const [exportando, setExportando] = useState(false);
   const [erro, setErro] = useState("");
-  const [processandoId, setProcessandoId] = useState("");
 
   async function carregar(termo = "") {
     setCarregando(true);
@@ -124,7 +115,6 @@ export default function ListaDiagnosticos({ token, onAbrir, onLogout }) {
     const excluir = action === "excluir";
     const msg = excluir ? `Excluir definitivamente o diagnóstico de "${item.razaoSocial || item.nome || "cliente"}"?` : item.arquivado ? "Desarquivar este diagnóstico?" : "Arquivar este diagnóstico?";
     if (!window.confirm(msg)) return;
-    setProcessandoId(item.id);
     try {
       const res = await fetch(`/api/diagnosticos?action=${excluir ? "excluir" : item.arquivado ? "desarquivar" : "arquivar"}`, {
         method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ diagnosticoId: item.id }),
@@ -132,7 +122,7 @@ export default function ListaDiagnosticos({ token, onAbrir, onLogout }) {
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.sucesso) throw new Error(data?.error || "Falha na operação.");
       await carregar(buscaAplicada);
-    } catch (e) { setErro(e?.message); } finally { setProcessandoId(""); }
+    } catch (e) { setErro(e?.message); }
   }
 
   const diagnosticosFiltrados = useMemo(() => {
