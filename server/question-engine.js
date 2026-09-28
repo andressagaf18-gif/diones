@@ -509,6 +509,64 @@ export const EIXOS_PERGUNTAS = {
       ],
     },
   },
+  abertura_empresa: {
+    atividade_pretendida: {
+      label: "Atividade pretendida e CNAE",
+      perguntas: [
+        { id: "ab_atv_01", tema: "Atividade", pergunta: "Você já definiu com clareza o que será vendido ou prestado, sejam produtos, serviços ou ambos?", riscoAvaliado: "Abertura com atividade mal definida e CNAE inadequado.", importancia: 3 },
+        { id: "ab_atv_02", tema: "CNAE", pergunta: "Os CNAEs escolhidos foram conferidos com a atividade que você realmente pretende exercer?", riscoAvaliado: "Enquadramento em CNAE que não representa a operação real.", importancia: 3 },
+        { id: "ab_atv_03", tema: "Atividades secundárias", pergunta: "Você já identificou se haverá atividades secundárias, por exemplo vender produtos e também prestar serviços?", riscoAvaliado: "Atividades mistas sem enquadramento adequado.", importancia: 2 },
+        { id: "ab_atv_04", tema: "Público", pergunta: "Você já definiu quem serão seus primeiros clientes, sejam pessoas físicas, empresas ou ambos?", riscoAvaliado: "Modelo comercial indefinido para o início.", importancia: 2 },
+      ],
+    },
+    enquadramento_societario: {
+      label: "Enquadramento societário",
+      perguntas: [
+        { id: "ab_soc_01", tema: "Tipo jurídico", pergunta: "Você já avaliou o tipo jurídico mais adequado entre MEI, empresário individual e sociedade limitada?", riscoAvaliado: "Escolha do tipo de empresa sem análise da atividade e do porte.", importancia: 3 },
+        { id: "ab_soc_02", tema: "Sócios", pergunta: "Havendo sócios, já está definido quem serão e a participação de cada um?", riscoAvaliado: "Conflitos e lacunas na sociedade desde o início.", importancia: 3 },
+        { id: "ab_soc_03", tema: "Acordo entre sócios", pergunta: "Existe algum acordo, escrito ou combinado, sobre funções, retirada de lucros e saída de sócios?", riscoAvaliado: "Sociedade sem regras para decisões, retiradas e saída.", importancia: 2 },
+        { id: "ab_soc_04", tema: "Impedimentos", pergunta: "Você já verificou se você ou os sócios têm algum impedimento para abrir ou participar da empresa?", riscoAvaliado: "Impedimento legal descoberto só depois da abertura.", importancia: 2 },
+      ],
+    },
+    regime_tributario_abertura: {
+      label: "Regime tributário",
+      perguntas: [
+        { id: "ab_reg_01", tema: "Faturamento projetado", pergunta: "Você já estimou o faturamento mensal esperado para os primeiros 12 meses?", riscoAvaliado: "Regime escolhido sem base numérica.", importancia: 3 },
+        { id: "ab_reg_02", tema: "Regime", pergunta: "O regime tributário foi escolhido com base na atividade e no faturamento estimado?", riscoAvaliado: "Regime possivelmente inadequado desde o início.", importancia: 3 },
+        { id: "ab_reg_03", tema: "Limites", pergunta: "Você conhece os limites de faturamento do MEI e do Simples Nacional e sabe se a sua projeção cabe neles?", riscoAvaliado: "Risco de desenquadramento logo no primeiro ano.", importancia: 3 },
+        { id: "ab_reg_04", tema: "Obrigações", pergunta: "Você já sabe que impostos e obrigações terá logo depois de abrir?", riscoAvaliado: "Surpresa com tributos e obrigações acessórias.", importancia: 2 },
+        { id: "ab_reg_05", tema: "Reforma Tributária", pergunta: "Você já considerou o efeito da Reforma Tributária (IBS/CBS) no preço e na margem do seu negócio?", riscoAvaliado: "Precificação sem considerar a transição tributária.", importancia: 2 },
+      ],
+    },
+    licencas_registros: {
+      label: "Licenças e registros",
+      perguntas: [
+        { id: "ab_lic_01", tema: "Licenças", pergunta: "Você já levantou as licenças e alvarás exigidos pela atividade, incluindo prefeitura, vigilância sanitária, bombeiros e meio ambiente?", riscoAvaliado: "Início da operação sem licença obrigatória.", importancia: 3 },
+        { id: "ab_lic_02", tema: "Registro profissional", pergunta: "Se a atividade exigir registro em conselho de classe ou responsável técnico, isso já está resolvido?", riscoAvaliado: "Atividade regulamentada sem registro ou responsável técnico.", importancia: 3 },
+        { id: "ab_lic_03", tema: "Local", pergunta: "O local escolhido permite a atividade pretendida, considerando uso do solo, zoneamento e contrato de locação?", riscoAvaliado: "Local incompatível com a atividade e retrabalho na abertura.", importancia: 3 },
+        { id: "ab_lic_04", tema: "Prazos", pergunta: "Você conhece os prazos de cada licença e sabe o que precisa estar pronto antes de começar a operar?", riscoAvaliado: "Atraso na abertura por prazos não mapeados.", importancia: 2 },
+      ],
+    },
+    estrutura_inicial: {
+      label: "Estrutura inicial",
+      perguntas: [
+        { id: "ab_est_01", tema: "Capital", pergunta: "Você já definiu o valor disponível para abrir e manter a empresa nos primeiros meses?", riscoAvaliado: "Abertura sem capital planejado.", importancia: 3 },
+        { id: "ab_est_02", tema: "Reserva", pergunta: "Existe reserva para cobrir os custos fixos por 3 a 6 meses sem faturamento?", riscoAvaliado: "Risco de caixa nos primeiros meses de operação.", importancia: 3 },
+        { id: "ab_est_03", tema: "Separação financeira", pergunta: "Você pretende separar as finanças da empresa das suas finanças pessoais desde o início, com conta bancária PJ?", riscoAvaliado: "Mistura de patrimônio pessoal e empresarial.", importancia: 2 },
+        { id: "ab_est_04", tema: "Equipe", pergunta: "Havendo funcionários desde o início, você já conhece os custos e as obrigações trabalhistas?", riscoAvaliado: "Custo de pessoal e encargos subestimados.", importancia: 2 },
+        { id: "ab_est_05", tema: "Sistemas", pergunta: "Você já definiu a forma de emitir notas fiscais e de controlar vendas e financeiro?", riscoAvaliado: "Operação iniciada sem emissão fiscal e controle básico.", importancia: 2 },
+      ],
+    },
+    prazo_custos_abertura: {
+      label: "Prazo e custos de abertura",
+      perguntas: [
+        { id: "ab_prz_01", tema: "Prazo", pergunta: "Você tem uma data-alvo para começar a operar e sabe se ela é realista diante das licenças exigidas?", riscoAvaliado: "Expectativa de prazo incompatível com a burocracia.", importancia: 2 },
+        { id: "ab_prz_02", tema: "Custos de abertura", pergunta: "Você já levantou os custos de abrir, incluindo taxas, registro, licenças, contador e adaptação do local?", riscoAvaliado: "Custo inicial maior que o previsto.", importancia: 3 },
+        { id: "ab_prz_03", tema: "Custos mensais", pergunta: "Você já estimou os custos mensais fixos da empresa, incluindo contador, impostos, aluguel e sistemas?", riscoAvaliado: "Estrutura de custos fixos sem previsão.", importancia: 3 },
+        { id: "ab_prz_04", tema: "Assessoria", pergunta: "Você já conta com contador ou assessoria para conduzir a abertura e os primeiros meses?", riscoAvaliado: "Abertura sem acompanhamento técnico.", importancia: 2 },
+      ],
+    },
+  },
 };
 export function perguntasBaseDaEstrutura(estrutura, eixos = []) {
   const catalogo =
