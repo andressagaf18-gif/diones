@@ -4889,6 +4889,13 @@ function DiagnosticoPrototipo() {
       return false;
     }
   });
+  const [termosAceitosEm, setTermosAceitosEm] = useState(() => {
+    try {
+      return localStorage.getItem("finder_termos_uso_aceitos_em_v1") || null;
+    } catch {
+      return null;
+    }
+  });
   const [envioRelatorio, setEnvioRelatorio] = useState("idle");
   const relatorioEnviadoRef = useRef(false);
   const [cnpjInput, setCnpjInput] = useState("");
@@ -6705,6 +6712,8 @@ function DiagnosticoPrototipo() {
       tipoDiagnostico:"simulador_reforma",
       estruturaNegocio:"simulador_reforma",
       origem:"simulador_reforma",
+      termosAceitos,
+      termosAceitosEm,
       versaoRelatorioCliente:"resumida_consultiva",
       versaoRelatorioAdministracao:"completa",
       versoesRelatorio,
@@ -9283,6 +9292,9 @@ function DiagnosticoPrototipo() {
           sessionIdLead,
       },
 
+      termosAceitos,
+      termosAceitosEm,
+
       responsavel: {
         nome,
         cargo,
@@ -10736,9 +10748,12 @@ function DiagnosticoPrototipo() {
       {!termosAceitos && (
         <ModalTermosUso
           onAceitar={() => {
+            const agora = new Date().toISOString();
             try {
               localStorage.setItem("finder_termos_uso_aceitos_v1", "1");
+              localStorage.setItem("finder_termos_uso_aceitos_em_v1", agora);
             } catch {}
+            setTermosAceitosEm(agora);
             setTermosAceitos(true);
           }}
         />
