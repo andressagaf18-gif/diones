@@ -844,6 +844,19 @@ export default async function handler(
       body.perfil
     );
 
+  // Aceite dos Termos de Uso, feito no navegador da pessoa antes de
+  // preencher o diagnóstico. Vem como true/false + o instante exato do
+  // clique em "Aceitar" — nunca inferido aqui, só repassado como veio.
+  const termosAceitos =
+    body.termosAceitos === true;
+
+  const termosAceitosEm =
+    termosAceitos &&
+    textoSeguro(body.termosAceitosEm) &&
+    !Number.isNaN(new Date(textoSeguro(body.termosAceitosEm)).getTime())
+      ? new Date(textoSeguro(body.termosAceitosEm)).toISOString()
+      : null;
+
   const resultado =
     objetoSeguro(
       body.resultado
@@ -1255,6 +1268,9 @@ export default async function handler(
 
       perfil,
 
+      termosAceitos,
+      termosAceitosEm,
+
       dores:
         doresEstruturadas,
 
@@ -1338,6 +1354,18 @@ export default async function handler(
         dadosCompletos
       );
 
+    // Garante as colunas de aceite do termo antes de gravar — mesmo padrão
+    // defensivo já usado em outras rotas do projeto (ALTER TABLE ... IF NOT
+    // EXISTS), pra não depender de uma migração feita à parte.
+    await sql`
+      ALTER TABLE diagnosticos
+      ADD COLUMN IF NOT EXISTS termos_aceitos BOOLEAN NOT NULL DEFAULT FALSE
+    `;
+    await sql`
+      ALTER TABLE diagnosticos
+      ADD COLUMN IF NOT EXISTS termos_aceitos_em TIMESTAMPTZ
+    `;
+
     const rows =
       await sql`
         INSERT INTO diagnosticos (
@@ -1357,7 +1385,9 @@ export default async function handler(
           negocio_interpretado,
           perguntas_respostas,
           diagnostico,
-          dados_completos
+          dados_completos,
+          termos_aceitos,
+          termos_aceitos_em
         )
         VALUES (
           ${nomeResponsavel},
@@ -1376,7 +1406,9 @@ export default async function handler(
           ${negocioJson}::jsonb,
           ${respostasJson}::jsonb,
           ${diagnosticoJson}::jsonb,
-          ${completoJson}::jsonb
+          ${completoJson}::jsonb,
+          ${termosAceitos},
+          ${termosAceitosEm}
         )
         RETURNING
           id,
@@ -1385,7 +1417,9 @@ export default async function handler(
           razao_social,
           cnpj,
           email,
-          score
+          score,
+          termos_aceitos,
+          termos_aceitos_em
       `;
 
     registroSalvo =
