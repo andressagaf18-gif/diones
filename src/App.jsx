@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import Admin from "./Admin";
+import { periodosDoPlano, planoClienteHtml, AVISO_PLANO } from "./relatorios/planoCliente.js";
 
 const NAVY = "#17233D";
 const ICE = "#E9EDF5";
@@ -9294,6 +9295,7 @@ function DiagnosticoPrototipo() {
 
       termosAceitos,
       termosAceitosEm,
+      acessoDiagnostico: planoDiagnosticoLiberado,
 
       responsavel: {
         nome,
@@ -10439,6 +10441,10 @@ function DiagnosticoPrototipo() {
     const logoUrl = `${window.location.origin}/finder-logo.png`;
     const dataGeracao = new Date().toLocaleString("pt-BR");
 
+    const planoPdf = pdfCompleto
+      ? planoClienteHtml(iaResultado?.plano90Dias, { normalizar: listaIaSegura, escapar: escaparHtml })
+      : "";
+
     const html = `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -10678,6 +10684,8 @@ function DiagnosticoPrototipo() {
       </div>
     `).join("")}
   </div>
+
+  ${planoPdf}
 
   <section class="cta">
     <h3>${pdfCompleto
@@ -13414,20 +13422,16 @@ function DiagnosticoPrototipo() {
                   </>
                 )}
 
-                {false && iaResultado?.plano90Dias && (
+                {acessoDiagnosticoCompleto && periodosDoPlano(iaResultado?.plano90Dias, listaIaSegura).length > 0 && (
                   <>
                     <p style={sectionTitleStyle}>Plano inicial 30/60/90 dias</p>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 7, marginBottom: 14 }}>
-                      {[
-                        ["30 DIAS", iaResultado.plano90Dias.dias30],
-                        ["60 DIAS", iaResultado.plano90Dias.dias60],
-                        ["90 DIAS", iaResultado.plano90Dias.dias90],
-                      ].map(([periodo, itens]) => (
-                        <div key={periodo} style={{ border: "1px solid #E3E7EF", borderRadius: 10, padding: 9, background: "#F7F8FB" }}>
-                          <strong style={{ fontSize: 9, color: CORAL }}>{periodo}</strong>
+                      {periodosDoPlano(iaResultado.plano90Dias, listaIaSegura).map((periodo) => (
+                        <div key={periodo.chave} style={{ border: "1px solid #E3E7EF", borderLeft: `4px solid ${periodo.cor}`, borderRadius: 10, padding: 9, background: "#F7F8FB" }}>
+                          <strong style={{ fontSize: 9, color: CORAL }}>{periodo.curto}</strong>
                           <ul style={{ paddingLeft: 14, margin: "6px 0 0" }}>
-                            {listaIaSegura(itens).slice(0, 3).map((item, indice) => (
-                              <li key={`${periodo}-${indice}`} style={{ fontSize: 9.5, color: NAVY, lineHeight: 1.4, marginBottom: 4 }}>
+                            {periodo.itens.map((item, indice) => (
+                              <li key={`${periodo.chave}-${indice}`} style={{ fontSize: 9.5, color: NAVY, lineHeight: 1.4, marginBottom: 4 }}>
                                 {item}
                               </li>
                             ))}
@@ -13436,7 +13440,7 @@ function DiagnosticoPrototipo() {
                       ))}
                     </div>
                     <p style={{ fontSize: 9.2, color: MUTED, margin: "-7px 0 14px", fontStyle: "italic" }}>
-                      Plano orientativo; documentos, responsáveis e prioridades ainda precisam ser validados.
+                      {AVISO_PLANO}
                     </p>
                   </>
                 )}
