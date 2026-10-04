@@ -21,6 +21,7 @@ export const MODULOS_SAUDE = {
   ASAAS_SYNC: "Sincronização Asaas",
   ENVIO_RELATORIO: "Envio de relatório/e-mail",
   CONSULTA_CNPJ: "Consulta CNPJ",
+  CONSULTIVO_IA: "Análise consultiva (IA)",
 };
 
 function texto(valor, limite = 2000) {
