@@ -2,53 +2,16 @@
 
 import { neon } from "@neondatabase/serverless";
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
+import { limparCodigoInternoRelatorio } from "../server/diagnostic-consultivo.js";
 
 // =========================================================
 // FUNÇÕES AUXILIARES
 // =========================================================
 
 
-function limparCodigoInternoRelatorio(
-  valor
-) {
-  return String(
-    valor ||
-    ""
-  )
-    .replace(
-      /\s*\(\s*resposta\s*:\s*['"][^'"]*['"]\s+para\s+[a-z0-9_:-]+\s*\)/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Id\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Tipo\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Ligado\s*A\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Risco\s*Mitigado\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*\([a-z0-9_]+\s*=\s*['"][^'"]*['"]\s*\)/gi,
-      ""
-    )
-    .replace(
-      /\s{2,}/g,
-      " "
-    )
-    .replace(
-      /\s+([.,;:])/g,
-      "$1"
-    )
-    .trim();
-}
+// Limpeza de códigos internos e de comentários de bastidor: compartilhada com o
+// diagnóstico (api/diagnostico.js) e com a análise consultiva.
+
 
 function escaparHtml(valor = "") {
   return limparCodigoInternoRelatorio(
@@ -122,6 +85,44 @@ function listaDiagnosticoHtml(lista, campos, vazio) {
     .map((item) => textoItemDiagnostico(item, campos))
     .filter(Boolean);
   return listaHtml(itens, vazio);
+}
+
+// Plano inicial 30/60/90 no e-mail do cliente. Só vale para os níveis que o
+// restante do relatório também libera (Completo e Especialista).
+export function planoLeadHtml(plano30, plano60, plano90, liberado) {
+  if (!liberado) return "";
+
+  const periodos = [
+    ["Primeiros 30 dias", plano30],
+    ["Até 60 dias", plano60],
+    ["Até 90 dias", plano90],
+  ]
+    .map(([titulo, lista]) => [
+      titulo,
+      arraySeguro(lista)
+        .map((item) => textoItemDiagnostico(item, ["texto", "acao", "descricao", "titulo"]))
+        .filter(Boolean)
+        .slice(0, 3),
+    ])
+    .filter(([, itens]) => itens.length);
+
+  if (!periodos.length) return "";
+
+  return `
+<h3>
+Plano inicial de 30, 60 e 90 dias
+</h3>
+${periodos
+  .map(
+    ([titulo, itens]) => `
+<p style="margin:12px 0 4px;"><strong>${escaparHtml(titulo)}</strong></p>
+<ul>${listaHtml(itens)}</ul>`
+  )
+  .join("")}
+<p style="font-size:12px;color:#5B667A;font-style:italic;">
+Plano orientativo; documentos, responsáveis e prioridades ainda precisam ser validados.
+</p>
+`;
 }
 
 function formatarCnae(cnae) {
@@ -2507,6 +2508,15 @@ ${listaHtml(
   diagnostico.prioridadesImediatas
 )}
 </ol>
+
+${planoLeadHtml(
+  plano30,
+  plano60,
+  plano90,
+  ["COMPLETO", "ESPECIALISTA"].includes(
+    String(body?.acessoDiagnostico || "").toUpperCase()
+  )
+)}
 
 <h3>
 Próximos passos
