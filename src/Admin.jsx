@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 
 import { FinderSidebar, FinderTopbar } from "./TechShell";
+import VisaoConsultiva from "./relatorios/VisaoConsultiva";
 import { finderStyles } from "./Theme";
 
 // Essas quatro telas são pesadas (Tributário sozinho carrega mais de 350KB de
@@ -15691,6 +15692,13 @@ function DetalheDiagnostico({
                 )}
               </Card>
             )}
+
+            <VisaoConsultiva
+              token={token}
+              diagnosticoId={id}
+              estruturaLabel={estruturaAtualLabel}
+              areas={areas}
+            />
 
         <div
           style={{
