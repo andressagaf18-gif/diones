@@ -9,6 +9,7 @@ import {
 } from "../server/diagnostic-engine.js";
 
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
+import { limparCodigoInternoRelatorio } from "../server/diagnostic-consultivo.js";
 
 function extrairOutputText(data) {
   if (
@@ -59,51 +60,9 @@ function lista(v) {
 
 
 
-function limparCodigoInternoRelatorio(
-  valor
-) {
-  return String(
-    valor ||
-    ""
-  )
-    .replace(
-      /\s*\(\s*resposta\s*:\s*['"][^'"]*['"]\s+para\s+[a-z0-9_:-]+\s*\)/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Id\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Tipo\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Ligado\s*A\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*Risco\s*Mitigado\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s*\([a-z0-9_]+\s*=\s*['"][^'"]*['"]\s*\)/gi,
-      ""
-    )
-    .replace(
-      /\s*[—-]\s*(?:ref|c[oó]digo|codigo)\s*:\s*[a-z0-9_:-]+/gi,
-      ""
-    )
-    .replace(
-      /\s{2,}/g,
-      " "
-    )
-    .replace(
-      /\s+([.,;:])/g,
-      "$1"
-    )
-    .trim();
-}
+// A limpeza de códigos internos e de comentários de bastidor é compartilhada
+// com a análise consultiva (server/diagnostic-consultivo.js).
+
 
 function textoSeguroIa(
   valor,
@@ -569,6 +528,9 @@ INSTRUÇÕES DE QUALIDADE:
 26. Liste possíveis impactos separadamente dos achados e riscos. Não entregue procedimentos completos, modelos, cronogramas ou estratégia de implantação no conteúdo do cliente.
 27. Registre aparentes incompatibilidades em inconsistenciasPossiveis e pontosParaValidacao, sem afirmar fraude, erro ou contradição como fato.
 28. Preencha visaoAdministracao.triagemDepartamentos com ACIONAR, ACOMPANHAR ou NAO_ACIONAR. Essa triagem é interna e não deve aparecer no relatório do cliente.
+29. NUNCA mencione a origem da informação no texto exibido ao cliente. Proibido: "sugestão vinda do detalhe", "conforme a resposta", "segundo o campo", "o checklist indica" e similares. Incorpore o que o participante escreveu de forma natural e direta (ex.: "Você comentou que os indicadores poderiam ser cobrados com mais rigor"), sem citar de onde veio.
+30. Um mesmo ponto não pode aparecer ao mesmo tempo em "achados" e em "pontosFortes" de um eixo. "achados" descreve o que foi observado; "pontosFortes" diz o que essa situação permite fazer ou aproveitar, sem repetir o achado.
+31. Cada item de "plano90Dias" deve ser uma única frase clara, de até 230 caracteres, que una ação e objetivo e cite entre parênteses a evidência esperada e a dependência quando houver. Exemplo: "Montar a projeção de caixa dos próximos 90 dias para ganhar visibilidade (evidência: planilha atualizada; depende dos extratos recentes)." Use de 2 a 3 itens por prazo, sem procedimento detalhado.
 `;
 
   try {
