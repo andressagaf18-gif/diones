@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import {
   exigirAutenticacao,
 } from "../server/auth.js";
+import { consultivoObter, consultivoGerar } from "../server/diagnostico-consultivo-api.js";
 
 const sql = neon(
   process.env.DATABASE_URL
@@ -1997,6 +1998,28 @@ export default async function handler(
       req,
       res,
       false
+    );
+  }
+
+  // Análise consultiva interna (lógica em server/diagnostico-consultivo-api.js,
+  // fora de api/ para não consumir uma função serverless extra).
+  if (
+    req.method === "GET" &&
+    action === "consultivo-obter"
+  ) {
+    return consultivoObter(
+      req,
+      res
+    );
+  }
+
+  if (
+    req.method === "POST" &&
+    action === "consultivo-gerar"
+  ) {
+    return consultivoGerar(
+      req,
+      res
     );
   }
 
