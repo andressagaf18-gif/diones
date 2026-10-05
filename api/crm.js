@@ -3,6 +3,7 @@ import crypto from "crypto";
 import dashboardHandler from "../server/dashboard-engine.js";
 import { usuarioAutenticado } from "../server/auth.js";
 import { fichaAreaObter, fichaAreaSalvar } from "../server/atendimento-ficha.js";
+import { registrarAceite, consentimentoObter, termosTexto, anexarConsentimentos } from "../server/consentimento-lgpd.js";
 import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.js";
 
 // Ordem real das etapas do formulário público (App.jsx,
@@ -2085,6 +2086,12 @@ async function listarLeads(req, res) {
           mapearLead
         )
       : [];
+
+  // Aceite dos Termos de Uso de cada lead (uma consulta; nunca derruba a lista).
+  await anexarConsentimentos(
+    sql,
+    leads
+  );
 
   const total =
     leads.length;
@@ -7204,6 +7211,26 @@ export default async function handler(req, res) {
     switch (action) {
       case "iniciar":
         return iniciarDiagnostico(
+          req,
+          res
+        );
+
+      // Prova do aceite dos Termos de Uso (LGPD) — server/consentimento-lgpd.js.
+      // "registrar-aceite" é público como "iniciar": quem chama é o navegador do cliente.
+      case "registrar-aceite":
+        return registrarAceite(
+          req,
+          res
+        );
+
+      case "consentimento":
+        return consentimentoObter(
+          req,
+          res
+        );
+
+      case "termos-uso-texto":
+        return termosTexto(
           req,
           res
         );
