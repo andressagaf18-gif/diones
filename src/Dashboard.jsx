@@ -25,6 +25,24 @@ import {
   BarChart3,
 } from "lucide-react";
 
+import {
+  useVisaoDashboard,
+  GeralExtra,
+  LeadsExtra,
+  AceiteLead,
+  DiagnosticosExtra,
+  ReformaExtra,
+  AtendimentoFiltros,
+  AtendimentoSelo,
+  filtrarAtendimentos,
+  AsaasExtra,
+  AbaAreas,
+  AbaClientes,
+  AbaLgpd,
+  AbaSistema,
+  AvisosBlocos,
+} from "./dashboard/visao.jsx";
+
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
 const MUTED = "#5B667A";
@@ -109,6 +127,10 @@ export default function Dashboard({
   const [tributario, setTributario] = useState({ projetos: [] });
   const [avisoTributario, setAvisoTributario] = useState("");
   const [sessaoExpirada, setSessaoExpirada] = useState(false);
+
+  // Visão completa do sistema: carregada à parte; uma falha aqui nunca afeta o resto.
+  const extra = useVisaoDashboard();
+  const [filtroAtend, setFiltroAtend] = useState("todos");
 
   async function carregar() {
     setCarregando(true);
@@ -425,7 +447,17 @@ export default function Dashboard({
     { id: "reforma", label: "Reforma + Planejamento" },
     { id: "atendimento", label: "Atendimento" },
     { id: "asaas", label: "Asaas" },
+    { id: "areas", label: "Áreas" },
+    { id: "clientes", label: "Clientes e agenda" },
+    { id: "lgpd", label: "LGPD" },
+    { id: "sistema", label: "Sistema" },
   ];
+
+  // Atalhos da central de atenção: leva à aba certa (e ao filtro, no atendimento).
+  function irPara(aba, filtro) {
+    if (aba === "atendimento") setFiltroAtend(filtro || "todos");
+    setAbaAtiva(aba || "geral");
+  }
 
   function TabButton({ id, label }) {
     const ativa = abaAtiva === id;
@@ -569,7 +601,10 @@ export default function Dashboard({
 
         <button
           type="button"
-          onClick={carregar}
+          onClick={() => {
+            carregar();
+            extra.recarregar();
+          }}
           style={{
             border: "1px solid #D8DEEA",
             background: WHITE,
@@ -607,6 +642,9 @@ export default function Dashboard({
             <Kpi titulo="CRÍTICOS" valor={n.criticos} subtitulo="Prioridade comercial" Icon={AlertTriangle} onClick={() => setAbaAtiva("leads")} />
             <Kpi titulo="REFORMA TRIBUTÁRIA" valor={n.reforma} subtitulo="Interesse consultivo" Icon={Zap} destaque onClick={() => setAbaAtiva("reforma")} />
           </div>
+
+          <AvisosBlocos avisos={extra.avisos} erro={extra.erro} />
+          <GeralExtra visao={extra.visao} extra={extra} irPara={irPara} carregando={extra.carregando} />
 
           <Card style={{ marginBottom: 14, borderTop: `4px solid ${CORAL}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -671,6 +709,8 @@ export default function Dashboard({
             <Kpi titulo="SEM RETORNO 3+ DIAS" valor={leadsSemRetorno.length} subtitulo="Sem atividade recente" Icon={AlertTriangle} destaque />
           </div>
 
+          <LeadsExtra visao={extra.visao} extra={extra} />
+
           <div style={{ display: "grid", gridTemplateColumns: "minmax(230px,.7fr) minmax(480px,1.6fr)", gap: 12, marginBottom: 14 }}>
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -713,7 +753,7 @@ export default function Dashboard({
                 Quando entrou, onde parou e de onde veio — clique em "Abrir" pra ver o lead completo.
               </div>
               <TabelaClicavel
-                colunas={["Lead", "Origem", "Entrou", "Onde parou", "Score", ""]}
+                colunas={["Lead", "Origem", "Entrou", "Onde parou", "Score", "Aceite dos termos", ""]}
                 vazio="Nenhum lead disponível."
                 linhas={leads.slice(0, 30).map((l, i) => (
                   <tr key={l.id || l.lead_id || i}>
@@ -727,6 +767,9 @@ export default function Dashboard({
                     </td>
                     <td style={{ padding: 7, fontSize: 10 }}>{rotuloEtapaLead(l)}</td>
                     <td style={{ padding: 7, fontSize: 10 }}>{l.score ?? l.score_geral ?? "-"}</td>
+                    <td style={{ padding: 7 }}>
+                      <AceiteLead info={extra.visao?.leads?.consentimentos?.[l.id || l.lead_id]} />
+                    </td>
                     <td style={{ padding: 7 }}>
                       <button
                         type="button"
@@ -792,10 +835,16 @@ export default function Dashboard({
               ))}
             />
           </Card>
+
+          <div style={{ marginTop: 14 }}>
+            <DiagnosticosExtra visao={extra.visao} onAbrirDiagnostico={onAbrirDiagnostico} />
+          </div>
         </>
       )}
 
       {abaAtiva === "reforma" && (
+        <>
+        <ReformaExtra extra={extra} />
         <Card style={{ borderTop: `4px solid ${CORAL}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
             <div>
@@ -845,6 +894,7 @@ export default function Dashboard({
             </div>
           )}
         </Card>
+        </>
       )}
 
       {abaAtiva === "atendimento" && (
@@ -861,8 +911,9 @@ export default function Dashboard({
               <strong>Atendimentos em movimento</strong>
               <Clock3 size={17} color={CORAL} />
             </div>
+            <AtendimentoFiltros valor={filtroAtend} onChange={setFiltroAtend} contadores={extra.visao?.atendimento?.contadores} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 8, marginTop: 10 }}>
-              {n.atendimentosLista.slice(0, 30).map((a, i) => (
+              {filtrarAtendimentos(n.atendimentosLista, extra.visao?.atendimento?.extras, filtroAtend).slice(0, 30).map((a, i) => (
                 <button
                   key={a.id || a.atendimento_id || i}
                   type="button"
@@ -873,10 +924,13 @@ export default function Dashboard({
                   <div style={{ color: MUTED, fontSize: 9.5, marginTop: 5 }}>
                     {a.departamento || a.area || "-"} · {a.status || a.etapa || "-"}
                   </div>
+                  <AtendimentoSelo dados={extra.visao?.atendimento?.extras?.[a.id || a.atendimento_id]} />
                 </button>
               ))}
-              {!n.atendimentosLista.length && (
-                <div style={{ color: MUTED, fontSize: 11, padding: 20, textAlign: "center" }}>Nenhum atendimento em aberto.</div>
+              {!filtrarAtendimentos(n.atendimentosLista, extra.visao?.atendimento?.extras, filtroAtend).length && (
+                <div style={{ color: MUTED, fontSize: 11, padding: 20, textAlign: "center" }}>
+                  {n.atendimentosLista.length ? "Nenhum atendimento neste filtro." : "Nenhum atendimento em aberto."}
+                </div>
               )}
             </div>
           </Card>
@@ -910,8 +964,20 @@ export default function Dashboard({
               ))}
             />
           </Card>
+
+          <div style={{ marginTop: 14 }}>
+            <AsaasExtra visao={extra.visao} />
+          </div>
         </>
       )}
+
+      {abaAtiva === "areas" && <AbaAreas visao={extra.visao} carregando={extra.carregando} />}
+
+      {abaAtiva === "clientes" && <AbaClientes visao={extra.visao} carregando={extra.carregando} />}
+
+      {abaAtiva === "lgpd" && <AbaLgpd visao={extra.visao} carregando={extra.carregando} onAbrirLead={onAbrirLead} />}
+
+      {abaAtiva === "sistema" && <AbaSistema visao={extra.visao} extra={extra} carregando={extra.carregando} />}
     </main>
   );
 }
