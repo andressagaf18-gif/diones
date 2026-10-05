@@ -9254,6 +9254,14 @@ function DiagnosticoPrototipo() {
 
         resposta,
 
+        // Texto livre que o cliente escreveu na resposta: evidência para a
+        // ficha da área e para a análise consultiva.
+        detalheResposta:
+          String(
+            detalhesRespostas[q.id] ||
+            ""
+          ).slice(0, 1200),
+
         respostaClassificacao:
           respostaNaoAplicavel(resposta)
             ? "NAO_APLICAVEL"
