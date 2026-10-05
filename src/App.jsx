@@ -16,7 +16,12 @@ import {
   marcarAceiteEnviado,
   registrarAceiteNoLead,
   evidenciaParaPayload,
+  aceiteVigente,
+  motivoAceite,
+  evidenciaMinima,
+  sha256Hex,
 } from "./lgpd/aceiteTermos.js";
+import PortaoTermos from "./lgpd/PortaoTermos.jsx";
 
 const NAVY = "#17233D";
 const ICE = "#E9EDF5";
@@ -1582,61 +1587,6 @@ Ao clicar em "Aceitar", o usuário declara ter lido e concordado com todas as co
 // Versão do texto acima. Mude sempre que o texto dos termos mudar: ela aparece
 // no comprovante de aceite, junto da impressão digital (SHA-256) do texto exato.
 const TERMOS_USO_VERSAO = "2026-10";
-
-function ModalTermosUso({ onAceitar }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(23,35,61,.55)",
-        backdropFilter: "blur(3px)",
-        zIndex: 500,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 18,
-      }}
-    >
-      <div
-        style={{
-          width: 440,
-          maxWidth: "100%",
-          maxHeight: "85vh",
-          background: WHITE,
-          borderRadius: 20,
-          boxShadow: "0 30px 70px rgba(0,0,0,.35)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        <div style={{ padding: "20px 24px 14px", borderBottom: "1px solid #EEF0F4" }}>
-          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 700, color: NAVY }}>
-            Termos e condições de uso
-          </div>
-        </div>
-
-        <div
-          style={{
-            padding: "18px 24px",
-            overflowY: "auto",
-            fontSize: 12.5,
-            lineHeight: 1.7,
-            color: NAVY,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {TERMOS_USO_FINDER}
-        </div>
-
-        <div style={{ padding: "14px 24px 20px", borderTop: "1px solid #EEF0F4" }}>
-          <PrimaryButton onClick={onAceitar}>Aceitar</PrimaryButton>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function PrimaryButton({ children, onClick, disabled, style }) {
   return (
@@ -4913,6 +4863,39 @@ function DiagnosticoPrototipo() {
   // Prova do aceite (LGPD): montada no clique e enviada ao lead da sessão.
   const [evidenciaAceite, setEvidenciaAceite] = useState(() => lerEvidenciaSalva());
   const [tentativaAceite, setTentativaAceite] = useState(0);
+
+  // Trava de aceite: o aceite guardado só vale para a versão (e o texto) atuais dos termos.
+  // null = ainda calculando a impressão digital do texto atual; "" = não foi possível calcular.
+  const [hashAtualTermos, setHashAtualTermos] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    sha256Hex(TERMOS_USO_FINDER)
+      .then((h) => vivo && setHashAtualTermos(h))
+      .catch(() => vivo && setHashAtualTermos(""));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  const verificandoTermos = hashAtualTermos === null;
+  const aceiteOk =
+    !verificandoTermos &&
+    aceiteVigente({ aceito: termosAceitos, evidencia: evidenciaAceite, versaoAtual: TERMOS_USO_VERSAO, hashAtual: hashAtualTermos });
+
+  function aceitarTermos() {
+    const agora = new Date().toISOString();
+    try {
+      localStorage.setItem("finder_termos_uso_aceitos_v1", "1");
+      localStorage.setItem("finder_termos_uso_aceitos_em_v1", agora);
+    } catch {}
+    setTermosAceitosEm(agora);
+    setTermosAceitos(true);
+    montarEvidenciaAceite({ texto: TERMOS_USO_FINDER, versao: TERMOS_USO_VERSAO, aceitoEm: agora })
+      .catch(() => evidenciaMinima({ versao: TERMOS_USO_VERSAO, aceitoEm: agora }))
+      .then((evidencia) => {
+        salvarEvidencia(evidencia);
+        setEvidenciaAceite(evidencia);
+      });
+  }
   const [envioRelatorio, setEnvioRelatorio] = useState("idle");
   const relatorioEnviadoRef = useRef(false);
   const [cnpjInput, setCnpjInput] = useState("");
@@ -6300,6 +6283,11 @@ function DiagnosticoPrototipo() {
   // CRM — REGISTRA O ACESSO ASSIM QUE O CLIENTE ABRE O LINK
   // =========================================================
   useEffect(() => {
+    // Nada é registrado antes do aceite dos Termos de Uso.
+    if (!aceiteOk) {
+      return;
+    }
+
     if (leadInicializadoRef.current) {
       return;
     }
@@ -6307,6 +6295,30 @@ function DiagnosticoPrototipo() {
     leadInicializadoRef.current = true;
 
     let cancelado = false;
+
+    // O navegador pode bloquear o armazenamento (modo restrito, alguns navegadores embutidos).
+    // Isso nunca pode impedir a criação do lead: cada leitura/gravação é protegida à parte.
+    function lerSessaoArmazenada(chave) {
+      let valor = "";
+      try {
+        valor = sessionStorage.getItem(chave) || "";
+      } catch {}
+      if (!valor) {
+        try {
+          valor = localStorage.getItem(chave) || "";
+        } catch {}
+      }
+      return valor;
+    }
+
+    function gravarSessaoArmazenada(chave, valor) {
+      try {
+        sessionStorage.setItem(chave, valor);
+      } catch {}
+      try {
+        localStorage.setItem(chave, valor);
+      } catch {}
+    }
 
     async function iniciarSessaoLead() {
       try {
@@ -6354,14 +6366,7 @@ function DiagnosticoPrototipo() {
         const chaveSessao =
           `finder_diagnostico_session_id_${chaveOrigem}`;
 
-        let sessionId =
-          sessionStorage.getItem(
-            chaveSessao
-          ) ||
-          localStorage.getItem(
-            chaveSessao
-          ) ||
-          "";
+        let sessionId = lerSessaoArmazenada(chaveSessao);
 
         if (!sessionId) {
           const uuid =
@@ -6375,15 +6380,7 @@ function DiagnosticoPrototipo() {
           sessionId =
             `sessao_${uuid}`;
 
-          sessionStorage.setItem(
-            chaveSessao,
-            sessionId
-          );
-
-          localStorage.setItem(
-            chaveSessao,
-            sessionId
-          );
+          gravarSessaoArmazenada(chaveSessao, sessionId);
         }
 
         setSessionIdLead(
@@ -6461,15 +6458,7 @@ function DiagnosticoPrototipo() {
           data.sessionId !==
             sessionId
         ) {
-          sessionStorage.setItem(
-            chaveSessao,
-            data.sessionId
-          );
-
-          localStorage.setItem(
-            chaveSessao,
-            data.sessionId
-          );
+          gravarSessaoArmazenada(chaveSessao, data.sessionId);
 
           setSessionIdLead(
             data.sessionId
@@ -6513,7 +6502,7 @@ function DiagnosticoPrototipo() {
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [aceiteOk]);
 
   async function atualizarLeadCRM(dados = {}) {
     const identificadorLead =
@@ -10785,6 +10774,21 @@ function DiagnosticoPrototipo() {
   }
 
 
+  if (verificandoTermos) {
+    return <PortaoTermos carregando />;
+  }
+
+  if (!aceiteOk) {
+    return (
+      <PortaoTermos
+        texto={TERMOS_USO_FINDER}
+        versao={TERMOS_USO_VERSAO}
+        motivo={motivoAceite({ aceito: termosAceitos, evidencia: evidenciaAceite })}
+        onAceitar={aceitarTermos}
+      />
+    );
+  }
+
   return (
     <div
       className="finder-public-stage"
@@ -10798,24 +10802,6 @@ function DiagnosticoPrototipo() {
         boxSizing: "border-box",
       }}
     >
-      {!termosAceitos && (
-        <ModalTermosUso
-          onAceitar={() => {
-            const agora = new Date().toISOString();
-            try {
-              localStorage.setItem("finder_termos_uso_aceitos_v1", "1");
-              localStorage.setItem("finder_termos_uso_aceitos_em_v1", agora);
-            } catch {}
-            setTermosAceitosEm(agora);
-            setTermosAceitos(true);
-            montarEvidenciaAceite({ texto: TERMOS_USO_FINDER, versao: TERMOS_USO_VERSAO, aceitoEm: agora }).then((evidencia) => {
-              salvarEvidencia(evidencia);
-              setEvidenciaAceite(evidencia);
-            });
-          }}
-        />
-      )}
-
       <style>{`
         .finder-public-stage {
           width: 100%;
