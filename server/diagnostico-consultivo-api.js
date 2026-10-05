@@ -106,6 +106,8 @@ function enxugarRespostas(perguntasRespostas) {
       pergunta: texto(r?.pergunta || r?.texto, 260),
       resposta: texto(r?.resposta ?? r?.valor, 60),
       detalhe: texto(r?.detalheResposta || r?.detalhe || r?.observacao, 300),
+      importancia: Number.isFinite(Number(r?.importancia)) && Number(r?.importancia) > 0 ? Number(r.importancia) : undefined,
+      risco: texto(r?.riscoAvaliado || r?.risco, 40) || undefined,
     }))
     .filter((r) => r.pergunta && r.resposta);
 }
