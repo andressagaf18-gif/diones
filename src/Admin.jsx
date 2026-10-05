@@ -41,6 +41,7 @@ import {
 import { FinderSidebar, FinderTopbar } from "./TechShell";
 import VisaoConsultiva from "./relatorios/VisaoConsultiva";
 import FichaArea from "./atendimento/FichaArea";
+import ConsentimentoLGPD, { SeloConsentimento } from "./lgpd/ConsentimentoLGPD";
 import { finderStyles } from "./Theme";
 
 // Essas quatro telas são pesadas (Tributário sozinho carrega mais de 350KB de
@@ -4390,6 +4391,10 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                         </>
                       )}
                     </div>
+
+                    <SeloConsentimento
+                      consentimento={lead.consentimento}
+                    />
                   </div>
 
                   <div>
@@ -4766,6 +4771,12 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                 </div>
               ))}
             </div>
+
+            <ConsentimentoLGPD
+              token={token}
+              dados={leadDetalheAberto.consentimento || null}
+              identificacao={leadDetalheAberto.razaoSocial || leadDetalheAberto.nome || ""}
+            />
 
             <div style={{ fontSize: 9.5, fontWeight: 800, color: MUTED, marginBottom: 6 }}>JORNADA NO FORMULÁRIO</div>
             {carregandoEventosLead && <div style={{ fontSize: 11, color: MUTED }}>Carregando...</div>}
@@ -15573,6 +15584,12 @@ function DetalheDiagnostico({
             </div>
           </Card>
         </div>
+
+        <ConsentimentoLGPD
+          token={token}
+          diagnosticoId={id}
+          identificacao={item?.razaoSocial || item?.nome || ""}
+        />
 
         <Card
           style={{
