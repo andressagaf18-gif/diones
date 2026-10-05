@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 import dashboardHandler from "../server/dashboard-engine.js";
 import { usuarioAutenticado } from "../server/auth.js";
+import { fichaAreaObter, fichaAreaSalvar } from "../server/atendimento-ficha.js";
 import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.js";
 
 // Ordem real das etapas do formulário público (App.jsx,
@@ -7287,6 +7288,19 @@ export default async function handler(req, res) {
 
       case "listar-atendimentos":
         return listarAtendimentosDepartamento(
+          req,
+          res
+        );
+
+      // Ficha da área e plano 30/60/90 da área (server/atendimento-ficha.js).
+      case "ficha-area":
+        return fichaAreaObter(
+          req,
+          res
+        );
+
+      case "ficha-area-salvar":
+        return fichaAreaSalvar(
           req,
           res
         );
