@@ -8,6 +8,15 @@ import {
 
 import Admin from "./Admin";
 import { periodosDoPlano, planoClienteHtml, AVISO_PLANO } from "./relatorios/planoCliente.js";
+import {
+  montarEvidenciaAceite,
+  lerEvidenciaSalva,
+  salvarEvidencia,
+  aceiteJaEnviado,
+  marcarAceiteEnviado,
+  registrarAceiteNoLead,
+  evidenciaParaPayload,
+} from "./lgpd/aceiteTermos.js";
 
 const NAVY = "#17233D";
 const ICE = "#E9EDF5";
@@ -1569,6 +1578,10 @@ Fica eleito o foro do domicílio da Finder of Solutions para dirimir eventuais c
 
 Ao clicar em "Aceitar", o usuário declara ter lido e concordado com todas as condições acima.
 `.trim();
+
+// Versão do texto acima. Mude sempre que o texto dos termos mudar: ela aparece
+// no comprovante de aceite, junto da impressão digital (SHA-256) do texto exato.
+const TERMOS_USO_VERSAO = "2026-10";
 
 function ModalTermosUso({ onAceitar }) {
   return (
@@ -4897,6 +4910,9 @@ function DiagnosticoPrototipo() {
       return null;
     }
   });
+  // Prova do aceite (LGPD): montada no clique e enviada ao lead da sessão.
+  const [evidenciaAceite, setEvidenciaAceite] = useState(() => lerEvidenciaSalva());
+  const [tentativaAceite, setTentativaAceite] = useState(0);
   const [envioRelatorio, setEnvioRelatorio] = useState("idle");
   const relatorioEnviadoRef = useRef(false);
   const [cnpjInput, setCnpjInput] = useState("");
@@ -5008,6 +5024,25 @@ function DiagnosticoPrototipo() {
   // =========================================================
   const [leadId, setLeadId] = useState("");
   const [sessionIdLead, setSessionIdLead] = useState("");
+
+  // Registra o aceite dos Termos no lead assim que o lead existe. Se falhar,
+  // tenta de novo (até 3 vezes) e, se ainda não der, na próxima visita.
+  useEffect(() => {
+    if (!termosAceitos || !evidenciaAceite?.hashTermos || !leadId || !sessionIdLead) return undefined;
+    if (aceiteJaEnviado(sessionIdLead, evidenciaAceite.hashTermos)) return undefined;
+
+    let cancelado = false;
+    let timer = null;
+    registrarAceiteNoLead({ sessionId: sessionIdLead, evidencia: evidenciaAceite, texto: TERMOS_USO_FINDER }).then((ok) => {
+      if (cancelado) return;
+      if (ok) marcarAceiteEnviado(sessionIdLead, evidenciaAceite.hashTermos);
+      else if (tentativaAceite < 3) timer = setTimeout(() => setTentativaAceite((n) => n + 1), 8000);
+    });
+    return () => {
+      cancelado = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [termosAceitos, evidenciaAceite, leadId, sessionIdLead, tentativaAceite]);
   const [diagnosticoIdSalvo, setDiagnosticoIdSalvo] = useState("");
   const [planoDiagnosticoLiberado, setPlanoDiagnosticoLiberado] = useState("");
   const [diagnosticoInicialGratuito, setDiagnosticoInicialGratuito] = useState(false);
@@ -6715,6 +6750,7 @@ function DiagnosticoPrototipo() {
       origem:"simulador_reforma",
       termosAceitos,
       termosAceitosEm,
+      consentimento: evidenciaParaPayload(evidenciaAceite),
       versaoRelatorioCliente:"resumida_consultiva",
       versaoRelatorioAdministracao:"completa",
       versoesRelatorio,
@@ -9304,6 +9340,7 @@ function DiagnosticoPrototipo() {
       termosAceitos,
       termosAceitosEm,
       acessoDiagnostico: planoDiagnosticoLiberado,
+      consentimento: evidenciaParaPayload(evidenciaAceite),
 
       responsavel: {
         nome,
@@ -10771,6 +10808,10 @@ function DiagnosticoPrototipo() {
             } catch {}
             setTermosAceitosEm(agora);
             setTermosAceitos(true);
+            montarEvidenciaAceite({ texto: TERMOS_USO_FINDER, versao: TERMOS_USO_VERSAO, aceitoEm: agora }).then((evidencia) => {
+              salvarEvidencia(evidencia);
+              setEvidenciaAceite(evidencia);
+            });
           }}
         />
       )}
