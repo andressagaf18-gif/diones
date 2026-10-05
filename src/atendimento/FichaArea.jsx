@@ -556,6 +556,7 @@ export default function FichaArea({ token, atendimentoId, vista = "ficha" }) {
   const [aviso, setAviso] = useState("");
   const [gerando, setGerando] = useState(false);
   const sequencia = useRef(0);
+  const fila = useRef(Promise.resolve()); // um envio por vez, na ordem dos cliques
 
   const carregar = useCallback(async () => {
     try {
@@ -581,14 +582,20 @@ export default function FichaArea({ token, atendimentoId, vista = "ficha" }) {
       const minha = ++sequencia.current;
       setErro("");
       if (otimista) setDados((d) => (d ? otimista(d) : d));
-      try {
-        const d = await chamarApi(token, "/api/crm?action=ficha-area-salvar", { method: "POST", body: { atendimentoId, ...parcial } });
-        if (minha === sequencia.current) setDados(d);
-        if (mensagem) setAviso(mensagem);
-      } catch (e) {
-        setErro(e.message);
-        carregar(); // volta ao que está de fato salvo
-      }
+      // Uma gravação por vez: sem isso, dois cliques rápidos viram duas requisições em voo
+      // que podem chegar fora de ordem ou se sobrepor no servidor.
+      const envio = fila.current.then(async () => {
+        try {
+          const d = await chamarApi(token, "/api/crm?action=ficha-area-salvar", { method: "POST", body: { atendimentoId, ...parcial } });
+          if (minha === sequencia.current) setDados(d);
+          if (mensagem) setAviso(mensagem);
+        } catch (e) {
+          setErro(e.message);
+          carregar(); // volta ao que está de fato salvo
+        }
+      });
+      fila.current = envio;
+      return envio;
     },
     [token, atendimentoId, carregar]
   );
