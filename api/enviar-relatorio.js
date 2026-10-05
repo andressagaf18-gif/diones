@@ -455,6 +455,11 @@ function achatarRespostasResultado(
                     p.risco ||
                     "",
 
+                  detalheResposta:
+                    String(
+                      p.detalheResposta ||
+                      ""
+                    ).slice(0, 1200),
                   scoreArea:
                     area.score ??
                     null,
@@ -516,6 +521,11 @@ function achatarRespostasResultado(
             area.riscoAvaliado ||
             area.risco ||
             "",
+          detalheResposta:
+            String(
+              area.detalheResposta ||
+              ""
+            ).slice(0, 1200),
         });
       }
     }
@@ -631,6 +641,11 @@ function normalizarPerguntasRespostas({
             original?.riscoAvaliado ||
             original?.risco ||
             "",
+          detalheResposta:
+            String(
+              resposta.detalheResposta ||
+              ""
+            ).slice(0, 1200),
         };
       }
     );
