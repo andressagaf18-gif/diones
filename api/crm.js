@@ -4,6 +4,7 @@ import dashboardHandler from "../server/dashboard-engine.js";
 import { usuarioAutenticado } from "../server/auth.js";
 import { fichaAreaObter, fichaAreaSalvar } from "../server/atendimento-ficha.js";
 import { registrarAceite, consentimentoObter, termosTexto, anexarConsentimentos } from "../server/consentimento-lgpd.js";
+import dashboardVisaoHandler from "../server/dashboard-visao.js";
 import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.js";
 
 // Ordem real das etapas do formulário público (App.jsx,
@@ -7171,6 +7172,13 @@ export default async function handler(req, res) {
     // Ele nao deve aguardar dezenas de DDLs da migracao do CRM em todo cold start.
     if (action === "dashboard") {
       return dashboardHandler(req, res);
+    }
+
+    // Visão completa do sistema (LGPD, análise consultiva, planos por área,
+    // clientes, agenda, checkout, auditoria) — server/dashboard-visao.js.
+    // Também antes da migração geral: cada bloco tem fallback próprio.
+    if (action === "dashboard-visao") {
+      return dashboardVisaoHandler(req, res);
     }
 
     // Cliente 360 e Documentos possuem schema e handlers próprios.
