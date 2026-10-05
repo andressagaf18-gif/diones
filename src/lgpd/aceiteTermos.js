@@ -120,3 +120,35 @@ export function evidenciaParaPayload(evidencia) {
   const { versaoTermos, hashTermos, aceitoEm, fusoHorario, idioma, tela, userAgent } = evidencia;
   return { versaoTermos, hashTermos, aceitoEm, fusoHorario, idioma, tela, userAgent };
 }
+
+// ---------------------------------------------------------
+// TRAVA DE ACEITE (quem entra pelo link precisa aceitar para continuar)
+// ---------------------------------------------------------
+
+// O aceite só vale se for da versão ATUAL dos termos e se existir comprovante.
+// Quando dá para conferir, o texto exato também precisa ser o mesmo: assim, se o texto
+// for alterado sem trocar o número da versão, todos aceitam de novo mesmo assim.
+export function aceiteVigente({ aceito, evidencia, versaoAtual, hashAtual }) {
+  if (!aceito) return false;
+  if (!evidencia || typeof evidencia !== "object" || !evidencia.aceitoEm) return false;
+  if (String(evidencia.versaoTermos || "") !== String(versaoAtual || "")) return false;
+  const guardado = String(evidencia.hashTermos || "");
+  const atual = String(hashAtual || "");
+  if (guardado && atual && guardado !== atual) return false;
+  return true;
+}
+
+// Por que a pessoa está vendo a tela de aceite:
+//   primeiro     -> nunca aceitou
+//   nova_versao  -> aceitou uma versão (ou um texto) que não é mais o atual
+//   sem_registro -> aceitou antes de existir comprovante; precisa registrar de novo
+export function motivoAceite({ aceito, evidencia }) {
+  if (evidencia && typeof evidencia === "object" && evidencia.aceitoEm) return "nova_versao";
+  if (aceito) return "sem_registro";
+  return "primeiro";
+}
+
+// Evidência mínima para quando não foi possível montar a completa: a pessoa nunca fica presa na tela de aceite.
+export function evidenciaMinima({ versao, aceitoEm }) {
+  return { versaoTermos: String(versao || ""), hashTermos: "", aceitoEm, fusoHorario: "", idioma: "", tela: "", userAgent: "" };
+}
