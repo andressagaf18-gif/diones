@@ -40,6 +40,7 @@ import {
 
 import { FinderSidebar, FinderTopbar } from "./TechShell";
 import VisaoConsultiva from "./relatorios/VisaoConsultiva";
+import FichaArea from "./atendimento/FichaArea";
 import { finderStyles } from "./Theme";
 
 // Essas quatro telas são pesadas (Tributário sozinho carrega mais de 350KB de
@@ -9624,6 +9625,8 @@ async function salvarPropostaCaso() {
               {[
                 ["resumo", "Visão geral"],
                 ["diagnostico", "Diagnóstico"],
+                ["fichaArea", "Ficha da área"],
+                ["planoArea", "Plano 30/60/90"],
                 ["documentos", "Documentos"],
                 ["acionamento", "Acionamento"],
                 [
@@ -10025,6 +10028,26 @@ async function salvarPropostaCaso() {
                     </Card>
                   </div>
                 )}
+
+                {abaCaso ===
+                  "fichaArea" &&
+                  atendimentoAberto?.id && (
+                    <FichaArea
+                      token={token}
+                      atendimentoId={atendimentoAberto.id}
+                      vista="ficha"
+                    />
+                  )}
+
+                {abaCaso ===
+                  "planoArea" &&
+                  atendimentoAberto?.id && (
+                    <FichaArea
+                      token={token}
+                      atendimentoId={atendimentoAberto.id}
+                      vista="plano"
+                    />
+                  )}
 
                 {abaCaso ===
                   "documentos" && (
