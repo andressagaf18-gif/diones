@@ -486,6 +486,11 @@ async function obterInterno(req, res) {
   });
 }
 
+// Quantas vezes relê e refaz a gravação quando outra pessoa altera o mesmo atendimento ao mesmo tempo.
+const MAX_TENTATIVAS_GRAVACAO = 8;
+
+const espera = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function salvarInterno(req, res) {
   const usuario = usuarioAutenticado(req);
   if (!usuario) return enviar(res, 401, { sucesso: false, error: "Não autorizado." });
@@ -498,73 +503,109 @@ async function salvarInterno(req, res) {
     return enviar(res, 400, { sucesso: false, error: "O plano deve ser uma lista de ações." });
   }
 
-  const dados = await carregar(id);
-  if (!dados) return enviar(res, 404, { sucesso: false, error: "Atendimento não encontrado." });
+  // Ler -> calcular -> gravar só vale se a linha NÃO mudou desde a leitura. Sem isso, duas
+  // gravações próximas (dois cliques rápidos, duas pessoas) se atropelam e uma marcação some.
+  // Se mudou, relê e refaz sobre o estado novo. As marcações da ficha são pontuais e se
+  // somam; já o plano chega como lista inteira, então se outra pessoa o alterou no meio
+  // avisamos (409) em vez de apagar a alteração dela.
+  let planoDaPrimeiraLeitura = null;
 
-  const { atendimento, diagnostico } = dados;
-  const antes = montarFicha({ atendimento, diagnostico, ficha: atendimento.ficha_area, plano: atendimento.plano_execucao });
+  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_GRAVACAO; tentativa += 1) {
+    const dados = await carregar(id);
+    if (!dados) return enviar(res, 404, { sucesso: false, error: "Atendimento não encontrado." });
 
-  let ficha = aplicarFicha(atendimento.ficha_area, body);
-  let planoGravado = lista(atendimento.plano_execucao);
-  let eventos = [];
+    const { atendimento, diagnostico } = dados;
+    const fichaLida = atendimento.ficha_area ?? {};
+    const planoLido = atendimento.plano_execucao ?? [];
 
-  if (body.acoes !== undefined) {
-    const novas = normalizarAcoesEntrada(body.acoes, antes.acoes);
-    eventos = eventosDoPlano(antes.acoes, novas);
-
-    // Ação da análise que o especialista removeu não deve reaparecer.
-    const idsNovos = new Set(novas.map((a) => a.id));
-    const removidasDaAnalise = antes.acoes.filter((a) => a.origem === "CONSULTIVO" && !idsNovos.has(a.id)).map((a) => a.id);
-    ficha.descartadas = [...new Set([...lista(ficha.descartadas), ...removidasDaAnalise])].slice(-MAX_DESCARTADAS);
-    planoGravado = novas;
-  }
-
-  await sql`
-    UPDATE crm_atendimentos_departamento
-    SET ficha_area = ${JSON.stringify(ficha)}::jsonb,
-        plano_execucao = ${JSON.stringify(planoGravado)}::jsonb,
-        updated_at = NOW()
-    WHERE id = ${id}
-  `;
-
-  const nomeUsuario = txt(usuario?.nome || usuario?.login || "Usuário", 160);
-  for (const ev of eventos) {
-    await sql`
-      INSERT INTO crm_atendimento_historico (
-        id, atendimento_id, diagnostico_id, lead_id, tipo_evento, tipo_acionamento,
-        resultado, descricao, status_anterior, status_novo, responsavel_id, responsavel_nome
-      )
-      VALUES (
-        ${crypto.randomUUID()}, ${id}, ${atendimento.diagnostico_id || ""}, ${atendimento.lead_id || ""},
-        'PLANO_AREA', 'Plano da área', ${ev.resultado}, ${ev.descricao}, ${ev.de}, ${ev.para},
-        ${txt(usuario?.sub, 140)}, ${nomeUsuario}
-      )
-    `;
-  }
-
-  if (eventos.length) {
-    try {
-      await registrarEventoSistema(req, usuario, {
-        acao: "plano_area_atualizado",
-        modulo: "crm",
-        recurso: "atendimento",
-        recursoId: id,
-        descricao: `${atendimento.area} — ${eventos.length} alteração(ões) no plano 30/60/90.`,
+    const planoSerializado = JSON.stringify(planoLido);
+    if (planoDaPrimeiraLeitura === null) {
+      planoDaPrimeiraLeitura = planoSerializado;
+    } else if (body.acoes !== undefined && planoSerializado !== planoDaPrimeiraLeitura) {
+      return enviar(res, 409, {
+        sucesso: false,
+        error: "O plano foi alterado por outra pessoa enquanto você salvava. Os dados foram recarregados; refaça a alteração.",
       });
-    } catch (erro) {
-      console.warn("[atendimento-ficha] auditoria indisponível:", erro?.message || erro);
     }
+
+    const antes = montarFicha({ atendimento, diagnostico, ficha: atendimento.ficha_area, plano: atendimento.plano_execucao });
+
+    let ficha = aplicarFicha(atendimento.ficha_area, body);
+    let planoGravado = lista(atendimento.plano_execucao);
+    let eventos = [];
+
+    if (body.acoes !== undefined) {
+      const novas = normalizarAcoesEntrada(body.acoes, antes.acoes);
+      eventos = eventosDoPlano(antes.acoes, novas);
+
+      // Ação da análise que o especialista removeu não deve reaparecer.
+      const idsNovos = new Set(novas.map((a) => a.id));
+      const removidasDaAnalise = antes.acoes.filter((a) => a.origem === "CONSULTIVO" && !idsNovos.has(a.id)).map((a) => a.id);
+      ficha.descartadas = [...new Set([...lista(ficha.descartadas), ...removidasDaAnalise])].slice(-MAX_DESCARTADAS);
+      planoGravado = novas;
+    }
+
+    const gravado = await sql`
+      UPDATE crm_atendimentos_departamento
+      SET ficha_area = ${JSON.stringify(ficha)}::jsonb,
+          plano_execucao = ${JSON.stringify(planoGravado)}::jsonb,
+          updated_at = NOW()
+      WHERE id = ${id}
+        AND COALESCE(ficha_area, '{}'::jsonb) = ${JSON.stringify(fichaLida)}::jsonb
+        AND COALESCE(plano_execucao, '[]'::jsonb) = ${planoSerializado}::jsonb
+      RETURNING id
+    `;
+
+    if (!gravado.length) {
+      // alguém gravou no meio: espera um instante (aleatório, para não colidir de novo em sincronia), relê e refaz
+      await espera(10 + Math.floor(Math.random() * 50));
+      continue;
+    }
+
+    const nomeUsuario = txt(usuario?.nome || usuario?.login || "Usuário", 160);
+    for (const ev of eventos) {
+      await sql`
+        INSERT INTO crm_atendimento_historico (
+          id, atendimento_id, diagnostico_id, lead_id, tipo_evento, tipo_acionamento,
+          resultado, descricao, status_anterior, status_novo, responsavel_id, responsavel_nome
+        )
+        VALUES (
+          ${crypto.randomUUID()}, ${id}, ${atendimento.diagnostico_id || ""}, ${atendimento.lead_id || ""},
+          'PLANO_AREA', 'Plano da área', ${ev.resultado}, ${ev.descricao}, ${ev.de}, ${ev.para},
+          ${txt(usuario?.sub, 140)}, ${nomeUsuario}
+        )
+      `;
+    }
+
+    if (eventos.length) {
+      try {
+        await registrarEventoSistema(req, usuario, {
+          acao: "plano_area_atualizado",
+          modulo: "crm",
+          recurso: "atendimento",
+          recursoId: id,
+          descricao: `${atendimento.area} — ${eventos.length} alteração(ões) no plano 30/60/90.`,
+        });
+      } catch (erro) {
+        console.warn("[atendimento-ficha] auditoria indisponível:", erro?.message || erro);
+      }
+    }
+
+    const atualizado = await carregar(id);
+    return enviar(res, 200, {
+      sucesso: true,
+      ...montarFicha({
+        atendimento: atualizado.atendimento,
+        diagnostico: atualizado.diagnostico,
+        ficha: atualizado.atendimento.ficha_area,
+        plano: atualizado.atendimento.plano_execucao,
+      }),
+    });
   }
 
-  const atualizado = await carregar(id);
-  return enviar(res, 200, {
-    sucesso: true,
-    ...montarFicha({
-      atendimento: atualizado.atendimento,
-      diagnostico: atualizado.diagnostico,
-      ficha: atualizado.atendimento.ficha_area,
-      plano: atualizado.atendimento.plano_execucao,
-    }),
+  return enviar(res, 409, {
+    sucesso: false,
+    error: "Este atendimento está sendo alterado por outras pessoas neste momento. Tente novamente em instantes.",
   });
 }
 
