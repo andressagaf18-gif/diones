@@ -3,6 +3,7 @@
 import { neon } from "@neondatabase/serverless";
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
 import { limparCodigoInternoRelatorio } from "../server/diagnostic-consultivo.js";
+import { consentimentoDoDiagnostico } from "../server/consentimento-lgpd.js";
 
 // =========================================================
 // FUNÇÕES AUXILIARES
@@ -1381,6 +1382,19 @@ export default async function handler(
       ALTER TABLE diagnosticos
       ADD COLUMN IF NOT EXISTS termos_aceitos_em TIMESTAMPTZ
     `;
+    await sql`
+      ALTER TABLE diagnosticos
+      ADD COLUMN IF NOT EXISTS consentimento JSONB
+    `;
+
+    // Prova do aceite dos Termos (LGPD): herda a registrada no lead, no momento
+    // do clique, e acrescenta o contexto do envio. Nunca impede o salvamento.
+    let consentimento = null;
+    try {
+      consentimento = await consentimentoDoDiagnostico({ db: sql, req, body });
+    } catch (erroConsentimento) {
+      console.warn("[enviar-relatorio] consentimento indisponível:", erroConsentimento?.message || erroConsentimento);
+    }
 
     const rows =
       await sql`
@@ -1403,7 +1417,8 @@ export default async function handler(
           diagnostico,
           dados_completos,
           termos_aceitos,
-          termos_aceitos_em
+          termos_aceitos_em,
+          consentimento
         )
         VALUES (
           ${nomeResponsavel},
@@ -1424,7 +1439,8 @@ export default async function handler(
           ${diagnosticoJson}::jsonb,
           ${completoJson}::jsonb,
           ${termosAceitos},
-          ${termosAceitosEm}
+          ${termosAceitosEm},
+          ${consentimento ? JSON.stringify(consentimento) : null}::jsonb
         )
         RETURNING
           id,
