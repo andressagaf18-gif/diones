@@ -2,6 +2,94 @@
 
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
 
+// ============================================================
+// FONTES DE CONSULTA (com fallback e limite de tempo)
+// ============================================================
+
+const TEMPO_LIMITE_MS = 8000;
+
+async function buscarJson(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), TEMPO_LIMITE_MS);
+  try {
+    const r = await fetch(url, {
+      method: "GET",
+      signal: ctrl.signal,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; Finder-of-Solutions-Diagnostico/1.0)",
+      },
+    });
+    const texto = await r.text();
+    let json = null;
+    try { json = JSON.parse(texto); } catch { /* não é JSON */ }
+    return { status: r.status, ok: r.ok, json };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// cnpj.ws usa outro formato; converte para o formato da BrasilAPI.
+function normalizarCnpjWs(d) {
+  const est = d?.estabelecimento;
+  if (!est) return null;
+  const tel = est.ddd1 && est.telefone1 ? `${est.ddd1}${est.telefone1}` : "";
+  return {
+    cnpj: est.cnpj,
+    razao_social: d.razao_social || "",
+    nome_fantasia: est.nome_fantasia || "",
+    porte: d.porte?.descricao || "",
+    natureza_juridica: d.natureza_juridica?.descricao || "",
+    descricao_situacao_cadastral: est.situacao_cadastral || "",
+    data_inicio_atividade: est.data_inicio_atividade || "",
+    ddd_telefone_1: tel,
+    email: est.email || "",
+    logradouro: [est.tipo_logradouro, est.logradouro].filter(Boolean).join(" "),
+    numero: est.numero || "",
+    complemento: est.complemento || "",
+    bairro: est.bairro || "",
+    municipio: est.cidade?.nome || "",
+    uf: est.estado?.sigla || "",
+    cep: est.cep || "",
+    cnae_fiscal: est.atividade_principal?.subclasse?.replace(/\D/g, "") || est.atividade_principal?.id || "",
+    cnae_fiscal_descricao: est.atividade_principal?.descricao || "",
+    cnaes_secundarios: (est.atividades_secundarias || []).map((x) => ({
+      codigo: String(x.subclasse || x.id || "").replace(/\D/g, ""),
+      descricao: x.descricao || "",
+    })),
+  };
+}
+
+async function consultarComFallback(digits) {
+  const fontes = [
+    { nome: "BrasilAPI", url: `https://brasilapi.com.br/api/cnpj/v1/${digits}`, norm: (j) => j },
+    { nome: "MinhaReceita", url: `https://minhareceita.org/${digits}`, norm: (j) => j },
+    { nome: "CNPJ.ws", url: `https://publica.cnpj.ws/cnpj/${digits}`, norm: normalizarCnpjWs },
+  ];
+  const tentativas = [];
+  let naoEncontrado = 0;
+
+  for (const f of fontes) {
+    try {
+      const r = await buscarJson(f.url);
+      if (r.ok && r.json) {
+        const data = f.norm(r.json);
+        if (data && (data.razao_social || data.razaoSocial || data.cnae_fiscal)) {
+          if (f.nome !== "BrasilAPI") console.warn(`[CNPJ] Usou fonte alternativa: ${f.nome}`);
+          return { ok: true, data, fonte: f.nome, tentativas };
+        }
+      }
+      if (r.status === 404) naoEncontrado += 1;
+      tentativas.push(`${f.nome}: HTTP ${r.status}`);
+    } catch (e) {
+      tentativas.push(`${f.nome}: ${e?.name === "AbortError" ? "tempo esgotado" : String(e?.message || e)}`);
+    }
+  }
+  // só afirma "não encontrado" se mais de uma fonte confirmou 404
+  return { ok: false, naoEncontrado: naoEncontrado >= 2, tentativas };
+}
+
+
 export default async function handler(req, res) {
   const inicioSaude = Date.now();
 
@@ -516,36 +604,14 @@ export default async function handler(req, res) {
       digits
     );
 
-    const url =
-      `https://brasilapi.com.br/api/cnpj/v1/${digits}`;
+    // Tenta várias fontes, em ordem, com limite de tempo. Se uma estiver
+    // fora do ar, bloqueada ou lenta, usa a próxima.
+    const resultado = await consultarComFallback(digits);
 
-    const response = await fetch(url, {
-      method: "GET",
+    if (!resultado.ok) {
+      console.error("[CNPJ] Todas as fontes falharam:", resultado.tentativas);
 
-      headers: {
-        Accept: "application/json",
-
-        "User-Agent":
-          "Finder-of-Solutions-Diagnostico/1.0",
-      },
-    });
-
-    // =======================================================
-    // 6. LER RESPOSTA COMO TEXTO PRIMEIRO
-    // Evita erro de JSON inválido
-    // =======================================================
-
-    const textoResposta =
-      await response.text();
-
-    if (!response.ok) {
-      console.error(
-        "[CNPJ] Erro BrasilAPI:",
-        response.status,
-        textoResposta
-      );
-
-      if (response.status === 404) {
+      if (resultado.naoEncontrado) {
         return res.status(404).json({
           sucesso: false,
           error: "CNPJ não encontrado.",
@@ -553,51 +619,21 @@ export default async function handler(req, res) {
         });
       }
 
-      if (response.status === 403) {
-        return res.status(503).json({
-          sucesso: false,
+      await registrarSaudeModulo({
+        modulo: MODULOS_SAUDE.CONSULTA_CNPJ,
+        status: "ERRO",
+        duracaoMs: Date.now() - inicioSaude,
+        mensagemErro: resultado.tentativas.join(" | ").slice(0, 500),
+      });
 
-          error:
-            "O serviço de consulta de CNPJ recusou temporariamente a consulta.",
-
-          statusBrasilAPI: 403,
-        });
-      }
-
-      return res.status(502).json({
+      return res.status(503).json({
         sucesso: false,
-
         error:
-          "Não foi possível consultar os dados do CNPJ.",
-
-        statusBrasilAPI:
-          response.status,
+          "Os serviços de consulta de CNPJ estão indisponíveis agora. Tente novamente em instantes ou preencha os dados manualmente.",
       });
     }
 
-    // =======================================================
-    // 7. CONVERTER PARA JSON COM SEGURANÇA
-    // =======================================================
-
-    let data;
-
-    try {
-      data =
-        JSON.parse(textoResposta);
-    } catch (parseError) {
-      console.error(
-        "[CNPJ] BrasilAPI retornou conteúdo que não é JSON:",
-        textoResposta
-      );
-
-      return res.status(502).json({
-        sucesso: false,
-
-        error:
-          "O serviço de consulta retornou uma resposta inválida.",
-      });
-    }
-
+    const data = resultado.data;
     // =========================================================
     // 8. CNAE PRINCIPAL
     // =========================================================
