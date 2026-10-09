@@ -22,6 +22,7 @@ import {
   sha256Hex,
 } from "./lgpd/aceiteTermos.js";
 import PortaoTermos from "./lgpd/PortaoTermos.jsx";
+import QrLink, { linkDoEventoAtual } from "./qr/QrLink.jsx";
 
 const NAVY = "#17233D";
 const ICE = "#E9EDF5";
@@ -1742,7 +1743,10 @@ function SimuladorReformaPublico({
   const [reducaoIbs,setReducaoIbs]=useState("0");
   const [tratamentoIbsCbs,setTratamentoIbsCbs]=useState("PADRAO");
   const [classificacaoFiscal,setClassificacaoFiscal]=useState("");
-  const [tratamentoConfirmado,setTratamentoConfirmado]=useState(false);
+  const [tratamentoConfirmadoBase,setTratamentoConfirmado]=useState(false);
+  // Outras atividades (CNAEs) da mesma empresa que entram na simulação.
+  // Cada uma tem sua participação no faturamento e sua própria redução.
+  const [atividadesExtras,setAtividadesExtras]=useState([]);
   const [nbsNcm,setNbsNcm]=useState("");
   const [pesquisaTributaria,setPesquisaTributaria]=useState(null);
   const [pesquisandoTributaria,setPesquisandoTributaria]=useState(false);
@@ -2081,8 +2085,18 @@ function SimuladorReformaPublico({
     :null;
   const cbsNom=n(cbs);
   const ibsNom=n(ibs);
-  const redCbs=Math.min(100,Math.max(0,n(reducaoCbs)));
-  const redIbs=Math.min(100,Math.max(0,n(reducaoIbs)));
+  const pctExtras=atividadesExtras.reduce((t,x)=>t+Math.max(0,n(x.pct)),0);
+  const pctPrincipal=Math.max(0,100-pctExtras);
+  const multiplasAtividades=atividadesExtras.length>0;
+  const participacaoInvalida=multiplasAtividades&&(pctExtras>=100||pctExtras<=0);
+  const extrasProntas=atividadesExtras.every(x=>x.estado==="ok");
+  const tratamentoConfirmado=tratamentoConfirmadoBase&&extrasProntas;
+  // Média ponderada pela participação de cada atividade no faturamento.
+  const reducaoPonderada=(basePct)=>multiplasAtividades
+    ?(pctPrincipal*basePct+atividadesExtras.reduce((t,x)=>t+Math.max(0,n(x.pct))*(Number(x.reducaoPct)||0),0))/100
+    :basePct;
+  const redCbs=Math.min(100,Math.max(0,reducaoPonderada(n(reducaoCbs))));
+  const redIbs=Math.min(100,Math.max(0,reducaoPonderada(n(reducaoIbs))));
   // EC 132/2023, arts. 125 e 127 do ADCT:
   // em 2027 e 2028 o IBS total e fixo em 0,1% (0,05% estadual +
   // 0,05% municipal) e a CBS usa a referencia do ano menos 0,1 p.p.
@@ -2546,8 +2560,76 @@ function SimuladorReformaPublico({
     }
   }
 
+  function valorAtividade(item){
+    return `${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
+  }
+
+  function atualizarExtra(valor,patch){
+    setAtividadesExtras(lista=>lista.map(x=>x.valor===valor?{...x,...patch}:x));
+  }
+
+  async function pesquisarAtividadeExtra(item){
+    const valor=valorAtividade(item);
+    const cnae=String(item.codigo||"").replace(/\D/g,"").slice(0,7);
+    const atividade=String(item.descricao||"").trim();
+    if(cnae.length!==7||atividade.length<10){
+      atualizarExtra(valor,{estado:"erro",erro:"CNAE incompleto para pesquisa."});
+      return;
+    }
+    atualizarExtra(valor,{estado:"pesquisando",erro:""});
+    try{
+      const resposta=await fetch("/api/pesquisa-tributaria?acao=pesquisar",{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({
+          cnpj:String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,""),
+          cnae,atividadeReal:atividade,nbsNcm:"",regime,
+          municipio:empresaCadastral?.endereco?.municipio||"",
+          uf:empresaCadastral?.endereco?.uf||"",ano:cenarioAliquota,
+          cbsReferenciaPct:n(cbs),ibsReferenciaPct:n(ibs),
+          situacaoPremissaReferencia:"ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
+          fontePremissaReferencia:"Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva",
+        }),
+      });
+      const data=await resposta.json().catch(()=>null);
+      if(!resposta.ok||!data?.sucesso)throw new Error(data?.error||"Não foi possível pesquisar esta atividade.");
+      const premissas=data.status==="VALIDADO"?data.premissasConfirmadas:null;
+      const sugerida=Number(data.resultado?.beneficio_legal?.percentual_reducao_pct??0);
+      const setor=String(data.resultado?.classificacao_operacao?.setor||"").toUpperCase();
+      if(premissas){
+        atualizarExtra(valor,{
+          estado:"ok",erro:"",setor,
+          reducaoPct:Number(premissas.reducaoPct??sugerida??0)||0,
+          baseLegal:premissas.baseLegal||data.resultado?.tratamento_sugerido||"",
+        });
+      }else{
+        atualizarExtra(valor,{
+          estado:"pendente",setor,reducaoPct:0,
+          erro:"A pesquisa não confirmou o enquadramento desta atividade; ela entra sem redução até validação.",
+        });
+      }
+    }catch(error){
+      atualizarExtra(valor,{estado:"erro",erro:error?.message||"Falha na pesquisa desta atividade."});
+    }
+  }
+
+  function alternarAtividadeExtra(item){
+    const valor=valorAtividade(item);
+    if(valor===atividadeSelecionada)return;
+    const existe=atividadesExtras.some(x=>x.valor===valor);
+    if(existe){
+      setAtividadesExtras(lista=>lista.filter(x=>x.valor!==valor));
+      return;
+    }
+    setAtividadesExtras(lista=>[...lista,{
+      valor,codigo:String(item.codigo||""),descricao:String(item.descricao||""),
+      pct:"",estado:"idle",reducaoPct:0,baseLegal:"",erro:"",setor:"",
+    }]);
+    pesquisarAtividadeExtra(item);
+  }
+
   function selecionarAtividade(item){
     const valor=`${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
+    setAtividadesExtras(lista=>lista.filter(x=>x.valor!==valor));
     setAtividadeSelecionada(valor);
     setDescricaoAtividadeReal(String(item.descricao||""));
     setNatureza(classificarNaturezaPorCnae(item.descricao));
@@ -2728,6 +2810,8 @@ function SimuladorReformaPublico({
     const aplicacaoCondicional=pesquisaTributaria?.premissasConfirmadas?.aplicacaoCondicional===true;
     if(naoSeiImpostoAtual)pendencias.push("Confirmar a carga atual nos documentos fiscais e no PGDAS.");
     if(!tratamentoConfirmado&&(redCbs>0||redIbs>0))pendencias.push("A pesquisa automática não confirmou o enquadramento legal da redução.");
+    if(participacaoInvalida)pendencias.push("Informe a participação (%) de cada atividade adicional no faturamento; a soma deve ficar abaixo de 100%.");
+    if(multiplasAtividades&&!extrasProntas)pendencias.push("Há atividade adicional sem tratamento tributário confirmado; ela foi considerada sem redução.");
     if(aplicacaoCondicional){
       pendencias.push("A redução legal foi aplicada automaticamente à simulação, condicionada à comprovação dos requisitos indicados na pesquisa.");
     }
@@ -2851,6 +2935,11 @@ function SimuladorReformaPublico({
       cbsPct:cbsNom,
       ibsPct:ibsNom,
       reducaoCbsPct:redCbs,
+      atividadesAdicionais:atividadesExtras.map(x=>({
+        cnae:x.codigo,descricao:x.descricao,participacaoPct:n(x.pct),
+        reducaoPct:Number(x.reducaoPct)||0,confirmada:x.estado==="ok",baseLegal:x.baseLegal||"",
+      })),
+      participacaoAtividadePrincipalPct:multiplasAtividades?pctPrincipal:100,
       reducaoIbsPct:redIbs,
       tratamentoIbsCbs,
       classificacaoFiscal,
@@ -2918,6 +3007,7 @@ function SimuladorReformaPublico({
 
   useEffect(()=>{onSnapshot?.(snapshot)},[
     etapa,cnpj,empresaCadastral,atividadesReais,atividadeSelecionada,
+    atividadesExtras,
     descricaoAtividadeReal,regime,natureza,faturamento,impostoAtual,
     naoSeiImpostoAtual,rbt12,anexoSimples,fs12,aliquotaLocalAtual,
     aliquotaLocalConfirmada,custosDespesasDedutiveis,tributosFora,
@@ -3308,7 +3398,7 @@ ${decisao.pendencias?.length?`<h2 class="section">O que precisa ser confirmado</
   <div class="box">
     <div class="row"><span>Razão social</span><strong>${empresaNome}</strong></div>
     <div class="row"><span>CNPJ</span><strong>${String(empresaCadastral?.cnpj||cnpj||"")}</strong></div>
-    <div class="row"><span>Atividade selecionada</span><strong>${atividadeSelecionada||"-"}</strong></div>
+    <div class="row"><span>Atividade selecionada</span><strong>${atividadeSelecionada||"-"}${multiplasAtividades?` (${pctPrincipal.toFixed(1).replace(".",",")}% do faturamento)`:""}</strong></div>${atividadesExtras.map(x=>`<div class="row"><span>Atividade adicional</span><strong>${escapar(x.codigo||"")} ${escapar(x.descricao||"")} (${String(n(x.pct)).replace(".",",")}% do faturamento · redução ${String(Number(x.reducaoPct)||0).replace(".",",")}%)</strong></div>`).join("")}
     <div class="row"><span>Natureza utilizada</span><strong>${natureza||"-"}</strong></div>
     <div class="row"><span>Regime informado</span><strong>${regime||"-"}</strong></div>
   </div>
@@ -3639,8 +3729,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             const valor=`${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
             const ativo=atividadeSelecionada===valor;
 
-            return <button
-              key={`${item.codigo}-${i}`}
+            const extra=atividadesExtras.find(x=>x.valor===valor);
+            return <div key={`${item.codigo}-${i}`}>
+            <button
               type="button"
               onClick={()=>selecionarAtividade(item)}
               style={{
@@ -3648,7 +3739,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
                 border:`1px solid ${ativo?"#31589C":"#E1E6EE"}`,
                 borderRadius:10,
                 padding:9,
-                background:ativo?"#EEF3FF":"#fff",
+                background:ativo?"#EEF3FF":extra?"#F1F8F3":"#fff",width:"100%",
                 color:NAVY,cursor:"pointer"
               }}
             >
@@ -3660,8 +3751,38 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
                 {item.descricao}
               </div>
             </button>
+            {!ativo&&<div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,margin:"4px 2px 0"}}>
+              <button type="button" onClick={()=>alternarAtividadeExtra(item)} style={{
+                border:`1px solid ${extra?"#2E7D4F":"#C9D2E0"}`,borderRadius:8,padding:"4px 8px",
+                fontSize:7.5,fontWeight:800,background:extra?"#E4F3EA":"#fff",color:extra?"#1F6B3F":NAVY,cursor:"pointer"
+              }}>{extra?"✓ Incluída na simulação (remover)":"+ Esta atividade também faz parte da operação"}</button>
+              {extra&&<label style={{fontSize:7.5,color:MUTED,display:"flex",alignItems:"center",gap:4}}>
+                % do faturamento
+                <input value={extra.pct} inputMode="decimal" placeholder="0"
+                  onChange={e=>atualizarExtra(valor,{pct:e.target.value})}
+                  style={{...input,width:64,padding:"3px 6px",fontSize:9}}/>
+              </label>}
+              {extra&&<span style={{fontSize:7.5,color:extra.estado==="ok"?"#1F6B3F":extra.estado==="pesquisando"||extra.estado==="idle"?MUTED:"#A15C00"}}>
+                {extra.estado==="pesquisando"||extra.estado==="idle"?"Pesquisando tratamento…"
+                  :extra.estado==="ok"?`Redução IBS/CBS: ${String(extra.reducaoPct).replace(".",",")}%`
+                  :extra.erro}
+              </span>}
+              {extra&&(extra.estado==="erro"||extra.estado==="pendente")&&<button type="button" onClick={()=>pesquisarAtividadeExtra(item)} style={{
+                border:"1px solid #C9D2E0",borderRadius:8,padding:"3px 7px",fontSize:7.5,background:"#fff",color:NAVY,cursor:"pointer"
+              }}>Pesquisar de novo</button>}
+            </div>}
+            </div>
           })}
         </div>
+
+        {multiplasAtividades&&<div style={{
+          marginTop:8,borderRadius:9,padding:8,fontSize:8,lineHeight:1.45,
+          background:participacaoInvalida?"#FFF4E5":"#F1F8F3",color:NAVY
+        }}>
+          <b>Participação no faturamento:</b> atividade principal da simulação {String(pctPrincipal.toFixed(1)).replace(".",",")}%
+          {atividadesExtras.map(x=>` · ${x.codigo||"CNAE"} ${String(n(x.pct)).replace(".",",")}%`).join("")}.
+          {participacaoInvalida&&<><br/>Informe a % de cada atividade adicional; a soma deve ficar abaixo de 100% para sobrar parte à atividade principal.</>}
+        </div>}
 
         {atividadeSelecionada&&<div style={{
           marginTop:8,background:"#F7F9FC",
@@ -11123,15 +11244,11 @@ function DiagnosticoPrototipo() {
                     boxShadow: "0 8px 26px rgba(23,35,61,0.10)",
                   }}
                 >
-                  <img
-                    src="/qrcode-diagnostico.png"
-                    alt="QR Code do Diagnóstico Empresarial"
-                    style={{
-                      width: 190,
-                      height: 190,
-                      display: "block",
-                      objectFit: "contain",
-                    }}
+                  {/* QR gerado a partir do link do evento aberto (mesma origem). */}
+                  <QrLink
+                    valor={linkDoEventoAtual(origemAtual)}
+                    tamanho={190}
+                    titulo="QR Code do Diagnóstico Empresarial"
                   />
                 </div>
 
