@@ -121,6 +121,75 @@ function cortarJson(valor, limite = 5000) {
   }
 }
 
+// Resumo enxuto do Simulador da Reforma para a IA: só números e premissas,
+// sem nome, e-mail, telefone ou CNPJ.
+function numeroOuNull(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function resumirSimulacaoReforma(snap) {
+  const s = objeto(snap);
+  if (!Object.keys(objeto(s.resultado)).length && !Object.keys(objeto(s.configuracao)).length) return null;
+  const emp = objeto(s.empresa);
+  const cfg = objeto(s.configuracao);
+  const res = objeto(s.resultado);
+  const mem = objeto(s.memoria);
+  const cred = objeto(s.creditos);
+  const dec = objeto(s.decisao);
+  const campos = (o, chaves) =>
+    Object.fromEntries(chaves.map((k) => [k, numeroOuNull(o[k])]).filter(([, v]) => v !== null));
+  return {
+    origem: "Simulador público da Reforma Tributária (sem questionário de respostas)",
+    empresa: {
+      porte: texto(emp.porte, 60),
+      municipio: texto(emp.municipio, 80),
+      uf: texto(emp.uf, 4),
+      atividadePrincipal: texto(emp.atividadeSelecionada, 200),
+      atividadeDeFato: texto(emp.descricaoAtividadeReal, 500),
+    },
+    premissas: {
+      regime: texto(cfg.regime, 60),
+      natureza: texto(cfg.natureza, 40),
+      perfilClientes: texto(cfg.perfilClientes, 40),
+      cenarioAno: texto(cfg.cenarioAliquota, 10),
+      tratamento: texto(cfg.tratamentoIbsCbs, 40),
+      enquadramentoConfirmado: cfg.tratamentoConfirmado === true,
+      baseLegal: texto(cfg.classificacaoFiscal, 400),
+      cargaAtualInformada: cfg.naoSeiImpostoAtual === true ? false : true,
+      ...campos(cfg, ["faturamentoMensal", "cbsPct", "ibsPct", "reducaoCbsPct", "reducaoIbsPct", "cbsEfetivaPct", "ibsEfetivaPct", "ivaEfetivoPct", "rbt12", "fs12", "aliquotaLocalAtualPct", "crescimentoPct", "participacaoAtividadePrincipalPct"]),
+      atividadesAdicionais: lista(cfg.atividadesAdicionais).slice(0, 6).map((a) => ({
+        cnae: texto(a?.cnae, 12),
+        descricao: texto(a?.descricao, 200),
+        participacaoPct: numeroOuNull(a?.participacaoPct),
+        reducaoPct: numeroOuNull(a?.reducaoPct),
+        confirmada: a?.confirmada === true,
+      })),
+      composicaoCargaAtual: campos(objeto(cfg.composicaoCargaAtual), ["pis", "cofins", "icms", "iss", "ipi", "cpp", "irpj", "adicionalIrpj", "csll", "outros"]),
+    },
+    resultadoMensal: {
+      ...campos(res, ["atual", "reforma", "diferenca", "variacaoPct", "cargaAtualPct", "cargaReformaPct"]),
+      comparacaoPermitida: res.comparacaoPermitida !== false,
+      motivoPendencia: texto(res.motivoPendencia, 300),
+    },
+    memoriaCalculoMensal: campos(mem, ["faturamento", "baseIbsCbs", "debitoCbs", "creditoCbs", "cbsLiquida", "debitoIbs", "creditoIbs", "ibsLiquido", "ibsCbsLiquido", "pisCofinsRemanescentes", "icmsIssRemanescentes", "ipiRemanescente", "tributosMantidos", "dasResidual", "totalReforma"]),
+    creditos: campos(cred, ["despesasMensais", "creditoAtual", "creditoNovo", "baseCreditosConfirmados"]),
+    transicao: lista(s.transicao).slice(0, 10).map((t) => ({
+      ano: numeroOuNull(t?.ano),
+      totalMensal: numeroOuNull(t?.total),
+      ibsCbsMensal: numeroOuNull(t?.iva),
+      situacao: texto(t?.status, 120),
+    })),
+    conclusaoDoMotor: {
+      titulo: texto(dec.titulo, 200),
+      destaque: texto(dec.destaque, 300),
+      confianca: texto(dec.confianca, 20),
+      justificativas: lista(dec.justificativas).slice(0, 5).map((x) => texto(x, 250)),
+      pendencias: lista(dec.pendencias).slice(0, 6).map((x) => texto(x, 250)),
+    },
+  };
+}
+
 export function montarContexto(row, estrutura, eixosEscopo) {
   const completo = objeto(row.dados_completos);
   const resultado = Object.keys(objeto(completo.resultado)).length ? objeto(completo.resultado) : objeto(row.diagnostico);
@@ -162,6 +231,9 @@ export function montarContexto(row, estrutura, eixosEscopo) {
       qualidadeRespostas: objeto(resultado.qualidadeRespostas),
     },
     respostas: enxugarRespostas(row.perguntas_respostas),
+    simulacaoReforma: resumirSimulacaoReforma(
+      perfil.simuladorReforma || resultado?.contextoEstrutura?.simuladorReforma || resultado?.simuladorReforma
+    ),
   };
 }
 
@@ -178,7 +250,7 @@ ${JSON.stringify(contratoConsultivo(estrutura, eixosEscopo), null, 2)}
 
 DADOS DO DIAGNÓSTICO (fonte única de fatos):
 ${JSON.stringify(contexto, null, 2)}
-${instrucaoExtra ? `\nORIENTAÇÃO ADICIONAL DO CONSULTOR (siga sem violar as regras acima):\n${instrucaoExtra}\n` : ""}
+${contexto.simulacaoReforma ? `\nATENÇÃO — ESTE CASO VEM DO SIMULADOR DA REFORMA, NÃO DE UM QUESTIONÁRIO: "simulacaoReforma" traz premissas, memória de cálculo mensal, créditos e transição. Os números desse bloco são fatos estruturados e podem ser citados; não invente nenhum outro valor. Em "fatosInformados" use as premissas e resultados da simulação. As áreas devem refletir o resultado (impacto da carga, créditos, regime, preços, transição). Diga com franqueza o que sustenta o resultado e o que ainda é premissa (por exemplo: crédito zero porque nenhuma despesa foi informada; carga atual estimada; enquadramento não confirmado). Proponha caminhos comparáveis (créditos, regime, preços) sem prometer economia.\n` : ""}${instrucaoExtra ? `\nORIENTAÇÃO ADICIONAL DO CONSULTOR (siga sem violar as regras acima):\n${instrucaoExtra}\n` : ""}
 Lembrete final: aprofunde no máximo 4 áreas, mantenha cada campo conciso e retorne SOMENTE o JSON.`;
 }
 
@@ -320,7 +392,7 @@ async function gerarInterno(req, res) {
   const eixosEscopo = eixosDoResultado(resultado, motor);
   const contexto = montarContexto(row, estrutura, eixosEscopo);
 
-  if (!contexto.respostas.length && !contexto.diagnosticoDoCliente.eixos.length) {
+  if (!contexto.respostas.length && !contexto.diagnosticoDoCliente.eixos.length && !contexto.simulacaoReforma) {
     return enviar(res, 422, {
       sucesso: false,
       error: "Este diagnóstico não tem respostas nem resultado suficientes para uma análise consultiva.",
