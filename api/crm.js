@@ -1942,6 +1942,12 @@ async function listarLeads(req, res) {
       80
     ).toLowerCase();
 
+  const arquivamento =
+    texto(
+      req.query?.arquivamento,
+      20
+    ).toUpperCase();
+
   // Ordenação da fila: RECENTES (padrão, último cadastrado primeiro),
   // PRIORIDADE (A→D e score) ou ATIVIDADE (última interação).
   const ordenarBruto =
