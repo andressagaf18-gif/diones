@@ -3255,6 +3255,8 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
   const [statusDiagnostico, setStatusDiagnostico] = useState("");
   const [prioridadeComercial, setPrioridadeComercial] = useState("");
   const [estruturaLead, setEstruturaLead] = useState("");
+  // Fila de leads: do mais recente para o mais antigo (padrão).
+  const [ordenarLead, setOrdenarLead] = useState("recentes");
   const [responsaveis, setResponsaveis] = useState([]);
   const [atribuindoLeadId, setAtribuindoLeadId] = useState("");
   const [selecoesResponsavel, setSelecoesResponsavel] = useState({});
@@ -3308,13 +3310,14 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
     setExcluindoLote,
   ] = useState(false);
 
-  async function carregarLeads() {
+  async function carregarLeads(opcoes) {
     setCarregando(true);
     setErro("");
 
     try {
       const params = new URLSearchParams();
       params.set("limite", "200");
+      params.set("ordenar", typeof opcoes?.ordenar === "string" ? opcoes.ordenar : ordenarLead);
 
       if (busca.trim()) params.set("busca", busca.trim());
       if (origem) params.set("origem", origem);
@@ -4012,6 +4015,25 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
             <OpcoesEstruturas />
           </select>
 
+          <select
+            value={ordenarLead}
+            aria-label="Ordenar leads"
+            onChange={(e) => {
+              setOrdenarLead(e.target.value);
+              carregarLeads({ ordenar: e.target.value });
+            }}
+            style={{
+              border: "1px solid #D8DEEA",
+              borderRadius: 9,
+              padding: "10px 12px",
+              background: WHITE,
+            }}
+          >
+            <option value="recentes">Mais recentes primeiro</option>
+            <option value="prioridade">Prioridade e score</option>
+            <option value="atividade">Última atividade</option>
+          </select>
+
           <Botao onClick={carregarLeads}>
             <Search size={14} /> Filtrar
           </Botao>
@@ -4024,7 +4046,8 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
               setStatusDiagnostico("");
               setPrioridadeComercial("");
               setEstruturaLead("");
-              setTimeout(carregarLeads, 0);
+              setOrdenarLead("recentes");
+              setTimeout(() => carregarLeads({ ordenar: "recentes" }), 0);
             }}
           >
             Limpar
@@ -4298,7 +4321,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
               fontSize: 10.5,
             }}
           >
-            Ordenada automaticamente por prioridade comercial e score.
+            {ordenarLead === "prioridade" ? "Ordenada por prioridade comercial e score." : ordenarLead === "atividade" ? "Ordenada pela última atividade." : "Ordenada do lead mais recente para o mais antigo."}
           </p>
         </div>
       </div>
