@@ -1,5 +1,5 @@
 import React from "react";
-import { montarLeituraSimulador } from "./RelatorioClienteSimulador.jsx";
+import { montarLeituraSimulador } from "./leituraSimulador.js";
 
 // Dossiê da ADMINISTRAÇÃO para o Simulador da Reforma.
 // Reúne tudo o que um consultor (ou a IA, no parecer consultivo) precisa:
