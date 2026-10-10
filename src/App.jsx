@@ -1665,6 +1665,39 @@ function textoConsultivoSimulador(valor) {
   return `Sugerimos ${texto.charAt(0).toLowerCase()}${texto.slice(1)}`;
 }
 
+// Ajusta textos que citam documentos do Simples (PGDAS/DAS) quando o regime
+// da empresa é Lucro Presumido ou Lucro Real. Em Simples Nacional não altera nada.
+function documentosDoRegime(regime) {
+  const r = String(regime || "");
+  if (/real/i.test(r)) return "ECD/ECF, SPED Fiscal, SPED Contribuições e balancete";
+  if (/presumido/i.test(r)) return "apurações de PIS/Cofins, ICMS/ISS, ECF e SPED";
+  return "";
+}
+function adaptarTextoRegime(texto, regime) {
+  if (typeof texto !== "string") return texto;
+  const r = String(regime || "");
+  if (!r || /simples/i.test(r)) return texto;
+  const docs = documentosDoRegime(r);
+  return texto
+    .replace(/PGDAS\/DEFIS/g, docs)
+    .replace(/no PGDAS/g, `nas apurações fiscais (${docs})`)
+    .replace(/composição documental do PGDAS/g, "composição documental das apurações")
+    .replace(/PGDAS/g, "apurações fiscais")
+    .replace(/Substituir o DAS residual estimado[^.]*\./g, "Conferir os tributos atuais estimados com as apurações do período.")
+    .replace(/DAS residual/g, "tributos remanescentes")
+    .replace(/Simples por dentro/g, "tributos atuais");
+}
+function adaptarRegimeProfundo(valor, regime) {
+  if (typeof valor === "string") return adaptarTextoRegime(valor, regime);
+  if (Array.isArray(valor)) return valor.map((x) => adaptarRegimeProfundo(x, regime));
+  if (valor && typeof valor === "object") {
+    const out = {};
+    for (const k of Object.keys(valor)) out[k] = adaptarRegimeProfundo(valor[k], regime);
+    return out;
+  }
+  return valor;
+}
+
 function listaConsultivaSimulador(valor) {
   if (!Array.isArray(valor)) return [];
   return valor.map(textoConsultivoSimulador).filter(Boolean);
@@ -2808,7 +2841,7 @@ function SimuladorReformaPublico({
   const decisaoRecomendada=useMemo(()=>{
     const pendencias=[];
     const aplicacaoCondicional=pesquisaTributaria?.premissasConfirmadas?.aplicacaoCondicional===true;
-    if(naoSeiImpostoAtual)pendencias.push("Confirmar a carga atual nos documentos fiscais e no PGDAS.");
+    if(naoSeiImpostoAtual)pendencias.push(regime==="Simples Nacional"?"Confirmar a carga atual nos documentos fiscais e no PGDAS.":`Confirmar a carga atual (${regime||"regime informado"}) nas apurações e documentos fiscais: ${documentosDoRegime(regime)||"apurações do período"}.`);
     if(!tratamentoConfirmado&&(redCbs>0||redIbs>0))pendencias.push("A pesquisa automática não confirmou o enquadramento legal da redução.");
     if(participacaoInvalida)pendencias.push("Informe a participação (%) de cada atividade adicional no faturamento; a soma deve ficar abaixo de 100%.");
     if(multiplasAtividades&&!extrasProntas)pendencias.push("Há atividade adicional sem tratamento tributário confirmado; ela foi considerada sem redução.");
@@ -3222,7 +3255,7 @@ function SimuladorReformaPublico({
       // simulador não pode ficar preso em “em preenchimento”. O snapshot é
       // salvo com uma leitura transparente e pode ser complementado pelo
       // administrador depois.
-      setRelatorioIa({
+      setRelatorioIa(adaptarRegimeProfundo({
         origemIA:"fallback_deterministico",
         leituraExecutiva:"A simulação da Reforma foi concluída com base no CNAE, atividade, regime e valores informados. Sugerimos validar esta estimativa com PGDAS/DEFIS, documentos fiscais, deduções e créditos antes de qualquer decisão.",
         riscosPrioritarios:[
@@ -3239,7 +3272,7 @@ function SimuladorReformaPublico({
         quickWins:["Sugerimos confirmar o enquadramento legal da atividade.","Sugerimos separar IBS/CBS por dentro e por fora."],
         kpisRecomendados:["Carga atual x cenário Reforma","DAS residual","Créditos aproveitáveis","Diferença anual"],
         visaoConsultor:{objetivo:"Sugerimos validar tecnicamente a simulação da Reforma.",perguntas:["Sugerimos confirmar a atividade efetiva.","Sugerimos conferir os requisitos das deduções."]},
-      });
+      }, regime));
       setErroRelatorioIa("");
     }finally{
       setGerandoRelatorioIa(false);
@@ -4454,7 +4487,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
       <div style={card}>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Comparação completa por regime e por tributo</h3>
-        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>O DAS é o total englobado. A abertura dos seus componentes só aparece quando identificada no PGDAS ou informada pelo usuário. Não some novamente os componentes ao DAS.</div>
+        {regime==="Simples Nacional"&&<div style={{...muted,fontSize:7.4,lineHeight:1.4}}>O DAS é o total englobado. A abertura dos seus componentes só aparece quando identificada no PGDAS ou informada pelo usuário. Não some novamente os componentes ao DAS.</div>}
         <div className="sr-table-wrap" style={{marginTop:8}}>
           <table style={{width:"100%",minWidth:610,borderCollapse:"collapse",fontSize:7.5}}>
             <thead><tr style={{background:NAVY,color:"#fff"}}>
@@ -6745,7 +6778,7 @@ function DiagnosticoPrototipo() {
     if (!recomendacoes.length) recomendacoes.push("Sugerimos comparar Simples por dentro, IBS/CBS por fora, DAS residual e créditos antes de decidir.");
     if (!proximos.length) proximos.push("Sugerimos reunir PGDAS/DEFIS, notas fiscais e documentos que comprovem as deduções.");
 
-    return{
+    return adaptarRegimeProfundo({
       tipo,
       geradoEm:new Date().toISOString(),
 
@@ -6826,7 +6859,7 @@ function DiagnosticoPrototipo() {
       versaoAdministracao:"completa",
       clienteResumo:null,
       administracaoCompleta:null,
-    };
+    }, snapshot?.configuracao?.regime);
   }
 
   async function persistirResultadoSimuladorReforma({
