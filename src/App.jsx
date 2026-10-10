@@ -7368,6 +7368,21 @@ function DiagnosticoPrototipo() {
       );
     }
 
+    // Dentro do simulador da Reforma o progresso acompanha a etapa interna,
+    // em vez de ficar parado no valor fixo da etapa "simuladorReforma".
+    if (step === "simuladorReforma") {
+      const etapaSimulador = simuladorReformaDados?.etapa;
+      return (
+        {
+          empresa: 24,
+          dados: 40,
+          creditos: 55,
+          comparar: 70,
+          resultado: 85,
+        }[etapaSimulador] ?? progressoBase.simuladorReforma
+      );
+    }
+
     return progressoBase[step] ?? 0;
   }
 
