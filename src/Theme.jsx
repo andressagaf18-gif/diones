@@ -58,7 +58,7 @@ export const finderStyles = {
   shell: {
     display: "grid",
     gridTemplateColumns:
-      "250px minmax(0,1fr)",
+      "auto minmax(0,1fr)",
     minHeight: "100vh",
   },
 
