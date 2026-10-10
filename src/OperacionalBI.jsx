@@ -610,6 +610,8 @@ export default function OperacionalBI({
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
   const [filtroRapido, setFiltroRapido] = useState("");
+  // Diagnósticos e leads em preenchimento: do mais recente para o mais antigo (padrão).
+  const [ordem, setOrdem] = useState("recentes");
   const [selecionados, setSelecionados] = useState([]);
   const [arquivamento, setArquivamento] = useState("ATIVOS");
   const [processandoArquivoId, setProcessandoArquivoId] = useState("");
@@ -1010,7 +1012,22 @@ export default function OperacionalBI({
   // Os atendimentos departamentais permanecem separados no banco para
   // preservar responsáveis, históricos e propostas individuais.
   const listaFila = useMemo(() => {
-    if (ehDiagnostico) return listaFiltrada;
+    if (ehDiagnostico) {
+      const dataDe = (item) => {
+        const v = Date.parse(item.criadoEm || item.createdAt || item.updatedAt || "");
+        return Number.isFinite(v) ? v : 0;
+      };
+      const copia = [...listaFiltrada];
+      if (ordem === "antigos") return copia.sort((a, b) => dataDe(a) - dataDe(b));
+      if (ordem === "score") {
+        return copia.sort((a, b) => {
+          const sa = a.score !== null && Number.isFinite(Number(a.score)) ? Number(a.score) : Infinity;
+          const sb = b.score !== null && Number.isFinite(Number(b.score)) ? Number(b.score) : Infinity;
+          return sa - sb || dataDe(b) - dataDe(a);
+        });
+      }
+      return copia.sort((a, b) => dataDe(b) - dataDe(a));
+    }
 
     const grupos = new Map();
 
@@ -1105,7 +1122,7 @@ export default function OperacionalBI({
         }, 101),
       };
     });
-  }, [listaFiltrada, ehDiagnostico]);
+  }, [listaFiltrada, ehDiagnostico, ordem]);
 
   const total = listaFila.length;
 
@@ -1899,6 +1916,17 @@ export default function OperacionalBI({
                 ))}
               </Select>
             </>
+          )}
+
+          {ehDiagnostico && (
+            <Select
+              value={ordem}
+              onChange={(e) => setOrdem(e.target.value)}
+            >
+              <option value="recentes">Mais recentes primeiro</option>
+              <option value="antigos">Mais antigos primeiro</option>
+              <option value="score">Menor score primeiro</option>
+            </Select>
           )}
 
           <Select
