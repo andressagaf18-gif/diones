@@ -1942,11 +1942,18 @@ async function listarLeads(req, res) {
       80
     ).toLowerCase();
 
-  const arquivamento =
+  // Ordenação da fila: RECENTES (padrão, último cadastrado primeiro),
+  // PRIORIDADE (A→D e score) ou ATIVIDADE (última interação).
+  const ordenarBruto =
     texto(
-      req.query?.arquivamento,
+      req.query?.ordenar,
       20
     ).toUpperCase();
+
+  const ordenar =
+    ["PRIORIDADE", "ATIVIDADE"].includes(ordenarBruto)
+      ? ordenarBruto
+      : "RECENTES";
 
   const limite =
     Math.max(
@@ -2081,15 +2088,21 @@ async function listarLeads(req, res) {
         )
 
       ORDER BY
-        CASE prioridade_comercial
-          WHEN 'A' THEN 1
-          WHEN 'B' THEN 2
-          WHEN 'C' THEN 3
-          WHEN 'D' THEN 4
-          ELSE 5
-        END,
+        CASE WHEN ${ordenar} = 'PRIORIDADE' THEN
+          CASE prioridade_comercial
+            WHEN 'A' THEN 1
+            WHEN 'B' THEN 2
+            WHEN 'C' THEN 3
+            WHEN 'D' THEN 4
+            ELSE 5
+          END
+        END ASC NULLS LAST,
 
-        score_comercial DESC,
+        CASE WHEN ${ordenar} = 'PRIORIDADE' THEN score_comercial END DESC NULLS LAST,
+
+        CASE WHEN ${ordenar} = 'ATIVIDADE' THEN ultima_atividade END DESC NULLS LAST,
+
+        created_at DESC,
 
         ultima_atividade DESC
 
