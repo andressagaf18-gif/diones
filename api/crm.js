@@ -1010,7 +1010,7 @@ async function atualizarLead(req, res) {
     });
   }
 
-  const statusDiagnostico =
+  let statusDiagnostico =
     body.statusDiagnostico !== undefined
       ? statusDiagnosticoValido(
           body.statusDiagnostico
@@ -1074,7 +1074,7 @@ async function atualizarLead(req, res) {
         )
       : atual.razao_social;
 
-  const etapaAtual =
+  let etapaAtual =
     body.etapaAtual !== undefined
       ? texto(
           body.etapaAtual,
@@ -1082,12 +1082,27 @@ async function atualizarLead(req, res) {
         )
       : atual.etapa_atual;
 
-  const progressoPercentual =
+  let progressoPercentual =
     body.progressoPercentual !== undefined
       ? percentual(
           body.progressoPercentual
         )
       : atual.progresso_percentual;
+
+  // Um lead já concluído não volta para "em preenchimento": o salvamento
+  // automático do formulário pode chegar depois da conclusão e não pode
+  // apagar o resultado (status, etapa e progresso).
+  if (
+    atual.status_diagnostico === "CONCLUIDO" &&
+    ["ACESSOU", "EM_PREENCHIMENTO"].includes(String(statusDiagnostico || ""))
+  ) {
+    statusDiagnostico = "CONCLUIDO";
+    etapaAtual = atual.etapa_atual;
+    progressoPercentual = Math.max(
+      Number(atual.progresso_percentual) || 0,
+      Number(progressoPercentual) || 0
+    );
+  }
 
   const diagnosticoId =
     body.diagnosticoId !== undefined
