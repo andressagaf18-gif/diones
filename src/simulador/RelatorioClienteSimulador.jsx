@@ -1,5 +1,39 @@
 import React from "react";
 
+// Ajusta textos que citam documentos do Simples (PGDAS/DAS) quando o regime
+// da empresa é Lucro Presumido ou Lucro Real. Em Simples Nacional não altera nada.
+function documentosDoRegime(regime) {
+  const r = String(regime || "");
+  if (/real/i.test(r)) return "ECD/ECF, SPED Fiscal, SPED Contribuições e balancete";
+  if (/presumido/i.test(r)) return "apurações de PIS/Cofins, ICMS/ISS, ECF e SPED";
+  return "";
+}
+function adaptarTextoRegime(texto, regime) {
+  if (typeof texto !== "string") return texto;
+  const r = String(regime || "");
+  if (!r || /simples/i.test(r)) return texto;
+  const docs = documentosDoRegime(r);
+  return texto
+    .replace(/PGDAS\/DEFIS/g, docs)
+    .replace(/no PGDAS/g, `nas apurações fiscais (${docs})`)
+    .replace(/composição documental do PGDAS/g, "composição documental das apurações")
+    .replace(/PGDAS/g, "apurações fiscais")
+    .replace(/Substituir o DAS residual estimado[^.]*\./g, "Conferir os tributos atuais estimados com as apurações do período.")
+    .replace(/DAS residual/g, "tributos remanescentes")
+    .replace(/Simples por dentro/g, "tributos atuais");
+}
+function adaptarRegimeProfundo(valor, regime) {
+  if (typeof valor === "string") return adaptarTextoRegime(valor, regime);
+  if (Array.isArray(valor)) return valor.map((x) => adaptarRegimeProfundo(x, regime));
+  if (valor && typeof valor === "object") {
+    const out = {};
+    for (const k of Object.keys(valor)) out[k] = adaptarRegimeProfundo(valor[k], regime);
+    return out;
+  }
+  return valor;
+}
+
+
 // Relatório do CLIENTE para o Simulador da Reforma Tributária.
 // Só usa dados que podem ser apresentados ao cliente: sem score, sem dados
 // de LGPD/IP, sem observações comerciais internas. Cabe em 1–2 páginas A4.
@@ -146,7 +180,7 @@ return { manchete, sentido, pontos, pendencias, passos, comparavel, dif };
 // automáticas e pontos para a reunião. Uso interno.
 
 export default function RelatorioClienteSimulador({ snapshot, geradoEm }) {
-  const s = snapshot || {};
+  const s = adaptarRegimeProfundo(snapshot || {}, snapshot?.configuracao?.regime);
   const emp = s.empresa || {};
   const cfg = s.configuracao || {};
   const res = s.resultado || {};
