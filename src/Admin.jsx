@@ -42,6 +42,7 @@ import { FinderSidebar, FinderTopbar } from "./TechShell";
 import VisaoConsultiva from "./relatorios/VisaoConsultiva";
 import FichaArea from "./atendimento/FichaArea";
 import ConsentimentoLGPD, { SeloConsentimento } from "./lgpd/ConsentimentoLGPD";
+import ResumoSimuladorReforma, { SeloSimuladorLead } from "./simulador/ResumoSimuladorReforma.jsx";
 import { finderStyles } from "./Theme";
 
 // Essas quatro telas são pesadas (Tributário sozinho carrega mais de 350KB de
@@ -4395,6 +4396,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                     <SeloConsentimento
                       consentimento={lead.consentimento}
                     />
+                    <SeloSimuladorLead contexto={lead.contextoCliente} />
                   </div>
 
                   <div>
@@ -4753,7 +4755,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                 <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>Telefone</div>
                 <div style={{ fontSize: 11.5, fontStyle: leadDetalheAberto.telefone ? "normal" : "italic", color: leadDetalheAberto.telefone ? NAVY : "#B8C0CF" }}>{leadDetalheAberto.telefone || "Ainda não informado"}</div>
               </div>
-              {Object.entries(leadDetalheAberto.contextoCliente || {}).filter(([, v]) => v !== "" && v != null && !(typeof v === "object" && !Array.isArray(v) && !Object.values(v).some((x) => x !== "" && x != null && !(Array.isArray(x) && !x.length)))).slice(0, 6).map(([chave, valor]) => (
+              {Object.entries(leadDetalheAberto.contextoCliente || {}).filter(([k, v]) => k !== "simuladorReforma" && v !== "" && v != null && !(typeof v === "object" && !Array.isArray(v) && !Object.values(v).some((x) => x !== "" && x != null && !(Array.isArray(x) && !x.length)))).slice(0, 6).map(([chave, valor]) => (
                 <div key={chave} style={{ background: "#F7F9FC", borderRadius: 10, padding: "9px 11px", gridColumn: (typeof valor === "object" && valor !== null) ? "1 / -1" : "auto" }}>
                   <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>{chave}</div>
                   {typeof valor === "object" && valor !== null && !Array.isArray(valor) ? (
@@ -4771,6 +4773,8 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                 </div>
               ))}
             </div>
+
+            <ResumoSimuladorReforma contexto={leadDetalheAberto.contextoCliente} />
 
             <ConsentimentoLGPD
               token={token}
@@ -13965,6 +13969,19 @@ function ResumoEstruturaSelecionada({
           <Linha titulo="VARIAÇÃO %" valor={resultadoSim.variacaoPct} formato="percentual" />
           <Linha titulo="IBS/CBS LÍQUIDO" valor={memoriaSim.ibsCbsLiquido} formato="moeda" />
           <Linha titulo="CRÉDITOS ESTIMADOS" valor={memoriaSim.creditoNovo} formato="moeda" />
+          {Array.isArray(configSim.atividadesAdicionais) && configSim.atividadesAdicionais.length > 0 && (
+            <Linha
+              titulo="PARTICIPAÇÃO DA ATIVIDADE PRINCIPAL"
+              valor={`${Number(configSim.participacaoAtividadePrincipalPct ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do faturamento`}
+            />
+          )}
+          {(Array.isArray(configSim.atividadesAdicionais) ? configSim.atividadesAdicionais : []).map((a, i) => (
+            <Linha
+              key={`${a.cnae}-${i}`}
+              titulo={`ATIVIDADE ADICIONAL ${i + 1}`}
+              valor={`${a.cnae ? `${a.cnae} — ` : ""}${a.descricao || ""} · ${Number(a.participacaoPct ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do faturamento · redução ${Number(a.reducaoPct ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%${a.confirmada ? "" : " (não confirmada)"}`}
+            />
+          ))}
         </div>
       </Card>
     );
