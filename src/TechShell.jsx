@@ -21,6 +21,7 @@ import {
   Target,
   Users,
   CalendarDays,
+  Menu,
   X,
 } from "lucide-react";
 
@@ -75,12 +76,48 @@ const GRUPOS = [
 
 const TODOS_ITENS = GRUPOS.flatMap((g) => g.itens);
 
+// Atalhos fixos da barra inferior (versão celular).
+const ATALHOS_CELULAR = ["dashboard", "leads", "clientes", "diagnosticos"];
+
+// true quando a tela é de celular/tablet pequeno. O painel usa esse valor
+// para trocar a barra lateral por menu deslizante + barra inferior.
+export function useCelular(limite = 900) {
+  const consulta = `(max-width: ${limite}px)`;
+  const [celular, setCelular] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia(consulta).matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const mq = window.matchMedia(consulta);
+    const aoMudar = (e) => setCelular(e.matches);
+    setCelular(mq.matches);
+    if (mq.addEventListener) mq.addEventListener("change", aoMudar);
+    else mq.addListener(aoMudar);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", aoMudar);
+      else mq.removeListener(aoMudar);
+    };
+  }, [consulta]);
+  return celular;
+}
+
 export function FinderSidebar({
   aba,
   setAba,
   onLogout,
+  celular = false,
+  menuAberto = false,
+  onFechar,
 }) {
-  const [colapsado, setColapsado] = useState(false);
+  const [colapsadoManual, setColapsado] = useState(false);
+  // No celular o menu sempre aparece completo (com os nomes).
+  const colapsado = colapsadoManual && !celular;
+  const escolher = (id) => {
+    setAba(id);
+    if (celular) onFechar?.();
+  };
   const [recentes, setRecentes] = useState(() => {
     try {
       return JSON.parse(sessionStorage.getItem("finder_admin_recentes") || "[]");
@@ -104,8 +141,13 @@ export function FinderSidebar({
   const recentesParaMostrar = recentes.filter((id) => id !== aba).slice(0, 3);
 
   return (
+    <>
+    {celular && menuAberto && (
+      <div className="finder-menu-fundo" onClick={onFechar} aria-hidden="true" />
+    )}
     <aside
-      className="finder-sidebar"
+      className={`finder-sidebar${celular && menuAberto ? " aberto" : ""}`}
+      aria-label="Menu principal"
       style={{
         position: "sticky",
         top: 0,
@@ -175,7 +217,7 @@ export function FinderSidebar({
               <button
                 key={id}
                 type="button"
-                onClick={() => setAba(id)}
+                onClick={() => escolher(id)}
                 title={item.label}
                 style={{
                   width: "100%",
@@ -220,7 +262,7 @@ export function FinderSidebar({
                     key={item.id}
                     type="button"
                     title={colapsado ? item.label : undefined}
-                    onClick={() => setAba(item.id)}
+                    onClick={() => escolher(item.id)}
                     style={{
                       width: "100%",
                       border: 0,
@@ -252,7 +294,18 @@ export function FinderSidebar({
         ))}
       </div>
 
-      <button
+      {celular && (
+        <button
+          type="button"
+          onClick={onFechar}
+          aria-label="Fechar menu"
+          className="finder-menu-fechar"
+        >
+          <X size={16} /> Fechar
+        </button>
+      )}
+
+      {!celular && <button
         type="button"
         onClick={() => setColapsado((v) => !v)}
         style={{
@@ -270,7 +323,7 @@ export function FinderSidebar({
         }}
       >
         {colapsado ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
-      </button>
+      </button>}
 
       {!colapsado && (
         <div
@@ -313,6 +366,36 @@ export function FinderSidebar({
         {colapsado ? "⏻" : "Sair do sistema"}
       </button>
     </aside>
+    </>
+  );
+}
+
+export function FinderBottomNav({ aba, setAba, onMenu }) {
+  return (
+    <nav className="finder-bottomnav" aria-label="Atalhos">
+      {ATALHOS_CELULAR.map((id) => {
+        const item = TODOS_ITENS.find((i) => i.id === id);
+        if (!item) return null;
+        const Icon = item.icon;
+        const ativo = aba === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setAba(id)}
+            className={ativo ? "ativo" : ""}
+            aria-current={ativo ? "page" : undefined}
+          >
+            <Icon size={18} />
+            <span>{item.label.replace(" / CRM", "").replace(" 360º", "")}</span>
+          </button>
+        );
+      })}
+      <button type="button" onClick={onMenu} aria-label="Abrir menu completo">
+        <Menu size={18} />
+        <span>Menu</span>
+      </button>
+    </nav>
   );
 }
 
@@ -322,6 +405,7 @@ export function FinderTopbar({
   usuarioNome = "Finder",
   token = "",
   onAbrirResultado,
+  onMenu,
 }) {
   const [aberto, setAberto] = useState(false);
   const [termo, setTermo] = useState("");
@@ -400,12 +484,23 @@ export function FinderTopbar({
         backdropFilter: "blur(14px)",
       }}
     >
-      <div>
-        <div style={{ color: C.textDark, fontSize: 18, fontWeight: 900 }}>
+      {onMenu && (
+        <button
+          type="button"
+          className="finder-menu-btn"
+          onClick={onMenu}
+          aria-label="Abrir menu"
+        >
+          <Menu size={20} />
+        </button>
+      )}
+
+      <div className="finder-topbar-titulo" style={{ minWidth: 0 }}>
+        <div className="finder-topbar-h" style={{ color: C.textDark, fontSize: 18, fontWeight: 900 }}>
           {titulo}
         </div>
         {subtitulo && (
-          <div style={{ color: C.mutedDark, fontSize: 9.5, marginTop: 2 }}>
+          <div className="finder-topbar-sub" style={{ color: C.mutedDark, fontSize: 9.5, marginTop: 2 }}>
             {subtitulo}
           </div>
         )}
@@ -415,6 +510,7 @@ export function FinderTopbar({
         <div className="finder-search-global" style={{ position: "relative" }}>
           <div
             onClick={() => { setAberto(true); setTimeout(() => inputRef.current?.focus(), 20); }}
+            className="finder-search-box"
             style={{
               minWidth: 260,
               border: "1px solid #E3E7EF",
@@ -429,12 +525,13 @@ export function FinderTopbar({
             }}
           >
             <Search size={14} />
-            <span style={{ fontSize: 9.5, flex: 1 }}>Buscar cliente, lead, diagnóstico...</span>
-            <span style={{ fontSize: 8.5, border: "1px solid #E3E7EF", borderRadius: 5, padding: "1px 5px" }}>⌘K</span>
+            <span className="finder-search-label" style={{ fontSize: 9.5, flex: 1 }}>Buscar cliente, lead, diagnóstico...</span>
+            <span className="finder-search-kbd" style={{ fontSize: 8.5, border: "1px solid #E3E7EF", borderRadius: 5, padding: "1px 5px" }}>⌘K</span>
           </div>
 
           {aberto && (
             <div
+              className="finder-search-panel"
               style={{
                 position: "absolute",
                 top: "calc(100% + 8px)",
@@ -485,6 +582,7 @@ export function FinderTopbar({
         </div>
 
         <div
+          className="finder-user"
           style={{
             display: "flex",
             alignItems: "center",
@@ -496,7 +594,7 @@ export function FinderTopbar({
           }}
         >
           <CircleUserRound size={20} color={C.primary} />
-          <div>
+          <div className="finder-user-texto">
             <div style={{ fontSize: 9.5, fontWeight: 900, color: C.textDark }}>{usuarioNome}</div>
             <div style={{ fontSize: 7.8, color: C.mutedDark }}>Operação Finder</div>
           </div>
