@@ -38,7 +38,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { FinderSidebar, FinderTopbar } from "./TechShell";
+import { FinderSidebar, FinderTopbar, FinderBottomNav, useCelular } from "./TechShell";
+import "./admin-responsivo.css";
 import VisaoConsultiva from "./relatorios/VisaoConsultiva";
 import FichaArea from "./atendimento/FichaArea";
 import ConsentimentoLGPD, { SeloConsentimento } from "./lgpd/ConsentimentoLGPD";
@@ -24682,6 +24683,10 @@ export default function Admin() {
     setAba,
   ] = useState("dashboard");
 
+  // Versão celular: menu lateral vira gaveta e aparece a barra inferior.
+  const celular = useCelular(900);
+  const [menuAberto, setMenuAberto] = useState(false);
+
   const [
     atendimentoDetalhe,
     setAtendimentoDetalhe,
@@ -24823,26 +24828,38 @@ export default function Admin() {
     children,
   }) {
     return (
-      <div style={finderStyles.page}>
-        <div style={finderStyles.shell}>
+      <div style={finderStyles.page} className={celular ? "finder-page finder-celular" : "finder-page finder-desktop"}>
+        <div style={finderStyles.shell} className="finder-shell">
           <FinderSidebar
             aba={aba}
             setAba={setAba}
             onLogout={logout}
+            celular={celular}
+            menuAberto={menuAberto}
+            onFechar={() => setMenuAberto(false)}
           />
 
-          <section style={finderStyles.content}>
+          <section style={finderStyles.content} className="finder-content">
             <FinderTopbar
               titulo={titulo}
               subtitulo={subtitulo}
               usuarioNome={usuarioSessao?.nome || "Finder"}
               token={token}
               onAbrirResultado={abrirResultadoBusca}
+              onMenu={celular ? () => setMenuAberto(true) : undefined}
             />
 
-            {children}
+            <div className="finder-conteudo">{children}</div>
           </section>
         </div>
+
+        {celular && (
+          <FinderBottomNav
+            aba={aba}
+            setAba={setAba}
+            onMenu={() => setMenuAberto(true)}
+          />
+        )}
       </div>
     );
   }
