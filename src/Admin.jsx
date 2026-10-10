@@ -42,7 +42,10 @@ import { FinderSidebar, FinderTopbar } from "./TechShell";
 import VisaoConsultiva from "./relatorios/VisaoConsultiva";
 import FichaArea from "./atendimento/FichaArea";
 import ConsentimentoLGPD, { SeloConsentimento } from "./lgpd/ConsentimentoLGPD";
-import ResumoSimuladorReforma, { SeloSimuladorLead } from "./simulador/ResumoSimuladorReforma.jsx";
+import ResumoSimuladorReforma, { SeloSimuladorLead, snapshotDoContexto } from "./simulador/ResumoSimuladorReforma.jsx";
+import RelatorioClienteSimulador from "./simulador/RelatorioClienteSimulador.jsx";
+import { limparCodigoInternoRelatorio } from "./relatorios/limparTexto.js";
+import DossieAdminSimulador from "./simulador/DossieAdminSimulador.jsx";
 import { finderStyles } from "./Theme";
 
 // Essas quatro telas são pesadas (Tributário sozinho carrega mais de 350KB de
@@ -826,7 +829,8 @@ function limparListaRelatorio(valor) {
 
 function textoSeguro(valor) {
   if (valor === null || valor === undefined) return "";
-  if (typeof valor === "string" || typeof valor === "number") return String(valor);
+  if (typeof valor === "string") return limparCodigoInternoRelatorio(valor);
+  if (typeof valor === "number") return String(valor);
   if (Array.isArray(valor)) return valor.map(textoSeguro).filter(Boolean).join(" | ");
   if (typeof valor === "object") {
     return (
@@ -871,6 +875,9 @@ function tituloChave(chave = "") {
     dias61a90: "61–90 dias",
     sessentaEUmA90: "61–90 dias",
     de61a90: "61–90 dias",
+    dias30: "0–30 dias",
+    dias60: "31–60 dias",
+    dias90: "61–90 dias",
   };
 
   if (mapa[chave]) return mapa[chave];
@@ -1004,7 +1011,10 @@ function ListaDossie({ itens, vazio = "Sem informação gerada." }) {
 }
 
 function Plano90Dias({ plano }) {
-  const lista = listaFlexivel(plano);
+  // "titulo" é o nome do plano, não uma fase; não pode virar um cartão.
+  const lista = listaFlexivel(plano).filter(
+    (fase) => !(fase && typeof fase === "object" && fase.chave === "titulo")
+  );
 
   if (!lista.length) {
     return <span style={{ fontSize: 12, color: MUTED }}>Sem plano de 90 dias gerado.</span>;
@@ -14945,6 +14955,21 @@ function DetalheDiagnostico({
       estruturaAtual
     );
 
+  // Simulador da Reforma: relatório do cliente e da administração têm
+  // layout próprio (sem nota geral, sem dados internos de LGPD e sem
+  // textos genéricos).
+  const snapshotSimulador =
+    estruturaAtual === "simulador_reforma"
+      ? snapshotDoContexto({
+          simuladorReforma:
+            resultado?.contextoEstrutura?.simuladorReforma ||
+            resultado?.simuladorReforma ||
+            perfilDiagnostico?.simuladorReforma ||
+            null,
+        })
+      : null;
+  const usaRelatorioClienteSimulador = Boolean(snapshotSimulador);
+
   const estruturaAtualCor =
     corEstruturaDiagnostico(
       estruturaAtual
@@ -15560,7 +15585,31 @@ function DetalheDiagnostico({
             </div>
           </Card>
 
-          <Card
+          {usaRelatorioClienteSimulador ? (
+            <Card style={{ textAlign: "center", background: "#F7F8FB" }}>
+              <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase" }}>
+                Simulação da Reforma
+              </div>
+              <div
+                style={{
+                  fontSize: 24,
+                  fontWeight: 900,
+                  marginTop: 6,
+                  color:
+                    Number(snapshotSimulador?.resultado?.diferenca) > 0
+                      ? "#B42318"
+                      : "#176B47",
+                }}
+              >
+                {Number.isFinite(Number(snapshotSimulador?.resultado?.diferenca)) &&
+                snapshotSimulador?.resultado?.comparacaoPermitida !== false
+                  ? `${Number(snapshotSimulador.resultado.diferenca) > 0 ? "+" : ""}${Number(snapshotSimulador.resultado.diferenca).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}`
+                  : "A validar"}
+              </div>
+              <div style={{ fontSize: 10.5, color: MUTED }}>por mês</div>
+            </Card>
+          ) : (
+            <Card
             style={{
               background:
                 score.bg,
@@ -15600,13 +15649,16 @@ function DetalheDiagnostico({
               {score.label}
             </div>
           </Card>
+          )}
         </div>
 
-        <ConsentimentoLGPD
-          token={token}
-          diagnosticoId={id}
-          identificacao={item?.razaoSocial || item?.nome || ""}
-        />
+        {abaRelatorio !== "cliente" && (
+          <ConsentimentoLGPD
+            token={token}
+            diagnosticoId={id}
+            identificacao={item?.razaoSocial || item?.nome || ""}
+          />
+        )}
 
         <Card
           style={{
@@ -15680,15 +15732,27 @@ function DetalheDiagnostico({
           </div>
         </Card>
 
-        <ResumoEstruturaSelecionada
-          estrutura={estruturaAtual}
-          perfil={perfilDiagnostico}
-          resultado={resultado}
-        />
+        {!(usaRelatorioClienteSimulador && abaRelatorio === "cliente") && (
+          <ResumoEstruturaSelecionada
+            estrutura={estruturaAtual}
+            perfil={perfilDiagnostico}
+            resultado={resultado}
+          />
+        )}
+
+        {abaRelatorio === "cliente" && usaRelatorioClienteSimulador && (
+          <RelatorioClienteSimulador
+            snapshot={snapshotSimulador}
+            geradoEm={item.criadoEm}
+          />
+        )}
 
         {abaRelatorio === "administracao" && (
           <>
-            {relatorioAdministracaoReforma && (
+            {usaRelatorioClienteSimulador && (
+              <DossieAdminSimulador snapshot={snapshotSimulador} />
+            )}
+            {relatorioAdministracaoReforma && !usaRelatorioClienteSimulador && (
               <Card style={{ marginBottom: 16, borderLeft: "4px solid #31589C" }}>
                 <div
                   style={{
@@ -16881,7 +16945,7 @@ function DetalheDiagnostico({
           </>
         )}
 
-        {abaRelatorio === "cliente" && (
+        {abaRelatorio === "cliente" && !usaRelatorioClienteSimulador && (
           <div>
             {relatorioClienteSegmentado && (
               <Card style={{marginBottom:16,borderLeft:`4px solid ${CORAL}`}}>
