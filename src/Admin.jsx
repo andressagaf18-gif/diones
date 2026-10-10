@@ -14265,6 +14265,39 @@ function ResumoEstruturaSelecionada({
 // DETALHE DO DIAGNÓSTICO
 // =========================================================
 
+// Ajusta textos que citam documentos do Simples (PGDAS/DAS) quando o regime
+// da empresa é Lucro Presumido ou Lucro Real. Em Simples Nacional não altera nada.
+function documentosDoRegime(regime) {
+  const r = String(regime || "");
+  if (/real/i.test(r)) return "ECD/ECF, SPED Fiscal, SPED Contribuições e balancete";
+  if (/presumido/i.test(r)) return "apurações de PIS/Cofins, ICMS/ISS, ECF e SPED";
+  return "";
+}
+function adaptarTextoRegime(texto, regime) {
+  if (typeof texto !== "string") return texto;
+  const r = String(regime || "");
+  if (!r || /simples/i.test(r)) return texto;
+  const docs = documentosDoRegime(r);
+  return texto
+    .replace(/PGDAS\/DEFIS/g, docs)
+    .replace(/no PGDAS/g, `nas apurações fiscais (${docs})`)
+    .replace(/composição documental do PGDAS/g, "composição documental das apurações")
+    .replace(/PGDAS/g, "apurações fiscais")
+    .replace(/Substituir o DAS residual estimado[^.]*\./g, "Conferir os tributos atuais estimados com as apurações do período.")
+    .replace(/DAS residual/g, "tributos remanescentes")
+    .replace(/Simples por dentro/g, "tributos atuais");
+}
+function adaptarRegimeProfundo(valor, regime) {
+  if (typeof valor === "string") return adaptarTextoRegime(valor, regime);
+  if (Array.isArray(valor)) return valor.map((x) => adaptarRegimeProfundo(x, regime));
+  if (valor && typeof valor === "object") {
+    const out = {};
+    for (const k of Object.keys(valor)) out[k] = adaptarRegimeProfundo(valor[k], regime);
+    return out;
+  }
+  return valor;
+}
+
 function DetalheDiagnostico({
   token,
   id,
@@ -14578,7 +14611,8 @@ function DetalheDiagnostico({
     const atual=Number(resultado?.inteligenciaTributaria?.reforma?.atual||0);
     const futura=Number(resultado?.inteligenciaTributaria?.reforma?.reforma||resultado?.inteligenciaTributaria?.tributosMensaisEstimados||0);
     const leitura=`A simulação da Reforma foi concluída. Sugerimos comparar a carga atual de ${atual.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})} com o cenário projetado de ${futura.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}, considerando deduções, créditos e requisitos legais da atividade.`;
-    const riscos=["Sugerimos validar a atividade efetiva, o CNAE, o município e a UF para confirmar o tratamento de IBS/CBS.","Sugerimos confrontar a carga atual e o cenário por fora com PGDAS/DEFIS e documentos fiscais.","Sugerimos separar DAS residual, IBS/CBS por dentro, IBS/CBS por fora e créditos aproveitáveis."];
+    const regimeSimAdm=(resultado?.contextoEstrutura?.simuladorReforma||resultado?.simuladorReforma||{})?.configuracao?.regime;
+    const riscos=["Sugerimos validar a atividade efetiva, o CNAE, o município e a UF para confirmar o tratamento de IBS/CBS.","Sugerimos confrontar a carga atual e o cenário por fora com PGDAS/DEFIS e documentos fiscais.","Sugerimos separar DAS residual, IBS/CBS por dentro, IBS/CBS por fora e créditos aproveitáveis."].map(x=>adaptarTextoRegime(x,regimeSimAdm));
     diagnosticoGeral={...diagnosticoGeral,resumoExecutivo:!diagnosticoGeral.resumoExecutivo||generica.test(diagnosticoGeral.resumoExecutivo)?leitura:diagnosticoGeral.resumoExecutivo,alertaEstrategico:!diagnosticoGeral.alertaEstrategico||generica.test(diagnosticoGeral.alertaEstrategico)?riscos[0]:diagnosticoGeral.alertaEstrategico,principaisDores:!diagnosticoGeral.principaisDores?.length||diagnosticoGeral.principaisDores.some(x=>generica.test(String(x)))?riscos:diagnosticoGeral.principaisDores,oportunidades:diagnosticoGeral.oportunidades?.length?diagnosticoGeral.oportunidades:["Sugerimos projetar preços, margens e créditos para os anos de transição."],proximosPassos:diagnosticoGeral.proximosPassos?.length?diagnosticoGeral.proximosPassos:["Sugerimos reunir PGDAS/DEFIS, NFS-e/NF-e e a memória dos créditos."]};
   }
 
@@ -14684,8 +14718,8 @@ function DetalheDiagnostico({
           oportunidadesConsultoria: diagnosticoGeral.oportunidades || [],
           plano90Dias: (relatorioAdministracaoSegmentado || {}).plano90Dias || {
             titulo: "Plano de preparação para a Reforma",
-            dias30: ["Sugerimos conferir PGDAS/DEFIS, CNAE e atividade efetiva."],
-            dias60: ["Sugerimos validar deduções, créditos e DAS residual."],
+            dias30: [adaptarTextoRegime("Sugerimos conferir PGDAS/DEFIS, CNAE e atividade efetiva.", (resultado?.contextoEstrutura?.simuladorReforma || resultado?.simuladorReforma || {})?.configuracao?.regime)],
+            dias60: [adaptarTextoRegime("Sugerimos validar deduções, créditos e DAS residual.", (resultado?.contextoEstrutura?.simuladorReforma || resultado?.simuladorReforma || {})?.configuracao?.regime)],
             dias90: ["Sugerimos consolidar preços, margens e plano de transição."],
           },
           quickWins: (relatorioAdministracaoSegmentado || {}).quickWins || [
