@@ -537,23 +537,35 @@ async function adminDashboard(req, res) {
   const busca = txt(req.query?.busca, 100);
   const inicio = txt(req.query?.inicio, 20);
   const fim = txt(req.query?.fim, 20);
+  const origemFiltro = txt(req.query?.origem, 80).toLowerCase();
+  const produtoFiltroSql = txt(req.query?.produto, 20).toUpperCase();
+  // A origem (evento/link de divulgação) vem do lead que gerou a cobrança.
   const pagamentos = await sql`
-    SELECT payment_id, diagnostico_id, plano, valor, valor_original, desconto,
-      cupom_codigo, customer_id, cliente_nome, cliente_email, cliente_documento,
-      forma_pagamento, valor_liquido, taxa, status, external_reference,
-      evento_id, pago_em, confirmado_em, criado_em, atualizado_em, produto
-    FROM asaas_pagamentos
-    WHERE (${txt(req.query?.produto, 20).toUpperCase()} = '' OR produto = ${txt(req.query?.produto, 20).toUpperCase()})
-      AND (${status} = '' OR status = ${status})
-      AND (${plano} = '' OR plano = ${plano})
-      AND (${inicio} = '' OR criado_em >= ${inicio || null}::date)
-      AND (${fim} = '' OR criado_em < (${fim || null}::date + INTERVAL '1 day'))
-      AND (${busca} = '' OR payment_id ILIKE ${`%${busca}%`}
-        OR diagnostico_id ILIKE ${`%${busca}%`}
-        OR COALESCE(cliente_nome,'') ILIKE ${`%${busca}%`}
-        OR COALESCE(cliente_documento,'') ILIKE ${`%${busca}%`})
-    ORDER BY criado_em DESC LIMIT 500
+    SELECT p.payment_id, p.diagnostico_id, p.plano, p.valor, p.valor_original, p.desconto,
+      p.cupom_codigo, p.customer_id, p.cliente_nome, p.cliente_email, p.cliente_documento,
+      p.forma_pagamento, p.valor_liquido, p.taxa, p.status, p.external_reference,
+      p.evento_id, p.pago_em, p.confirmado_em, p.criado_em, p.atualizado_em, p.produto,
+      COALESCE(l.origem, '') AS origem, COALESCE(l.campanha, '') AS campanha, COALESCE(l.promoter, '') AS promoter
+    FROM asaas_pagamentos p
+    LEFT JOIN LATERAL (
+      SELECT origem, campanha, promoter FROM diagnostico_leads
+      WHERE diagnostico_id = p.diagnostico_id OR ('simulador:' || id) = p.diagnostico_id
+      ORDER BY updated_at DESC LIMIT 1
+    ) l ON TRUE
+    WHERE (${produtoFiltroSql} = '' OR p.produto = ${produtoFiltroSql})
+      AND (${origemFiltro} = '' OR LOWER(COALESCE(l.origem, '')) = ${origemFiltro})
+      AND (${status} = '' OR p.status = ${status})
+      AND (${plano} = '' OR p.plano = ${plano})
+      AND (${inicio} = '' OR p.criado_em >= ${inicio || null}::date)
+      AND (${fim} = '' OR p.criado_em < (${fim || null}::date + INTERVAL '1 day'))
+      AND (${busca} = '' OR p.payment_id ILIKE ${`%${busca}%`}
+        OR p.diagnostico_id ILIKE ${`%${busca}%`}
+        OR COALESCE(p.cliente_nome,'') ILIKE ${`%${busca}%`}
+        OR COALESCE(p.cliente_documento,'') ILIKE ${`%${busca}%`}
+        OR COALESCE(l.origem,'') ILIKE ${`%${busca}%`})
+    ORDER BY p.criado_em DESC LIMIT 500
   `;
+
   const resumo = await sql`
     SELECT
       COUNT(*)::int AS total,
@@ -575,11 +587,24 @@ async function adminDashboard(req, res) {
       COALESCE(SUM(valor_liquido) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS liquido
     FROM asaas_pagamentos GROUP BY produto
   `;
+  const porOrigem = await sql`
+    SELECT COALESCE(NULLIF(l.origem, ''), 'sem origem') AS origem,
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH'))::int AS recebidos,
+      COALESCE(SUM(p.valor) FILTER (WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS bruto
+    FROM asaas_pagamentos p
+    LEFT JOIN LATERAL (
+      SELECT origem FROM diagnostico_leads
+      WHERE diagnostico_id = p.diagnostico_id OR ('simulador:' || id) = p.diagnostico_id
+      ORDER BY updated_at DESC LIMIT 1
+    ) l ON TRUE
+    GROUP BY 1 ORDER BY bruto DESC
+  `;
   const eventos = await sql`
     SELECT evento_id, payment_id, evento, status, recebido_em
     FROM asaas_eventos ORDER BY recebido_em DESC LIMIT 100
   `;
-  return res.status(200).json({ ok: true, resumo: resumo[0], pagamentos, porProduto, eventos, atualizadoEm: new Date().toISOString() });
+  return res.status(200).json({ ok: true, resumo: resumo[0], pagamentos, porProduto, porOrigem, eventos, atualizadoEm: new Date().toISOString() });
 }
 
 async function adminFinance(req, res) {
