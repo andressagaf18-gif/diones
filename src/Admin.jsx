@@ -44,6 +44,7 @@ import VisaoConsultiva from "./relatorios/VisaoConsultiva";
 import FichaArea from "./atendimento/FichaArea";
 import ConsentimentoLGPD, { SeloConsentimento } from "./lgpd/ConsentimentoLGPD";
 import ResumoSimuladorReforma, { SeloSimuladorLead, snapshotDoContexto } from "./simulador/ResumoSimuladorReforma.jsx";
+import PainelOportunidadeReforma, { SeloOportunidadeReforma } from "./simulador/OportunidadeReforma.jsx";
 import RelatorioClienteSimulador from "./simulador/RelatorioClienteSimulador.jsx";
 import { limparCodigoInternoRelatorio } from "./relatorios/limparTexto.js";
 import DossieAdminSimulador from "./simulador/DossieAdminSimulador.jsx";
@@ -4431,6 +4432,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
                       consentimento={lead.consentimento}
                     />
                     <SeloSimuladorLead contexto={lead.contextoCliente} />
+                    <SeloOportunidadeReforma contexto={lead.contextoCliente} />
                   </div>
 
                   <div>
@@ -4808,6 +4810,7 @@ function LeadsCRM({ token, onAbrirDiagnostico }) {
               ))}
             </div>
 
+            <PainelOportunidadeReforma contexto={leadDetalheAberto.contextoCliente} />
             <ResumoSimuladorReforma contexto={leadDetalheAberto.contextoCliente} />
 
             <ConsentimentoLGPD
@@ -14703,7 +14706,7 @@ function DetalheDiagnostico({
         : resultadoCompleto.informacoesFaltantes
     ) || [];
 
-  const oportunidadesConsultoria =
+  const oportunidadesConsultoriaBase =
     (
       Array.isArray(
         resultado.oportunidadesConsultoria
@@ -14712,6 +14715,14 @@ function DetalheDiagnostico({
         ? resultado.oportunidadesConsultoria
         : visaoAdministracaoV2.oportunidades
     ) || [];
+
+  // Próximo passo comercial sugerido pela análise (interno) vai na frente da lista.
+  const proximoPassoComercialIa = String(visaoAdministracaoV2.proximoPassoComercial || "").trim();
+  const oportunidadesConsultoria =
+    proximoPassoComercialIa &&
+    !oportunidadesConsultoriaBase.some((x) => String(x).includes(proximoPassoComercialIa))
+      ? [`Próximo passo sugerido: ${proximoPassoComercialIa}`, ...oportunidadesConsultoriaBase]
+      : oportunidadesConsultoriaBase;
 
   // COMPLEMENTO — inteligência tributária
   const relatoriosSegmentados =
@@ -20494,6 +20505,7 @@ const RUBRICA_ETAPAS_JORNADA = {
 function JornadaDiagnosticoPainel({ token }) {
   const [modo, setModo] = useState("funil");
   const [funil, setFunil] = useState(null);
+  const [estruturaFunil, setEstruturaFunil] = useState("");
   const [busca, setBusca] = useState("");
   const [resultadosBusca, setResultadosBusca] = useState([]);
   const [leadSelecionado, setLeadSelecionado] = useState(null);
@@ -20507,7 +20519,7 @@ function JornadaDiagnosticoPainel({ token }) {
   async function carregarFunil() {
     setErro("");
     try {
-      const r = await fetch("/api/crm?action=jornada-funil&dias=30", { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/api/crm?action=jornada-funil&dias=30${estruturaFunil ? `&estrutura=${encodeURIComponent(estruturaFunil)}` : ""}`, { headers: { Authorization: `Bearer ${token}` } });
       const d = await r.json().catch(() => null);
       if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro ao carregar a jornada.");
       setFunil(d);
@@ -20524,7 +20536,7 @@ function JornadaDiagnosticoPainel({ token }) {
     carregarFunil();
     const iv = setInterval(carregarFunil, 30000);
     return () => clearInterval(iv);
-  }, [modo]);
+  }, [modo, estruturaFunil]);
 
   async function buscarLeads() {
     if (busca.trim().length < 2) return;
@@ -20587,6 +20599,21 @@ function JornadaDiagnosticoPainel({ token }) {
 
       {modo === "funil" && funil && (
         <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <label style={{ fontSize: 10, color: dark.muted, fontWeight: 700 }}>ESTRUTURA</label>
+            <select
+              value={estruturaFunil}
+              onChange={(e) => setEstruturaFunil(e.target.value)}
+              style={{ background: "#12172A", color: dark.text, border: `1px solid ${dark.border}`, borderRadius: 9, padding: "7px 10px", fontSize: 11.5 }}
+            >
+              <option value="">Todas as estruturas</option>
+              {(funil.estruturaNegocio || []).filter((x) => x.estrutura && x.estrutura !== "não informado").map((x) => (
+                <option key={x.estrutura} value={x.estrutura}>{labelEstruturaDiagnostico(x.estrutura)} ({x.total})</option>
+              ))}
+            </select>
+            {estruturaFunil && <span style={{ fontSize: 10, color: dark.muted }}>Mostrando só quem escolheu essa estrutura.</span>}
+          </div>
+
           {!etapasComTaxa.length && (
             <div style={{ background: "rgba(239,91,91,.1)", border: "1px solid rgba(239,91,91,.25)", color: "#FF9B8F", padding: 16, borderRadius: 14, fontSize: 12.5 }}>
               Ainda não há jornadas registradas. A partir de agora, cada mudança de etapa no formulário público passa a alimentar esse funil.
@@ -20909,6 +20936,7 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
   const [editandoCupom, setEditandoCupom] = useState("");
 
   const [status, setStatus] = useState("");
+  const [produtoFiltro, setProdutoFiltro] = useState("");
   const [busca, setBusca] = useState("");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
@@ -20929,6 +20957,7 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
     try {
       const p = new URLSearchParams({ acao: "admin-painel" });
       if (status) p.set("status", status);
+      if (produtoFiltro) p.set("produto", produtoFiltro);
       if (busca) p.set("busca", busca);
       if (inicio) p.set("inicio", inicio);
       if (fim) p.set("fim", fim);
@@ -21147,12 +21176,30 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
             <Card><small style={{ color: MUTED }}>NÃO CONCLUÍDOS</small><h3 style={{ margin: "6px 0 0" }}>{r.nao_concluidos || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Vencidos/cancelados</span></Card>
             <Card><small style={{ color: MUTED }}>ESTORNADOS</small><h3 style={{ margin: "6px 0 0" }}>{r.estornados || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Reembolsos</span></Card>
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginTop: 10 }}>
+            {["DIAGNOSTICO", "SIMULADOR"].map((prod) => {
+              const x = (dados.porProduto || []).find((i) => i.produto === prod) || {};
+              return (
+                <Card key={prod}>
+                  <small style={{ color: MUTED }}>{prod === "SIMULADOR" ? "SIMULADOR DA REFORMA" : "DIAGNÓSTICO"} — RECEITA BRUTA</small>
+                  <h3 style={{ margin: "6px 0 0" }}>{moedaAdmin(x.bruto)}</h3>
+                  <span style={{ fontSize: 10.5, color: MUTED }}>{x.recebidos || 0} pago(s) de {x.total || 0} cobrança(s) · líquido {moedaAdmin(x.liquido)}</span>
+                </Card>
+              );
+            })}
+          </div>
+
         </div>
       )}
 
       {abaAsaas === "cobrancas" && (
         <div>
           <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={produtoFiltro} onChange={(e) => setProdutoFiltro(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
+              <option value="">Todos os produtos</option>
+              <option value="DIAGNOSTICO">Diagnóstico</option>
+              <option value="SIMULADOR">Simulador da Reforma</option>
+            </select>
             <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
               {STATUS_ASAAS.map((s) => <option key={s} value={s}>{s || "Todos os status"}</option>)}
             </select>
@@ -21181,7 +21228,7 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
                   <tr key={p.payment_id}>
                     <td style={tdStyle}>{formatarData(p.criado_em)}</td>
                     <td style={tdStyle}><strong>{p.cliente_nome || "-"}</strong><br /><span style={{ color: MUTED }}>{p.cliente_documento || ""}</span></td>
-                    <td style={tdStyle}>{p.plano || "-"}</td>
+                    <td style={tdStyle}>{p.plano || "-"}<br /><span style={{ color: p.produto === "SIMULADOR" ? "#1D4ED8" : MUTED, fontSize: 10, fontWeight: 700 }}>{p.produto === "SIMULADOR" ? "Simulador" : "Diagnóstico"}</span></td>
                     <td style={tdStyle}>{moedaAdmin(p.valor)}</td>
                     <td style={tdStyle}>{moedaAdmin(p.valor_liquido)}</td>
                     <td style={tdStyle}>{p.cupom_codigo || "-"}</td>
