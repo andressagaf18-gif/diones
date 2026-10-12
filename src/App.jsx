@@ -1552,42 +1552,60 @@ A Finder of Solutions disponibiliza, através deste site e de suas plataformas, 
 
 As Ferramentas processam as informações fornecidas pelo usuário (dados cadastrais, CNPJ, faturamento, estrutura societária, respostas a questionários e documentos eventualmente enviados) para gerar um diagnóstico, relatório ou simulação. Parte desse processamento pode utilizar inteligência artificial para interpretar as respostas e apresentar um resultado consultivo.
 
-O resultado apresentado tem caráter informativo e consultivo, servindo como ponto de partida para uma análise mais aprofundada junto à equipe da Finder of Solutions ou a outros profissionais habilitados (contadores, advogados). O diagnóstico não substitui uma auditoria formal, parecer jurídico ou consultoria tributária individualizada.
+O resultado apresentado tem caráter informativo e consultivo, servindo como ponto de partida para uma análise mais aprofundada junto à equipe da Finder of Solutions ou a outros profissionais habilitados (contadores, advogados). O diagnóstico e a simulação são estimativas calculadas com base nas informações e nas premissas informadas, não constituem apuração oficial de tributos e não substituem auditoria formal, parecer jurídico ou consultoria tributária individualizada. Não há garantia de economia, de redução de carga tributária ou de qualquer resultado financeiro.
 
-2. Responsabilidade pelas informações
+2. Planos, preços e pagamento
 
-É de responsabilidade exclusiva do usuário a exatidão, a veracidade e a atualidade dos dados e documentos fornecidos. A Finder of Solutions não se responsabiliza por resultados incorretos, incompletos ou distorcidos que decorram de informações equivocadas, desatualizadas ou incompletas fornecidas pelo próprio usuário.
+Parte das Ferramentas é oferecida mediante pagamento. Os planos disponíveis, o que cada um inclui e o preço aparecem na tela antes da contratação, e só é cobrado o valor ali exibido (já considerado o cupom de desconto, quando houver). O pagamento é feito por Pix, por meio da plataforma de pagamentos Asaas; para gerar a cobrança é necessário informar o CPF ou CNPJ do pagador.
 
-3. Propriedade intelectual
+O conteúdo contratado é liberado automaticamente após a confirmação do pagamento. Cupons têm regras próprias (validade, plano e limite de uso) e não são cumulativos. Depois de contratado um plano, é possível adquirir um plano superior pagando o valor correspondente a ele.
 
-O software, os fluxos de perguntas, os modelos de relatório, as marcas e demais elementos das Ferramentas são de propriedade da Finder of Solutions ou de seus licenciantes, sendo vedados a cópia, engenharia reversa, redistribuição ou uso para finalidade diversa da prevista nestes Termos.
+3. Direito de arrependimento e devolução do valor
 
-4. Proteção de dados pessoais (LGPD)
+Garantia de 7 dias. A Finder of Solutions concede a todos os compradores, sejam consumidores ou empresas, o direito de desistir da compra em até 7 (sete) dias corridos contados da confirmação do pagamento, sem necessidade de justificar. Dentro desse prazo, o valor efetivamente pago é devolvido integralmente. Essa garantia atende e, para empresas, estende o direito de arrependimento do art. 49 do Código de Defesa do Consumidor.
 
-Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018), os dados pessoais e empresariais informados serão utilizados exclusivamente para a geração do diagnóstico, para contato comercial relacionado a ele e para o cumprimento de obrigações legais e contratuais da Finder of Solutions. Os dados não serão vendidos a terceiros e serão tratados com as medidas de segurança técnicas e organizacionais cabíveis. O usuário pode, a qualquer momento, solicitar informações sobre o tratamento de seus dados ou requerer sua exclusão, observados os prazos e obrigações legais de guarda de documentos fiscais e contábeis.
+Como pedir. O pedido é feito pelo e-mail contato@finderofsolutions.com.br ou pelo WhatsApp (41) 98904-9616, informando o nome, o CPF/CNPJ do pagador e a data do pagamento. A Finder confirma o recebimento do pedido imediatamente após o contato e realiza a devolução em até 10 (dez) dias úteis, pelo mesmo meio de pagamento (Pix para a conta de origem), sem cobrança de taxas do comprador. Em caso de cupom de desconto, devolve-se o valor efetivamente pago.
 
-5. Limitação de responsabilidade
+Devolução fora do prazo de 7 dias. Mesmo depois desse prazo, o valor é devolvido, total ou proporcionalmente, nestes casos: (a) cobrança em duplicidade ou em valor diferente do exibido; (b) o conteúdo contratado não foi liberado ou ficou inacessível por falha da Finder e não foi corrigido em prazo razoável; (c) serviço com especialista que a Finder não prestou, ou prestou apenas em parte.
 
-As Ferramentas são fornecidas "no estado em que se encontram". A Finder of Solutions envida seus melhores esforços para manter as informações e cálculos atualizados de acordo com a legislação vigente, mas não garante a ausência de instabilidades, interrupções ou eventuais desatualizações normativas. A interpretação final do resultado e a tomada de decisão com base nele são de responsabilidade do usuário.
+O que não gera devolução fora do prazo: discordância com o resultado quando decorrente de informações incorretas, incompletas ou desatualizadas fornecidas pelo usuário (veja o item 4), e a simples mudança de ideia depois dos 7 dias.
 
-6. Comunicações
+Efeitos da devolução. Com a devolução, o acesso ao conteúdo pago do plano devolvido é encerrado. A Finder poderá manter o registro da transação pelo prazo exigido em lei.
 
-Ao aceitar estes Termos, o usuário concorda em receber comunicações relacionadas ao diagnóstico solicitado (e-mail, telefone, WhatsApp), podendo solicitar o descadastramento a qualquer momento.
+4. Responsabilidade pelas informações
 
-7. Alterações e vigência
+É de responsabilidade exclusiva do usuário a exatidão, a veracidade e a atualidade dos dados e documentos fornecidos. A Finder of Solutions não se responsabiliza por resultados incorretos, incompletos ou distorcidos que decorram de informações equivocadas, desatualizadas ou incompletas fornecidas pelo próprio usuário. Antes de qualquer decisão com efeito financeiro ou fiscal, os valores devem ser conferidos com os documentos da empresa e com o contador responsável.
 
-Estes Termos podem ser atualizados periodicamente para refletir mudanças legislativas ou nas próprias Ferramentas. A versão vigente é sempre a disponibilizada no momento do uso.
+5. Propriedade intelectual
 
-8. Foro
+O software, os fluxos de perguntas, os modelos de relatório, as marcas e demais elementos das Ferramentas são de propriedade da Finder of Solutions ou de seus licenciantes, sendo vedados a cópia, engenharia reversa, redistribuição ou uso para finalidade diversa da prevista nestes Termos. O relatório adquirido pode ser usado pelo comprador para fins internos da própria empresa, sendo vedada sua revenda.
 
-Fica eleito o foro do domicílio da Finder of Solutions para dirimir eventuais controvérsias oriundas destes Termos, com renúncia a qualquer outro, por mais privilegiado que seja.
+6. Proteção de dados pessoais (LGPD)
+
+Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018), os dados pessoais e empresariais informados serão utilizados exclusivamente para a geração do diagnóstico, para contato comercial relacionado a ele, para o processamento do pagamento e para o cumprimento de obrigações legais e contratuais da Finder of Solutions. Os dados necessários à cobrança são compartilhados com a plataforma de pagamentos. Os dados não serão vendidos a terceiros e serão tratados com as medidas de segurança técnicas e organizacionais cabíveis. O usuário pode, a qualquer momento, solicitar informações sobre o tratamento de seus dados ou requerer sua exclusão, observados os prazos e obrigações legais de guarda de documentos fiscais e contábeis.
+
+7. Limitação de responsabilidade
+
+As Ferramentas são fornecidas "no estado em que se encontram". A Finder of Solutions envida seus melhores esforços para manter as informações e cálculos atualizados de acordo com a legislação vigente, mas não garante a ausência de instabilidades, interrupções ou eventuais desatualizações normativas. A interpretação final do resultado e a tomada de decisão com base nele são de responsabilidade do usuário. Nada nestes Termos limita direitos que a lei assegure ao consumidor.
+
+8. Comunicações
+
+Ao aceitar estes Termos, o usuário concorda em receber comunicações relacionadas ao diagnóstico solicitado e à compra realizada (e-mail, telefone, WhatsApp), podendo solicitar o descadastramento das comunicações comerciais a qualquer momento.
+
+9. Alterações e vigência
+
+Estes Termos podem ser atualizados periodicamente para refletir mudanças legislativas ou nas próprias Ferramentas. A versão vigente na data da compra é a que vale para aquela compra.
+
+10. Foro
+
+Fica eleito o foro do domicílio da Finder of Solutions para dirimir eventuais controvérsias oriundas destes Termos, ressalvado o direito do consumidor de propor a ação no foro do seu próprio domicílio.
 
 Ao clicar em "Aceitar", o usuário declara ter lido e concordado com todas as condições acima.
 `.trim();
 
 // Versão do texto acima. Mude sempre que o texto dos termos mudar: ela aparece
 // no comprovante de aceite, junto da impressão digital (SHA-256) do texto exato.
-const TERMOS_USO_VERSAO = "2026-10";
+const TERMOS_USO_VERSAO = "2026-10-b";
 
 function PrimaryButton({ children, onClick, disabled, style }) {
   return (
@@ -1705,6 +1723,8 @@ function listaConsultivaSimulador(valor) {
 
 function SimuladorReformaPublico({
   dadosIniciais=null,
+  leadId="",
+  planoLiberadoInicial="",
   nome,
   email,
   telefone,
@@ -1726,6 +1746,20 @@ function SimuladorReformaPublico({
   onConfirmarAgendamento,
 }) {
   const [etapa,setEtapa]=useState("empresa");
+
+  // Cobrança: usa o mesmo Pix/cupom do diagnóstico (Asaas). A referência do
+  // pagamento é o lead; depois do relatório salvo ela é vinculada ao diagnóstico.
+  // Plano Inicial libera os valores; Completo/Especialista liberam o relatório.
+  const [planoPago,setPlanoPago]=useState(planoLiberadoInicial||"");
+  useEffect(()=>{if(planoLiberadoInicial)setPlanoPago(p=>p||planoLiberadoInicial)},[planoLiberadoInicial]);
+  const refCobranca=leadId?`simulador:${leadId}`:"";
+  const acessoValores=Boolean(planoPago);
+  const acessoRelatorio=["COMPLETO","ESPECIALISTA"].includes(planoPago);
+  const TEXTOS_PLANOS_SIMULADOR={
+    INICIAL:{nome:"Simulação",descricao:"Valores em reais, comparativo entre os cenários e memória de cálculo."},
+    COMPLETO:{nome:"Simulação + Relatório completo",descricao:"Tudo da simulação, mais parecer com IA, plano 30/60/90 dias e PDF executivo."},
+    ESPECIALISTA:{nome:"Simulação + Especialista",descricao:"Relatório completo e conversa individual com especialista da Finder."},
+  };
 
   const [cnpj,setCnpj]=useState(String(dadosIniciais?.cnpj||""));
   const [consultandoCnpj,setConsultandoCnpj]=useState(false);
@@ -3288,11 +3322,12 @@ function SimuladorReformaPublico({
       !relatorioIa &&
       !gerandoRelatorioIa &&
       empresaCadastral &&
-      fat>0
+      fat>0 &&
+      acessoRelatorio
     ){
       gerarRelatorioIa();
     }
-  },[etapa]);
+  },[etapa,acessoRelatorio]);
 
   async function finalizarRelatorioReforma(){
     if(!relatorioIa||persistenciaRelatorioRef.current)return;
@@ -3303,6 +3338,12 @@ function SimuladorReformaPublico({
       if(!resposta?.sucesso)throw new Error("Não foi possível concluir o relatório da Reforma.");
       setDiagnosticoIdPersistido(resposta.diagnosticoId||"");
       setPersistenciaRelatorio("saved");
+      if(leadId&&resposta.diagnosticoId){
+        fetch("/api/asaas?acao=vincular",{
+          method:"POST",headers:{"content-type":"application/json"},
+          body:JSON.stringify({leadId,diagnosticoId:resposta.diagnosticoId}),
+        }).catch(()=>{});
+      }
     }catch(error){
       persistenciaRelatorioRef.current=false;
       setPersistenciaRelatorio("error");
@@ -3316,6 +3357,7 @@ function SimuladorReformaPublico({
   useEffect(()=>{
     if(
       etapa==="resultado" &&
+      acessoRelatorio &&
       relatorioIa &&
       persistenciaRelatorio==="idle" &&
       !persistenciaRelatorioRef.current
@@ -4392,7 +4434,17 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       </PrimaryButton>
     </>}
 
-    {etapa==="comparar"&&<>
+    {etapa==="comparar"&&!acessoValores&&<PainelPagamentoSimulador
+      titulo="Seu cenário está pronto"
+      texto="Calculamos a sua simulação com os dados informados. Escolha como deseja ver os valores em reais e o comparativo entre os cenários."
+      refCobranca={refCobranca}
+      nome={nome} email={email} telefone={telefone}
+      cnpj={String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,"")}
+      textosPlanos={TEXTOS_PLANOS_SIMULADOR}
+      onLiberado={setPlanoPago}
+    />}
+
+    {etapa==="comparar"&&acessoValores&&<>
       <div style={card}>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:18,margin:"0 0 4px"}}>
           4. Comparativo
@@ -4641,7 +4693,20 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       </PrimaryButton>
     </>}
 
-    {etapa==="resultado"&&<>
+    {etapa==="resultado"&&!acessoRelatorio&&<PainelPagamentoSimulador
+      titulo={acessoValores?"Libere o relatório completo":"Seu relatório está pronto para ser liberado"}
+      texto={acessoValores
+        ?"Você já tem a simulação. O relatório completo inclui o parecer com IA, o plano de preparação e o PDF executivo."
+        :"Escolha o plano para ver a simulação e receber o relatório."}
+      refCobranca={refCobranca}
+      nome={nome} email={email} telefone={telefone}
+      cnpj={String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,"")}
+      textosPlanos={TEXTOS_PLANOS_SIMULADOR}
+      somenteUpgrade={acessoValores}
+      onLiberado={setPlanoPago}
+    />}
+
+    {etapa==="resultado"&&acessoRelatorio&&<>
       <div style={{
         background:"linear-gradient(145deg,#101C35,#17233D)",
         color:"#fff",borderRadius:15,padding:14
@@ -4880,13 +4945,31 @@ const PLANOS_DIAGNOSTICO = [
   { codigo:"ESPECIALISTA", nome:"Diagnóstico + Especialista", valor:799.90, descricao:"Diagnóstico completo e análise individual com especialista Finder." },
 ];
 
-function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado,somenteUpgrade=false}){
+// Painel de pagamento do simulador: mesmo Pix, cupom e planos do diagnóstico.
+function PainelPagamentoSimulador({titulo,texto,refCobranca,nome,email,telefone,cnpj,textosPlanos,somenteUpgrade=false,onLiberado}){
+  return <div style={{display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{background:"linear-gradient(145deg,#101C35,#17233D)",color:"#fff",borderRadius:15,padding:14}}>
+      <div style={{fontSize:7.5,fontWeight:900,color:"#FFB7A7"}}>SIMULADOR REFORMA</div>
+      <h2 style={{fontFamily:DISPLAY_FONT,fontSize:19,lineHeight:1.12,margin:"5px 0"}}>{titulo}</h2>
+      <p style={{fontSize:9,color:"#D8DEEA",lineHeight:1.5,margin:0}}>{texto}</p>
+    </div>
+    {refCobranca
+      ?<PagamentoDiagnostico diagnosticoId={refCobranca} nome={nome} email={email} telefone={telefone} cnpj={cnpj} onLiberado={onLiberado} somenteUpgrade={somenteUpgrade} textosPlanos={textosPlanos}/>
+      :<p style={{fontSize:10.5,color:MUTED,textAlign:"center"}}>Aguarde alguns segundos: estamos preparando o pagamento.</p>}
+    <p style={{fontSize:9,color:MUTED,lineHeight:1.5,margin:0}}>
+      A simulação é uma estimativa com base nos dados informados e não substitui a apuração oficial. Veja a política de devolução nos Termos de Uso.
+    </p>
+  </div>;
+}
+
+function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado,somenteUpgrade=false,textosPlanos=null}){
   const [documento,setDocumento]=useState(cnpj||"");
   const [carregando,setCarregando]=useState("");
   const [erro,setErro]=useState("");
   const [cobranca,setCobranca]=useState(null);
   const [copiado,setCopiado]=useState(false);
   const [cupom,setCupom]=useState("");
+  const planosExibidos=PLANOS_DIAGNOSTICO.map(p=>({...p,...(textosPlanos?.[p.codigo]||{})}));
 
   useEffect(()=>{
     if(!diagnosticoId||cobranca?.paymentId)return;
@@ -4894,7 +4977,7 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
       const salvo=JSON.parse(localStorage.getItem(`finder_pagamento_${diagnosticoId}`)||"null");
       if(!salvo?.paymentId)return;
       if(somenteUpgrade&&salvo.plano==="INICIAL")return;
-      const plano=PLANOS_DIAGNOSTICO.find(item=>item.codigo===salvo.plano);
+      const plano=planosExibidos.find(item=>item.codigo===salvo.plano);
       setCobranca({
         paymentId:salvo.paymentId,
         plano:salvo.plano,
@@ -4967,14 +5050,14 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
 
   return <div style={{border:"1px solid #DDE2EA",borderRadius:14,padding:15,background:"#F7F8FB",marginBottom:16}}>
     <p style={{fontFamily:DISPLAY_FONT,fontSize:19,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>{somenteUpgrade?"Aprofunde seu diagnóstico":"Escolha como deseja receber sua análise"}</p>
-    <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>{somenteUpgrade?"Seu resultado inicial está liberado. Se desejar, adquira a análise completa ou o acompanhamento de um especialista.":"Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar."}</p>
+    <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>{somenteUpgrade?(textosPlanos?"Sua simulação está liberada. Se desejar, adquira o relatório completo ou o acompanhamento de um especialista.":"Seu resultado inicial está liberado. Se desejar, adquira a análise completa ou o acompanhamento de um especialista."):(textosPlanos?"Selecione o plano que deseja liberar.":"Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar.")}</p>
     <label style={{fontSize:9.5,fontWeight:800,color:NAVY}}>CPF ou CNPJ do pagador
       <input value={documento} onChange={e=>setDocumento(e.target.value)} placeholder="Somente números" inputMode="numeric" style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
     </label>
     <label style={{fontSize:9.5,fontWeight:800,color:NAVY,display:"block",marginTop:10}}>Cupom de desconto
       <input value={cupom} onChange={e=>setCupom(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g,""))} placeholder="Se possuir, informe aqui" maxLength={50} style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
     </label>
-    <div style={{display:"grid",gap:9,marginTop:12}}>{PLANOS_DIAGNOSTICO.filter(plano=>!somenteUpgrade||plano.codigo!=="INICIAL").map(plano=><div key={plano.codigo} style={{border:plano.destaque?`2px solid ${CORAL}`:"1px solid #DDE2EA",borderRadius:12,padding:12,background:WHITE}}>
+    <div style={{display:"grid",gap:9,marginTop:12}}>{planosExibidos.filter(plano=>!somenteUpgrade||plano.codigo!=="INICIAL").map(plano=><div key={plano.codigo} style={{border:plano.destaque?`2px solid ${CORAL}`:"1px solid #DDE2EA",borderRadius:12,padding:12,background:WHITE}}>
       {plano.destaque&&<span style={{fontSize:8,fontWeight:900,color:CORAL}}>MAIS ESCOLHIDO</span>}
       <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}><strong style={{color:NAVY,fontSize:13}}>{plano.nome}</strong><strong style={{color:plano.destaque?CORAL:NAVY,fontSize:17}}>{plano.valor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</strong></div>
       <p style={{fontSize:9.8,color:MUTED,lineHeight:1.4,margin:"6px 0 10px"}}>{plano.descricao}</p>
@@ -12374,7 +12457,8 @@ function DiagnosticoPrototipo() {
 
             {step === "simuladorReforma" && trilhaSimuladorReformaAtiva && (
               <SimuladorReformaPublico
-                nome={nome}
+                leadId={leadId}
+                                nome={nome}
                 email={email}
                 telefone={telefone}
                 onVoltar={()=>setStep("estrutura")}
@@ -12398,7 +12482,8 @@ function DiagnosticoPrototipo() {
 
             {step === "simuladorDoDiagnostico" && trilhaReformaAtiva && (
               <SimuladorReformaPublico
-                nome={nome}
+                leadId={leadId}
+                                nome={nome}
                 email={email}
                 telefone={telefone}
                 dadosIniciais={{
