@@ -1,4 +1,4 @@
-import {
+ import {
   lazy,
   Suspense,
   useEffect,
@@ -20937,6 +20937,7 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
 
   const [status, setStatus] = useState("");
   const [produtoFiltro, setProdutoFiltro] = useState("");
+  const [origemFiltro, setOrigemFiltro] = useState("");
   const [busca, setBusca] = useState("");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
@@ -20958,6 +20959,7 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
       const p = new URLSearchParams({ acao: "admin-painel" });
       if (status) p.set("status", status);
       if (produtoFiltro) p.set("produto", produtoFiltro);
+      if (origemFiltro) p.set("origem", origemFiltro);
       if (busca) p.set("busca", busca);
       if (inicio) p.set("inicio", inicio);
       if (fim) p.set("fim", fim);
@@ -21176,6 +21178,20 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
             <Card><small style={{ color: MUTED }}>NÃO CONCLUÍDOS</small><h3 style={{ margin: "6px 0 0" }}>{r.nao_concluidos || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Vencidos/cancelados</span></Card>
             <Card><small style={{ color: MUTED }}>ESTORNADOS</small><h3 style={{ margin: "6px 0 0" }}>{r.estornados || 0}</h3><span style={{ fontSize: 10.5, color: MUTED }}>Reembolsos</span></Card>
           </div>
+          {(dados.porOrigem || []).length > 0 && (
+            <Card style={{ marginTop: 10 }}>
+              <small style={{ color: MUTED }}>RECEITA POR ORIGEM (de onde vieram os pagamentos)</small>
+              <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                {dados.porOrigem.map((o) => (
+                  <div key={o.origem} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+                    <strong>{o.origem}</strong>
+                    <span style={{ color: MUTED }}>{o.recebidos || 0} pago(s) de {o.total || 0} · <b style={{ color: NAVY }}>{moedaAdmin(o.bruto)}</b></span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginTop: 10 }}>
             {["DIAGNOSTICO", "SIMULADOR"].map((prod) => {
               const x = (dados.porProduto || []).find((i) => i.produto === prod) || {};
@@ -21195,6 +21211,10 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
       {abaAsaas === "cobrancas" && (
         <div>
           <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={origemFiltro} onChange={(e) => setOrigemFiltro(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
+              <option value="">Todas as origens</option>
+              {(dados.porOrigem || []).filter((o) => o.origem !== "sem origem").map((o) => <option key={o.origem} value={o.origem}>{o.origem}</option>)}
+            </select>
             <select value={produtoFiltro} onChange={(e) => setProdutoFiltro(e.target.value)} style={{ border: "1px solid #D8DEEA", borderRadius: 9, padding: "10px 12px" }}>
               <option value="">Todos os produtos</option>
               <option value="DIAGNOSTICO">Diagnóstico</option>
@@ -21215,6 +21235,7 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
                 <th style={thStyle}>Data</th>
                 <th style={thStyle}>Cliente</th>
                 <th style={thStyle}>Plano</th>
+                <th style={thStyle}>Origem</th>
                 <th style={thStyle}>Valor</th>
                 <th style={thStyle}>Líquido</th>
                 <th style={thStyle}>Cupom</th>
@@ -21229,6 +21250,7 @@ function AsaasFinanceiroAdmin({ token, onAbrirDiagnostico }) {
                     <td style={tdStyle}>{formatarData(p.criado_em)}</td>
                     <td style={tdStyle}><strong>{p.cliente_nome || "-"}</strong><br /><span style={{ color: MUTED }}>{p.cliente_documento || ""}</span></td>
                     <td style={tdStyle}>{p.plano || "-"}<br /><span style={{ color: p.produto === "SIMULADOR" ? "#1D4ED8" : MUTED, fontSize: 10, fontWeight: 700 }}>{p.produto === "SIMULADOR" ? "Simulador" : "Diagnóstico"}</span></td>
+                    <td style={tdStyle}><strong>{p.origem || "sem origem"}</strong>{p.campanha ? <><br /><span style={{ color: MUTED, fontSize: 10 }}>{p.campanha}</span></> : null}{p.promoter ? <><br /><span style={{ color: MUTED, fontSize: 10 }}>promoter: {p.promoter}</span></> : null}</td>
                     <td style={tdStyle}>{moedaAdmin(p.valor)}</td>
                     <td style={tdStyle}>{moedaAdmin(p.valor_liquido)}</td>
                     <td style={tdStyle}>{p.cupom_codigo || "-"}</td>
