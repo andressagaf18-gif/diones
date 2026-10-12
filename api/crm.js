@@ -997,7 +997,7 @@ async function atualizarLead(req, res) {
     });
   }
 
-  const atual =
+  let atual =
     await localizarLeadComFallback({
       leadId,
       sessionId,
@@ -1008,6 +1008,50 @@ async function atualizarLead(req, res) {
       sucesso: false,
       error: "Lead não encontrado.",
     });
+  }
+
+  // Proteção contra duas pessoas no mesmo aparelho: o código de sessão fica
+  // guardado no celular. Se os dados de contato recebidos forem de OUTRA
+  // pessoa, o lead existente não pode ser sobrescrito — abrimos um lead novo
+  // (com a mesma origem) e a atualização segue nele.
+  {
+    const digitos = (v) => String(v || "").replace(/\D/g, "");
+    const norm = (v) => String(v || "").trim().toLowerCase();
+    const veioDoAdmin = Boolean(req.headers?.authorization);
+    const telNovo = digitos(body.telefone);
+    const telAtual = digitos(atual.telefone);
+    const emNovo = norm(body.email);
+    const emAtual = norm(atual.email);
+    const difTel = Boolean(telNovo && telAtual && telNovo !== telAtual);
+    const difEmail = Boolean(emNovo && emAtual && emNovo !== emAtual);
+    const jaTemResultado =
+      atual.status_diagnostico === "CONCLUIDO" || Boolean(atual.diagnostico_id);
+    const outraPessoa =
+      !veioDoAdmin && ((difTel && difEmail) || (jaTemResultado && (difTel || difEmail)));
+
+    if (outraPessoa) {
+      const novoId = gerarId("lead");
+      const novaSessao = gerarId("sessao");
+      const criado = await sql`
+        INSERT INTO diagnostico_leads (
+          id, session_id, origem, campanha, promoter,
+          utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer,
+          status_diagnostico, status_comercial, etapa_atual, progresso_percentual,
+          primeiro_acesso, ultima_atividade, created_at, updated_at
+        )
+        VALUES (
+          ${novoId}, ${novaSessao}, ${atual.origem || "direto"}, ${atual.campanha || ""}, ${atual.promoter || ""},
+          ${atual.utm_source || ""}, ${atual.utm_medium || ""}, ${atual.utm_campaign || ""}, ${atual.utm_content || ""}, ${atual.utm_term || ""}, ${atual.referrer || ""},
+          'ACESSOU', 'NOVO_LEAD', 'INTRO', 0,
+          NOW(), NOW(), NOW(), NOW()
+        )
+        RETURNING *
+      `;
+      if (criado?.[0]) {
+        console.warn("[crm] Sessão reutilizada por outra pessoa; novo lead criado:", novoId, "(anterior:", atual.id, ")");
+        atual = criado[0];
+      }
+    }
   }
 
   let statusDiagnostico =
@@ -6494,10 +6538,9 @@ async function jornadaFunil(req, res) {
   try {
     const [porEtapa, porEstrutura, ultimaEtapaPorLead] = await Promise.all([
       sql`
-        SELECT etapa, COUNT(DISTINCT lead_id)::INTEGER AS total
+        SELECT DISTINCT lead_id, etapa
         FROM diagnostico_leads_eventos
         WHERE criado_em > NOW() - (${dias} || ' days')::interval
-        GROUP BY etapa
       `,
       sql`
         SELECT DISTINCT ON (lead_id) lead_id, estrutura_negocio
@@ -6514,7 +6557,17 @@ async function jornadaFunil(req, res) {
       `,
     ]);
 
-    const mapaEtapas = Object.fromEntries(porEtapa.map((r) => [r.etapa, Number(r.total || 0)]));
+    // Filtro opcional por estrutura (ex.: reforma_tributaria): considera a
+    // estrutura mais recente registrada de cada lead.
+    const filtroEstrutura = String(req.query?.estrutura || "").trim();
+    const estruturaDoLead = new Map(porEstrutura.map((r) => [r.lead_id, r.estrutura_negocio]));
+    const noFiltro = (leadId) => !filtroEstrutura || estruturaDoLead.get(leadId) === filtroEstrutura;
+
+    const mapaEtapas = {};
+    for (const r of porEtapa) {
+      if (!noFiltro(r.lead_id)) continue;
+      mapaEtapas[r.etapa] = (mapaEtapas[r.etapa] || 0) + 1;
+    }
     const etapasComDados = ORDEM_ETAPAS_JORNADA.filter((e) => mapaEtapas[e]);
     for (const e of Object.keys(mapaEtapas)) {
       if (!etapasComDados.includes(e)) etapasComDados.push(e);
@@ -6531,6 +6584,7 @@ async function jornadaFunil(req, res) {
     const paradosPorEtapa = {};
     for (const r of ultimaEtapaPorLead) {
       if (r.etapa === "resultado") continue;
+      if (!noFiltro(r.lead_id)) continue;
       const horas = (agora - new Date(r.criado_em).getTime()) / 36e5;
       if (horas >= LIMITE_PARADO_HORAS) {
         paradosPorEtapa[r.etapa] = (paradosPorEtapa[r.etapa] || 0) + 1;
