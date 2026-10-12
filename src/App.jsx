@@ -1704,6 +1704,7 @@ function listaConsultivaSimulador(valor) {
 }
 
 function SimuladorReformaPublico({
+  dadosIniciais=null,
   nome,
   email,
   telefone,
@@ -1726,7 +1727,7 @@ function SimuladorReformaPublico({
 }) {
   const [etapa,setEtapa]=useState("empresa");
 
-  const [cnpj,setCnpj]=useState("");
+  const [cnpj,setCnpj]=useState(String(dadosIniciais?.cnpj||""));
   const [consultandoCnpj,setConsultandoCnpj]=useState(false);
   const [erroCnpj,setErroCnpj]=useState("");
   const [empresaCadastral,setEmpresaCadastral]=useState(null);
@@ -1734,7 +1735,9 @@ function SimuladorReformaPublico({
   const [atividadeSelecionada,setAtividadeSelecionada]=useState("");
   const [descricaoAtividadeReal,setDescricaoAtividadeReal]=useState("");
 
-  const [regime,setRegime]=useState("");
+  const [regime,setRegime]=useState(
+    ["Simples Nacional","Lucro Presumido","Lucro Real"].includes(dadosIniciais?.regime)?dadosIniciais.regime:""
+  );
   const [natureza,setNatureza]=useState("");
   const [faturamento,setFaturamento]=useState("");
   const [impostoAtual,setImpostoAtual]=useState("");
@@ -6417,8 +6420,33 @@ function DiagnosticoPrototipo() {
     );
   }
 
+  // Cada pessoa precisa de um lead próprio. O código da sessão fica guardado no
+  // celular; ao reiniciar (ou quando o lead anterior já foi concluído) ele é
+  // descartado e um novo lead é aberto.
+  const [reinicioSessaoLead, setReinicioSessaoLead] = useState(0);
+
+  function descartarSessaoLead() {
+    const apagar = (armazenamento) => {
+      try {
+        const chaves = [];
+        for (let i = 0; i < armazenamento.length; i++) {
+          const k = armazenamento.key(i);
+          if (k && k.startsWith("finder_diagnostico_session_id")) chaves.push(k);
+        }
+        chaves.forEach((k) => armazenamento.removeItem(k));
+      } catch {}
+    };
+    apagar(sessionStorage);
+    apagar(localStorage);
+    setLeadId("");
+    setSessionIdLead("");
+    leadInicializadoRef.current = false;
+    setReinicioSessaoLead((n) => n + 1);
+  }
+
   function comecarNovamente() {
     limparRascunhoLocal();
+    descartarSessaoLead();
 
     setRascunhoPendente(
       null
@@ -6602,6 +6630,16 @@ function DiagnosticoPrototipo() {
           return;
         }
 
+        // Sessão antiga já concluída = nova tentativa (possivelmente de outra
+        // pessoa no mesmo aparelho): começa um lead novo em vez de reaproveitar.
+        if (
+          data.existente &&
+          data.statusDiagnostico === "CONCLUIDO"
+        ) {
+          descartarSessaoLead();
+          return;
+        }
+
         setLeadId(
           data.leadId ||
           ""
@@ -6656,7 +6694,7 @@ function DiagnosticoPrototipo() {
     return () => {
       cancelado = true;
     };
-  }, [aceiteOk]);
+  }, [aceiteOk, reinicioSessaoLead]);
 
   async function atualizarLeadCRM(dados = {}) {
     const identificadorLead =
@@ -6720,11 +6758,25 @@ function DiagnosticoPrototipo() {
 
       if (
         data?.lead?.leadId &&
-        !leadId
+        data.lead.leadId !== leadId
       ) {
         setLeadId(
           data.lead.leadId
         );
+      }
+
+      // O servidor abriu um lead novo (sessão reaproveitada por outra pessoa).
+      if (
+        data?.lead?.sessionId &&
+        data.lead.sessionId !== sessionIdLead
+      ) {
+        setSessionIdLead(data.lead.sessionId);
+        try {
+          const origemAtualSessao = String(lerOrigemDaUrl() || "direto").trim().toLowerCase();
+          const chave = `finder_diagnostico_session_id_${encodeURIComponent(origemAtualSessao)}`;
+          sessionStorage.setItem(chave, data.lead.sessionId);
+          localStorage.setItem(chave, data.lead.sessionId);
+        } catch {}
       }
     } catch (erro) {
       console.warn(
@@ -7377,6 +7429,7 @@ function DiagnosticoPrototipo() {
       checklist: 70,
       analisando: 95,
       resultado: 100,
+      simuladorDoDiagnostico: 100,
     };
 
     if (
@@ -7443,7 +7496,7 @@ function DiagnosticoPrototipo() {
     const statusDiagnostico =
       step === "intro"
         ? "ACESSOU"
-        : step === "resultado"
+        : step === "resultado" || step === "simuladorDoDiagnostico"
         ? "CONCLUIDO"
         : "EM_PREENCHIMENTO";
 
@@ -7522,7 +7575,9 @@ function DiagnosticoPrototipo() {
 
       etapaAtual:
         String(
-          step ||
+          step === "simuladorDoDiagnostico"
+            ? "resultado"
+            : step ||
           ""
         ).toUpperCase(),
 
@@ -7567,7 +7622,9 @@ function DiagnosticoPrototipo() {
 
         etapaAtual:
           String(
-            step ||
+            step === "simuladorDoDiagnostico"
+              ? "resultado"
+              : step ||
             ""
           ).toUpperCase(),
 
@@ -8209,6 +8266,27 @@ function DiagnosticoPrototipo() {
                 diagnostico.leituraExecutiva
               ),
 
+            manchete:
+              textoIaSeguro(
+                diagnostico.manchete
+              ),
+
+            prioridadesComPrazo:
+              Array.isArray(diagnostico.prioridadesComPrazo)
+                ? diagnostico.prioridadesComPrazo
+                    .map((item) => ({
+                      titulo: textoIaSeguro(item?.titulo),
+                      prazo: textoIaSeguro(item?.prazo),
+                      porque: textoIaSeguro(item?.porque),
+                    }))
+                    .filter((item) => item.titulo)
+                : [],
+
+            proximoPasso:
+              textoIaSeguro(
+                diagnostico.proximoPasso
+              ),
+
             principaisDores:
               listaIaSegura(
                 diagnostico.doresPrincipais
@@ -8379,6 +8457,50 @@ function DiagnosticoPrototipo() {
         : [...atuais, id]
     );
   }
+
+  // Reforma Tributária: pula a tela de "dor". As áreas e as dores saem dos
+  // temas e da triagem já respondidos; o cliente só confirma a decisão de 90 dias.
+  const [gerarAposTriagem, setGerarAposTriagem] = useState(false);
+
+  function avancarReformaSemDor() {
+    const areas = [];
+    const add = (id) => { if (id && !areas.includes(id)) areas.push(id); };
+    const txt = (objetivosReforma || []).join(" ").toLowerCase();
+    if (/carga|regime|simples|presumido|real/.test(txt)) add("reforma_carga");
+    if (/cr[eé]dito|compra/.test(txt)) add("reforma_creditos");
+    if (/pre[cç]o|margem|repasse/.test(txt)) add("reforma_precos");
+    if (/cliente/.test(txt)) add("reforma_clientes");
+    if (/fornecedor/.test(txt)) add("reforma_fornecedores");
+    if (/sistema|erp|nota/.test(txt)) add("reforma_sistemas");
+    if (/contrato/.test(txt)) add("reforma_contratos");
+    if (erpReforma === "NAO_INICIADO" || erpReforma === "ANDAMENTO") add("reforma_sistemas");
+    if (repassePrecoReforma === "BAIXA" || repassePrecoReforma === "NAO_SEI") add("reforma_precos");
+    if (comprasCreditoReforma === "ALTO") add("reforma_creditos");
+    if (contratosReforma === "NAO" || contratosReforma === "PARCIAL") add("reforma_contratos");
+    if (beneficiosReforma === "SIM" || beneficiosReforma === "ANALISAR") add("reforma_regime");
+    if (preparacaoReforma === "NAO_INICIOU" || preparacaoReforma === "ENTENDENDO") add("reforma_transicao");
+    if (perfilClientesReforma === "B2B" || perfilClientesReforma === "MISTO") add("reforma_clientes");
+    add("reforma_carga"); add("reforma_creditos"); add("reforma_transicao");
+    const dorBase = (objetivosReforma || []).length
+      ? objetivosReforma.slice(0, 4)
+      : ["Entender o impacto da Reforma Tributária na empresa"];
+    setDores(areas.slice(0, 4));
+    setDoresSelecionadas(dorBase);
+    setDor90Dias((atual) =>
+      String(atual || "").trim() ||
+      String(duvidaReforma || "").trim() ||
+      "Entender o impacto da Reforma Tributária e definir as primeiras ações."
+    );
+    setGerarAposTriagem(true);
+  }
+
+  useEffect(() => {
+    if (gerarAposTriagem && dores.length > 0 && doresSelecionadas.length > 0 && dor90Dias.trim()) {
+      setGerarAposTriagem(false);
+      gerarPerguntasPersonalizadas();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gerarAposTriagem, dores, doresSelecionadas, dor90Dias]);
 
   function toggleDorSelecionada(valor) {
     setDoresSelecionadas((prev) =>
@@ -10188,6 +10310,7 @@ function DiagnosticoPrototipo() {
   }
 
   function reiniciar() {
+    descartarSessaoLead();
     setStep("intro");
     setNome("");
     setCargo("");
@@ -12273,6 +12396,34 @@ function DiagnosticoPrototipo() {
               />
             )}
 
+            {step === "simuladorDoDiagnostico" && trilhaReformaAtiva && (
+              <SimuladorReformaPublico
+                nome={nome}
+                email={email}
+                telefone={telefone}
+                dadosIniciais={{
+                  cnpj: empresaPrincipal?.cnpjDigits || empresaPrincipal?.cnpj || "",
+                  regime: regime || "",
+                }}
+                onVoltar={()=>setStep("resultado")}
+                onSnapshot={setSimuladorReformaDados}
+                onPersistirResultado={persistirResultadoSimuladorReforma}
+                diagnosticoIdSalvo={diagnosticoIdSalvo}
+                agendaData={agendaData}
+                agendaHora={agendaHora}
+                agendaHorarios={agendaHorarios}
+                agendaStatus={agendaStatus}
+                agendaMensagem={agendaMensagem}
+                agendaObservacao={agendaObservacao}
+                hojeAgenda={hojeAgenda}
+                limiteAgenda={limiteAgenda}
+                onAgendaDataChange={(valor)=>{setAgendaData(valor);setAgendaHora("");}}
+                onAgendaHoraChange={setAgendaHora}
+                onAgendaObservacaoChange={setAgendaObservacao}
+                onConfirmarAgendamento={confirmarAgendamento}
+              />
+            )}
+
             {step === "cnpj" && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                 <p
@@ -12836,6 +12987,17 @@ function DiagnosticoPrototipo() {
                   </div>
                 </div>
 
+                <div>
+                  <label style={labelStyle}>Qual decisão você quer tomar nos próximos 90 dias? <span style={{color:MUTED,fontWeight:500}}>(opcional)</span></label>
+                  <textarea
+                    value={dor90Dias}
+                    onChange={(e)=>setDor90Dias(e.target.value)}
+                    placeholder="Ex.: revisar preços, escolher o regime, adequar o ERP, renegociar contratos..."
+                    rows={2}
+                    style={{width:"100%",border:"1px solid #D8DEEA",borderRadius:10,padding:"10px 12px",resize:"vertical",fontFamily:"inherit",fontSize:12,color:NAVY,outline:"none"}}
+                  />
+                </div>
+
                 <div style={{background:"#EEF3FF",borderLeft:"4px solid #31589C",borderRadius:10,padding:10,fontSize:9,color:NAVY,lineHeight:1.5}}>
                   <b>Por que perguntamos isso?</b> Empresas B2B, com maior volume de insumos, pouca capacidade de repasse, benefícios fiscais ou operações especiais podem ter impactos muito diferentes.
                 </div>
@@ -12844,10 +13006,10 @@ function DiagnosticoPrototipo() {
                   <button type="button" onClick={()=>setStep("porte")} style={{...chipStyle(false),flex:1}}>Voltar</button>
                   <PrimaryButton
                     disabled={!perfilClientesReforma||!comprasCreditoReforma||!folhaReforma||!repassePrecoReforma||!erpReforma||!contratosReforma||!beneficiosReforma||!preparacaoReforma}
-                    onClick={()=>setStep("dor")}
+                    onClick={avancarReformaSemDor}
                     style={{flex:1}}
                   >
-                    Continuar <ArrowRight size={16}/>
+                    Gerar meu checklist <ArrowRight size={16}/>
                   </PrimaryButton>
                 </div>
               </div>
@@ -13565,6 +13727,18 @@ function DiagnosticoPrototipo() {
 
                 {planoDiagnosticoLiberado === "INICIAL" && <PagamentoDiagnostico diagnosticoId={diagnosticoIdSalvo} nome={nome} email={email} telefone={telefone} cnpj={empresaPrincipal?.cnpjDigits||""} onLiberado={setPlanoDiagnosticoLiberado} somenteUpgrade />}
 
+                {trilhaReformaAtiva && (
+                  <div style={{ border: `1px dashed ${CORAL}`, borderRadius: 12, padding: 12, marginBottom: 14, background: "#FFFBF9" }}>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: NAVY, margin: "0 0 4px" }}>Quer ver o impacto em reais?</p>
+                    <p style={{ fontSize: 11, color: MUTED, margin: "0 0 9px", lineHeight: 1.45 }}>
+                      O simulador usa o seu CNPJ e regime para comparar a carga atual com o cenário da Reforma. É uma estimativa, validada depois com os documentos.
+                    </p>
+                    <PrimaryButton onClick={() => setStep("simuladorDoDiagnostico")}>
+                      Simular o impacto financeiro <ArrowRight size={16} />
+                    </PrimaryButton>
+                  </div>
+                )}
+
                 {acessoDiagnosticoInicial && <>
 
                 <p style={sectionTitleStyle}>
@@ -13612,6 +13786,37 @@ function DiagnosticoPrototipo() {
                     </p>
                   )}
                 </div>
+
+                {diagnosticoGeral?.manchete && (
+                  <div style={{ background: NAVY, color: WHITE, borderRadius: 12, padding: "13px 14px", marginBottom: 14 }}>
+                    <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: .7, color: "#FFB9A6", margin: "0 0 5px" }}>EM RESUMO</p>
+                    <p style={{ fontFamily: DISPLAY_FONT, fontSize: 15.5, lineHeight: 1.35, margin: 0 }}>{diagnosticoGeral.manchete}</p>
+                  </div>
+                )}
+
+                {Array.isArray(diagnosticoGeral?.prioridadesComPrazo) && diagnosticoGeral.prioridadesComPrazo.length > 0 && (
+                  <>
+                    <p style={sectionTitleStyle}>Suas 3 prioridades</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                      {diagnosticoGeral.prioridadesComPrazo.map((item, i) => (
+                        <div key={i} style={{ border: "1px solid #E6E9EF", borderRadius: 10, padding: "10px 12px", background: "#FFFFFF" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                            <strong style={{ fontSize: 12, color: NAVY, lineHeight: 1.4 }}>{i + 1}. {item.titulo}</strong>
+                            {item.prazo && <span style={{ ...badgeStyle, background: "#FFF3EF", color: CORAL, whiteSpace: "nowrap", fontWeight: 700 }}>{item.prazo}</span>}
+                          </div>
+                          {item.porque && <p style={{ fontSize: 11, color: MUTED, margin: "5px 0 0", lineHeight: 1.45 }}>{item.porque}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {diagnosticoGeral?.proximoPasso && (
+                  <div style={{ background: "#EEF3FF", borderLeft: "4px solid #31589C", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: .7, color: "#31589C", margin: "0 0 4px" }}>PRÓXIMO PASSO</p>
+                    <p style={{ fontSize: 12, color: NAVY, margin: 0, lineHeight: 1.5 }}>{diagnosticoGeral.proximoPasso}</p>
+                  </div>
+                )}
 
                 {resumoExecutivo && (
                   <>
@@ -14048,9 +14253,10 @@ function DiagnosticoPrototipo() {
                   )
                     ? "estrutura"
                     : "porte",
-                gerandoPerguntas: "dor",
-                confirmarNegocio: "dor",
-                checklist: "dor",
+                gerandoPerguntas: trilhaReformaAtiva ? "reforma_detalhes" : "dor",
+                confirmarNegocio: trilhaReformaAtiva ? "reforma_detalhes" : "dor",
+                checklist: trilhaReformaAtiva ? "reforma_detalhes" : "dor",
+                reforma_detalhes: "porte",
               };
 
               setStep(back[step] || "intro");
