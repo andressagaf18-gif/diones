@@ -77,6 +77,8 @@ async function ensureSchema() {
   await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS valor_liquido NUMERIC(12,2)`;
   await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS taxa NUMERIC(12,2)`;
   await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS confirmado_em TIMESTAMPTZ`;
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS produto TEXT NOT NULL DEFAULT 'DIAGNOSTICO'`;
+  await sql`UPDATE asaas_pagamentos SET produto = 'SIMULADOR' WHERE produto = 'DIAGNOSTICO' AND diagnostico_id LIKE 'simulador:%'`;
   await sql`
     CREATE TABLE IF NOT EXISTS asaas_cupons (
       codigo TEXT PRIMARY KEY,
@@ -205,8 +207,19 @@ async function createCharge(req, res) {
   if (!diagnosticoId) return res.status(400).json({ ok: false, error: "diagnosticoId é obrigatório." });
   if (!planBase) return res.status(400).json({ ok: false, error: "Plano inválido." });
 
-  const diagnostic = await sql`SELECT id FROM diagnosticos WHERE id::text = ${diagnosticoId} LIMIT 1`;
-  if (!diagnostic?.length) return res.status(404).json({ ok: false, error: "Diagnóstico não encontrado." });
+  // Simulador da Reforma: a cobrança acontece ANTES de existir um diagnóstico
+  // salvo, então a referência é o próprio lead ("simulador:<leadId>"). Depois
+  // que o relatório é salvo, o pagamento é vinculado ao diagnóstico (ação "vincular").
+  const refSimulador = diagnosticoId.startsWith("simulador:") ? diagnosticoId.slice("simulador:".length) : "";
+  let origemLeadSimulador = "";
+  if (refSimulador) {
+    const [leadSim] = await sql`SELECT id, origem FROM diagnostico_leads WHERE id = ${refSimulador} LIMIT 1`;
+    if (!leadSim) return res.status(404).json({ ok: false, error: "Sessão do simulador não encontrada." });
+    origemLeadSimulador = leadSim.origem || "";
+  } else {
+    const diagnostic = await sql`SELECT id FROM diagnosticos WHERE id::text = ${diagnosticoId} LIMIT 1`;
+    if (!diagnostic?.length) return res.status(404).json({ ok: false, error: "Diagnóstico não encontrado." });
+  }
 
   const documento = digits(body.cliente?.cpfCnpj);
   if (![11, 14].includes(documento.length)) {
@@ -222,9 +235,13 @@ async function createCharge(req, res) {
   // cliente. Se esse cupom vinculado estiver expirado/inválido por algum
   // motivo, isso nunca deve travar o pagamento: só segue sem desconto.
   let codigoCupomEfetivo = body.cupom;
-  if (!codigoCupomEfetivo) {
+  // Simulador: o cupom automático da origem (feito para o diagnóstico) não se aplica;
+  // só vale cupom digitado pelo cliente.
+  if (!codigoCupomEfetivo && !refSimulador) {
     try {
-      const [leadOrigem] = await sql`
+      const [leadOrigem] = refSimulador
+        ? [{ origem: origemLeadSimulador }]
+        : await sql`
         SELECT origem FROM diagnostico_leads
         WHERE diagnostico_id::text = ${diagnosticoId}
         ORDER BY criado_em DESC LIMIT 1
@@ -251,7 +268,14 @@ async function createCharge(req, res) {
     if (body.cupom) throw error;
     cupom = { codigo: null, desconto: 0, valorFinal: planBase.valor };
   }
-  const plan = { ...planBase, valor: cupom.valorFinal };
+  // Simulador da Reforma é outro produto: cobrança, nome e relatório financeiro próprios.
+  const produto = refSimulador ? "SIMULADOR" : "DIAGNOSTICO";
+  const NOMES_SIMULADOR = {
+    INICIAL: "Simulador da Reforma — Simulação",
+    COMPLETO: "Simulador da Reforma — Simulação + Relatório completo",
+    ESPECIALISTA: "Simulador da Reforma — Simulação + Especialista",
+  };
+  const plan = { ...planBase, nome: produto === "SIMULADOR" ? NOMES_SIMULADOR[planCode] : planBase.nome, valor: cupom.valorFinal };
 
   const existing = await sql`
     SELECT payment_id, status, valor, valor_original, desconto, cupom_codigo
@@ -315,12 +339,12 @@ async function createCharge(req, res) {
     INSERT INTO asaas_pagamentos
       (payment_id, diagnostico_id, plano, valor, valor_original, desconto, cupom_codigo,
        customer_id, cliente_nome, cliente_email, cliente_documento, forma_pagamento,
-       status, external_reference)
+       status, external_reference, produto)
     VALUES
       (${payment.id}, ${diagnosticoId}, ${planCode}, ${plan.valor}, ${planBase.valor},
        ${cupom.desconto}, ${cupom.codigo}, ${customer.id}, ${txt(body.cliente?.nome)},
        ${txt(body.cliente?.email)}, ${documento}, 'PIX', ${payment.status || "PENDING"},
-       ${externalReference})
+       ${externalReference}, ${produto})
     ON CONFLICT (payment_id) DO NOTHING
   `;
   return res.status(201).json({
@@ -517,9 +541,10 @@ async function adminDashboard(req, res) {
     SELECT payment_id, diagnostico_id, plano, valor, valor_original, desconto,
       cupom_codigo, customer_id, cliente_nome, cliente_email, cliente_documento,
       forma_pagamento, valor_liquido, taxa, status, external_reference,
-      evento_id, pago_em, confirmado_em, criado_em, atualizado_em
+      evento_id, pago_em, confirmado_em, criado_em, atualizado_em, produto
     FROM asaas_pagamentos
-    WHERE (${status} = '' OR status = ${status})
+    WHERE (${txt(req.query?.produto, 20).toUpperCase()} = '' OR produto = ${txt(req.query?.produto, 20).toUpperCase()})
+      AND (${status} = '' OR status = ${status})
       AND (${plano} = '' OR plano = ${plano})
       AND (${inicio} = '' OR criado_em >= ${inicio || null}::date)
       AND (${fim} = '' OR criado_em < (${fim || null}::date + INTERVAL '1 day'))
@@ -542,11 +567,19 @@ async function adminDashboard(req, res) {
       COALESCE(SUM(desconto),0) AS descontos
     FROM asaas_pagamentos
   `;
+  const porProduto = await sql`
+    SELECT produto,
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH'))::int AS recebidos,
+      COALESCE(SUM(valor) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS bruto,
+      COALESCE(SUM(valor_liquido) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS liquido
+    FROM asaas_pagamentos GROUP BY produto
+  `;
   const eventos = await sql`
     SELECT evento_id, payment_id, evento, status, recebido_em
     FROM asaas_eventos ORDER BY recebido_em DESC LIMIT 100
   `;
-  return res.status(200).json({ ok: true, resumo: resumo[0], pagamentos, eventos, atualizadoEm: new Date().toISOString() });
+  return res.status(200).json({ ok: true, resumo: resumo[0], pagamentos, porProduto, eventos, atualizadoEm: new Date().toISOString() });
 }
 
 async function adminFinance(req, res) {
@@ -700,6 +733,24 @@ async function adminToggleCoupon(req, res) {
   return res.status(200).json({ ok: true, cupom: changed[0] });
 }
 
+// Depois que o relatório do simulador é salvo, passa o pagamento da referência
+// provisória ("simulador:<leadId>") para o id do diagnóstico gerado.
+async function linkSimulatorPayment(req, res) {
+  await ensureSchema();
+  const body = bodyOf(req);
+  const leadId = txt(body.leadId, 100);
+  const diagnosticoId = txt(body.diagnosticoId, 100);
+  if (!leadId || !diagnosticoId) return res.status(400).json({ ok: false, error: "leadId e diagnosticoId são obrigatórios." });
+  const diagnostic = await sql`SELECT id FROM diagnosticos WHERE id::text = ${diagnosticoId} LIMIT 1`;
+  if (!diagnostic?.length) return res.status(404).json({ ok: false, error: "Diagnóstico não encontrado." });
+  const atualizados = await sql`
+    UPDATE asaas_pagamentos SET diagnostico_id = ${diagnosticoId}
+    WHERE diagnostico_id = ${`simulador:${leadId}`}
+    RETURNING payment_id
+  `;
+  return res.status(200).json({ ok: true, vinculados: atualizados.length });
+}
+
 export default async function handler(req, res) {
   try {
     const action = txt(req.query?.acao, 30).toLowerCase();
@@ -708,6 +759,7 @@ export default async function handler(req, res) {
     }
     if (req.method === "POST" && action === "criar") return await createCharge(req, res);
     if (req.method === "GET" && action === "consultar") return await consult(req, res);
+    if (req.method === "POST" && action === "vincular") return await linkSimulatorPayment(req, res);
     if (req.method === "POST" && action === "webhook") return await webhook(req, res);
     if (req.method === "POST" && action === "validar-cupom") return await validateCoupon(req, res);
     if (req.method === "GET" && action === "admin-painel") return await adminDashboard(req, res);
