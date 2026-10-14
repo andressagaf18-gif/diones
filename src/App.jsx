@@ -261,7 +261,7 @@ const FATURAMENTOS = [
   { id: "f5", label: "Acima de R$ 1,5 mi/mês", anual: 24000000 },
 ];
 const COLABORADORES = ["Até 5", "6 a 20", "21 a 50", "51 a 200", "Mais de 200"];
-const REGIMES = ["Simples Nacional", "Lucro Presumido", "Lucro Real", "Não sei"];
+const REGIMES = ["MEI", "Simples Nacional", "Lucro Presumido", "Lucro Real", "Não sei"];
 
 // =========================================================
 // TRILHA ESPECIALIZADA — HOLDING
@@ -597,7 +597,9 @@ function obterImpactoReformaTributaria({
       "Aplicação preliminar da regra geral do IBS/CBS. O enquadramento definitivo depende da atividade efetivamente exercida e da classificação tributária das operações.",
 
     fase2026:
-      regime === "Simples Nacional"
+      regime === "MEI"
+        ? "Para o MEI, que recolhe valor fixo mensal pelo DAS-MEI, 2026 permanece como período sem alteração material do recolhimento de IBS/CBS; o tratamento específico do MEI na Reforma deve ser confirmado na regulamentação."
+        : regime === "Simples Nacional"
         ? "Para optantes do Simples Nacional, 2026 permanece como período sem alteração material do recolhimento de IBS/CBS; os efeitos operacionais e de opção ganham relevância a partir de 2027."
         : "Em 2026, a fase de teste utiliza 0,9% de CBS e 0,1% de IBS para contribuintes do regime regular, observadas as regras de compensação, dispensa e obrigações acessórias.",
 
@@ -713,6 +715,13 @@ function obterImpactoReformaTributaria({
 
     resultado.fatoresFavoraveis.push(
       "Em operações B2B, a geração de créditos ao cliente pode alterar a análise de preço e competitividade."
+    );
+  }
+
+  if (regime === "MEI") {
+    resultado.pontosValidar.unshift(
+      "Confirmar o tratamento do MEI na Reforma (recolhimento fixo no DAS-MEI) e o efeito sobre clientes pessoa jurídica que buscam crédito de IBS/CBS nas compras.",
+      "Acompanhar o limite de faturamento do MEI e o risco de desenquadramento para o Simples Nacional."
     );
   }
 
@@ -1687,6 +1696,7 @@ function textoConsultivoSimulador(valor) {
 // da empresa é Lucro Presumido ou Lucro Real. Em Simples Nacional não altera nada.
 function documentosDoRegime(regime) {
   const r = String(regime || "");
+  if (/^mei$/i.test(r.trim())) return "DAS-MEI, relatório mensal de receitas brutas, notas fiscais e DASN-SIMEI";
   if (/real/i.test(r)) return "ECD/ECF, SPED Fiscal, SPED Contribuições e balancete";
   if (/presumido/i.test(r)) return "apurações de PIS/Cofins, ICMS/ISS, ECF e SPED";
   return "";
