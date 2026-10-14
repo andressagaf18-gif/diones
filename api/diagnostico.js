@@ -212,6 +212,23 @@ function mesclarContrato(base, ia) {
       saida.nivelGeral
     );
 
+  // Parecer em formato de decisão: manchete, 3 prioridades com prazo e próximo passo.
+  saida.manchete = textoSeguroIa(saida.manchete);
+  saida.proximoPasso = textoSeguroIa(saida.proximoPasso);
+  saida.prioridadesComPrazo = lista(saida.prioridadesComPrazo)
+    .map((item) => {
+      if (typeof item === "string") {
+        return { titulo: textoSeguroIa(item), prazo: "", porque: "" };
+      }
+      return {
+        titulo: textoSeguroIa(item?.titulo || item?.acao),
+        prazo: textoSeguroIa(item?.prazo),
+        porque: textoSeguroIa(item?.porque || item?.motivo),
+      };
+    })
+    .filter((item) => item.titulo)
+    .slice(0, 3);
+
   saida.objetivosDeclarados = listaTextoIa(saida.objetivosDeclarados);
   saida.doresPrincipais = listaTextoIa(saida.doresPrincipais);
   saida.impactos = listaTextoIa(saida.impactos);
@@ -260,6 +277,9 @@ function mesclarContrato(base, ia) {
   };
 
   saida.visaoAdministracao = {
+    proximoPassoComercial: textoSeguroIa(
+      saida?.visaoAdministracao?.proximoPassoComercial
+    ),
     oportunidades:
       listaTextoIa(
         saida?.visaoAdministracao?.oportunidades
@@ -530,6 +550,11 @@ INSTRUÇÕES DE QUALIDADE:
 28. Preencha visaoAdministracao.triagemDepartamentos com ACIONAR, ACOMPANHAR ou NAO_ACIONAR. Essa triagem é interna e não deve aparecer no relatório do cliente.
 29. NUNCA mencione a origem da informação no texto exibido ao cliente. Proibido: "sugestão vinda do detalhe", "conforme a resposta", "segundo o campo", "o checklist indica" e similares. Incorpore o que o participante escreveu de forma natural e direta (ex.: "Você comentou que os indicadores poderiam ser cobrados com mais rigor"), sem citar de onde veio.
 30. Um mesmo ponto não pode aparecer ao mesmo tempo em "achados" e em "pontosFortes" de um eixo. "achados" descreve o que foi observado; "pontosFortes" diz o que essa situação permite fazer ou aproveitar, sem repetir o achado.
+32. Preencha "manchete": UMA frase direta (até 160 caracteres) que diga ao cliente o principal achado e o que fazer, sem jargão e sem termos internos. Ex.: "Sua empresa depende muito de créditos e ainda não revisou preços: priorize esses dois pontos antes de 2027."
+33. Preencha "prioridadesComPrazo" com exatamente 3 itens {titulo, prazo, porque}. "prazo" deve ser "Em 30 dias", "Em 60 dias" ou "Em 90 dias". Ordene do mais urgente ao menos urgente. "porque" tem uma frase com o impacto de não agir.
+34. Preencha "proximoPasso" (campo do cliente) com uma única ação consultiva concreta para validar o diagnóstico (ex.: reunir documentos, rodar a simulação com dados reais). Sem preço ou oferta. Em "visaoAdministracao.proximoPassoComercial" (interno) diga qual serviço ou conversa faz sentido propor e por quê.
+35. REGIME E DOCUMENTOS: use o regime informado em perfil.regime. Se o regime for MEI, cite apenas DAS-MEI, DASN-SIMEI, relatório mensal de receitas brutas e notas fiscais (nunca PGDAS-D, DEFIS ou SPED). Só cite PGDAS-D, DAS, DEFIS ou Simples Nacional se o regime for Simples. Para Lucro Presumido cite SPED Fiscal, SPED Contribuições, ECF, DCTF e apuração de PIS/COFINS cumulativa; para Lucro Real cite também LALUR/LACS, ECD e créditos de PIS/COFINS não cumulativos. Se o regime não foi informado, não presuma e registre como lacuna.
+36. Se contextoEstrutura.simuladorReforma tiver resultado, use os números como cenário PRELIMINAR (estimativa, não apuração) e cite a faixa de variação com a ressalva de validação documental; sem simulação, não invente números.
 31. Cada item de "plano90Dias" deve ser uma única frase clara, de até 230 caracteres, que una ação e objetivo e cite entre parênteses a evidência esperada e a dependência quando houver. Exemplo: "Montar a projeção de caixa dos próximos 90 dias para ganhar visibilidade (evidência: planilha atualizada; depende dos extratos recentes)." Use de 2 a 3 itens por prazo, sem procedimento detalhado.
 `;
 
