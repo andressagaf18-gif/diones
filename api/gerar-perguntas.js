@@ -9,6 +9,7 @@ import {
 
 import {
   perguntasBaseDaEstrutura,
+  eixosPrioritariosReforma,
 } from "../server/question-engine.js";
 
 function lista(v) {
@@ -516,7 +517,7 @@ export default async function handler(req, res) {
   const areasSelecionadas =
     lista(body.areasSelecionadas);
 
-  const prioridadesSelecionadas =
+  let prioridadesSelecionadas =
     areasSelecionadas
       .map(
         (item) =>
@@ -545,11 +546,36 @@ export default async function handler(req, res) {
         )
     );
 
+  // REFORMA TRIBUTÁRIA: os temas escolhidos, as dores e as respostas de
+  // triagem definem quais eixos são aprofundados (no máximo 4). O restante
+  // do questionário não é perguntado, para manter o diagnóstico curto.
+  const ehReforma = estrutura === "reforma_tributaria";
+
+  const perfilReforma =
+    body?.contextoEstrutura?.reformaTributaria || {};
+
+  const eixosReforma =
+    ehReforma
+      ? eixosPrioritariosReforma({
+          objetivos: perfilReforma?.objetivos,
+          dores: body?.dor?.selecionadas,
+          perfil: perfilReforma,
+        }).filter((id) => eixosDoMotor.includes(id))
+      : [];
+
+  if (ehReforma && eixosReforma.length) {
+    prioridadesSelecionadas = eixosReforma;
+  }
+
+  const limitePrioritario = ehReforma ? 3 : 5;
+
   const eixosParaPerguntas =
-    estrutura ===
-      "operacional" &&
-    eixosSelecionadosValidos.length >
-      0
+    ehReforma && eixosReforma.length
+      ? eixosReforma
+      : estrutura ===
+          "operacional" &&
+        eixosSelecionadosValidos.length >
+          0
       ? eixosSelecionadosValidos
       : eixosDoMotor;
 
@@ -574,7 +600,7 @@ export default async function handler(req, res) {
       prioridadesSelecionadas.includes(
         eixoId
       )
-        ? 5
+        ? limitePrioritario
         : 2;
 
     fallback.push(
@@ -657,6 +683,14 @@ ${objetivo90Dias || "Não informado"}
 CONTEXTO COMPLETO:
 ${JSON.stringify(body)}
 
+${ehReforma ? `TRILHA REFORMA TRIBUTÁRIA:
+- Temas escolhidos pelo cliente: ${JSON.stringify(lista(perfilReforma?.objetivos))}
+- Dúvida específica: ${texto(perfilReforma?.duvidaEspecifica) || "não informada"}
+- Regime informado: ${texto(body?.perfil?.regime) || "não informado"}
+- Gere de 2 a 3 perguntas por eixo, todas fechadas e sem repetir o conteúdo já respondido na triagem (perfil de clientes, compras, folha, repasse, ERP, contratos, benefícios, preparação).
+- Cite documentos compatíveis com o regime: MEI = DAS-MEI, DASN-SIMEI, relatório mensal de receitas brutas e notas fiscais (nunca PGDAS-D, DEFIS ou SPED); Simples Nacional = PGDAS-D/DEFIS; Lucro Presumido = apurações de PIS/Cofins, ICMS/ISS, ECF e SPED; Lucro Real = ECD/ECF, SPED Fiscal, SPED Contribuições e balancete. NUNCA cite PGDAS ou DAS para quem não é do Simples Nacional.
+- Não invente alíquota, benefício, redução, crédito ou fundamento legal.
+` : ""}
 REGRAS:
 - Gere perguntas SOMENTE para os eixos listados em "EIXOS OBRIGATÓRIOS A INVESTIGAR".
 - Na EMPRESA OPERACIONAL, esses eixos correspondem exatamente aos departamentos escolhidos pelo usuário; NÃO inclua departamentos não selecionados.
@@ -934,7 +968,7 @@ FORMATO:
             prioridadesSelecionadas.includes(
               id
             )
-              ? 5
+              ? limitePrioritario
               : 2;
 
           return (
