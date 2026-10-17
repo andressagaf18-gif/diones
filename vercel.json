@@ -36,5 +36,13 @@
       "source": "/admin/:path*",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/gerar-perguntas.js": {
+      "maxDuration": 60
+    },
+    "api/diagnostico.js": {
+      "maxDuration": 60
+    }
+  }
 }
