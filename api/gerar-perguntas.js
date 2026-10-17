@@ -386,6 +386,7 @@ FORMATO:
               },
             },
           }),
+          signal: AbortSignal.timeout(12000),
         }
       );
 
@@ -772,6 +773,7 @@ FORMATO:
               },
             },
           }),
+          signal: AbortSignal.timeout(45000),
         }
       );
 
