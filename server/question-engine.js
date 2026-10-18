@@ -568,6 +568,182 @@ export const EIXOS_PERGUNTAS = {
     },
   },
 };
+
+// ---------------------------------------------------------------------------
+// REFORMA TRIBUTÁRIA — catálogo próprio (usado como base e como fallback sem IA).
+// Todas as perguntas são afirmações respondíveis em Sim / Parcial / Não / Não sei / N/A.
+// ---------------------------------------------------------------------------
+const q = (id, tema, pergunta, riscoAvaliado, importancia = 3) => ({ id, tema, pergunta, riscoAvaliado, importancia });
+
+EIXOS_PERGUNTAS.reforma_tributaria = {
+  reforma_carga: {
+    label: "Carga tributária e cenários",
+    perguntas: [
+      q("rf_car_01", "Carga atual", "A empresa conhece a carga tributária atual sobre o faturamento, separando cada tributo?", "Sem a carga atual não há como comparar com a Reforma."),
+      q("rf_car_02", "Comparação", "Já foi feita uma comparação entre a carga atual e a carga estimada com IBS e CBS?", "Impacto da Reforma desconhecido."),
+      q("rf_car_03", "Caixa", "A empresa projeta o efeito da Reforma sobre o caixa mensal durante a transição?", "Surpresa no fluxo de caixa durante a transição.", 2),
+      q("rf_car_04", "Premissas", "As premissas usadas nas simulações (alíquota, redução e enquadramento da atividade) foram validadas por um profissional?", "Decisão baseada em premissas não confirmadas.", 2),
+    ],
+  },
+  reforma_creditos: {
+    label: "Créditos de IBS/CBS",
+    perguntas: [
+      q("rf_cre_01", "Mapeamento", "As compras e despesas são registradas de forma que permita identificar o que poderá gerar crédito de IBS e CBS?", "Perda de créditos por falta de registro."),
+      q("rf_cre_02", "Fornecedores", "A empresa identifica os fornecedores que emitem documento fiscal com direito a crédito de IBS e CBS?", "Créditos perdidos por fornecedor sem documento adequado."),
+      q("rf_cre_03", "Regra atual", "Existe controle do que hoje gera crédito de PIS, Cofins, ICMS ou IPI e do que mudará com a Reforma?", "Mudança de crédito não mapeada.", 2),
+      q("rf_cre_04", "Informalidade", "Despesas pagas sem nota fiscal ou fora do fluxo formal já foram mapeadas?", "Despesa sem crédito encarece a operação.", 2),
+    ],
+  },
+  reforma_precos: {
+    label: "Preço, margem e repasse",
+    perguntas: [
+      q("rf_pre_01", "Margem", "A empresa conhece a margem por produto, serviço ou cliente?", "Preço sem base de margem."),
+      q("rf_pre_02", "Simulação de preço", "Já foi feita uma simulação do preço de venda com os novos tributos, mantendo a margem?", "Perda de margem na transição."),
+      q("rf_pre_03", "Repasse", "A empresa consegue repassar variação de custo tributário ao cliente sem perder vendas?", "Absorção do custo tributário pela empresa."),
+      q("rf_pre_04", "Política comercial", "Descontos, promoções e condições comerciais foram revisados considerando a nova tributação?", "Política comercial desalinhada com a nova carga.", 2),
+    ],
+  },
+  reforma_clientes: {
+    label: "Clientes e modelo B2B/B2C",
+    perguntas: [
+      q("rf_cli_01", "Perfil de venda", "A empresa tem separadas as vendas para empresas (B2B) e as vendas para consumidor final (B2C)?", "Efeito da Reforma estimado sem conhecer o perfil de venda."),
+      q("rf_cli_02", "Crédito do cliente", "Os clientes que são empresas exigem nota fiscal que lhes permita aproveitar crédito de IBS e CBS?", "Perda de competitividade perante clientes que dependem de crédito."),
+      q("rf_cli_03", "Efeito nos clientes", "Existe análise do efeito da mudança de tributação sobre a decisão de compra dos principais clientes?", "Risco de perder clientes relevantes.", 2),
+    ],
+  },
+  reforma_fornecedores: {
+    label: "Fornecedores e cadeia de créditos",
+    perguntas: [
+      q("rf_for_01", "Regime do fornecedor", "Os principais fornecedores estão classificados pelo regime tributário (Simples, Presumido ou Real)?", "Crédito aproveitável desconhecido."),
+      q("rf_for_02", "Efeito no crédito", "A empresa avalia o efeito do regime do fornecedor no crédito que poderá aproveitar?", "Compra de quem gera menos crédito sem perceber."),
+      q("rf_for_03", "Plano com fornecedores", "Há conversa ou plano com fornecedores estratégicos sobre documentos fiscais e preços na Reforma?", "Surpresa de preço e documentação na cadeia.", 2),
+    ],
+  },
+  reforma_fiscal: {
+    label: "Notas fiscais e parametrização",
+    perguntas: [
+      q("rf_fis_01", "Cadastros", "O cadastro de produtos e serviços (NCM, NBS e CNAE) está atualizado e conferido?", "Notas com classificação errada."),
+      q("rf_fis_02", "Conferência", "As notas fiscais emitidas passam por conferência de tributos e informações antes do envio?", "Erro recorrente em documento fiscal."),
+      q("rf_fis_03", "Acompanhamento", "A empresa acompanha as mudanças de campos e regras dos documentos fiscais ligadas à Reforma?", "Notas rejeitadas por mudança de regra.", 2),
+    ],
+  },
+  reforma_sistemas: {
+    label: "ERP e tecnologia",
+    perguntas: [
+      q("rf_sis_01", "Atualização do ERP", "O ERP ou sistema de emissão fiscal já tem previsão de atualização para IBS e CBS?", "Sistema sem condição de emitir documentos da Reforma."),
+      q("rf_sis_02", "Responsável", "Há responsável interno ou fornecedor do sistema acompanhando a adequação à Reforma?", "Adequação sem dono.", 2),
+      q("rf_sis_03", "Integração", "Os sistemas de vendas, estoque, financeiro e fiscal estão integrados o suficiente para evitar retrabalho na adequação?", "Retrabalho e custo na adequação.", 2),
+    ],
+  },
+  reforma_contratos: {
+    label: "Contratos e cláusulas tributárias",
+    perguntas: [
+      q("rf_con_01", "Contratos longos", "Os contratos de longo prazo com clientes foram revisados em relação ao reajuste por mudança de tributos?", "Contrato sem repasse trava a margem."),
+      q("rf_con_02", "Fornecedores e locações", "Os contratos com fornecedores e de locação possuem cláusula sobre repasse de tributos?", "Custo tributário assumido sem previsão.", 2),
+      q("rf_con_03", "Proposta comercial", "A política comercial prevê a forma de apresentar o novo tributo na proposta e no preço ao cliente?", "Proposta fora do novo padrão.", 2),
+    ],
+  },
+  reforma_regime: {
+    label: "Regime tributário e planejamento",
+    perguntas: [
+      q("rf_reg_01", "Revisão do regime", "O regime tributário atual foi revisado nos últimos 12 meses com base em números reais?", "Regime possivelmente inadequado."),
+      q("rf_reg_02", "Efeito no regime", "A empresa avaliou o efeito da Reforma sobre o regime atual (Simples, Presumido ou Real)?", "Regime vigente pode deixar de ser vantajoso."),
+      q("rf_reg_03", "Alternativas", "Foi comparado o regime atual com alternativas, considerando os créditos de IBS e CBS que a empresa poderia aproveitar?", "Oportunidade de enquadramento melhor não avaliada."),
+      q("rf_reg_04", "Benefícios", "A empresa conhece benefício fiscal, regime especial ou redução de alíquota que possa mudar com a Reforma?", "Perda de benefício sem planejamento.", 2),
+    ],
+  },
+  reforma_transicao: {
+    label: "Transição e preparação",
+    perguntas: [
+      q("rf_tra_01", "Plano", "Existe um plano com prazos para a adequação à Reforma Tributária entre 2026 e 2033?", "Adequação sem cronograma."),
+      q("rf_tra_02", "Responsável", "Há um responsável definido por acompanhar as mudanças da Reforma na empresa?", "Mudanças perdidas por falta de dono."),
+      q("rf_tra_03", "Acompanhamento", "A direção recebe informações periódicas sobre o andamento da adequação?", "Decisão tardia.", 2),
+      q("rf_tra_04", "Recursos", "Foram previstos tempo e orçamento para ajustes de sistema, processos e treinamento?", "Adequação sem recursos.", 2),
+    ],
+  },
+};
+
+// Temas da tela inicial -> eixos que ganham aprofundamento.
+const EIXOS_POR_TEMA_REFORMA = [
+  ["entender como ibs e cbs", ["reforma_transicao", "reforma_carga"]],
+  ["carga tributaria pode aumentar", ["reforma_carga"]],
+  ["comparar a tributacao atual", ["reforma_carga", "reforma_regime"]],
+  ["creditos de ibs/cbs", ["reforma_creditos", "reforma_fornecedores"]],
+  ["preco de venda e margem", ["reforma_precos"]],
+  ["fornecedores e clientes", ["reforma_fornecedores", "reforma_clientes"]],
+  ["notas fiscais, erp", ["reforma_fiscal", "reforma_sistemas"]],
+  ["contratos e repasse", ["reforma_contratos", "reforma_precos"]],
+  ["simples nacional", ["reforma_regime", "reforma_creditos"]],
+  ["lucro presumido x lucro real", ["reforma_regime", "reforma_carga"]],
+  ["holding, imoveis ou locacoes", ["reforma_contratos", "reforma_regime"]],
+  ["2027 em diante", ["reforma_transicao"]],
+];
+
+// Dores (passo "dor") -> eixos.
+const EIXOS_POR_DOR_REFORMA = [
+  ["alterar minha carga", ["reforma_carga"]],
+  ["quais compras e despesas", ["reforma_creditos"]],
+  ["perder margem", ["reforma_precos"]],
+  ["revisei precos e contratos", ["reforma_precos", "reforma_contratos"]],
+  ["erp", ["reforma_sistemas", "reforma_fiscal"]],
+  ["meus clientes", ["reforma_clientes"]],
+  ["meus fornecedores", ["reforma_fornecedores"]],
+  ["simples nacional", ["reforma_regime"]],
+  ["lucro presumido x lucro real", ["reforma_regime"]],
+  ["beneficios ou tratamentos", ["reforma_regime"]],
+  ["interestaduais, importacao", ["reforma_fiscal"]],
+  ["plano de adequacao", ["reforma_transicao"]],
+];
+
+function semAcento(valor) {
+  return String(valor || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+function eixosPorTexto(lista, tabela) {
+  const eixos = [];
+  for (const item of Array.isArray(lista) ? lista : []) {
+    const chave = semAcento(typeof item === "string" ? item : item?.label || item?.id);
+    for (const [trecho, ids] of tabela) {
+      if (chave.includes(trecho)) {
+        for (const id of ids) if (!eixos.includes(id)) eixos.push(id);
+      }
+    }
+  }
+  return eixos;
+}
+
+// Eixos que devem ser aprofundados no diagnóstico da Reforma: temas escolhidos,
+// dores marcadas e sinais das respostas de triagem. Limite de 4 eixos
+// (o questionário fica curto); se houver menos de 3, completa com a base.
+export function eixosPrioritariosReforma({ objetivos = [], dores = [], perfil = {}, limite = 4 } = {}) {
+  const eixos = [
+    ...eixosPorTexto(objetivos, EIXOS_POR_TEMA_REFORMA),
+    ...eixosPorTexto(dores, EIXOS_POR_DOR_REFORMA),
+  ];
+
+  const sinais = [
+    [["NAO_INICIADO", "ANDAMENTO"].includes(perfil?.erp), "reforma_sistemas"],
+    [["BAIXA", "NAO_SEI"].includes(perfil?.repassePreco), "reforma_precos"],
+    [perfil?.comprasCredito === "ALTO", "reforma_creditos"],
+    [["NAO", "PARCIAL"].includes(perfil?.contratos), "reforma_contratos"],
+    [["SIM", "ANALISAR"].includes(perfil?.beneficios), "reforma_regime"],
+    [["NAO_INICIOU", "ENTENDENDO"].includes(perfil?.preparacao), "reforma_transicao"],
+    [["B2B", "MISTO"].includes(perfil?.perfilClientes), "reforma_clientes"],
+    [(perfil?.operacoes || []).some((x) => /importa|exporta|interestadual|v[aá]rios munic/i.test(String(x))), "reforma_fiscal"],
+  ];
+  for (const [ativo, id] of sinais) if (ativo && !eixos.includes(id)) eixos.push(id);
+
+  const escolhidos = eixos.slice(0, limite);
+  for (const base of ["reforma_carga", "reforma_creditos", "reforma_transicao"]) {
+    if (escolhidos.length >= 3) break;
+    if (!escolhidos.includes(base)) escolhidos.push(base);
+  }
+  return escolhidos;
+}
+
 export function perguntasBaseDaEstrutura(estrutura, eixos = []) {
   const catalogo =
     EIXOS_PERGUNTAS[estrutura] || {};
