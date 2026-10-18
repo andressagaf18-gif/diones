@@ -326,6 +326,14 @@ export function contratoConsultivo(estrutura, eixosPermitidos = null) {
     teseCentral: "",
     fatosInformados: [""],
     hipotesesGerais: [""],
+    leituraSetor: [
+      {
+        atividade: "",
+        dificuldadesTipicas: [""],
+        conexaoComODiagnostico: [""],
+        melhoriasSugeridas: [""],
+      },
+    ],
     areas: eixos.map((id) => ({
       eixoId: id,
       label: LABELS_EIXOS[id] || id,
@@ -408,7 +416,8 @@ REGRAS DA ANÁLISE CONSULTIVA:
 10. Não dê certeza jurídica ou tributária quando depender de documentos; apresente como ponto a validar. Não prescreva produtos financeiros específicos.
 11. Não repita o mesmo texto entre campos. Cada campo tem uma função distinta.
 12. Respeite os cuidados específicos acima e as proibições do caso (${(motor.proibicoes || []).join("; ") || "nenhuma adicional"}).
-13. Retorne SOMENTE JSON válido, exatamente no formato do CONTRATO, sem comentários. Remova os valores de exemplo (como "COMPLETA | RESUMIDA") e use os valores reais.`;
+13. LEITURA DO SETOR ("leituraSetor"): para até 3 atividades de "setor.atividades" (a principal primeiro; se não houver CNAE, use a descrição do negócio e o segmento), descreva as dificuldades típicas desse tipo de negócio no Brasil (margem, sazonalidade, carga tributária, gargalos operacionais, concorrência, regulação), SEMPRE como hipótese do setor — nunca como fato do cliente. Em "conexaoComODiagnostico" ligue cada dificuldade a um problema concreto que apareceu nas respostas (cite em linguagem natural, sem códigos). Em "melhoriasSugeridas" traga ações específicas e executáveis, não conselhos genéricos. Não invente estatística, percentual, valor, empresa ou caso real. Se existir "referenciasPesquisadasNaWeb" nos dados, você pode se apoiar nelas citando a fonte pelo nome.
+14. Retorne SOMENTE JSON válido, exatamente no formato do CONTRATO, sem comentários. Remova os valores de exemplo (como "COMPLETA | RESUMIDA") e use os valores reais.`;
 }
 
 // ---------------------------------------------------------
@@ -529,6 +538,15 @@ export function normalizarVisaoConsultiva(ia, estrutura, eixosPermitidos = null)
     teseCentral: txt(bruto.teseCentral, 1000),
     fatosInformados: listaTxt(bruto.fatosInformados, 8, 320),
     hipotesesGerais: listaTxt(bruto.hipotesesGerais, 6, 320),
+    leituraSetor: lista(bruto.leituraSetor)
+      .map((x) => ({
+        atividade: txt(x?.atividade, 200),
+        dificuldadesTipicas: listaTxt(x?.dificuldadesTipicas, 5, 300),
+        conexaoComODiagnostico: listaTxt(x?.conexaoComODiagnostico, 5, 320),
+        melhoriasSugeridas: listaTxt(x?.melhoriasSugeridas, 5, 320),
+      }))
+      .filter((x) => x.atividade && (x.dificuldadesTipicas.length || x.melhoriasSugeridas.length))
+      .slice(0, 3),
     areas,
     planoDetalhado: normalizarPlano(bruto.planoDetalhado, ids),
     roteiroReuniao: {
