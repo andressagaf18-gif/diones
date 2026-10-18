@@ -7,10 +7,13 @@ import {
   instrucoesDoMotor,
 } from "../server/diagnostic-engine.js";
 
-import {
-  perguntasBaseDaEstrutura,
-  eixosPrioritariosReforma,
-} from "../server/question-engine.js";
+import * as questionEngine from "../server/question-engine.js";
+
+// Import por namespace: se o question-engine.js publicado for uma versão
+// antiga (sem eixosPrioritariosReforma), a função continua carregando.
+const { perguntasBaseDaEstrutura } = questionEngine;
+const eixosPrioritariosReforma =
+  questionEngine.eixosPrioritariosReforma || (() => []);
 
 function lista(v) {
   return Array.isArray(v) ? v : [];
