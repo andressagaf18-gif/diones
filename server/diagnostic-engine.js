@@ -151,7 +151,9 @@ export const ESTRUTURAS = {
     tipo: "REFORMA_TRIBUTARIA",
     exigeCnpj: false,
     eixos: [
-      "reforma_carga", "reforma_creditos", "reforma_precos", "reforma_transicao"
+      "reforma_carga", "reforma_creditos", "reforma_precos", "reforma_clientes",
+      "reforma_fornecedores", "reforma_fiscal", "reforma_sistemas",
+      "reforma_contratos", "reforma_regime", "reforma_transicao"
     ],
     foco: [
       "carga tributária atual e projetada (Simples, Presumido, Real ou regime regular)",
@@ -159,12 +161,15 @@ export const ESTRUTURAS = {
       "impacto no preço, na margem e na competitividade",
       "cronograma legal de transição 2026 a 2033",
       "enquadramento por atividade, CNAE/CNAE de fato e redução setorial aplicável",
+      "documentos e conferências compatíveis com o regime informado: no Simples Nacional, PGDAS-D/DEFIS; no Lucro Presumido, apurações de PIS/Cofins, ICMS/ISS, ECF e SPED; no Lucro Real, ECD/ECF, SPED Fiscal, SPED Contribuições e balancete",
     ],
     proibicoes: [
       "apresentar a soma de CBS/IBS digitada no simulador como alíquota oficial definitiva",
       "avaliar comercial, marketing, RH, tecnologia, administrativo ou operacional — fora do escopo desta simulação",
       "calcular a carga do Simples Nacional sem considerar o DAS residual (IRPJ, CSLL, CPP e ISS/ICMS remanescentes)",
       "tratar percentuais nominais de referência ainda não fixados por Resolução do Senado como definitivos",
+      "citar PGDAS, DEFIS, DAS ou DAS residual para empresa que NÃO está no Simples Nacional; usar os documentos do regime informado",
+      "avaliar apenas os eixos efetivamente perguntados; eixo sem respostas deve ser marcado como não avaliado, sem nota",
     ],
   },
 
@@ -293,6 +298,12 @@ export const LABELS_EIXOS = {
   reforma_carga: "Carga tributária e cenários",
   reforma_creditos: "Créditos de IBS/CBS",
   reforma_precos: "Preço, margem e repasse",
+  reforma_clientes: "Clientes e modelo B2B/B2C",
+  reforma_fornecedores: "Fornecedores e cadeia de créditos",
+  reforma_fiscal: "Notas fiscais e parametrização",
+  reforma_sistemas: "ERP e tecnologia",
+  reforma_contratos: "Contratos e cláusulas tributárias",
+  reforma_regime: "Regime tributário e planejamento",
   reforma_transicao: "Transição e preparação",
 
   atividade_pretendida: "Atividade pretendida e CNAE",
@@ -332,6 +343,9 @@ export function contratoSaida(
     confiancaDiagnostico: "BAIXA",
     justificativaConfianca: "",
     leituraExecutiva: "",
+    manchete: "",
+    prioridadesComPrazo: [],
+    proximoPasso: "",
     objetivosDeclarados: [],
     doresPrincipais: [],
     impactos: [],
@@ -380,6 +394,7 @@ export function contratoSaida(
           }
         : null,
     visaoAdministracao: {
+      proximoPassoComercial: "",
       oportunidades: [],
       aprofundamentos: [],
       riscosComerciais: [],
