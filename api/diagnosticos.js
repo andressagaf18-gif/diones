@@ -594,6 +594,27 @@ async function verDiagnostico(
               .diagnostico
           );
 
+    // Pagamentos do diagnóstico (plano, status e valor). Se a tabela ainda
+    // não existir ou a consulta falhar, a visão continua sem essa informação.
+    let pagamentos = [];
+    try {
+      const pagos = await sql`
+        SELECT plano, status, valor, pago_em
+        FROM asaas_pagamentos
+        WHERE diagnostico_id = ${String(row.id)}
+        ORDER BY criado_em DESC
+        LIMIT 20
+      `;
+      pagamentos = lista(pagos).map((p) => ({
+        plano: String(p.plano || ""),
+        status: String(p.status || ""),
+        valor: Number(p.valor || 0),
+        pagoEm: p.pago_em || null,
+      }));
+    } catch {
+      pagamentos = [];
+    }
+
     return res
       .status(200)
       .json({
@@ -602,6 +623,8 @@ async function verDiagnostico(
         diagnostico: {
           id:
             row.id,
+
+          pagamentos,
 
           criadoEm:
             row.criado_em,
