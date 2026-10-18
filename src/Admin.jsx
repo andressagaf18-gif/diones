@@ -1,4 +1,4 @@
- import {
+import {
   lazy,
   Suspense,
   useEffect,
@@ -7,6 +7,7 @@
 } from "react";
 
 import {
+  FileText,
   Search,
   Building2,
   ArrowLeft,
@@ -46,6 +47,7 @@ import ConsentimentoLGPD, { SeloConsentimento } from "./lgpd/ConsentimentoLGPD";
 import ResumoSimuladorReforma, { SeloSimuladorLead, snapshotDoContexto } from "./simulador/ResumoSimuladorReforma.jsx";
 import PainelOportunidadeReforma, { SeloOportunidadeReforma } from "./simulador/OportunidadeReforma.jsx";
 import RelatorioClienteSimulador from "./simulador/RelatorioClienteSimulador.jsx";
+import VisaoPorPlano, { planoMaisAltoPago } from "./relatorios/VisaoPorPlano.jsx";
 import { limparCodigoInternoRelatorio } from "./relatorios/limparTexto.js";
 import DossieAdminSimulador from "./simulador/DossieAdminSimulador.jsx";
 import { finderStyles } from "./Theme";
@@ -15288,6 +15290,12 @@ function DetalheDiagnostico({
         ? "Administracao"
         : abaRelatorio === "cliente"
         ? "Cliente"
+        : abaRelatorio === "plano_inicial"
+        ? "Plano 29,90"
+        : abaRelatorio === "plano_completo"
+        ? "Plano 299,90"
+        : abaRelatorio === "plano_especialista"
+        ? "Plano 799,90"
         : "Equipe";
 
     const tituloDocumento =
@@ -15757,6 +15765,21 @@ function DetalheDiagnostico({
               Relatório Administração
             </Botao>
 
+            {!usaRelatorioClienteSimulador && [
+              ["plano_inicial", "Plano R$ 29,90"],
+              ["plano_completo", "Plano R$ 299,90"],
+              ["plano_especialista", "Plano R$ 799,90 + consultor"],
+            ].map(([aba, rotulo]) => (
+              <Botao
+                key={aba}
+                secundario={abaRelatorio !== aba}
+                onClick={() => setAbaRelatorio(aba)}
+              >
+                <FileText size={14} />
+                {rotulo}
+              </Botao>
+            ))}
+
             <Botao
               secundario={
                 abaRelatorio !==
@@ -15801,7 +15824,7 @@ function DetalheDiagnostico({
           </div>
         </Card>
 
-        {!(usaRelatorioClienteSimulador && abaRelatorio === "cliente") && (
+        {!(usaRelatorioClienteSimulador && abaRelatorio === "cliente") && !String(abaRelatorio).startsWith("plano_") && (
           <ResumoEstruturaSelecionada
             estrutura={estruturaAtual}
             perfil={perfilDiagnostico}
@@ -15813,6 +15836,20 @@ function DetalheDiagnostico({
           <RelatorioClienteSimulador
             snapshot={snapshotSimulador}
             geradoEm={item.criadoEm}
+          />
+        )}
+
+        {String(abaRelatorio).startsWith("plano_") && !usaRelatorioClienteSimulador && (
+          <VisaoPorPlano
+            plano={abaRelatorio === "plano_especialista" ? "ESPECIALISTA" : abaRelatorio === "plano_completo" ? "COMPLETO" : "INICIAL"}
+            diagnosticoGeral={diagnosticoGeral}
+            plano90Dias={plano90Dias}
+            negocio={item.negocioInterpretado || {}}
+            descricaoNegocio={empresa.descricaoNegocio || perfilDiagnostico.descricaoNegocio || ""}
+            score={item.score ?? null}
+            nivel={resultado.nivelGeral || resultadoCompleto.nivelGeral || ""}
+            planoPago={planoMaisAltoPago(item.pagamentos)}
+            onIrParaAdministracao={() => setAbaRelatorio("administracao")}
           />
         )}
 
