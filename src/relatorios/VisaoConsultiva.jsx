@@ -8,7 +8,7 @@
 // consultivo-obter e consultivo-gerar) para não atrasar o resultado do cliente.
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Search, ExternalLink } from "lucide-react";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -362,6 +362,73 @@ function Secao({ titulo, subtitulo, children }) {
   );
 }
 
+
+// ---------------------------------------------------------
+// LEITURA DO SETOR E REFERÊNCIAS DA WEB
+// ---------------------------------------------------------
+function LeituraSetor({ itens }) {
+  if (!itens?.length) return null;
+  return (
+    <Secao titulo="Leitura do setor" subtitulo="Dificuldades típicas de cada atividade ligadas ao que apareceu no diagnóstico. É hipótese do setor, não fato do cliente: valide na reunião.">
+      <div style={{ display: "grid", gap: 12 }}>
+        {itens.map((x, i) => (
+          <div key={i} style={{ ...cartao, borderLeft: "4px solid #F4B740" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>{x.atividade}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 }}>
+              {x.dificuldadesTipicas?.length ? <div><Rotulo>Dificuldades típicas do setor</Rotulo><Lista itens={x.dificuldadesTipicas} /></div> : null}
+              {x.conexaoComODiagnostico?.length ? <div><Rotulo>Onde isso aparece neste diagnóstico</Rotulo><Lista itens={x.conexaoComODiagnostico} /></div> : null}
+              {x.melhoriasSugeridas?.length ? <div><Rotulo>Melhorias sugeridas</Rotulo><Lista itens={x.melhoriasSugeridas} /></div> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Secao>
+  );
+}
+
+const ROTULO_TIPO_REF = { CASO_REAL: "Caso real", DIFICULDADE_DO_SETOR: "Dificuldade do setor", REGULATORIO: "Regulatório / tributário" };
+
+function ReferenciasSetor({ refs, pesquisando, onPesquisar, erro }) {
+  return (
+    <Secao titulo="Referências do setor (pesquisa na web)" subtitulo="Casos e fontes encontrados na internet. Uso interno: confira cada fonte antes de usar com o cliente. A pesquisa usa apenas o setor/CNAE, nunca dados do cliente.">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <button type="button" onClick={onPesquisar} disabled={pesquisando} style={botao(!refs, pesquisando)}>
+          {pesquisando ? <Loader2 size={13} className="vc-giro" /> : <Search size={13} />}
+          {refs ? "Pesquisar novamente" : "Pesquisar casos e referências do setor"}
+        </button>
+        {pesquisando ? <span style={{ fontSize: 11, color: MUTED }}>Pesquisando na web... pode levar até 1 minuto.</span> : null}
+        {refs && !pesquisando ? <span style={{ fontSize: 11, color: MUTED }}>Pesquisado em {dataHora(refs.geradoEm)} por {refs.geradoPor?.nome || "—"}</span> : null}
+      </div>
+      {erro ? <div role="alert" style={{ background: "#FDECEC", color: "#B3261E", border: "1px solid #F1B8B4", borderRadius: 10, padding: "9px 12px", fontSize: 12, marginBottom: 10 }}>{erro}</div> : null}
+      {refs?.resumo ? <Citacao>{refs.resumo}</Citacao> : null}
+      {refs && !refs.comCitacoes ? (
+        <div role="status" style={{ background: "#FFF4D6", color: "#7A5200", border: "1px solid #F0D9A0", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, margin: "8px 0" }}>
+          A busca não devolveu citações verificáveis. Abra e confira cada link antes de usar.
+        </div>
+      ) : null}
+      {refs?.itens?.length ? (
+        <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+          {refs.itens.map((r, i) => (
+            <div key={i} style={{ ...cartao, borderLeft: `4px solid ${r.tipo === "CASO_REAL" ? "#2FB37C" : r.tipo === "REGULATORIO" ? "#31589C" : "#F4B740"}` }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                <Selo texto={ROTULO_TIPO_REF[r.tipo] || r.tipo} fundo="#EEF1F7" cor={NAVY} />
+                {r.verificada ? <Selo texto="Link verificado" fundo="#E3F6EC" cor="#0F6E56" /> : <Selo texto="Conferir link" fundo="#FFF4D6" cor="#7A5200" />}
+                <span style={{ fontSize: 10.5, color: MUTED }}>{[r.fonte, r.data].filter(Boolean).join(" · ")}</span>
+              </div>
+              <div style={{ fontSize: 12.5, fontWeight: 800 }}>{r.titulo}</div>
+              {r.resumo ? <div style={{ fontSize: 12, lineHeight: 1.55, marginTop: 4 }}>{r.resumo}</div> : null}
+              {r.comoUsar ? <div style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 6, color: MUTED }}><b style={{ color: NAVY }}>Como usar na reunião:</b> {r.comoUsar}</div> : null}
+              <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 7, fontSize: 11.5, fontWeight: 800, color: "#1D4ED8" }}>
+                Abrir fonte <ExternalLink size={12} />
+              </a>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </Secao>
+  );
+}
+
 function Corpo({ conteudo, areasDoRelatorio }) {
   const roteiro = conteudo.roteiroReuniao;
   const temRoteiro = roteiro.abertura || roteiro.documentosPedir.length || roteiro.objecoesProvaveis.length;
@@ -381,6 +448,8 @@ function Corpo({ conteudo, areasDoRelatorio }) {
           </div>
         </Secao>
       ) : null}
+
+      <LeituraSetor itens={conteudo.leituraSetor} />
 
       <Secao titulo="Análise consultiva por área" subtitulo="As áreas prioritárias vêm abertas. Todas seguem o mesmo roteiro, escrito para conduzir a conversa.">
         {conteudo.areas.map((a) => (
@@ -430,6 +499,8 @@ export default function VisaoConsultiva({ token, diagnosticoId, estruturaLabel =
   const [erro, setErro] = useState("");
   const [orientacao, setOrientacao] = useState("");
   const [abrirForm, setAbrirForm] = useState(false);
+  const [pesquisando, setPesquisando] = useState(false);
+  const [erroPesquisa, setErroPesquisa] = useState("");
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -459,6 +530,19 @@ export default function VisaoConsultiva({ token, diagnosticoId, estruturaLabel =
       setErro(e.message);
     } finally {
       setGerando(false);
+    }
+  }
+
+  async function pesquisar() {
+    setErroPesquisa("");
+    setPesquisando(true);
+    try {
+      const r = await chamarApi(token, "POST", "pesquisar", { body: { id: diagnosticoId } });
+      setDados((atual) => ({ ...atual, referenciasSetor: r.referenciasSetor }));
+    } catch (e) {
+      setErroPesquisa(e.message);
+    } finally {
+      setPesquisando(false);
     }
   }
 
@@ -546,6 +630,7 @@ export default function VisaoConsultiva({ token, diagnosticoId, estruturaLabel =
           {abrirForm ? formulario : null}
           <div style={{ marginTop: 14 }}>
             <Corpo conteudo={dados.exibindo.conteudo} areasDoRelatorio={areas} />
+            <ReferenciasSetor refs={dados.referenciasSetor || null} pesquisando={pesquisando} onPesquisar={pesquisar} erro={erroPesquisa} />
           </div>
         </div>
       ) : null}
