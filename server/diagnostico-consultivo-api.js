@@ -190,6 +190,31 @@ export function resumirSimulacaoReforma(snap) {
   };
 }
 
+// CNAEs da empresa (principal e secundários), sem duplicar. Só código e
+// descrição: nada que identifique a empresa.
+export function extrairAtividades(row, completo) {
+  const vistos = new Set();
+  const out = [];
+  const add = (c, tipo) => {
+    const o = objeto(c);
+    const codigo = texto(o.codigo ?? o.cnae ?? o.code, 12);
+    const descricao = texto(o.descricao ?? o.texto ?? o.description, 200);
+    if (!codigo && !descricao) return;
+    const chave = codigo || descricao;
+    if (vistos.has(chave)) return;
+    vistos.add(chave);
+    out.push({ tipo, cnae: codigo, descricao });
+  };
+  const empresas = [...lista(row?.empresas), ...lista(completo?.empresas)];
+  for (const e of empresas) {
+    add(e?.cnaePrincipal, "principal");
+    lista(e?.cnaesSecundarios).forEach((c) => add(c, "secundario"));
+  }
+  add(completo?.cnaePrincipal, "principal");
+  lista(completo?.cnaesSecundarios).forEach((c) => add(c, "secundario"));
+  return out.sort((a, b) => (a.tipo === "principal" ? 0 : 1) - (b.tipo === "principal" ? 0 : 1)).slice(0, 8);
+}
+
 export function montarContexto(row, estrutura, eixosEscopo) {
   const completo = objeto(row.dados_completos);
   const resultado = Object.keys(objeto(completo.resultado)).length ? objeto(completo.resultado) : objeto(row.diagnostico);
@@ -229,6 +254,12 @@ export function montarContexto(row, estrutura, eixosEscopo) {
       informacoesFaltantes: lista(resultado.informacoesFaltantes).slice(0, 10).map((x) => texto(x, 250)),
       pontosParaValidacao: lista(resultado.pontosParaValidacao).slice(0, 8).map((x) => texto(x, 250)),
       qualidadeRespostas: objeto(resultado.qualidadeRespostas),
+    },
+    setor: {
+      atividades: extrairAtividades(row, completo),
+      observacao: extrairAtividades(row, completo).length
+        ? ""
+        : "CNAE não informado neste diagnóstico: use a descrição do negócio e o segmento como referência do setor.",
     },
     respostas: enxugarRespostas(row.perguntas_respostas),
     simulacaoReforma: resumirSimulacaoReforma(
@@ -350,6 +381,7 @@ async function obterInterno(req, res) {
     versaoAtual: Number(atual.versao),
     exibindo: { ...resumoVersao(escolhida), conteudo: escolhida.conteudo },
     versoes: [atual, ...anteriores].map(resumoVersao),
+    referenciasSetor: guardado.referenciasSetor || null,
   });
 }
 
@@ -372,7 +404,7 @@ async function gerarInterno(req, res) {
   await garantirColuna();
   const rows = await sql`
     SELECT id, razao_social, segmento, descricao_negocio, score, perguntas_respostas,
-           diagnostico, dados_completos, visao_consultiva
+           diagnostico, dados_completos, visao_consultiva, empresas
     FROM diagnosticos WHERE id::text = ${id} LIMIT 1
   `;
   const row = rows?.[0];
@@ -391,6 +423,16 @@ async function gerarInterno(req, res) {
   const motor = obterMotor(estrutura);
   const eixosEscopo = eixosDoResultado(resultado, motor);
   const contexto = montarContexto(row, estrutura, eixosEscopo);
+  const refsSalvas = lista(objeto(guardado.referenciasSetor).itens);
+  if (refsSalvas.length) {
+    contexto.referenciasPesquisadasNaWeb = refsSalvas.slice(0, 6).map((r) => ({
+      tipo: texto(r?.tipo, 40),
+      titulo: texto(r?.titulo, 200),
+      fonte: texto(r?.fonte, 120),
+      data: texto(r?.data, 40),
+      resumo: texto(r?.resumo, 400),
+    }));
+  }
 
   if (!contexto.respostas.length && !contexto.diagnosticoDoCliente.eixos.length && !contexto.simulacaoReforma) {
     return enviar(res, 422, {
@@ -438,7 +480,7 @@ async function gerarInterno(req, res) {
 
   await sql`
     UPDATE diagnosticos
-    SET visao_consultiva = ${JSON.stringify({ atual: nova, anteriores })}::jsonb
+    SET visao_consultiva = ${JSON.stringify({ atual: nova, anteriores, ...(guardado.referenciasSetor ? { referenciasSetor: guardado.referenciasSetor } : {}) })}::jsonb
     WHERE id::text = ${id}
   `;
 
@@ -465,8 +507,226 @@ async function gerarInterno(req, res) {
     versaoAtual: nova.versao,
     exibindo: { ...resumoVersao(nova), conteudo },
     versoes: [nova, ...anteriores].map(resumoVersao),
+    referenciasSetor: guardado.referenciasSetor || null,
     uso: saida.uso,
   });
+}
+
+
+// ---------------------------------------------------------
+// PESQUISA NA WEB (opcional, acionada por botão)
+// Só o setor/CNAE e as dores genéricas saem do sistema: nunca nome, CNPJ,
+// e-mail ou telefone do cliente. O resultado é de uso interno e precisa de
+// conferência: cada item traz fonte, data e link.
+// ---------------------------------------------------------
+const TEMPO_PESQUISA_MS = 85_000;
+const INTERVALO_PESQUISA_MS = 20_000;
+const TIPOS_REFERENCIA = ["CASO_REAL", "DIFICULDADE_DO_SETOR", "REGULATORIO"];
+
+function urlBase(u) {
+  try {
+    const x = new URL(String(u));
+    if (!/^https?:$/.test(x.protocol)) return "";
+    return `${x.hostname.replace(/^www\./, "")}${x.pathname.replace(/\/+$/, "")}`.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+export function coletarCitacoes(data) {
+  const urls = new Set();
+  for (const item of lista(data?.output)) {
+    for (const c of lista(item?.content)) {
+      for (const a of lista(c?.annotations)) {
+        if (a?.type === "url_citation" && a.url) urls.add(urlBase(a.url));
+      }
+    }
+  }
+  urls.delete("");
+  return urls;
+}
+
+export function extrairJsonSolto(t) {
+  const s = limparJson(t);
+  const i = s.indexOf("{");
+  const f = s.lastIndexOf("}");
+  if (i < 0 || f <= i) return null;
+  try {
+    return JSON.parse(s.slice(i, f + 1));
+  } catch {
+    return null;
+  }
+}
+
+export function normalizarReferencias(bruto, citacoes) {
+  const itens = lista(objeto(bruto).referencias)
+    .map((r) => {
+      const url = texto(r?.url, 500);
+      const base = urlBase(url);
+      return {
+        tipo: TIPOS_REFERENCIA.includes(String(r?.tipo || "").toUpperCase()) ? String(r.tipo).toUpperCase() : "DIFICULDADE_DO_SETOR",
+        titulo: texto(r?.titulo, 220),
+        fonte: texto(r?.fonte, 120),
+        data: texto(r?.data, 40),
+        url,
+        resumo: texto(r?.resumo, 500),
+        comoUsar: texto(r?.comoUsarNaReuniao, 400),
+        // "verificada" = o link apareceu nas citações reais da busca.
+        verificada: Boolean(base) && citacoes.has(base),
+      };
+    })
+    .filter((r) => r.titulo && r.url && urlBase(r.url));
+  // Havendo citações reais, descarta o que não tem lastro nelas.
+  const filtradas = citacoes.size ? itens.filter((r) => r.verificada) : itens;
+  return filtradas.slice(0, 6);
+}
+
+function montarPromptPesquisa({ atividades, segmento, dores, lacunas }) {
+  const alvo = atividades.length
+    ? atividades.slice(0, 3).map((a) => `${a.cnae ? `CNAE ${a.cnae} — ` : ""}${a.descricao}`).join("; ")
+    : segmento;
+  return `Você é um pesquisador de mercado da Finder of Solutions (consultoria contábil e empresarial). Pesquise na web, em português do Brasil, referências recentes e úteis para um consultor se preparar para atender uma empresa deste setor.
+
+SETOR / ATIVIDADE: ${alvo}
+DORES E PONTOS FRACOS JÁ IDENTIFICADOS NO DIAGNÓSTICO (genéricos): ${dores.length ? dores.join("; ") : "não informados"}
+${lacunas ? `ORIENTAÇÃO DO CONSULTOR: ${lacunas}\n` : ""}
+O QUE BUSCAR:
+- Casos reais de empresas do mesmo setor (ou muito parecido) que enfrentaram problemas semelhantes e o que fizeram para resolver.
+- Dificuldades atuais do setor apontadas por fontes confiáveis.
+- Mudanças regulatórias ou tributárias recentes que afetam a atividade (inclusive Reforma Tributária).
+Prefira Sebrae, CNI, IBGE, associações e federações setoriais, Receita Federal, gov.br e veículos de imprensa econômica reconhecidos.
+
+REGRAS:
+1. Use SOMENTE o que encontrou nas páginas consultadas. Não invente caso, empresa, número, data ou link.
+2. Cada item precisa de URL real e da data de publicação (se não souber a data, deixe vazio).
+3. Se não encontrar caso real, devolva menos itens e diga isso no "resumo". Prefira 3 itens sólidos a 6 fracos.
+4. Não cite dados pessoais nem nomes de pessoas físicas.
+5. Retorne SOMENTE JSON, sem comentários, neste formato:
+{
+  "resumo": "2 a 3 frases sobre o que foi encontrado e o que faltou",
+  "referencias": [
+    { "tipo": "CASO_REAL | DIFICULDADE_DO_SETOR | REGULATORIO", "titulo": "", "fonte": "", "data": "", "url": "", "resumo": "o que a fonte diz, em 2 frases", "comoUsarNaReuniao": "como o consultor pode usar isso com o cliente" }
+  ]
+}`;
+}
+
+async function pesquisarInterno(req, res) {
+  const usuario = exigirAutenticacao(req, res);
+  if (!usuario) return;
+
+  if (!process.env.OPENAI_API_KEY) {
+    return enviar(res, 500, { sucesso: false, error: "OPENAI_API_KEY não configurada." });
+  }
+
+  const body = objeto(req.body);
+  const id = texto(body.id, 100);
+  const orientacao = limparCodigoInternoRelatorio(texto(body.orientacao, 400));
+  if (!id) return enviar(res, 400, { sucesso: false, error: "Informe o ID do diagnóstico." });
+
+  await garantirColuna();
+  const rows = await sql`
+    SELECT id, razao_social, segmento, descricao_negocio, score, perguntas_respostas,
+           diagnostico, dados_completos, visao_consultiva, empresas
+    FROM diagnosticos WHERE id::text = ${id} LIMIT 1
+  `;
+  const row = rows?.[0];
+  if (!row) return enviar(res, 404, { sucesso: false, error: "Diagnóstico não encontrado." });
+
+  const guardado = objeto(row.visao_consultiva);
+  const antiga = objeto(guardado.referenciasSetor);
+  if (antiga.geradoEm && Date.now() - new Date(antiga.geradoEm).getTime() < INTERVALO_PESQUISA_MS) {
+    return enviar(res, 429, { sucesso: false, error: "Uma pesquisa acabou de ser feita. Aguarde alguns segundos." });
+  }
+
+  const completo = objeto(row.dados_completos);
+  const resultado = Object.keys(objeto(completo.resultado)).length ? objeto(completo.resultado) : objeto(row.diagnostico);
+  const estrutura = estruturaDoRegistro(completo, resultado);
+  const motor = obterMotor(estrutura);
+  const eixosEscopo = eixosDoResultado(resultado, motor);
+  const contexto = montarContexto(row, estrutura, eixosEscopo);
+  const atividades = contexto.setor.atividades;
+  const segmento = texto(contexto.empresa.segmento || row.segmento, 120);
+
+  if (!atividades.length && !segmento) {
+    return enviar(res, 422, { sucesso: false, error: "Este diagnóstico não tem CNAE nem segmento para orientar a pesquisa." });
+  }
+
+  // Dores genéricas: opções pré-definidas + rótulos/riscos dos eixos mais fracos.
+  const eixosFracos = [...contexto.diagnosticoDoCliente.eixos]
+    .sort((a, b) => Number(a.score ?? 100) - Number(b.score ?? 100))
+    .slice(0, 2);
+  const dores = [
+    ...contexto.perfil.doresSelecionadas.slice(0, 3),
+    ...eixosFracos.map((e) => e.label).filter(Boolean),
+    ...eixosFracos.flatMap((e) => e.riscos.slice(0, 1)),
+  ].map((d) => texto(d, 160)).filter(Boolean).slice(0, 6);
+
+  const inicio = Date.now();
+  let data;
+  try {
+    const resposta = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.OPENAI_PESQUISA_MODEL || process.env.OPENAI_CONSULTIVO_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini",
+        input: montarPromptPesquisa({ atividades, segmento, dores, lacunas: orientacao }),
+        tools: [{ type: "web_search" }],
+      }),
+      signal: AbortSignal.timeout(TEMPO_PESQUISA_MS),
+    });
+    data = await resposta.json().catch(() => null);
+    if (!resposta.ok) {
+      console.error("[diagnostico-consultivo] pesquisa OpenAI:", data?.error || data);
+      return enviar(res, 502, {
+        sucesso: false,
+        error: "A pesquisa na web não está disponível agora (verifique se o modelo configurado aceita busca na web).",
+      });
+    }
+  } catch (erro) {
+    const tempo = erro?.name === "TimeoutError" || erro?.name === "AbortError";
+    console.error("[diagnostico-consultivo] pesquisa:", erro?.message || erro);
+    return enviar(res, tempo ? 504 : 502, {
+      sucesso: false,
+      error: tempo ? "A pesquisa demorou mais que o limite. Tente novamente." : "Não foi possível fazer a pesquisa agora.",
+    });
+  }
+
+  const bruto = extrairJsonSolto(extrairTexto(data));
+  const citacoes = coletarCitacoes(data);
+  const itens = normalizarReferencias(bruto, citacoes);
+  if (!itens.length) {
+    return enviar(res, 422, {
+      sucesso: false,
+      error: texto(objeto(bruto).resumo, 300) || "A pesquisa não encontrou referências confiáveis para este setor. Tente com uma orientação diferente.",
+    });
+  }
+
+  const nova = {
+    geradoEm: new Date().toISOString(),
+    geradoPor: { id: texto(usuario?.sub, 100), nome: texto(usuario?.nome || usuario?.login || "Usuário", 160) },
+    consulta: atividades.length ? atividades.slice(0, 3).map((a) => `${a.cnae} ${a.descricao}`.trim()) : [segmento],
+    orientacao,
+    resumo: texto(objeto(bruto).resumo, 600),
+    comCitacoes: citacoes.size > 0,
+    itens,
+  };
+
+  await sql`
+    UPDATE diagnosticos
+    SET visao_consultiva = ${JSON.stringify({ ...guardado, referenciasSetor: nova })}::jsonb
+    WHERE id::text = ${id}
+  `;
+
+  await registrarEventoSistema(req, usuario, {
+    acao: "consultivo_pesquisa_setor",
+    modulo: "diagnostico",
+    recurso: "diagnostico",
+    recursoId: id,
+    descricao: `Pesquisa de referências do setor (${itens.length} item(ns)) em ${Math.round((Date.now() - inicio) / 1000)}s.`,
+    depois: { itens: itens.length },
+  });
+
+  return enviar(res, 200, { sucesso: true, referenciasSetor: nova });
 }
 
 async function protegido(fn, req, res) {
@@ -480,3 +740,4 @@ async function protegido(fn, req, res) {
 
 export const consultivoObter = (req, res) => protegido(obterInterno, req, res);
 export const consultivoGerar = (req, res) => protegido(gerarInterno, req, res);
+export const consultivoPesquisar = (req, res) => protegido(pesquisarInterno, req, res);
