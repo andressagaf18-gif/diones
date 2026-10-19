@@ -845,6 +845,8 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
       else if (f.legivel === false) { doc.situacao = "nao_lido"; doc.detalhe = doc.detalhe || "PDF digitalizado (sem texto): conteúdo não conferido"; }
       else if (!fatos[a.caminho]) { doc.situacao = "nao_lido"; doc.detalhe = doc.detalhe || "Conteúdo não lido nesta análise"; }
     }
+    if (f.vencimento) doc.vencimento = f.vencimento;
+    if (f.valorGuia !== undefined && f.valorGuia !== null) doc.valor = f.valorGuia;
     const alertas = achados.filter((x) => x.caminho === a.caminho);
     if (alertas.length) {
       doc.alertas = alertas.map((x) => ({ severidade: x.severidade, titulo: x.titulo }));
@@ -945,4 +947,37 @@ export function resumoParaIa(auditoria) {
     opcoesSimples: a.opcoesSimples,
     inventario: a.inventario,
   };
+}
+
+
+// Versão compacta de uma auditoria para o painel (todas as empresas de uma vez).
+const RE_FALTA = /n[aã]o localizad|n[aã]o encontrad|ausente|sem comprovantes|sem declara|sem documentos|vazia|incompleta|sem nota|sem pgdas|nenhum documento|sem nota fiscal/i;
+export function resumoPainel(a) {
+  const out = {
+    codigo: a?.cliente?.codigo || "", nome: a?.cliente?.nome || "", regime: a?.regime || "", saude: a?.saude ?? 0,
+    resumo: a?.resumo || { critico: 0, atencao: 0, info: 0 }, geradoEm: a?.geradoEm || "", totalArquivos: a?.totalArquivos || 0, driveId: a?.cliente?.driveId || "",
+    achados: (a?.achados || []).slice(0, 80).map((x) => ({ severidade: x.severidade, categoria: x.categoria, titulo: x.titulo, sugestao: x.sugestao || "", falta: RE_FALTA.test(x.titulo) })),
+    vencimentos: [], pastasPendentes: [],
+  };
+  for (const n of a?.arvore || []) {
+    if (n.status === "vazia_esperada" || n.status === "ausente") out.pastasPendentes.push({ nome: n.nome, status: n.status });
+    for (const d of n.documentos || []) {
+      if (/^Certid/.test(d.tipo) || d.tipo === "Certificado digital") {
+        out.vencimentos.push({ categoria: d.tipo === "Certificado digital" ? "Certificado digital" : "Certidão", tipo: d.tipo, nome: d.nome, pasta: n.nome, data: d.validade || "", situacao: d.situacao, detalhe: d.detalhe });
+      } else if (/^Guia/.test(d.tipo) && d.vencimento && String(d.vencimento).slice(0, 10) >= String(a.geradoEm || "").slice(0, 10)) {
+        out.vencimentos.push({ categoria: "Guia a vencer", tipo: d.tipo, nome: d.nome, pasta: n.nome, data: d.vencimento, situacao: "guia", detalhe: [d.competencia ? `Competência ${d.competencia.slice(5, 7)}/${d.competencia.slice(0, 4)}` : "", d.valor ? brl(d.valor) : ""].filter(Boolean).join(" · ") });
+      }
+    }
+  }
+  // Para cada tipo de certidão/certificado, só a mais recente conta (as antigas foram substituídas).
+  const porTipo = new Map();
+  const resto = [];
+  for (const v of out.vencimentos) {
+    if (v.categoria === "Guia a vencer") { resto.push(v); continue; }
+    const k = v.tipo;
+    const atual = porTipo.get(k);
+    if (!atual || (v.data && (!atual.data || v.data > atual.data))) porTipo.set(k, v);
+  }
+  out.vencimentos = [...porTipo.values(), ...resto];
+  return out;
 }
