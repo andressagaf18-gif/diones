@@ -77,6 +77,41 @@ const Btn = ({ children, onClick, sec, disabled }) => (
 );
 const Selo = ({ sev, n }) => <span style={{ background: `${COR[sev]}18`, color: COR[sev], fontWeight: 900, fontSize: 10, borderRadius: 999, padding: "3px 8px", marginRight: 4 }}>{n} {ROTULO[sev].toLowerCase()}</span>;
 
+const STATUS_PASTA = {
+  ok: ["Com documentos", "#2E7D32"],
+  vazia_esperada: ["Vazia — esperada neste regime", "#C62828"],
+  vazia_verificar: ["Vazia — confirmar se se aplica", "#E08A00"],
+  vazia_ok: ["Vazia — não se aplica ao regime", "#7A8499"],
+  ausente: ["Pasta ausente", "#C62828"],
+  ausente_ok: ["Pasta ausente — não se aplica", "#7A8499"],
+};
+const OBRIGACAO = { esp: "Esperada neste regime", pos: "Depende do caso", nao: "Em regra não se aplica" };
+
+function NoPasta({ no, achados, aberto, alternar }) {
+  const [rotulo, cor] = STATUS_PASTA[no.status] || ["", MUTED];
+  const rel = achados.filter((a) => no.achadoIds.includes(a.id));
+  const borda = no.gravidade === "critico" ? COR.critico : no.gravidade === "atencao" ? COR.atencao : no.gravidade === "info" ? COR.info : BORDER;
+  return (
+    <div style={{ border: `1px solid ${BORDER}`, borderLeft: `4px solid ${borda}`, borderRadius: 10, marginBottom: 6, marginLeft: no.nivel * 22, background: WHITE }}>
+      <button type="button" onClick={alternar} style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "9px 12px", cursor: "pointer", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontWeight: no.nivel === 0 ? 900 : 800, fontSize: no.nivel === 0 ? 13.5 : 12.5, color: NAVY }}>{aberto ? "▾" : "▸"} {no.nome}</span>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: cor }}>{rotulo}</span>
+        <span style={{ fontSize: 10.5, color: MUTED }}>{no.existe ? `${no.arquivos} arquivo(s)` : ""}</span>
+        {rel.length > 0 && <span style={{ fontSize: 10.5, fontWeight: 900, color: borda }}>{rel.length} alerta(s)</span>}
+      </button>
+      {aberto && (
+        <div style={{ padding: "0 12px 10px", fontSize: 11.5, lineHeight: 1.55 }}>
+          <div style={{ color: MUTED }}><b>O que deve ter:</b> {no.conteudoEsperado || "—"}</div>
+          <div style={{ color: MUTED }}><b>Neste regime:</b> {OBRIGACAO[no.obrigacao]}{no.ultimaAlteracao ? ` · última alteração em ${no.ultimaAlteracao.split("-").reverse().join("/")}` : ""}</div>
+          {no.subpastas.length > 0 && <div style={{ marginTop: 4 }}><b>Subpastas:</b> {no.subpastas.map((x) => `${x.nome} (${x.arquivos})`).join(" · ")}</div>}
+          {no.amostra.length > 0 && <div style={{ marginTop: 4 }}><b>Arquivos{no.arquivos > no.amostra.length ? ` (primeiros ${no.amostra.length} de ${no.arquivos})` : ""}:</b><ul style={{ margin: "3px 0 0", paddingLeft: 18, color: MUTED }}>{no.amostra.map((n, i) => <li key={i} style={{ wordBreak: "break-all" }}>{n}</li>)}</ul></div>}
+          {rel.length > 0 && <div style={{ marginTop: 6 }}><b>Alertas desta pasta:</b>{rel.map((a) => <div key={a.id} style={{ color: COR[a.severidade], fontWeight: 700 }}>• {a.titulo}</div>)}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AuditoriaPastas({ token, onVoltar }) {
   const [fase, setFase] = useState("envio");
   const [progresso, setProgresso] = useState("");
@@ -90,6 +125,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
   const [ia, setIa] = useState("");
   const [salvo, setSalvo] = useState("");
   const [filtro, setFiltro] = useState("todos");
+  const [abertas, setAbertas] = useState({});
   const [driveLista, setDriveLista] = useState(null);
   const [driveUm, setDriveUm] = useState("todos");
   const inputPasta = useRef(null);
@@ -352,6 +388,22 @@ export default function AuditoriaPastas({ token, onVoltar }) {
                         <td style={{ padding: "5px 8px", fontWeight: 800, color: m.situacao === "ok" ? "#2E7D32" : m.situacao === "no_prazo" ? COR.atencao : COR.critico }}>{({ ok: "Completo", incompleto: `Falta ${m.faltam?.join(", ")}`, faltando: "Sem documentos", no_prazo: "Dentro do prazo, sem documentos" })[m.situacao]}</td>
                       </tr>))}</tbody>
                   </table>
+                </Cartao>
+              )}
+
+              {atual.arvore?.length > 0 && (
+                <Cartao style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                    <div style={{ fontWeight: 900 }}>Análise pasta a pasta</div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Btn sec onClick={() => setAbertas(Object.fromEntries(atual.arvore.map((n) => [atual.cliente.codigo + n.nome, true])))}>Abrir todas</Btn>
+                      <Btn sec onClick={() => setAbertas({})}>Fechar todas</Btn>
+                    </div>
+                  </div>
+                  {atual.arvore.map((n) => {
+                    const chave = atual.cliente.codigo + n.nome;
+                    return <NoPasta key={chave} no={n} achados={atual.achados} aberto={!!abertas[chave]} alternar={() => setAbertas((a) => ({ ...a, [chave]: !a[chave] }))} />;
+                  })}
                 </Cartao>
               )}
 
