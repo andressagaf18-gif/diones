@@ -192,6 +192,7 @@ export async function driveAuditar(req, res) {
 
   const limpas = entradas.map(({ _id, _mime, ...r }) => r);
   const auditoria = auditarCliente({ cliente: { codigo, nome: nome || "", raiz: raiz || "", entradas: limpas }, regime, fatos, inicioObrigacoes: inicio, hoje: new Date() });
+  auditoria.cliente.driveId = String(pastaId);
   const parcial = candidatos.length > lidos;
   return enviar(res, 200, { sucesso: true, auditoria, parcial, documentosLidos: lidos, documentosCandidatos: candidatos.length });
 }
