@@ -99,9 +99,21 @@ async function paginaComoTexto(pagina) {
 }
 
 export async function driveClientes(req, res) {
-  const raiz = process.env.PASTA_DRIVE_ROOT_ID;
+  const bruto = String(process.env.PASTA_DRIVE_ROOT_ID || "").trim();
+  // Aceita o ID puro ou a URL inteira da pasta.
+  const raiz = (bruto.match(/folders\/([A-Za-z0-9_-]+)/) || [])[1] || bruto.replace(/[?&#].*$/, "").replace(/^["']|["']$/g, "").trim();
   if (!raiz) return enviar(res, 503, { sucesso: false, error: "Falta a variável PASTA_DRIVE_ROOT_ID (ID da pasta raiz dos clientes)." });
-  const filhos = await listarFilhos(raiz);
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(raiz)) return enviar(res, 503, { sucesso: false, error: `PASTA_DRIVE_ROOT_ID inválido (tamanho ${raiz.length}). O ID da pasta tem letras e números, cerca de 33 caracteres, e fica depois de “folders/” na URL.` });
+  let filhos;
+  try { filhos = await listarFilhos(raiz); }
+  catch (e) {
+    if (/\(404\)/.test(e.message)) {
+      let quem = "";
+      try { quem = credenciais().email; } catch { /* já tratado */ }
+      throw new Error(`O Drive não encontrou a pasta ${raiz.slice(0, 6)}…${raiz.slice(-4)} (${raiz.length} caracteres). Confira o ID e se a pasta foi compartilhada, como Leitor, com ${quem}.`);
+    }
+    throw e;
+  }
   const clientes = filhos
     .filter((f) => f.mimeType === PASTA)
     .map((f) => ({ id: f.id, raiz: f.name, m: f.name.match(PADRAO_PASTAS.raizCliente) }))
