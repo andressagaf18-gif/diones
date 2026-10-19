@@ -138,8 +138,19 @@ async function varrer(pastaId, prefixo, saida, limite) {
 }
 
 async function baixar(id) {
-  const r = await drive(`files/${id}`, { alt: "media" });
-  return Buffer.from(await r.arrayBuffer());
+  let ultimo;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await drive(`files/${id}`, { alt: "media" });
+      return Buffer.from(await r.arrayBuffer());
+    } catch (e) {
+      ultimo = e;
+      // Limite de requisições / instabilidade do Drive: espera e tenta de novo.
+      if (!/\((403|408|429|500|502|503|504)\)|timeout|aborted|fetch failed/i.test(String(e.message))) break;
+      await new Promise((ok) => setTimeout(ok, 500 * 2 ** i));
+    }
+  }
+  throw ultimo;
 }
 
 async function emLotes(lista, tamanho, fn) {
@@ -163,7 +174,7 @@ export async function driveAuditar(req, res) {
 
   const fatos = {};
   let lidos = 0;
-  await emLotes(candidatos, 6, async (e) => {
+  await emLotes(candidatos, 4, async (e) => {
     if (Date.now() - inicioT > 42000) return; // folga para o limite da função
     const nomeArq = e.caminho.split("/").pop();
     try {
@@ -176,7 +187,7 @@ export async function driveAuditar(req, res) {
         if (f) fatos[e.caminho] = f;
       }
       lidos += 1;
-    } catch { fatos[e.caminho] = { nome: nomeArq, legivel: false }; }
+    } catch (erro) { fatos[e.caminho] = { nome: nomeArq, legivel: false, erro: String(erro?.message || erro).slice(0, 140) }; }
   });
 
   const limpas = entradas.map(({ _id, _mime, ...r }) => r);
