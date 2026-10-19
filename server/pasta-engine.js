@@ -779,6 +779,82 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
   const saude = Math.round(100 * Math.exp(-(resumo.critico * 0.25 + resumo.atencao * 0.05 + Math.min(resumo.info, 10) * 0.01)));
 
 
+
+  // Inventário documento a documento: o que é, de quando é e se está válido.
+  const dmy = (iso) => (iso ? iso.split("-").reverse().join("/") : "");
+  const classificarDoc = (a) => {
+    const nome = nomeArquivo(a.caminho);
+    const alvo = normalizar(a.caminho);
+    const f = fatos[a.caminho] || {};
+    const ext = (nome.match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase() || "";
+    const doc = { nome, caminho: a.caminho, ext, tamanho: a.tamanho || 0, alteradoEm: a.modificadoEm ? new Date(a.modificadoEm).toISOString().slice(0, 10) : "", tipo: "Documento", competencia: "", validade: "", situacao: "sem_prazo", detalhe: "" };
+    const mes = mesDoCaminho(partes(a.caminho), nome) || paDoNomePgdas(nome) || f.pa || "";
+    if (mes) doc.competencia = mes;
+    const certidao = /\b(cnd|cpen)\b|certidao/.test(alvo) && /\.pdf$/i.test(nome) && !/extrato fiscal/i.test(nome);
+    if (certidao) {
+      const nivelCnd = /estadual/.test(alvo) ? "estadual" : /municipal/.test(alvo) ? "municipal" : /federal|rfb|pgfn/.test(alvo) ? "federal" : "";
+      doc.tipo = `Certidão negativa${nivelCnd ? ` ${nivelCnd}` : ""}`;
+      let val = null;
+      const mNome = nome.match(/vcto[^\d]*(\d{2}[.\-/]\d{2}[.\-/]\d{4})/i);
+      if (mNome) val = parseDataBr(mNome[1]);
+      if (!val && f.validade) val = parseDataBr(dmy(f.validade));
+      if (val) {
+        doc.validade = ISO(val);
+        const dias = diasEntre(hojeUtc, val);
+        if (dias < 0) { doc.situacao = "vencido"; doc.detalhe = `Venceu em ${dmy(doc.validade)} (há ${-dias} dia(s))`; }
+        else if (dias <= 30) { doc.situacao = "vence_em_breve"; doc.detalhe = `Vence em ${dmy(doc.validade)} (${dias} dia(s))`; }
+        else { doc.situacao = "valido"; doc.detalhe = `Válida até ${dmy(doc.validade)} (${dias} dias)`; }
+      } else if (f.legivel === false) { doc.situacao = "nao_lido"; doc.detalhe = f.erro ? `Não foi possível ler (${f.erro})` : "PDF digitalizado: validade não pôde ser lida"; }
+      else { doc.situacao = "sem_validade"; doc.detalhe = "Validade não identificada (inclua “VCTO dd.mm.aaaa” no nome)"; }
+    } else if (/extrato fiscal/i.test(nome)) {
+      doc.tipo = "Extrato fiscal / situação fiscal"; doc.detalhe = doc.alteradoEm ? `Arquivo de ${dmy(doc.alteradoEm)}` : "Relatório sem prazo de validade";
+    } else if (/\.(pfx|p12)$/i.test(nome)) {
+      doc.tipo = "Certificado digital";
+      const val = parseDataBr(nome);
+      if (val) {
+        doc.validade = ISO(val);
+        const dias = diasEntre(hojeUtc, val);
+        doc.situacao = dias < 0 ? "vencido" : dias <= 60 ? "vence_em_breve" : "valido";
+        doc.detalhe = dias < 0 ? `Venceu em ${dmy(doc.validade)} (há ${-dias} dia(s))` : `Válido até ${dmy(doc.validade)} (${dias} dias)`;
+      } else { doc.situacao = "sem_validade"; doc.detalhe = "Validade não consta no nome do arquivo"; }
+    } else if (/\.xml$/i.test(nome) && f.ehNota) {
+      doc.tipo = "Nota fiscal (XML)"; doc.competencia = f.mes || doc.competencia;
+      doc.detalhe = `Emitida em ${rotuloMes(f.mes)}${f.valor ? ` · ${brl(f.valor)}` : ""}`;
+    } else if (/\.xml$/i.test(nome)) { doc.tipo = "XML"; doc.detalhe = "Conteúdo não reconhecido como nota"; }
+    else if (/pcto|parcelamento/.test(alvo) && /\.pdf$/i.test(nome) && (f.ehParcelamento || f.parcela || /exibirdas/i.test(nome))) {
+      doc.tipo = "Guia de parcelamento";
+      doc.detalhe = [f.parcela ? `Parcela ${f.parcela.atual}/${f.parcela.total}` : "", f.vencimento ? `vence ${dmy(f.vencimento)}` : "", f.valorGuia ? brl(f.valorGuia) : ""].filter(Boolean).join(" · ");
+    } else if (tipoDocSimples(nome) !== "outro" || f.ehGuiaSimples) {
+      const t = tipoDocSimples(nome);
+      doc.tipo = ({ declaracao: "PGDAS-D — declaração", recibo: "PGDAS-D — recibo", extrato: "PGDAS-D — extrato", das: "Guia DAS" })[t] || "Documento do Simples";
+      const partesDet = [doc.competencia ? `Competência ${rotuloMes(doc.competencia)}` : "", f.receita !== undefined && f.receita !== null ? `receita ${brl(f.receita)}` : "", f.debitoDeclarado !== undefined && f.debitoDeclarado !== null ? `débito ${brl(f.debitoDeclarado)}` : "", f.vencimento ? `vence ${dmy(f.vencimento)}` : "", f.valorGuia ? brl(f.valorGuia) : ""].filter(Boolean);
+      doc.detalhe = partesDet.join(" · ");
+      if (t === "das" || f.ehGuiaSimples) {
+        if (f.vencimento && f.vencimento < ISO(hojeUtc)) { doc.situacao = "aviso"; doc.detalhe += " — vencimento já passou, confirme o pagamento"; }
+      }
+    } else if (f.ehDctfWeb || /dctf/i.test(nome)) { doc.tipo = "Recibo DCTFWeb"; doc.detalhe = f.pa ? `Competência ${rotuloMes(f.pa)}` : ""; }
+    else if (/irpf/i.test(nome)) { doc.tipo = "IRPF do sócio"; }
+    else if (/cnpj/i.test(nome) && !/\.pdf$/i.test("x")) { doc.tipo = "Cartão CNPJ"; }
+    else if (/cart[aã]o cnpj|comprovante.*inscri/i.test(nome) || /^cnpj/i.test(nome)) { doc.tipo = "Cartão CNPJ"; }
+    else if (/qsa/i.test(nome)) { doc.tipo = "QSA"; }
+    else if (/altera[cç][aã]o|contrato social|consolida/i.test(nome)) { doc.tipo = "Contrato social / alteração"; }
+    else if (/inscri[cç][aã]o/i.test(nome)) { doc.tipo = "Inscrição cadastral"; }
+    else if (/acesso|senha/i.test(nome) && /\.(txt|docx?|xlsx?)$/i.test(nome)) { doc.tipo = "Arquivo de acesso"; }
+    if (doc.situacao === "sem_prazo" && /\.pdf$/i.test(nome)) {
+      if (f.erro) { doc.situacao = "nao_lido"; doc.detalhe = `Não foi possível ler (${f.erro})`; }
+      else if (f.legivel === false) { doc.situacao = "nao_lido"; doc.detalhe = doc.detalhe || "PDF digitalizado (sem texto): conteúdo não conferido"; }
+      else if (!fatos[a.caminho]) { doc.situacao = "nao_lido"; doc.detalhe = doc.detalhe || "Conteúdo não lido nesta análise"; }
+    }
+    const alertas = achados.filter((x) => x.caminho === a.caminho);
+    if (alertas.length) {
+      doc.alertas = alertas.map((x) => ({ severidade: x.severidade, titulo: x.titulo }));
+      if (doc.situacao === "sem_prazo" || doc.situacao === "valido") doc.situacao = "aviso";
+    }
+    return doc;
+  };
+  const ORDEM_SIT = { vencido: 0, vence_em_breve: 1, aviso: 2, nao_lido: 3, sem_validade: 4, valido: 5, sem_prazo: 6 };
+  const docsDe = (lista) => lista.map(classificarDoc).sort((x, y) => (ORDEM_SIT[x.situacao] - ORDEM_SIT[y.situacao]) || x.caminho.localeCompare(y.caminho)).slice(0, 400);
+
   // Análise pasta a pasta (padrão + subpastas).
   const regimeChave = ["SIMPLES", "MEI", "PRESUMIDO", "REAL"].includes(regimeDetectado) ? regimeDetectado : "SIMPLES";
   const sevDe = (ids) => (ids.some((a) => a.severidade === "critico") ? "critico" : ids.some((a) => a.severidade === "atencao") ? "atencao" : ids.length ? "info" : "ok");
@@ -808,7 +884,8 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
       nome: nomePadrao, nivel, topo: topoNome, caminho: caminho || "", existe, obrigacao, conteudoEsperado: guia.conteudo, status,
       arquivos: dentro.length, diretos: diretos.length,
       subpastas: filhas.map((f) => ({ nome: f.slice(caminho.length + 1), arquivos: arquivosPor(f).length })),
-      amostra: dentro.slice(0, 14).map((a) => a.caminho.slice(caminho.length + 1)),
+      documentos: docsDe(nivel === 0 ? diretos : dentro),
+      resumoDocs: (() => { const l = (nivel === 0 ? diretos : dentro).map(classificarDoc); return { validos: l.filter((d) => d.situacao === "valido").length, vencidos: l.filter((d) => d.situacao === "vencido").length, vencendo: l.filter((d) => d.situacao === "vence_em_breve").length, naoLidos: l.filter((d) => d.situacao === "nao_lido").length }; })(),
       ultimaAlteracao: datas.length ? new Date(Math.max(...datas)).toISOString().slice(0, 10) : "",
       gravidade: sevDe(relacionados),
       achadoIds: relacionados.map((a) => a.id),
@@ -820,6 +897,12 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
       // certificado digital é subpasta específica
     }
     for (const sub of t.subpastas) listaPastasPadrao.push(noDe(sub, topo[t.chave] ? achaPasta(sub, topo[t.chave]) : undefined, 1, t.nome));
+  }
+  const nomesTopo = new Set(PADRAO_PASTAS.topo.map((t) => normalizar(topo[t.chave] || t.nome)));
+  const fora = arquivos.filter((a) => { const p = partes(a.caminho); return p.length === 1 || !nomesTopo.has(normalizar(p[0])); });
+  if (fora.length) {
+    const rel = achados.filter((a) => fora.some((x) => x.caminho === a.caminho));
+    listaPastasPadrao.push({ nome: "Fora do padrão (raiz e pastas extras)", nivel: 0, topo: "", caminho: "", existe: true, obrigacao: "pos", conteudoEsperado: "Arquivos que não estão em nenhuma das 4 pastas padrão. O ideal é mover cada um para a pasta correta.", status: "ok", arquivos: fora.length, diretos: fora.length, subpastas: [], documentos: docsDe(fora), resumoDocs: { validos: 0, vencidos: 0, vencendo: 0, naoLidos: 0 }, ultimaAlteracao: "", gravidade: sevDe(rel), achadoIds: rel.map((a) => a.id) });
   }
   const arvore = listaPastasPadrao;
 
