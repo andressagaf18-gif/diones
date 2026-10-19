@@ -719,7 +719,11 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
   }
 
   // 12) Arquivos ilegíveis ------------------------------------------------------------
-  const ilegiveis = Object.entries(fatos).filter(([, f]) => f && f.legivel === false).map(([c]) => nomeArquivo(c));
+  const falhas = Object.entries(fatos).filter(([, f]) => f && f.erro);
+  const ilegiveis = Object.entries(fatos).filter(([, f]) => f && f.legivel === false && !f.erro).map(([c]) => nomeArquivo(c));
+  if (falhas.length) {
+    add("atencao", "Leitura dos documentos", `${falhas.length} arquivo(s) não puderam ser baixados/lidos — o resultado pode estar incompleto`, `${falhas.slice(0, 5).map(([c, f]) => `${nomeArquivo(c)} (${f.erro})`).join("; ")}${falhas.length > 5 ? "…" : ""}`, { sugestao: "Rode a auditoria novamente só para este cliente. Se persistir, o motivo acima mostra o que o Drive respondeu." });
+  }
   if (ilegiveis.length) {
     add("info", "Leitura dos documentos", `${ilegiveis.length} PDF(s) sem texto (digitalizados) não puderam ser conferidos`, ilegiveis.slice(0, 8).join(", ") + (ilegiveis.length > 8 ? "…" : ""), { sugestao: "Se for importante validar o conteúdo, salve versões em PDF com texto (baixadas do portal) ou ative leitura por OCR." });
   }
