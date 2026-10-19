@@ -43,6 +43,9 @@
     },
     "api/diagnostico.js": {
       "maxDuration": 60
+    },
+    "api/tributario.js": {
+      "maxDuration": 60
     }
   }
 }
