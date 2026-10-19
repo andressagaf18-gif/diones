@@ -167,8 +167,35 @@ function Comparacao({ a, anterior, anteriorEm }) {
   );
 }
 
+const hojeIso = () => new Date().toISOString().slice(0, 10);
+const diasAte = (iso) => Math.floor((new Date(`${String(iso).slice(0, 10)}T00:00:00Z`) - new Date(`${hojeIso()}T00:00:00Z`)) / 86400000);
+const FALTA_CAT = (x) => x.falta || /localizad|ausente|vazia|incompleta|sem /i.test(x.titulo || "");
+
+function Kpi({ rotulo, valor, cor, sub, onClick, ativo }) {
+  return (
+    <button type="button" onClick={onClick} disabled={!onClick} style={{ textAlign: "left", background: WHITE, border: `1px solid ${ativo ? CORAL : BORDER}`, borderTop: `4px solid ${cor || BORDER}`, borderRadius: 12, padding: "10px 12px", cursor: onClick ? "pointer" : "default", minWidth: 140, flex: "1 1 140px" }}>
+      <div style={{ fontSize: 24, fontWeight: 900, color: cor || NAVY, lineHeight: 1.1 }}>{valor}</div>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: NAVY, marginTop: 2 }}>{rotulo}</div>
+      {sub && <div style={{ fontSize: 10.5, color: MUTED, marginTop: 1 }}>{sub}</div>}
+    </button>
+  );
+}
+
+function Abas({ itens, valor, onChange, sticky }) {
+  return (
+    <div className="nao-imprimir" style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: `1px solid ${BORDER}`, marginBottom: 14, ...(sticky ? { position: "sticky", top: 0, background: "#F7F8FB", zIndex: 5, paddingTop: 6 } : {}) }}>
+      {itens.map(([k, rotulo, n]) => (
+        <button key={k} type="button" onClick={() => onChange(k)} style={{ background: valor === k ? WHITE : "transparent", border: `1px solid ${valor === k ? BORDER : "transparent"}`, borderBottom: valor === k ? `3px solid ${CORAL}` : "3px solid transparent", borderRadius: "10px 10px 0 0", padding: "9px 16px", fontWeight: 900, fontSize: 13, color: valor === k ? NAVY : MUTED, cursor: "pointer" }}>
+          {rotulo}{n !== undefined && n !== null ? <span style={{ marginLeft: 6, background: valor === k ? CORAL : "#DDE2EC", color: valor === k ? WHITE : NAVY, borderRadius: 999, padding: "1px 7px", fontSize: 10.5 }}>{n}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, iaBusy, botoes }) {
   const [filtro, setFiltro] = useState("todos");
+  const [secao, setSecao] = useState("resumo");
   const [abertas, setAbertas] = useState({});
   const [imprimindo, setImprimindo] = useState(false);
   const chave = (n) => a.cliente.codigo + n.nome;
@@ -179,20 +206,30 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
     setTimeout(() => window.print(), 300);
   };
   const regimeTxt = ({ SIMPLES: "Simples Nacional", MEI: "MEI", PRESUMIDO: "Lucro Presumido", REAL: "Lucro Real", NAO_IDENTIFICADO: "não identificado" })[a.regime] || a.regime;
+  const mostra = (k) => imprimindo || secao === k;
+  const prioridades = a.achados.filter((x) => x.severidade !== "info").slice(0, 6);
+  const docsTotais = (a.arvore || []).reduce((t, n) => ({ v: t.v + (n.resumoDocs?.vencidos || 0), b: t.b + (n.resumoDocs?.vencendo || 0), n: t.n + (n.resumoDocs?.naoLidos || 0) }), { v: 0, b: 0, n: 0 });
+  const corSaude = a.saude >= 70 ? "#2E7D32" : a.saude >= 40 ? COR.atencao : COR.critico;
   return (
     <div id="relatorio-pasta">
       <style>{`@media print { body * { visibility: hidden !important; } #relatorio-pasta, #relatorio-pasta * { visibility: visible !important; } #relatorio-pasta { position: absolute; left: 0; top: 0; width: 100%; } .nao-imprimir { display: none !important; } }`}</style>
-      <Cartao style={{ marginBottom: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+      <Cartao style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 17 }}>{a.cliente.codigo} - {a.cliente.nome}</div>
-            <div style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>Regime: {regimeTxt} · {a.totalArquivos} arquivo(s) · auditoria de {quando(criadoEm || a.geradoEm)}</div>
-            <div style={{ marginTop: 8 }}><Selo sev="critico" n={a.resumo.critico} /><Selo sev="atencao" n={a.resumo.atencao} /><Selo sev="info" n={a.resumo.info} /></div>
+            <div style={{ fontWeight: 900, fontSize: 19 }}>{a.cliente.codigo} - {a.cliente.nome}</div>
+            <div style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{regimeTxt} · {a.totalArquivos} arquivo(s) · auditoria de {quando(criadoEm || a.geradoEm)}</div>
           </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 30, fontWeight: 900, color: a.saude >= 70 ? "#2E7D32" : a.saude >= 40 ? COR.atencao : COR.critico }}>{a.saude}</div>
-            <div style={{ fontSize: 10, color: MUTED }}>saúde da pasta</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 120 }}><div style={{ height: 8, background: "#E8ECF3", borderRadius: 999 }}><div style={{ height: 8, width: `${a.saude}%`, background: corSaude, borderRadius: 999 }} /></div><div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>saúde da pasta</div></div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: corSaude }}>{a.saude}</div>
           </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+          <Kpi rotulo="Críticos" valor={a.resumo.critico} cor={COR.critico} />
+          <Kpi rotulo="Atenção" valor={a.resumo.atencao} cor={COR.atencao} />
+          <Kpi rotulo="Informativos" valor={a.resumo.info} cor={COR.info} />
+          <Kpi rotulo="Documentos vencidos" valor={docsTotais.v} cor={docsTotais.v ? COR.critico : "#2E7D32"} sub={docsTotais.b ? `${docsTotais.b} vencendo` : ""} />
+          <Kpi rotulo="Não conferidos" valor={docsTotais.n} cor="#7A8499" sub="PDF sem texto/leitura" />
         </div>
         <div className="nao-imprimir" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
           <Btn sec onClick={imprimir}>Imprimir / salvar PDF</Btn>
@@ -200,28 +237,56 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
         </div>
       </Cartao>
 
-      {anterior !== undefined && (
-        <Cartao style={{ marginBottom: 10 }}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Mudanças desde a auditoria anterior</div>
-          <Comparacao a={a} anterior={anterior} anteriorEm={anteriorEm} />
+      <Abas valor={secao} onChange={setSecao} itens={[["resumo", "Resumo"], ["docs", "Documentos por pasta"], ...(a.meses?.length ? [["simples", "Simples mês a mês"]] : []), ["alertas", "Todos os alertas", a.achados.length]]} />
+
+      {mostra("resumo") && (
+        <div>
+          <Cartao style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Prioridades</div>
+            {prioridades.length === 0 && <div style={{ color: "#2E7D32", fontWeight: 800 }}>Nenhuma pendência crítica ou de atenção.</div>}
+            {prioridades.map((x) => (
+              <div key={x.id} style={{ borderLeft: `4px solid ${COR[x.severidade]}`, background: "#FAFBFD", borderRadius: 8, padding: "7px 10px", marginBottom: 6, breakInside: "avoid" }}>
+                <div style={{ fontWeight: 800, fontSize: 12.5 }}>{x.titulo}</div>
+                {x.sugestao && <div style={{ fontSize: 11.5, color: MUTED }}>→ {x.sugestao}</div>}
+              </div>))}
+            {a.achados.filter((x) => x.severidade !== "info").length > prioridades.length && <div className="nao-imprimir" style={{ fontSize: 11.5 }}><button type="button" onClick={() => setSecao("alertas")} style={{ background: "none", border: "none", color: CORAL, fontWeight: 800, cursor: "pointer", padding: 0 }}>Ver todos os alertas →</button></div>}
+          </Cartao>
+          {anterior !== undefined && (
+            <Cartao style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>Mudanças desde a auditoria anterior</div>
+              <Comparacao a={a} anterior={anterior} anteriorEm={anteriorEm} />
+            </Cartao>
+          )}
+          <Cartao style={{ marginBottom: 12, borderLeft: `4px solid ${CORAL}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 900 }}>Leitura da IA</div>
+              {!narrativa && onIa && <span className="nao-imprimir"><Btn onClick={onIa} disabled={iaBusy}>{iaBusy ? "Analisando…" : "Pedir comentário da IA"}</Btn></span>}
+            </div>
+            {narrativa ? (
+              <div style={{ fontSize: 12.5, lineHeight: 1.6, marginTop: 8 }}>
+                <p style={{ marginTop: 0 }}>{narrativa.resumo}</p>
+                {[["Prioridades", narrativa.prioridades], ["Melhorias de organização", narrativa.melhorias], ["Pontos a verificar", narrativa.oportunidades]].map(([t, l]) => l?.length ? <div key={t}><b>{t}</b><ul style={{ margin: "4px 0 8px", paddingLeft: 18 }}>{l.map((x, i) => <li key={i}>{x}</li>)}</ul></div> : null)}
+              </div>
+            ) : <div style={{ color: MUTED, fontSize: 11, marginTop: 6 }}>A IA recebe só os achados e os totais (sem o conteúdo dos documentos). O comentário fica salvo neste relatório.</div>}
+          </Cartao>
+        </div>
+      )}
+
+      {mostra("docs") && a.arvore?.length > 0 && (
+        <Cartao style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            <div style={{ fontWeight: 900 }}>O que há em cada pasta e se está válido</div>
+            <div className="nao-imprimir" style={{ display: "flex", gap: 6 }}>
+              <Btn sec onClick={() => setAbertas(Object.fromEntries(a.arvore.map((n) => [chave(n), true])))}>Abrir todas</Btn>
+              <Btn sec onClick={() => setAbertas({})}>Fechar todas</Btn>
+            </div>
+          </div>
+          {a.arvore.map((n) => <NoPasta key={chave(n)} no={n} achados={a.achados} aberto={imprimindo || !!abertas[chave(n)]} alternar={() => setAbertas((x) => ({ ...x, [chave(n)]: !x[chave(n)] }))} />)}
         </Cartao>
       )}
 
-      <Cartao style={{ marginBottom: 10, borderLeft: `4px solid ${CORAL}` }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ fontWeight: 900 }}>Leitura da IA</div>
-          {!narrativa && onIa && <span className="nao-imprimir"><Btn onClick={onIa} disabled={iaBusy}>{iaBusy ? "Analisando…" : "Pedir comentário da IA"}</Btn></span>}
-        </div>
-        {narrativa ? (
-          <div style={{ fontSize: 12.5, lineHeight: 1.6, marginTop: 8 }}>
-            <p style={{ marginTop: 0 }}>{narrativa.resumo}</p>
-            {[["Prioridades", narrativa.prioridades], ["Melhorias de organização", narrativa.melhorias], ["Pontos a verificar", narrativa.oportunidades]].map(([t, l]) => l?.length ? <div key={t}><b>{t}</b><ul style={{ margin: "4px 0 8px", paddingLeft: 18 }}>{l.map((x, i) => <li key={i}>{x}</li>)}</ul></div> : null)}
-          </div>
-        ) : <div style={{ color: MUTED, fontSize: 11, marginTop: 6 }}>A IA recebe só os achados e os totais (sem o conteúdo dos documentos) e sugere prioridades e melhorias. O comentário fica salvo neste relatório.</div>}
-      </Cartao>
-
-      {a.meses?.length > 0 && (
-        <Cartao style={{ marginBottom: 10, overflowX: "auto" }}>
+      {mostra("simples") && a.meses?.length > 0 && (
+        <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>Simples Nacional — mês a mês</div>
           <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
             <thead><tr style={{ textAlign: "left", color: MUTED }}>{["Mês", "Declaração", "Recibo", "Extrato", "Guia DAS", "Receita", "Situação"].map((h) => <th key={h} style={{ padding: "4px 8px" }}>{h}</th>)}</tr></thead>
@@ -236,59 +301,54 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
         </Cartao>
       )}
 
-      {a.arvore?.length > 0 && (
-        <Cartao style={{ marginBottom: 10 }}>
+      {mostra("alertas") && (
+        <Cartao>
           <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-            <div style={{ fontWeight: 900 }}>Documentos por pasta e validade</div>
-            <div className="nao-imprimir" style={{ display: "flex", gap: 6 }}>
-              <Btn sec onClick={() => setAbertas(Object.fromEntries(a.arvore.map((n) => [chave(n), true])))}>Abrir todas</Btn>
-              <Btn sec onClick={() => setAbertas({})}>Fechar todas</Btn>
-            </div>
+            <div style={{ fontWeight: 900 }}>Alertas e pendências ({a.achados.length})</div>
+            <select className="nao-imprimir" value={filtro} onChange={(e) => setFiltro(e.target.value)} style={{ padding: 5, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 11 }}>
+              <option value="todos">Todos</option><option value="critico">Só críticos</option><option value="atencao">Só atenção</option><option value="info">Só informativos</option>
+            </select>
           </div>
-          {a.arvore.map((n) => <NoPasta key={chave(n)} no={n} achados={a.achados} aberto={imprimindo || !!abertas[chave(n)]} alternar={() => setAbertas((x) => ({ ...x, [chave(n)]: !x[chave(n)] }))} />)}
+          {a.achados.filter((x) => imprimindo || filtro === "todos" || x.severidade === filtro).map((x) => (
+            <div key={x.id} style={{ borderLeft: `4px solid ${COR[x.severidade]}`, background: "#FAFBFD", borderRadius: 8, padding: "8px 10px", marginBottom: 7, breakInside: "avoid" }}>
+              <div style={{ fontSize: 10, fontWeight: 900, color: COR[x.severidade], letterSpacing: 0.6 }}>{ROTULO[x.severidade].toUpperCase()} · {x.categoria.toUpperCase()}</div>
+              <div style={{ fontWeight: 800, fontSize: 12.5, margin: "2px 0" }}>{x.titulo}</div>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>{x.detalhe}</div>
+              {x.sugestao && <div style={{ fontSize: 11.5, marginTop: 3 }}><b>O que fazer:</b> {x.sugestao}</div>}
+            </div>))}
+          {!a.achados.length && <div style={{ color: "#2E7D32", fontWeight: 800 }}>Nenhuma pendência encontrada.</div>}
         </Cartao>
       )}
-
-      <Cartao>
-        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-          <div style={{ fontWeight: 900 }}>Alertas e pendências ({a.achados.length})</div>
-          <select className="nao-imprimir" value={filtro} onChange={(e) => setFiltro(e.target.value)} style={{ padding: 5, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 11 }}>
-            <option value="todos">Todos</option><option value="critico">Só críticos</option><option value="atencao">Só atenção</option><option value="info">Só informativos</option>
-          </select>
-        </div>
-        {a.achados.filter((x) => imprimindo || filtro === "todos" || x.severidade === filtro).map((x) => (
-          <div key={x.id} style={{ borderLeft: `4px solid ${COR[x.severidade]}`, background: "#FAFBFD", borderRadius: 8, padding: "8px 10px", marginBottom: 7, breakInside: "avoid" }}>
-            <div style={{ fontSize: 10, fontWeight: 900, color: COR[x.severidade], letterSpacing: 0.6 }}>{ROTULO[x.severidade].toUpperCase()} · {x.categoria.toUpperCase()}</div>
-            <div style={{ fontWeight: 800, fontSize: 12.5, margin: "2px 0" }}>{x.titulo}</div>
-            <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>{x.detalhe}</div>
-            {x.sugestao && <div style={{ fontSize: 11.5, marginTop: 3 }}><b>O que fazer:</b> {x.sugestao}</div>}
-          </div>))}
-        {!a.achados.length && <div style={{ color: "#2E7D32", fontWeight: 800 }}>Nenhuma pendência encontrada.</div>}
-      </Cartao>
     </div>
   );
 }
 
+const situacaoCliente = (c) => (c.resumo.critico > 0 ? "critico" : c.resumo.atencao > 0 ? "atencao" : "ok");
+const ROTULO_SIT = { critico: ["Crítico", COR.critico], atencao: ["Com pendência", COR.atencao], ok: ["Em dia", "#2E7D32"] };
+const diasDesde = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+
 export default function AuditoriaPastas({ token, onVoltar }) {
-  const [fase, setFase] = useState("envio");
+  const [aba, setAba] = useState("auditar");
+  const [lendo, setLendo] = useState(false);
   const [progresso, setProgresso] = useState("");
   const [erro, setErro] = useState("");
-  const [auditorias, setAuditorias] = useState([]);
   const [aviso, setAviso] = useState([]);
-  const [sel, setSel] = useState(null);
   const [regime, setRegime] = useState("AUTO");
   const [inicio, setInicio] = useState("");
-  const [narrativas, setNarrativas] = useState({});
-  const [idsSalvos, setIdsSalvos] = useState({});
-  const [ia, setIa] = useState(false);
   const [salvo, setSalvo] = useState("");
   const [driveLista, setDriveLista] = useState(null);
   const [driveUm, setDriveUm] = useState("todos");
-  const [historico, setHistorico] = useState(null);
-  const [busca, setBusca] = useState("");
-  const [ordem, setOrdem] = useState("pior");
+  const [painel, setPainel] = useState(null);
   const [cli, setCli] = useState(null);
   const [ocupado, setOcupado] = useState(false);
+  const [ia, setIa] = useState(false);
+  // filtros
+  const [fSit, setFSit] = useState("todos");
+  const [fCat, setFCat] = useState("");
+  const [busca, setBusca] = useState("");
+  const [fVencCat, setFVencCat] = useState("todas");
+  const [fVencFaixa, setFVencFaixa] = useState("90");
+  const [fVencBusca, setFVencBusca] = useState("");
   const inputPasta = useRef(null);
   const inputZip = useRef(null);
 
@@ -300,26 +360,31 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     return d;
   }
 
-  async function carregarHistorico() {
-    try { const d = await api("pasta-listar", null, "GET"); setHistorico(d.clientes || []); }
-    catch (e) { setHistorico([]); setErro(e.message); }
+  async function carregarPainel() {
+    try { const d = await api("pasta-painel", null, "GET"); setPainel(d.clientes || []); }
+    catch (e) { setPainel([]); setErro(e.message); }
   }
-  useEffect(() => { carregarHistorico(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { carregarPainel(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Salva cada auditoria como uma nova versão; nada do que já existe é apagado.
   async function salvarVersoes(lista, origem) {
     try {
       const d = await api("pasta-salvar", { origem, auditorias: lista.map((a) => ({ auditoria: a })) });
       const mapa = {};
       (d.ids || []).forEach((x) => { mapa[x.codigo] = x.id; });
-      setIdsSalvos((m) => ({ ...m, ...mapa }));
       setSalvo(`${d.salvos} auditoria(s) salva(s) no histórico.`);
       return mapa;
     } catch (e) { setSalvo(""); setErro("A auditoria foi feita, mas não consegui salvar no histórico: " + e.message); return {}; }
   }
+  async function aposAuditoria(resultado, origem, avisos) {
+    setAviso(avisos);
+    await salvarVersoes(resultado, origem);
+    await carregarPainel();
+    setLendo(false);
+    setAba("geral");
+  }
 
   async function processar(entradas) {
-    setErro(""); setFase("lendo"); setSalvo(""); setNarrativas({}); setSel(null);
+    setErro(""); setSalvo(""); setLendo(true);
     try {
       const { clientes, foraDoPadrao, prefixo } = separarClientes(entradas);
       if (!clientes.length) throw new Error("Não encontrei pastas de cliente no padrão “CÓDIGO - NOME”. Envie a pasta de um cliente dentro de uma pasta com esse nome, ou a pasta com todos os clientes.");
@@ -351,12 +416,8 @@ export default function AuditoriaPastas({ token, onVoltar }) {
         resultado.push(auditarCliente({ cliente: c, regime, fatos, inicioObrigacoes: inicio, hoje: new Date() }));
       }
       if (pdfsLidos >= LIMITE_PDFS) avisos.push(`Para manter a análise rápida, li o texto de até ${LIMITE_PDFS} PDFs; os demais foram avaliados só pelo nome e pela pasta.`);
-      resultado.sort((a, b) => a.saude - b.saude);
-      setAviso(avisos); setAuditorias(resultado); setFase("resultado");
-      if (resultado.length === 1) setSel(resultado[0].cliente.codigo);
-      await salvarVersoes(resultado, "upload");
-      carregarHistorico();
-    } catch (e) { setErro(e.message || "Não consegui ler os arquivos."); setFase("envio"); }
+      await aposAuditoria(resultado, "upload", avisos);
+    } catch (e) { setErro(e.message || "Não consegui ler os arquivos."); setLendo(false); }
   }
 
   async function carregarDrive() {
@@ -364,12 +425,9 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     try { const d = await api("pasta-drive-clientes", null, "GET"); setDriveLista(d); }
     catch (e) { setErro(e.message); }
   }
-  async function auditarUmDrive(c) {
-    const d = await api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio });
-    return d;
-  }
+  const auditarUmDrive = (c) => api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio });
   async function auditarDrive() {
-    setErro(""); setFase("lendo"); setSalvo(""); setNarrativas({}); setSel(null);
+    setErro(""); setSalvo(""); setLendo(true);
     const alvos = driveUm === "todos" ? driveLista.clientes : driveLista.clientes.filter((c) => c.id === driveUm);
     const resultado = []; const avisos = [];
     try {
@@ -383,12 +441,8 @@ export default function AuditoriaPastas({ token, onVoltar }) {
         } catch (e) { avisos.push(`${c.codigo} - ${c.nome}: não consegui ler (${e.message}).`); }
       }
       if (!resultado.length) throw new Error("Nenhum cliente pôde ser auditado. " + (avisos[0] || ""));
-      resultado.sort((a, b) => a.saude - b.saude);
-      setAviso(avisos); setAuditorias(resultado); setFase("resultado");
-      if (resultado.length === 1) setSel(resultado[0].cliente.codigo);
-      await salvarVersoes(resultado, "drive");
-      carregarHistorico();
-    } catch (e) { setErro(e.message); setFase("envio"); }
+      await aposAuditoria(resultado, "drive", avisos);
+    } catch (e) { setErro(e.message); setLendo(false); }
   }
 
   async function aoSoltar(ev) {
@@ -413,197 +467,312 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     try { processar(await entradasDeZip(f)); } catch (e) { setErro("Não consegui abrir o ZIP: " + e.message); }
   }
 
-  // ---- Histórico de um cliente -----------------------------------------
+  // ---- Cliente / histórico ----
   async function abrirCliente(codigo, idEspecifico) {
-    setErro(""); setOcupado(true);
+    setErro(""); setOcupado(true); setAba("cliente");
     try {
       const h = await api("pasta-obter", null, "GET", { codigo });
       if (!h.historico?.length) throw new Error("Este cliente ainda não tem auditorias salvas.");
       const id = idEspecifico || h.historico[0].id;
       const r = await api("pasta-relatorio", null, "GET", { id });
       setCli({ codigo, historico: h.historico, id: r.relatorio.id, atual: r.relatorio.resultado, narrativa: r.relatorio.narrativa, criadoEm: r.relatorio.created_at, anterior: r.anterior?.resultado || null, anteriorEm: r.anterior?.created_at || null });
-      setFase("cliente");
     } catch (e) { setErro(e.message); }
     setOcupado(false);
   }
   async function atualizarCliente() {
     const a = cli.atual;
-    if (!a.cliente.driveId) { setErro("Esta auditoria veio de um envio manual. Para atualizar direto do Drive, rode o cliente pela opção “Direto do Google Drive”."); return; }
+    if (!a.cliente.driveId) { setErro("Esta auditoria veio de um envio manual. Para atualizar direto do Drive, rode o cliente na aba Auditar, pela opção “Direto do Google Drive”."); return; }
     setErro(""); setOcupado(true);
     try {
       const d = await auditarUmDrive({ id: a.cliente.driveId, codigo: a.cliente.codigo, nome: a.cliente.nome, raiz: a.cliente.raiz });
       const m = await salvarVersoes([d.auditoria], "drive");
       if (d.parcial) setErro(`Li ${d.documentosLidos} de ${d.documentosCandidatos} documentos (limite de tempo). Atualize de novo para completar.`);
       await abrirCliente(a.cliente.codigo, m[a.cliente.codigo]);
-      carregarHistorico();
+      carregarPainel();
     } catch (e) { setErro(e.message); }
     setOcupado(false);
   }
   async function pedirIaCliente() {
     setIa(true);
-    try {
-      const d = await api("pasta-narrativa", { auditoria: cli.atual, id: cli.id });
-      setCli((c) => ({ ...c, narrativa: d.narrativa }));
-    } catch (e) { setErro(e.message); }
+    try { const d = await api("pasta-narrativa", { auditoria: cli.atual, id: cli.id }); setCli((c) => ({ ...c, narrativa: d.narrativa })); }
+    catch (e) { setErro(e.message); }
     setIa(false);
   }
-  async function pedirIaResultado(a) {
-    setIa(true);
-    try {
-      const d = await api("pasta-narrativa", { auditoria: a, id: idsSalvos[a.cliente.codigo] });
-      setNarrativas((n) => ({ ...n, [a.cliente.codigo]: d.narrativa }));
-    } catch (e) { setErro(e.message); }
-    setIa(false);
-  }
-
-  function baixarCsv() {
-    const linhas = [["Cliente", "Código", "Regime", "Gravidade", "Categoria", "Achado", "Detalhe", "Sugestão"]];
-    for (const a of auditorias) for (const x of a.achados) linhas.push([a.cliente.nome, a.cliente.codigo, a.regime, ROTULO[x.severidade], x.categoria, x.titulo, x.detalhe, x.sugestao || ""]);
-    const csv = linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
-    const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
-    const el = document.createElement("a"); el.href = url; el.download = "auditoria-de-pastas.csv"; el.click(); URL.revokeObjectURL(url);
-  }
-
-  const atual = useMemo(() => auditorias.find((a) => a.cliente.codigo === sel) || null, [auditorias, sel]);
 
   const cabecalho = (
-    <div style={{ background: "linear-gradient(135deg,#0E1A33,#17233D)", color: WHITE, borderRadius: 22, padding: 22, marginBottom: 14 }} className="nao-imprimir">
-      <div style={{ color: "#FFB7A7", fontSize: 9, fontWeight: 900, letterSpacing: 1.3 }}>FINDER TAX INTELLIGENCE</div>
-      <h2 style={{ margin: "6px 0", fontSize: 26 }}>Auditoria de pastas de clientes</h2>
-      <p style={{ margin: 0, color: "#D8DEEA", fontSize: 12, maxWidth: 760, lineHeight: 1.55 }}>Confere cada pasta padrão e subpasta: o que há em cada uma, se os documentos estão válidos, o que falta e o que está no lugar errado. Cada auditoria fica salva no histórico.</p>
+    <div className="nao-imprimir" style={{ background: "linear-gradient(135deg,#0E1A33,#17233D)", color: WHITE, borderRadius: 22, padding: "18px 22px", marginBottom: 14, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+      <div>
+        <div style={{ color: "#FFB7A7", fontSize: 9, fontWeight: 900, letterSpacing: 1.3 }}>FINDER TAX INTELLIGENCE</div>
+        <h2 style={{ margin: "4px 0 2px", fontSize: 24 }}>Auditoria de pastas de clientes</h2>
+        <div style={{ color: "#D8DEEA", fontSize: 12 }}>Cada pasta padrão conferida: documentos, validade, pendências e histórico.</div>
+      </div>
+      <Btn sec onClick={onVoltar}>← Voltar</Btn>
     </div>
   );
 
-  // ---------------- Tela: relatório salvo de um cliente ----------------
-  if (fase === "cliente" && cli) {
-    return (
-      <div>
-        {cabecalho}
-        <div className="nao-imprimir" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
-          <Btn sec onClick={() => { setFase("envio"); setCli(null); carregarHistorico(); }}>← Histórico</Btn>
-          <Btn onClick={atualizarCliente} disabled={ocupado}>{ocupado ? "Atualizando…" : "Atualizar agora pelo Drive"}</Btn>
-          <label style={{ fontSize: 12, color: MUTED }}>Versão:{" "}
-            <select value={cli.id} onChange={(e) => abrirCliente(cli.codigo, Number(e.target.value))} disabled={ocupado} style={{ padding: 6, borderRadius: 8, border: `1px solid ${BORDER}` }}>
-              {cli.historico.map((h, i) => <option key={h.id} value={h.id}>{quando(h.created_at)} — saúde {h.saude}{i === 0 ? " (mais recente)" : ""}</option>)}
+  const lista = painel || [];
+  const comSit = lista.map((c) => ({ ...c, sit: situacaoCliente(c), dias: diasDesde(c.auditadoEm) }));
+  const kp = {
+    total: comSit.length,
+    ok: comSit.filter((c) => c.sit === "ok").length,
+    pend: comSit.filter((c) => c.sit !== "ok").length,
+    crit: comSit.filter((c) => c.sit === "critico").length,
+    velhos: comSit.filter((c) => c.dias > 30).length,
+    alertas: comSit.reduce((t, c) => t + c.resumo.critico + c.resumo.atencao, 0),
+  };
+
+  const abas = [["auditar", "1 · Auditar"], ["geral", "2 · Visão geral", kp.total || null], ["cliente", "3 · Cliente"], ["vencimentos", "4 · Vencimentos"]];
+
+  // ------------------------- ABA 1: AUDITAR -------------------------
+  const abaAuditar = (
+    <div>
+      <Cartao>
+        <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>Direto do Google Drive</div>
+        {!driveLista ? (
+          <div><div style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>Lê a pasta compartilhada com o sistema, sem você anexar nada.</div><Btn onClick={carregarDrive}>Conectar ao Drive</Btn></div>
+        ) : (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={driveUm} onChange={(e) => setDriveUm(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${BORDER}`, maxWidth: 360 }}>
+              <option value="todos">Todos os clientes ({driveLista.clientes.length})</option>
+              {driveLista.clientes.map((c) => <option key={c.id} value={c.id}>{c.codigo} - {c.nome}</option>)}
+            </select>
+            <Btn onClick={auditarDrive} disabled={lendo || !driveLista.clientes.length}>Auditar pelo Drive</Btn>
+            {driveLista.ignoradas?.length > 0 && <span style={{ fontSize: 11, color: MUTED }}>{driveLista.ignoradas.length} pasta(s) fora do padrão ignorada(s)</span>}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14, fontSize: 12 }}>
+          <label>Regime do cliente<br />
+            <select value={regime} onChange={(e) => setRegime(e.target.value)} style={{ padding: 7, borderRadius: 8, border: `1px solid ${BORDER}` }}>
+              <option value="AUTO">Detectar pelos documentos</option><option value="SIMPLES">Simples Nacional</option><option value="MEI">MEI</option><option value="PRESUMIDO">Lucro Presumido</option><option value="REAL">Lucro Real</option>
+            </select></label>
+          <label>Início das obrigações (opcional)<br />
+            <input type="month" value={inicio} onChange={(e) => setInicio(e.target.value)} style={{ padding: 6, borderRadius: 8, border: `1px solid ${BORDER}` }} /></label>
+        </div>
+      </Cartao>
+      {lendo && (
+        <Cartao style={{ marginTop: 12, textAlign: "center" }}>
+          <div style={{ fontWeight: 900, fontSize: 15 }}>Lendo e conferindo os documentos…</div>
+          <div style={{ color: MUTED, fontSize: 12, marginTop: 6 }}>{progresso}</div>
+          <div style={{ color: MUTED, fontSize: 11, marginTop: 6 }}>Mantenha esta aba aberta até terminar. Ao final, o resultado aparece na Visão geral.</div>
+        </Cartao>
+      )}
+      <Cartao style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 8 }}>Ou envie manualmente</div>
+        <div onDragOver={(e) => e.preventDefault()} onDrop={aoSoltar} style={{ border: `2px dashed ${BORDER}`, borderRadius: 14, padding: 24, textAlign: "center", background: "#FAFBFD" }}>
+          <div style={{ fontWeight: 900, fontSize: 15 }}>Arraste aqui a pasta do cliente (ou a pasta com todos os clientes)</div>
+          <div style={{ color: MUTED, fontSize: 12, margin: "6px 0 12px" }}>Também aceita .zip. Padrão: “232 - NOME DO CLIENTE”. A leitura é feita no seu navegador.</div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <Btn onClick={() => inputPasta.current?.click()} disabled={lendo}>Escolher pasta</Btn>
+            <Btn sec onClick={() => inputZip.current?.click()} disabled={lendo}>Escolher .zip</Btn>
+          </div>
+          <input ref={inputPasta} type="file" webkitdirectory="" directory="" multiple onChange={aoEscolherPasta} style={{ display: "none" }} />
+          <input ref={inputZip} type="file" accept=".zip" onChange={aoEscolherZip} style={{ display: "none" }} />
+        </div>
+      </Cartao>
+    </div>
+  );
+
+  // ------------------------- ABA 2: VISÃO GERAL -------------------------
+  const faltamPorCat = (() => {
+    const m = new Map();
+    for (const c of comSit) {
+      const cats = new Set(c.achados.filter((x) => x.severidade !== "info").map((x) => x.categoria));
+      cats.forEach((k) => m.set(k, (m.get(k) || 0) + 1));
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  })();
+  const filtrada = comSit
+    .filter((c) => (fSit === "todos" ? true : fSit === "velhos" ? c.dias > 30 : c.sit === fSit))
+    .filter((c) => !fCat || c.achados.some((x) => x.severidade !== "info" && x.categoria === fCat))
+    .filter((c) => !busca || `${c.codigo} ${c.nome}`.toLowerCase().includes(busca.toLowerCase()))
+    .sort((a, b) => (b.resumo.critico - a.resumo.critico) || (b.resumo.atencao - a.resumo.atencao) || a.saude - b.saude);
+  const abaGeral = (
+    <div>
+      {salvo && <div style={{ color: "#2E7D32", fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{salvo}</div>}
+      {aviso.map((t, i) => <div key={i} style={{ background: "#FFF6E5", border: "1px solid #F3D9A4", borderRadius: 10, padding: 9, fontSize: 11, marginBottom: 8 }}>{t}</div>)}
+      {painel === null && <Cartao>Carregando…</Cartao>}
+      {painel && !painel.length && <Cartao><div style={{ color: MUTED }}>Nenhuma auditoria salva ainda. Vá na aba <b>1 · Auditar</b> e rode o Drive ou envie uma pasta.</div></Cartao>}
+      {painel && painel.length > 0 && (
+        <div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <Kpi rotulo="Clientes auditados" valor={kp.total} cor={NAVY} onClick={() => { setFSit("todos"); setFCat(""); }} ativo={fSit === "todos" && !fCat} />
+            <Kpi rotulo="Em dia" valor={kp.ok} cor="#2E7D32" sub="sem críticos nem atenção" onClick={() => setFSit("ok")} ativo={fSit === "ok"} />
+            <Kpi rotulo="Com pendência" valor={kp.pend} cor={COR.atencao} sub={`${kp.alertas} pendência(s) no total`} onClick={() => setFSit("atencao")} ativo={fSit === "atencao"} />
+            <Kpi rotulo="Críticos" valor={kp.crit} cor={COR.critico} sub="precisam de ação já" onClick={() => setFSit("critico")} ativo={fSit === "critico"} />
+            <Kpi rotulo="Auditoria antiga" valor={kp.velhos} cor="#7A8499" sub="há mais de 30 dias" onClick={() => setFSit("velhos")} ativo={fSit === "velhos"} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(240px,320px) 1fr", gap: 12, alignItems: "start" }}>
+            <Cartao style={{ padding: 14 }}>
+              <div style={{ fontWeight: 900, marginBottom: 4 }}>O que mais falta</div>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>Clientes com pendência por categoria. Clique para filtrar.</div>
+              {faltamPorCat.length === 0 && <div style={{ color: "#2E7D32", fontSize: 12, fontWeight: 800 }}>Nenhuma pendência.</div>}
+              {faltamPorCat.map(([cat, n]) => (
+                <button key={cat} type="button" onClick={() => setFCat(fCat === cat ? "" : cat)} style={{ width: "100%", textAlign: "left", background: fCat === cat ? "#FFF1ED" : "none", border: "none", padding: "5px 4px", cursor: "pointer", borderRadius: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700 }}><span>{cat}</span><span>{n}</span></div>
+                  <div style={{ height: 5, background: "#E8ECF3", borderRadius: 999, marginTop: 3 }}><div style={{ height: 5, width: `${Math.round((n / kp.total) * 100)}%`, background: CORAL, borderRadius: 999 }} /></div>
+                </button>
+              ))}
+            </Cartao>
+            <Cartao style={{ padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+                <div style={{ fontWeight: 900 }}>Clientes ({filtrada.length}){fCat ? ` · ${fCat}` : ""}</div>
+                <input placeholder="Buscar cliente ou código" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ padding: 7, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12, minWidth: 200 }} />
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                  <thead><tr style={{ textAlign: "left", color: MUTED, fontSize: 11 }}>{["Cliente", "Situação", "Pendências", "O que falta / principal alerta", "Auditado", ""].map((h) => <th key={h} style={{ padding: "4px 8px", borderBottom: `1px solid ${BORDER}` }}>{h}</th>)}</tr></thead>
+                  <tbody>{filtrada.map((c) => {
+                    const [rot, cor] = ROTULO_SIT[c.sit];
+                    const faltas = c.achados.filter((x) => x.severidade !== "info" && (FALTA_CAT(x) || c.sit === "critico")).slice(0, 2);
+                    const principais = faltas.length ? faltas : c.achados.filter((x) => x.severidade !== "info").slice(0, 2);
+                    return (
+                      <tr key={c.codigo} style={{ borderBottom: `1px solid ${BORDER}`, verticalAlign: "top", cursor: "pointer" }} onClick={() => abrirCliente(c.codigo)}>
+                        <td style={{ padding: "7px 8px", fontWeight: 800 }}>{c.codigo} - {c.nome}<div style={{ fontSize: 10.5, color: MUTED, fontWeight: 600 }}>saúde {c.saude}</div></td>
+                        <td style={{ padding: "7px 8px", fontWeight: 900, color: cor, whiteSpace: "nowrap" }}>{rot}</td>
+                        <td style={{ padding: "7px 8px", whiteSpace: "nowrap" }}>{c.resumo.critico > 0 && <Selo sev="critico" n={c.resumo.critico} />}{c.resumo.atencao > 0 && <Selo sev="atencao" n={c.resumo.atencao} />}{c.sit === "ok" && "—"}</td>
+                        <td style={{ padding: "7px 8px", color: MUTED }}>{principais.map((x, i) => <div key={i}>• {x.titulo}</div>)}{!principais.length && "—"}</td>
+                        <td style={{ padding: "7px 8px", whiteSpace: "nowrap", color: c.dias > 30 ? COR.atencao : MUTED }}>{c.dias <= 0 ? "hoje" : `há ${c.dias} dia(s)`}</td>
+                        <td style={{ padding: "7px 8px", color: CORAL, fontWeight: 900 }}>Abrir →</td>
+                      </tr>);
+                  })}</tbody>
+                </table>
+              </div>
+              {!filtrada.length && <div style={{ color: MUTED, fontSize: 12, padding: 8 }}>Nenhum cliente neste filtro.</div>}
+            </Cartao>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ------------------------- ABA 3: CLIENTE -------------------------
+  const abaCliente = (
+    <div>
+      <Cartao style={{ marginBottom: 12, padding: 14 }} >
+        <div className="nao-imprimir" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <label style={{ fontSize: 12, color: MUTED }}>Cliente:{" "}
+            <select value={cli?.codigo || ""} onChange={(e) => e.target.value && abrirCliente(e.target.value)} disabled={ocupado} style={{ padding: 8, borderRadius: 8, border: `1px solid ${BORDER}`, minWidth: 280 }}>
+              <option value="">Selecione um cliente…</option>
+              {[...lista].sort((a, b) => Number(a.codigo) - Number(b.codigo)).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} - {c.nome}</option>)}
             </select>
           </label>
-        </div>
-        {erro && <div style={{ marginBottom: 10, color: COR.critico, fontSize: 12, fontWeight: 700 }}>{erro}</div>}
-        <Relatorio a={cli.atual} narrativa={cli.narrativa} anterior={cli.anterior} anteriorEm={cli.anteriorEm} criadoEm={cli.criadoEm} onIa={pedirIaCliente} iaBusy={ia} />
-      </div>
-    );
-  }
-
-  // ---------------- Tela: envio + histórico ----------------
-  if (fase === "envio" || fase === "lendo") {
-    const lista = (historico || [])
-      .filter((h) => !busca || `${h.cliente_codigo} ${h.cliente_nome}`.toLowerCase().includes(busca.toLowerCase()))
-      .sort((a, b) => ordem === "codigo" ? Number(a.cliente_codigo) - Number(b.cliente_codigo) : ordem === "recente" ? new Date(b.created_at) - new Date(a.created_at) : (b.criticos - a.criticos) || (a.saude - b.saude));
-    return (
-      <div>
-        {cabecalho}
-        <Btn sec onClick={onVoltar}>← Voltar</Btn>
-        <Cartao style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>Direto do Google Drive</div>
-          {!driveLista ? (
-            <div><div style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>Lê a pasta compartilhada com o sistema, sem você anexar nada.</div><Btn onClick={carregarDrive}>Conectar ao Drive</Btn></div>
-          ) : (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <select value={driveUm} onChange={(e) => setDriveUm(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${BORDER}`, maxWidth: 360 }}>
-                <option value="todos">Todos os clientes ({driveLista.clientes.length})</option>
-                {driveLista.clientes.map((c) => <option key={c.id} value={c.id}>{c.codigo} - {c.nome}</option>)}
+          {cli && <Btn onClick={atualizarCliente} disabled={ocupado}>{ocupado ? "Atualizando…" : "Atualizar agora pelo Drive"}</Btn>}
+          {cli && (
+            <label style={{ fontSize: 12, color: MUTED }}>Versão:{" "}
+              <select value={cli.id} onChange={(e) => abrirCliente(cli.codigo, Number(e.target.value))} disabled={ocupado} style={{ padding: 8, borderRadius: 8, border: `1px solid ${BORDER}` }}>
+                {cli.historico.map((h, i) => <option key={h.id} value={h.id}>{quando(h.created_at)} — saúde {h.saude}{i === 0 ? " (mais recente)" : ""}</option>)}
               </select>
-              <Btn onClick={auditarDrive} disabled={fase === "lendo" || !driveLista.clientes.length}>Auditar pelo Drive</Btn>
-              {driveLista.ignoradas?.length > 0 && <span style={{ fontSize: 11, color: MUTED }}>{driveLista.ignoradas.length} pasta(s) fora do padrão ignorada(s)</span>}
-            </div>
+            </label>
           )}
-          {erro && fase === "envio" && <div style={{ marginTop: 10, color: COR.critico, fontSize: 12, fontWeight: 700 }}>{erro}</div>}
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14, fontSize: 12 }}>
-            <label>Regime do cliente<br />
-              <select value={regime} onChange={(e) => setRegime(e.target.value)} style={{ padding: 7, borderRadius: 8, border: `1px solid ${BORDER}` }}>
-                <option value="AUTO">Detectar pelos documentos</option><option value="SIMPLES">Simples Nacional</option><option value="MEI">MEI</option><option value="PRESUMIDO">Lucro Presumido</option><option value="REAL">Lucro Real</option>
-              </select></label>
-            <label>Início das obrigações (opcional)<br />
-              <input type="month" value={inicio} onChange={(e) => setInicio(e.target.value)} style={{ padding: 6, borderRadius: 8, border: `1px solid ${BORDER}` }} /></label>
-          </div>
-        </Cartao>
+        </div>
+        {cli && <div className="nao-imprimir" style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>{cli.historico.length} versão(ões) no histórico. Atualizar cria uma nova versão e mantém as anteriores.</div>}
+      </Cartao>
+      {!cli && !ocupado && <Cartao><div style={{ color: MUTED, fontSize: 13 }}>Selecione um cliente acima, ou clique em um cliente na Visão geral, para ver tudo o que há nas pastas dele.</div></Cartao>}
+      {ocupado && !cli && <Cartao>Carregando…</Cartao>}
+      {cli && <Relatorio key={cli.id} a={cli.atual} narrativa={cli.narrativa} anterior={cli.anterior} anteriorEm={cli.anteriorEm} criadoEm={cli.criadoEm} onIa={pedirIaCliente} iaBusy={ia} />}
+    </div>
+  );
 
-        {fase === "lendo" && (
-          <Cartao style={{ marginTop: 12, textAlign: "center" }}>
-            <div style={{ fontWeight: 900, fontSize: 15 }}>Lendo e conferindo os documentos…</div>
-            <div style={{ color: MUTED, fontSize: 12, marginTop: 6 }}>{progresso}</div>
-            <div style={{ color: MUTED, fontSize: 11, marginTop: 6 }}>Mantenha esta aba aberta até terminar.</div>
+  // ------------------------- ABA 4: VENCIMENTOS -------------------------
+  const venc = comSit.flatMap((c) => (c.vencimentos || []).map((v) => ({ ...v, cliente: c, dias: v.data ? diasAte(v.data) : null })));
+  const FAIXAS = { vencidos: "Já vencidos", 30: "Até 30 dias", 60: "Até 60 dias", 90: "Até 90 dias", todos: "Todos" };
+  const vencFiltrado = venc
+    .filter((v) => fVencCat === "todas" || v.categoria === fVencCat)
+    .filter((v) => !fVencBusca || `${v.cliente.codigo} ${v.cliente.nome}`.toLowerCase().includes(fVencBusca.toLowerCase()))
+    .filter((v) => {
+      if (fVencFaixa === "todos") return true;
+      if (v.dias === null) return true;
+      if (fVencFaixa === "vencidos") return v.dias < 0;
+      return v.dias <= Number(fVencFaixa);
+    })
+    .sort((a, b) => (a.dias === null ? -1 : b.dias === null ? 1 : a.dias - b.dias));
+  const nVenc = venc.filter((v) => v.dias !== null && v.dias < 0 && v.categoria !== "Guia a vencer").length;
+  const n30 = venc.filter((v) => v.dias !== null && v.dias >= 0 && v.dias <= 30).length;
+  const nSemData = venc.filter((v) => v.dias === null).length;
+  const faltas = comSit.map((c) => ({ c, itens: [...c.achados.filter((x) => x.severidade !== "info" && FALTA_CAT(x))], pastas: c.pastasPendentes || [] })).filter((x) => x.itens.length || x.pastas.length);
+  const desatualizados = comSit.filter((c) => c.dias > 30).sort((a, b) => b.dias - a.dias);
+  const abaVenc = (
+    <div>
+      {painel && !painel.length && <Cartao><div style={{ color: MUTED }}>Rode uma auditoria para ver os vencimentos.</div></Cartao>}
+      {painel && painel.length > 0 && (
+        <div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <Kpi rotulo="Documentos vencidos" valor={nVenc} cor={nVenc ? COR.critico : "#2E7D32"} sub="certidões e certificados" onClick={() => setFVencFaixa("vencidos")} ativo={fVencFaixa === "vencidos"} />
+            <Kpi rotulo="Vencem em até 30 dias" valor={n30} cor={n30 ? COR.atencao : "#2E7D32"} sub="inclui guias a vencer" onClick={() => setFVencFaixa("30")} ativo={fVencFaixa === "30"} />
+            <Kpi rotulo="Validade não identificada" valor={nSemData} cor="#7A8499" sub="sem data no nome/PDF" onClick={() => setFVencFaixa("todos")} />
+            <Kpi rotulo="Clientes com documento faltando" valor={faltas.length} cor={faltas.length ? COR.atencao : "#2E7D32"} />
+            <Kpi rotulo="Auditoria antiga (>30 dias)" valor={desatualizados.length} cor="#7A8499" />
+          </div>
+          <Cartao style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+              <div style={{ fontWeight: 900 }}>Vencimentos de certidões, certificados e guias ({vencFiltrado.length})</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <select value={fVencCat} onChange={(e) => setFVencCat(e.target.value)} style={{ padding: 6, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12 }}>
+                  <option value="todas">Todos os tipos</option><option>Certidão</option><option>Certificado digital</option><option>Guia a vencer</option>
+                </select>
+                <select value={fVencFaixa} onChange={(e) => setFVencFaixa(e.target.value)} style={{ padding: 6, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12 }}>
+                  {Object.entries(FAIXAS).map(([k, r]) => <option key={k} value={k}>{r}</option>)}
+                </select>
+                <input placeholder="Buscar cliente" value={fVencBusca} onChange={(e) => setFVencBusca(e.target.value)} style={{ padding: 6, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12 }} />
+              </div>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                <thead><tr style={{ textAlign: "left", color: MUTED, fontSize: 11 }}>{["Cliente", "Documento", "Tipo", "Data", "Prazo", ""].map((h) => <th key={h} style={{ padding: "4px 8px", borderBottom: `1px solid ${BORDER}` }}>{h}</th>)}</tr></thead>
+                <tbody>{vencFiltrado.map((v, i) => {
+                  const cor = v.dias === null ? "#7A8499" : v.dias < 0 ? (v.categoria === "Guia a vencer" ? COR.atencao : COR.critico) : v.dias <= 30 ? COR.atencao : "#2E7D32";
+                  const prazo = v.dias === null ? "Validade não identificada" : v.dias < 0 ? `Vencido há ${-v.dias} dia(s)` : v.dias === 0 ? "Vence hoje" : `Em ${v.dias} dia(s)`;
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${BORDER}`, verticalAlign: "top" }}>
+                      <td style={{ padding: "6px 8px", fontWeight: 800 }}>{v.cliente.codigo} - {v.cliente.nome}</td>
+                      <td style={{ padding: "6px 8px", wordBreak: "break-all" }}>{v.nome}<div style={{ fontSize: 10.5, color: MUTED }}>{v.pasta}{v.detalhe && v.categoria === "Guia a vencer" ? ` · ${v.detalhe}` : ""}</div></td>
+                      <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>{v.categoria === "Certidão" ? v.tipo.replace("Certidão negativa", "CND") : v.categoria}</td>
+                      <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>{v.data ? dataBr(v.data) : "—"}</td>
+                      <td style={{ padding: "6px 8px", whiteSpace: "nowrap", fontWeight: 900, color: cor }}>{prazo}</td>
+                      <td style={{ padding: "6px 8px", color: CORAL, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => abrirCliente(v.cliente.codigo)}>Abrir →</td>
+                    </tr>);
+                })}</tbody>
+              </table>
+            </div>
+            {!vencFiltrado.length && <div style={{ color: MUTED, fontSize: 12, padding: 8 }}>Nada neste filtro.</div>}
           </Cartao>
-        )}
 
-        <Cartao style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>Ou envie manualmente</div>
-          <div onDragOver={(e) => e.preventDefault()} onDrop={aoSoltar} style={{ border: `2px dashed ${BORDER}`, borderRadius: 14, padding: 24, textAlign: "center", background: "#FAFBFD" }}>
-            <div style={{ fontWeight: 900, fontSize: 15 }}>Arraste aqui a pasta do cliente (ou a pasta com todos os clientes)</div>
-            <div style={{ color: MUTED, fontSize: 12, margin: "6px 0 12px" }}>Também aceita um arquivo .zip. Padrão esperado: “232 - NOME DO CLIENTE”. A leitura é feita no seu navegador.</div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-              <Btn onClick={() => inputPasta.current?.click()} disabled={fase === "lendo"}>Escolher pasta</Btn>
-              <Btn sec onClick={() => inputZip.current?.click()} disabled={fase === "lendo"}>Escolher .zip</Btn>
-            </div>
-            <input ref={inputPasta} type="file" webkitdirectory="" directory="" multiple onChange={aoEscolherPasta} style={{ display: "none" }} />
-            <input ref={inputZip} type="file" accept=".zip" onChange={aoEscolherZip} style={{ display: "none" }} />
-          </div>
-        </Cartao>
+          <Cartao style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Documentos faltando por cliente ({faltas.length})</div>
+            {!faltas.length && <div style={{ color: "#2E7D32", fontWeight: 800, fontSize: 12 }}>Nenhum cliente com documento faltando.</div>}
+            {faltas.map(({ c, itens, pastas }) => (
+              <div key={c.codigo} style={{ borderLeft: `4px solid ${c.sit === "critico" ? COR.critico : COR.atencao}`, background: "#FAFBFD", borderRadius: 8, padding: "8px 10px", marginBottom: 7 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontWeight: 900, fontSize: 12.5 }}>{c.codigo} - {c.nome}</div>
+                  <span onClick={() => abrirCliente(c.codigo)} style={{ color: CORAL, fontWeight: 900, fontSize: 12, cursor: "pointer" }}>Abrir →</span>
+                </div>
+                {itens.map((x, i) => <div key={i} style={{ fontSize: 12, color: COR[x.severidade], fontWeight: 700 }}>• {x.titulo}</div>)}
+                {pastas.length > 0 && <div style={{ fontSize: 11.5, color: MUTED }}>Pastas vazias mas esperadas: {pastas.map((p) => p.nome).join(", ")}</div>}
+              </div>
+            ))}
+          </Cartao>
 
-        <Cartao style={{ marginTop: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ fontWeight: 900, fontSize: 14 }}>Histórico de auditorias {historico ? `(${historico.length} cliente(s))` : ""}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <input placeholder="Buscar cliente ou código" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ padding: 7, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12 }} />
-              <select value={ordem} onChange={(e) => setOrdem(e.target.value)} style={{ padding: 7, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12 }}>
-                <option value="pior">Pior situação primeiro</option><option value="codigo">Por código</option><option value="recente">Mais recentes</option>
-              </select>
-            </div>
-          </div>
-          {historico === null && <div style={{ color: MUTED, fontSize: 12 }}>Carregando…</div>}
-          {historico && !historico.length && <div style={{ color: MUTED, fontSize: 12 }}>Nenhuma auditoria salva ainda. Rode uma auditoria acima e ela aparece aqui.</div>}
-          {lista.map((h) => (
-            <button key={h.cliente_codigo} type="button" onClick={() => abrirCliente(h.cliente_codigo)} disabled={ocupado} style={{ width: "100%", textAlign: "left", background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "8px 10px", marginBottom: 6, cursor: "pointer", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontWeight: 800, fontSize: 12.5, minWidth: 220 }}>{h.cliente_codigo} - {h.cliente_nome}</span>
-              <span>{h.criticos > 0 && <Selo sev="critico" n={h.criticos} />}{h.atencoes > 0 && <Selo sev="atencao" n={h.atencoes} />}</span>
-              <span style={{ fontSize: 11, color: MUTED }}>saúde {h.saude} · {quando(h.created_at)} · {h.origem === "drive" ? "Drive" : "envio manual"}</span>
-            </button>
-          ))}
-        </Cartao>
-      </div>
-    );
-  }
+          {desatualizados.length > 0 && (
+            <Cartao>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Auditorias desatualizadas ({desatualizados.length})</div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 6 }}>Clientes cuja pasta não é auditada há mais de 30 dias. Atualize para saber o que mudou.</div>
+              {desatualizados.map((c) => <div key={c.codigo} style={{ fontSize: 12, padding: "3px 0", cursor: "pointer" }} onClick={() => abrirCliente(c.codigo)}><b>{c.codigo} - {c.nome}</b> · há {c.dias} dia(s)</div>)}
+            </Cartao>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
-  // ---------------- Tela: resultado da execução ----------------
-  const totais = auditorias.reduce((t, a) => ({ c: t.c + a.resumo.critico, a: t.a + a.resumo.atencao, i: t.i + a.resumo.info }), { c: 0, a: 0, i: 0 });
   return (
     <div>
       {cabecalho}
-      <div className="nao-imprimir" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
-        <Btn sec onClick={() => { setFase("envio"); setAuditorias([]); setSel(null); carregarHistorico(); }}>← Histórico e nova auditoria</Btn>
-        <Btn sec onClick={baixarCsv}>Baixar CSV dos alertas</Btn>
-        {salvo && <span style={{ color: "#2E7D32", fontSize: 12, fontWeight: 700 }}>{salvo}</span>}
-      </div>
-      {erro && <div style={{ marginBottom: 10, color: COR.critico, fontSize: 12, fontWeight: 700 }}>{erro}</div>}
-      {aviso.map((t, i) => <div key={i} style={{ background: "#FFF6E5", border: "1px solid #F3D9A4", borderRadius: 10, padding: 9, fontSize: 11, marginBottom: 8 }}>{t}</div>)}
-      <div style={{ display: "grid", gridTemplateColumns: auditorias.length > 1 ? "minmax(260px,340px) 1fr" : "1fr", gap: 12, alignItems: "start" }}>
-        {auditorias.length > 1 && (
-          <Cartao style={{ padding: 12 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>{auditorias.length} clientes</div>
-            <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>{totais.c} críticos · {totais.a} atenção · {totais.i} informativos. Pior situação primeiro.</div>
-            {auditorias.map((a) => (
-              <button key={a.cliente.codigo} type="button" onClick={() => setSel(a.cliente.codigo)} style={{ width: "100%", textAlign: "left", background: sel === a.cliente.codigo ? "#FFF1ED" : WHITE, border: `1px solid ${sel === a.cliente.codigo ? CORAL : BORDER}`, borderRadius: 10, padding: 9, marginBottom: 6, cursor: "pointer" }}>
-                <div style={{ fontWeight: 800, fontSize: 12 }}>{a.cliente.codigo} - {a.cliente.nome}</div>
-                <div style={{ marginTop: 4 }}>{a.resumo.critico > 0 && <Selo sev="critico" n={a.resumo.critico} />}{a.resumo.atencao > 0 && <Selo sev="atencao" n={a.resumo.atencao} />}<span style={{ fontSize: 10, color: MUTED }}>saúde {a.saude}</span></div>
-              </button>
-            ))}
-          </Cartao>
-        )}
-        <div>
-          {!atual && <Cartao><div style={{ color: MUTED, fontSize: 13 }}>Escolha um cliente na lista para ver os detalhes.</div></Cartao>}
-          {atual && <Relatorio key={atual.cliente.codigo} a={atual} narrativa={narrativas[atual.cliente.codigo]} criadoEm={atual.geradoEm} onIa={() => pedirIaResultado(atual)} iaBusy={ia} botoes={<Btn sec onClick={() => abrirCliente(atual.cliente.codigo)}>Ver histórico e comparar com a versão anterior</Btn>} />}
-        </div>
-      </div>
+      <Abas valor={aba} onChange={(k) => { setAba(k); if (k === "geral" || k === "vencimentos") carregarPainel(); }} itens={abas} sticky />
+      {erro && <div className="nao-imprimir" style={{ marginBottom: 10, color: COR.critico, fontSize: 12, fontWeight: 700, background: "#FDECEC", borderRadius: 8, padding: "8px 10px" }}>{erro} <button type="button" onClick={() => setErro("")} style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", fontWeight: 900 }}>×</button></div>}
+      {aba === "auditar" && abaAuditar}
+      {aba === "geral" && abaGeral}
+      {aba === "cliente" && abaCliente}
+      {aba === "vencimentos" && abaVenc}
     </div>
   );
 }
