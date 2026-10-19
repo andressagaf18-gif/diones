@@ -59,6 +59,45 @@ export const PADRAO_PASTAS = {
   ],
 };
 
+
+// O que cada pasta deve conter e quando a obrigação existe, por regime.
+// "esp" = esperada · "pos" = possível (depende do caso) · "nao" = em regra não se aplica
+export const GUIA_PASTAS = {
+  "CNDS e RELATORIOS": { conteudo: "Certidões negativas (federal, estadual e municipal) dentro da validade e relatórios de situação fiscal (e-CAC, extrato do Simples).", r: { SIMPLES: "esp", MEI: "esp", PRESUMIDO: "esp", REAL: "esp" } },
+  "DOCS DA EMPRESA": { conteudo: "Cartão CNPJ, QSA, contrato social e alterações, inscrições estadual/municipal, alvará e certificado digital.", r: { SIMPLES: "esp", MEI: "esp", PRESUMIDO: "esp", REAL: "esp" } },
+  "DOCS DOS SOCIOS": { conteudo: "Documento de identificação e CPF dos sócios, comprovante de residência e declaração de IRPF.", r: { SIMPLES: "esp", MEI: "esp", PRESUMIDO: "esp", REAL: "esp" } },
+  "DOCS FISCAL-CONTABIL": { conteudo: "Declarações, guias, notas, livros e comprovantes da rotina fiscal e contábil, organizados nas subpastas abaixo.", r: { SIMPLES: "esp", MEI: "esp", PRESUMIDO: "esp", REAL: "esp" } },
+  "- PARCELAMENTOS - GUIAS E RELATORIOS": { conteudo: "Uma subpasta por parcelamento (PCTO - LOCAL - IMPOSTO - NÚMERO), com termo, guias mensais por MM.AAAA e comprovantes.", r: { SIMPLES: "pos", MEI: "pos", PRESUMIDO: "pos", REAL: "pos" } },
+  "ACORDOS CLIENTES E FORNECEDORES": { conteudo: "Contratos e acordos comerciais relevantes para a contabilidade.", r: { SIMPLES: "pos", MEI: "pos", PRESUMIDO: "pos", REAL: "pos" } },
+  "BANCOS E COMPROVANTES": { conteudo: "Extratos bancários e comprovantes de pagamento das guias de impostos.", r: { SIMPLES: "esp", MEI: "pos", PRESUMIDO: "esp", REAL: "esp" } },
+  "DARF MENSAL - GUIAS": { conteudo: "DARFs de IRPJ, CSLL, PIS, COFINS, IRRF e demais tributos federais fora do Simples.", r: { SIMPLES: "nao", MEI: "nao", PRESUMIDO: "esp", REAL: "esp" } },
+  "DASN-SIMEI": { conteudo: "Declaração anual do MEI e recibos.", r: { SIMPLES: "nao", MEI: "esp", PRESUMIDO: "nao", REAL: "nao" } },
+  "DECL. DCTF MENSAL": { conteudo: "Recibos da DCTF/DCTFWeb mensal.", r: { SIMPLES: "pos", MEI: "nao", PRESUMIDO: "esp", REAL: "esp" } },
+  "DECL. DIRF ANUAL": { conteudo: "DIRF anual (até 2024) e comprovantes de rendimentos. A partir de 2025 a informação segue pela EFD-Reinf.", r: { SIMPLES: "pos", MEI: "nao", PRESUMIDO: "pos", REAL: "pos" } },
+  "DECL. DMED - DIMOB - OUTROS ANUAIS": { conteudo: "DMED, DIMOB, DeSTDA e outras declarações anuais que se apliquem.", r: { SIMPLES: "pos", MEI: "nao", PRESUMIDO: "pos", REAL: "pos" } },
+  "DECL. SIMPLES NACIONAL E GUIA": { conteudo: "Por mês (MM.AAAA): declaração e recibo do PGDAS-D, extrato e guia DAS. Também DEFIS anual.", r: { SIMPLES: "esp", MEI: "nao", PRESUMIDO: "nao", REAL: "nao" } },
+  "DECL. SPED CONTABIL": { conteudo: "ECD (escrituração contábil digital) e recibos.", r: { SIMPLES: "nao", MEI: "nao", PRESUMIDO: "esp", REAL: "esp" } },
+  "DECL. SPED CONTRIBUIÇÕES - PIS-COFINS": { conteudo: "EFD-Contribuições mensal e recibos.", r: { SIMPLES: "nao", MEI: "nao", PRESUMIDO: "pos", REAL: "esp" } },
+  "DECL. SPED EFD-REINF": { conteudo: "Eventos da EFD-Reinf (retenções) e recibos.", r: { SIMPLES: "pos", MEI: "nao", PRESUMIDO: "esp", REAL: "esp" } },
+  "DECL. SPED FISCAL - ICMS-IPI": { conteudo: "EFD ICMS/IPI mensal e recibos (empresas de comércio/indústria).", r: { SIMPLES: "pos", MEI: "nao", PRESUMIDO: "pos", REAL: "pos" } },
+  "DECL. SPED FISCO-CONTABIL": { conteudo: "ECF e demais obrigações do bloco fisco-contábil.", r: { SIMPLES: "nao", MEI: "nao", PRESUMIDO: "esp", REAL: "esp" } },
+  "LIVROS CONTABEIS": { conteudo: "Balancetes, balanço, DRE, livro diário e razão.", r: { SIMPLES: "pos", MEI: "nao", PRESUMIDO: "esp", REAL: "esp" } },
+  "NOTAS FISCAIS": { conteudo: "XML e PDF das notas emitidas e recebidas, por competência.", r: { SIMPLES: "esp", MEI: "pos", PRESUMIDO: "esp", REAL: "esp" } },
+  "PROCESSOS ADMNISTRATIVOS": { conteudo: "Processos, notificações e autos de infração com seus andamentos.", r: { SIMPLES: "pos", MEI: "pos", PRESUMIDO: "pos", REAL: "pos" } },
+};
+
+const CATEGORIA_PARA_PASTA = {
+  "Certidões": "CNDS e RELATORIOS",
+  "Documentos da empresa": "DOCS DA EMPRESA",
+  "Certificado digital": "CERTIFICADO DIGITAL",
+  "Documentos dos sócios": "DOCS DOS SOCIOS",
+  "Simples Nacional": "DECL. SIMPLES NACIONAL E GUIA",
+  "Parcelamentos": "- PARCELAMENTOS - GUIAS E RELATORIOS",
+  "Notas fiscais": "NOTAS FISCAIS",
+  "Pagamentos": "BANCOS E COMPROVANTES",
+  "DCTFWeb": "DECL. DCTF MENSAL",
+};
+
 // ---------------------------------------------------------
 // UTILITÁRIOS
 // ---------------------------------------------------------
@@ -739,6 +778,51 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
   };
   const saude = Math.round(100 * Math.exp(-(resumo.critico * 0.25 + resumo.atencao * 0.05 + Math.min(resumo.info, 10) * 0.01)));
 
+
+  // Análise pasta a pasta (padrão + subpastas).
+  const regimeChave = ["SIMPLES", "MEI", "PRESUMIDO", "REAL"].includes(regimeDetectado) ? regimeDetectado : "SIMPLES";
+  const sevDe = (ids) => (ids.some((a) => a.severidade === "critico") ? "critico" : ids.some((a) => a.severidade === "atencao") ? "atencao" : ids.length ? "info" : "ok");
+  const listaPastasPadrao = [];
+  const noDe = (nomePadrao, caminho, nivel, topoNome) => {
+    const guia = GUIA_PASTAS[nomePadrao] || { conteudo: "", r: {} };
+    const existe = !!caminho;
+    const dentro = existe ? arquivosPor(caminho) : [];
+    const diretos = existe ? dentro.filter((a) => partes(a.caminho).length === partes(caminho).length + 1) : [];
+    const filhas = existe ? pastas.filter((p) => p.startsWith(`${caminho}/`) && !p.slice(caminho.length + 1).includes("/")) : [];
+    const datas = dentro.map((a) => Number(new Date(a.modificadoEm || 0))).filter((n) => n > 0);
+    const obrigacao = guia.r[regimeChave] || "pos";
+    const relacionados = achados.filter((a) => {
+      if (a.caminho && existe && (a.caminho === caminho || a.caminho.startsWith(`${caminho}/`))) return true;
+      const alvo = CATEGORIA_PARA_PASTA[a.categoria];
+      if (alvo === nomePadrao) return true;
+      if (a.categoria === "Segurança" && nomePadrao === "DOCS DA EMPRESA" && /certificado|pfx/i.test(a.titulo)) return true;
+      if (a.categoria === "Segurança" && !a.caminho?.includes("/") && nivel === 0 && nomePadrao === "DOCS DA EMPRESA") return false;
+      if (nomePadrao.startsWith("DECL. SPED") && /sped/i.test(a.titulo) && !a.caminho) return false;
+      return false;
+    });
+    let status;
+    if (!existe) status = obrigacao === "esp" ? "ausente" : "ausente_ok";
+    else if (!dentro.length) status = obrigacao === "esp" ? "vazia_esperada" : obrigacao === "pos" ? "vazia_verificar" : "vazia_ok";
+    else status = "ok";
+    return {
+      nome: nomePadrao, nivel, topo: topoNome, caminho: caminho || "", existe, obrigacao, conteudoEsperado: guia.conteudo, status,
+      arquivos: dentro.length, diretos: diretos.length,
+      subpastas: filhas.map((f) => ({ nome: f.slice(caminho.length + 1), arquivos: arquivosPor(f).length })),
+      amostra: dentro.slice(0, 14).map((a) => a.caminho.slice(caminho.length + 1)),
+      ultimaAlteracao: datas.length ? new Date(Math.max(...datas)).toISOString().slice(0, 10) : "",
+      gravidade: sevDe(relacionados),
+      achadoIds: relacionados.map((a) => a.id),
+    };
+  };
+  for (const t of PADRAO_PASTAS.topo) {
+    listaPastasPadrao.push(noDe(t.nome, topo[t.chave], 0, t.nome));
+    if (t.chave === "empresa" && topo.empresa) {
+      // certificado digital é subpasta específica
+    }
+    for (const sub of t.subpastas) listaPastasPadrao.push(noDe(sub, topo[t.chave] ? achaPasta(sub, topo[t.chave]) : undefined, 1, t.nome));
+  }
+  const arvore = listaPastasPadrao;
+
   // Inventário por pasta.
   const inventario = [];
   for (const t of PADRAO_PASTAS.topo) {
@@ -759,6 +843,7 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
     meses: tabelaMeses,
     parcelamentos,
     inventario,
+    arvore,
     opcoesSimples: opcoes,
   };
 }
