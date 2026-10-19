@@ -48,19 +48,21 @@ export async function pastaSalvar(req, res) {
   if (!lista.length) return enviar(res, 400, { sucesso: false, error: "Nenhuma auditoria para salvar." });
   const usuario = texto(req.body?.usuario, 120);
   let salvos = 0;
+  const ids = [];
   for (const item of lista) {
     const a = limparAuditoria(item.auditoria || item);
     const codigo = texto(a?.cliente?.codigo, 30);
     if (!codigo) continue;
-    await sql`INSERT INTO pasta_auditorias
+    const [linha] = await sql`INSERT INTO pasta_auditorias
       (cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, resultado, narrativa, origem, usuario)
       VALUES (${codigo}, ${texto(a.cliente.nome, 200)}, ${texto(a.regime, 40)}, ${Number(a.saude) || 0},
         ${a.resumo?.critico || 0}, ${a.resumo?.atencao || 0}, ${a.resumo?.info || 0},
         ${JSON.stringify(a)}::jsonb, ${item.narrativa ? JSON.stringify(item.narrativa) : null}::jsonb,
-        ${texto(req.body?.origem || "upload", 20)}, ${usuario})`;
+        ${texto(req.body?.origem || "upload", 20)}, ${usuario}) RETURNING id, created_at`;
+    ids.push({ codigo, id: linha?.id, criadoEm: linha?.created_at });
     salvos += 1;
   }
-  return enviar(res, 200, { sucesso: true, salvos });
+  return enviar(res, 200, { sucesso: true, salvos, ids });
 }
 
 export async function pastaListar(req, res) {
@@ -69,6 +71,16 @@ export async function pastaListar(req, res) {
     SELECT DISTINCT ON (cliente_codigo) id, cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, origem, created_at
     FROM pasta_auditorias ORDER BY cliente_codigo, created_at DESC LIMIT 500`;
   return enviar(res, 200, { sucesso: true, clientes: linhas });
+}
+
+export async function pastaRelatorio(req, res) {
+  await garantirTabela();
+  const id = Number(req.query?.id);
+  if (!Number.isFinite(id)) return enviar(res, 400, { sucesso: false, error: "Informe o relatório." });
+  const [atual] = await sql`SELECT id, cliente_codigo, resultado, narrativa, origem, created_at FROM pasta_auditorias WHERE id = ${id}`;
+  if (!atual) return enviar(res, 404, { sucesso: false, error: "Relatório não encontrado." });
+  const [anterior] = await sql`SELECT id, resultado, created_at FROM pasta_auditorias WHERE cliente_codigo = ${atual.cliente_codigo} AND (created_at < ${atual.created_at} OR (created_at = ${atual.created_at} AND id < ${atual.id})) ORDER BY created_at DESC, id DESC LIMIT 1`;
+  return enviar(res, 200, { sucesso: true, relatorio: atual, anterior: anterior || null });
 }
 
 export async function pastaObter(req, res) {
@@ -124,10 +136,12 @@ export async function pastaNarrativa(req, res) {
     const bruto = d?.output_text || (d?.output || []).flatMap((o) => o.content || []).map((c) => c.text || "").join("");
     const n = JSON.parse(bruto);
     const lim = (l, max) => (Array.isArray(l) ? l.map((x) => texto(x, 400)).filter(Boolean).slice(0, max) : []);
-    return enviar(res, 200, {
-      sucesso: true,
-      narrativa: { resumo: texto(n.resumo, 1200), prioridades: lim(n.prioridades, 5), melhorias: lim(n.melhorias, 5), oportunidades: lim(n.oportunidades, 3), modelo: MODELO },
-    });
+    const narrativaFinal = { resumo: texto(n.resumo, 1200), prioridades: lim(n.prioridades, 5), melhorias: lim(n.melhorias, 5), oportunidades: lim(n.oportunidades, 3), modelo: MODELO };
+    const idRel = Number(req.body?.id);
+    if (Number.isFinite(idRel)) {
+      try { await garantirTabela(); await sql`UPDATE pasta_auditorias SET narrativa = ${JSON.stringify(narrativaFinal)}::jsonb WHERE id = ${idRel}`; } catch (e) { console.error("[pasta][narrativa-salvar]", e); }
+    }
+    return enviar(res, 200, { sucesso: true, narrativa: narrativaFinal });
   } catch (e) {
     console.error("[pasta][narrativa]", e);
     return enviar(res, 502, { sucesso: false, error: "A IA não conseguiu comentar esta pasta agora. O resultado das regras continua válido." });
