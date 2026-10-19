@@ -1,7 +1,7 @@
 // server/pasta-drive.js — leitura da pasta compartilhada no Google Drive (conta de serviço).
 // Variáveis de ambiente: GOOGLE_SERVICE_ACCOUNT_JSON (JSON completo da chave) e PASTA_DRIVE_ROOT_ID (ID da pasta raiz dos clientes).
 import { createSign } from "node:crypto";
-import pdf from "pdf-parse";
+import pdf from "pdf-parse/lib/pdf-parse.js";
 import { auditarCliente, extrairFatosDeTexto, extrairFatosNota, PADRAO_PASTAS } from "./pasta-engine.js";
 
 const enviar = (res, status, corpo) => res.status(status).json(corpo);
@@ -9,12 +9,34 @@ const b64 = (v) => Buffer.from(v).toString("base64url");
 
 let cacheToken = { valor: "", expira: 0 };
 
+function lerJsonDaChave(bruto) {
+  let t = String(bruto || "").trim().replace(/^\uFEFF/, "");
+  // Aspas externas coladas por engano.
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) t = t.slice(1, -1).trim();
+  const tentativas = [
+    () => JSON.parse(t),
+    // Quebras de linha reais dentro da chave privada (colagem que perdeu o \n).
+    () => JSON.parse(t.replace(/"(?:[^"\\]|\\.)*"/gs, (m) => m.replace(/\r?\n/g, "\\n"))),
+    // Barras escapadas duas vezes.
+    () => JSON.parse(t.replace(/\\"/g, '"')),
+    // Chave enviada em base64.
+    () => JSON.parse(Buffer.from(t, "base64").toString("utf8")),
+  ];
+  for (const f of tentativas) {
+    try { const j = f(); if (j && typeof j === "object") return j; } catch { /* tenta a próxima */ }
+  }
+  return null;
+}
+
 function credenciais() {
   const bruto = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "";
   if (!bruto) throw new Error("Google Drive não configurado: falta a variável GOOGLE_SERVICE_ACCOUNT_JSON.");
-  let j;
-  try { j = JSON.parse(bruto); } catch { throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON não é um JSON válido."); }
-  if (!j.client_email || !j.private_key) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON incompleto (client_email/private_key).");
+  const j = lerJsonDaChave(bruto);
+  if (!j) {
+    const t = bruto.trim();
+    throw new Error(`GOOGLE_SERVICE_ACCOUNT_JSON não é um JSON válido (tamanho ${t.length}, começa com “${t.slice(0, 1)}”, termina com “${t.slice(-1)}”). Cole o arquivo .json inteiro, do primeiro “{” ao último “}”.`);
+  }
+  if (!j.client_email || !j.private_key) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON incompleto: faltam client_email/private_key. Use a chave da conta de serviço (tipo JSON).");
   return { email: j.client_email, chave: String(j.private_key).replace(/\\n/g, "\n") };
 }
 
