@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { usuarioAutenticado } from "../server/auth.js";
 import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js";
 import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.js";
+import * as pastaApi from "../server/pasta-api.js";
+import * as pastaDrive from "../server/pasta-drive.js";
 
 const sql =
   neon(
@@ -3642,7 +3644,13 @@ export default async function handler(req,res){
     "reforma-analisar":reformaAnalisar,
     "planejamento-extrair":planejamentoExtrair,
     "planejamento-conferir":planejamentoConferir,
-    "planejamento-analisar":planejamentoAnalisar
+    "planejamento-analisar":planejamentoAnalisar,
+    "pasta-salvar":pastaApi.pastaSalvar,
+    "pasta-listar":pastaApi.pastaListar,
+    "pasta-obter":pastaApi.pastaObter,
+    "pasta-narrativa":pastaApi.pastaNarrativa,
+    "pasta-drive-clientes":pastaDrive.driveClientes,
+    "pasta-drive-auditar":pastaDrive.driveAuditar
   };
   const route=routes[action];
   if(!route)return send(res,404,{sucesso:false,error:"Ação tributária não encontrada."});
