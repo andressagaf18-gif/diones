@@ -1,6 +1,8 @@
 // server/pasta-api.js — ações da Auditoria de pastas (roteadas por api/tributario.js).
 import { neon } from "@neondatabase/serverless";
-import { resumoParaIa } from "./pasta-engine.js";
+import * as motor from "./pasta-engine.js";
+const { resumoParaIa } = motor;
+const resumoPainel = motor.resumoPainel || ((a) => ({ codigo: a?.cliente?.codigo || "", nome: a?.cliente?.nome || "", resumo: a?.resumo || {}, saude: a?.saude || 0, achados: [], vencimentos: [], pastasPendentes: [] }));
 
 const sql = neon(process.env.DATABASE_URL);
 const OPENAI_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
@@ -28,6 +30,7 @@ function garantirTabela() {
         usuario TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
       )`;
+      await sql`ALTER TABLE pasta_auditorias ADD COLUMN IF NOT EXISTS painel JSONB`;
       await sql`CREATE INDEX IF NOT EXISTS pasta_auditorias_cliente_idx ON pasta_auditorias (cliente_codigo, created_at DESC)`;
     })().catch((e) => { tabelaPronta = null; throw e; });
   }
@@ -54,11 +57,11 @@ export async function pastaSalvar(req, res) {
     const codigo = texto(a?.cliente?.codigo, 30);
     if (!codigo) continue;
     const [linha] = await sql`INSERT INTO pasta_auditorias
-      (cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, resultado, narrativa, origem, usuario)
+      (cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, resultado, narrativa, origem, usuario, painel)
       VALUES (${codigo}, ${texto(a.cliente.nome, 200)}, ${texto(a.regime, 40)}, ${Number(a.saude) || 0},
         ${a.resumo?.critico || 0}, ${a.resumo?.atencao || 0}, ${a.resumo?.info || 0},
         ${JSON.stringify(a)}::jsonb, ${item.narrativa ? JSON.stringify(item.narrativa) : null}::jsonb,
-        ${texto(req.body?.origem || "upload", 20)}, ${usuario}) RETURNING id, created_at`;
+        ${texto(req.body?.origem || "upload", 20)}, ${usuario}, ${JSON.stringify(resumoPainel(a))}::jsonb) RETURNING id, created_at`;
     ids.push({ codigo, id: linha?.id, criadoEm: linha?.created_at });
     salvos += 1;
   }
@@ -71,6 +74,23 @@ export async function pastaListar(req, res) {
     SELECT DISTINCT ON (cliente_codigo) id, cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, origem, created_at
     FROM pasta_auditorias ORDER BY cliente_codigo, created_at DESC LIMIT 500`;
   return enviar(res, 200, { sucesso: true, clientes: linhas });
+}
+
+export async function pastaPainel(req, res) {
+  await garantirTabela();
+  const linhas = await sql`
+    SELECT DISTINCT ON (cliente_codigo) id, cliente_codigo, origem, created_at, painel, CASE WHEN painel IS NULL THEN resultado END AS resultado
+    FROM pasta_auditorias ORDER BY cliente_codigo, created_at DESC, id DESC LIMIT 600`;
+  const clientes = [];
+  for (const l of linhas) {
+    let painel = l.painel;
+    if (!painel && l.resultado) {
+      painel = resumoPainel(l.resultado);
+      try { await sql`UPDATE pasta_auditorias SET painel = ${JSON.stringify(painel)}::jsonb WHERE id = ${l.id}`; } catch { /* segue sem cache */ }
+    }
+    if (painel) clientes.push({ ...painel, id: l.id, origem: l.origem, auditadoEm: l.created_at });
+  }
+  return enviar(res, 200, { sucesso: true, clientes });
 }
 
 export async function pastaRelatorio(req, res) {
