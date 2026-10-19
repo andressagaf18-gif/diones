@@ -3649,6 +3649,7 @@ export default async function handler(req,res){
     "pasta-listar":pastaApi.pastaListar,
     "pasta-obter":pastaApi.pastaObter,
     "pasta-relatorio":pastaApi.pastaRelatorio,
+    "pasta-painel":pastaApi.pastaPainel,
     "pasta-narrativa":pastaApi.pastaNarrativa,
     "pasta-drive-clientes":pastaDrive.driveClientes,
     "pasta-drive-auditar":pastaDrive.driveAuditar
