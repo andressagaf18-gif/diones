@@ -6,6 +6,7 @@ import { lerDeclaracao, lerRecibo, lerDctf, auditarApuracoes, auditarDctf, resum
 import { lerMit, lerDemonstrativo, lerDarf, lerDamIss, auditarPresumido } from "./presumido-engine.js";
 import { lerDimeTxt, lerDimeRecibo, lerDefis } from "./declaracoes-engine.js";
 
+const CODIGOS_FEDERAIS = ["2089", "2372", "8109", "6912", "2172", "5856", "5993", "6012", "2362", "3277"];
 const mesDoCaminho = (c) => { const m = c.match(/(?:^|\/)(0[1-9]|1[0-2])[.\-_ ]?(20\d{2})(?:\/|$)/); return m ? `${m[2]}-${m[1]}` : ""; };
 const rot = (k) => `${k.slice(5, 7)}/${k.slice(0, 4)}`;
 const sev = (severidade, categoria, titulo, detalhe = "", sugestao = "", mes = "") => ({ severidade, categoria, titulo, detalhe, sugestao, mes });
@@ -67,7 +68,15 @@ function complementar(aud, { dctfweb = [], dimes = [], defis = [], mits = [], da
   recontar(aud);
 }
 
-export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limiteMs = 45000 }) {
+// Lê primeiro as declarações (PGDAS-D, recibos, MIT, DEFIS, DIME, demonstrativos); guias vêm depois; comprovantes soltos por último.
+function prioridade(e) {
+  const n = e.caminho.split("/").pop();
+  if (/pagamento|inss|baixa|relat[óo]rio|iss prestados|comprovante/i.test(n)) return 2;
+  if (/\bdarf\b|\bdam\b|\bdas\b|guia/i.test(n) && !/declara|recibo/i.test(n)) return 1;
+  return 0;
+}
+
+export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limiteMs = 36000 }) {
   const t0 = Date.now();
   const entradas = [];
   await varrer(String(pastaId), "", entradas, 6000);
@@ -76,25 +85,26 @@ export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limite
   const ehPdf = (e) => /\.pdf$/i.test(e.caminho);
   const interesse = /simples|pgdas|declara|recibo|das\b|dctf|mit\b|dime|defis|demonst|darf|dam\b|iss|irpj|csll|pis|cofins|apura/i;
   const cand = arquivos.filter((e) => (ehPdf(e) && interesse.test(e.caminho)) || (/\.json$/i.test(e.caminho) && /MIT|DCTFWEB/i.test(e.caminho)) || (/\.txt$/i.test(e.caminho) && /dime/i.test(e.caminho)))
-    .sort((a, b) => b.caminho.localeCompare(a.caminho)).slice(0, 140);
+    .sort((a, b) => prioridade(a) - prioridade(b) || b.caminho.localeCompare(a.caminho)).slice(0, 100);
 
   const declaracoes = [], dctfs = [], guias = {}, falhas = [];
   const mits = [], dem = [], darfs = [], dams = [], dimes = [], defis = [];
-  let lidos = 0;
+  let lidos = 0, estourou = false;
   await emLotes(cand, 4, async (e) => {
-    if (Date.now() - t0 > limiteMs) { falhas.push(`${e.caminho.split("/").pop()}: tempo esgotado`); return; }
+    if (Date.now() - t0 > limiteMs) { estourou = true; if (falhas.length < 12) falhas.push(`${e.caminho.split("/").pop()}: tempo esgotado`); return; }
     const nomeArq = e.caminho.split("/").pop();
     try {
       const buf = await baixar(e._id);
       if (/\.json$/i.test(nomeArq)) { const m = lerMit(buf.toString("utf8"), nomeArq); if (m) { lidos += 1; mits.push(m); } return; }
       if (/\.txt$/i.test(nomeArq)) { const d = lerDimeTxt(buf.toString("latin1"), nomeArq); if (d) { lidos += 1; dimes.push(d); } return; }
-      const texto = await textoDoPdf(buf, { max: 14 });
+      const texto = await textoDoPdf(buf, { max: 10 });
       lidos += 1;
       const df = lerDefis(texto, nomeArq); if (df) { defis.push(df); return; }
       const dr = lerDimeRecibo(texto, nomeArq); if (dr) { dimes.push(dr); return; }
       const decl = lerDeclaracao(texto, nomeArq) || lerRecibo(texto, nomeArq);
       if (decl) { decl.caminho = e.caminho; declaracoes.push(decl); return; }
-      const dar = lerDarf(texto, nomeArq); if (dar) { darfs.push(dar); return; }
+      const dar = lerDarf(texto, nomeArq);
+      if (dar) { if (dar.codigos.some((c) => CODIGOS_FEDERAIS.includes(c.codigo))) darfs.push(dar); return; } // DARF de INSS/outros não indica Presumido
       const dam = lerDamIss(texto, nomeArq); if (dam) { dams.push(dam); return; }
       const dm = lerDemonstrativo(texto, nomeArq); if (dm.length) { dem.push(...dm); return; }
       if (/DCTF/i.test(e.caminho) || /DCTF/i.test(texto)) {
@@ -112,7 +122,8 @@ export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limite
   const cli = { codigo, nome: nome || "", raiz: raiz || "", driveId: String(pastaId) };
   const dctfweb = dctfs.filter((d) => d.tipo === "DCTFWEB");
   const dctfFiscal = dctfs.filter((d) => d.tipo !== "DCTFWEB");
-  const temPresumido = mits.length || dem.length || darfs.length || dams.length;
+  // Guias federais soltas só indicam Presumido/Real quando não há PGDAS-D; MIT ou demonstrativos indicam sempre.
+  const temPresumido = mits.length || dem.length || (!declaracoes.length && (darfs.length || dams.length));
   let aud;
   if (declaracoes.length) {
     aud = auditarApuracoes({ cliente: cli, declaracoes, guias });
@@ -122,21 +133,22 @@ export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limite
       P.entregas = resumirEntregas({ linhas: mits.map((m) => ({ mes: m.pa, semMovimento: m.semMovimento, movimentoIndefinido: false })), hoje: new Date(), achados: P.achados, nomeDoc: "MIT", prazoDia: 31, ondeVerificar: "no e-CAC (MIT)" });
       aud.presumido = P; aud.aviso = "Há PGDAS-D e também MIT/apuração de Lucro Presumido ou Real nesta pasta: a empresa parece ter mudado de regime. As duas partes estão abaixo.";
     }
-  } else if (temPresumido) {
+  } else if (temPresumido && !(estourou && !mits.length && !dem.length)) {
     aud = auditarPresumido({ cliente: cli, mits, demonstrativos: dem, darfs, dams });
     aud.entregas = resumirEntregas({ linhas: mits.map((m) => ({ mes: m.pa, semMovimento: m.semMovimento, movimentoIndefinido: false })), hoje: new Date(), achados: aud.achados, nomeDoc: "MIT", prazoDia: 31, ondeVerificar: "no e-CAC (MIT)" });
-    if (!mits.length) aud.achados.push(sev("atencao", "MIT", "Nenhuma MIT encontrada na pasta", "A MIT (JSON) é a declaração dos tributos federais de quem está fora do Simples.", "Anexar o arquivo MIT-AAAAMM.JSON ou o recibo."));
+    if (!mits.length && dem.length) aud.achados.push(sev("atencao", "MIT", "Nenhuma MIT encontrada na pasta", "A MIT (JSON) é a declaração dos tributos federais de quem está fora do Simples.", "Anexar o arquivo MIT-AAAAMM.JSON ou o recibo."));
     aud.aviso = "Empresa fora do Simples Nacional (Lucro Presumido/Real): sem PGDAS-D nem DAS. A entrega vem da MIT (campo “sem movimento”); a apuração é recalculada a partir dos demonstrativos, DARFs e DAM. Lucro Real não é recalculado (precisa de balancete/LALUR).";
   } else if (dctfFiscal.length) {
     aud = auditarDctf({ cliente: cli, declaracoes: dctfs });
     aud.aviso = "Empresa fora do Simples Nacional: não há DAS nem PGDAS a conferir. Abaixo estão as entregas da DCTF (tributos federais) e, separadas, as da DCTFWeb (folha).";
   } else {
     aud = auditarApuracoes({ cliente: cli, declaracoes: [], guias });
-    aud.aviso = "Nenhuma declaração (PGDAS-D, MIT, DCTF) nem apuração foi encontrada nesta pasta. Confira se os arquivos estão nas pastas de declarações do cliente.";
+    aud.aviso = estourou ? "A leitura da pasta foi interrompida por tempo antes de achar as declarações. Clique em Atualizar para tentar de novo." : "Nenhuma declaração (PGDAS-D, MIT, DCTF) nem apuração foi encontrada nesta pasta. Confira se os arquivos estão nas pastas de declarações do cliente.";
   }
   complementar(aud, { dctfweb: aud.regime === "NAO_SIMPLES" ? [] : dctfweb, dimes, defis, mits, darfs, declaracoes });
   if (aud.presumido) { aud.achados.push(...aud.presumido.achados); recontar(aud); }
   if (falhas.length) aud.falhas = falhas.slice(0, 12);
   aud.arquivosLidos = lidos;
+  if (estourou) { aud.incompleto = true; aud.achados.push(sev("info", "Leitura", "Pasta grande: nem todos os arquivos foram lidos nesta rodada", "O tempo limite foi atingido.", "Clique em Atualizar para o sistema ler de novo.")); recontar(aud); }
   return aud;
 }
