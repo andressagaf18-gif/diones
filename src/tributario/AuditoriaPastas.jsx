@@ -384,8 +384,9 @@ export default function AuditoriaPastas({ token, onVoltar }) {
   async function api(action, body, method = "POST", query = {}) {
     const p = new URLSearchParams({ action, ...query });
     const r = await fetch(`/api/tributario?${p}`, { method, headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: method === "GET" ? undefined : JSON.stringify(body) });
-    const d = await r.json().catch(() => null);
-    if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro na auditoria.");
+    const bruto = await r.text();
+    let d = null; try { d = JSON.parse(bruto); } catch { d = null; }
+    if (!r.ok || !d?.sucesso) throw new Error(d?.error || `Erro na auditoria (servidor respondeu ${r.status}${r.status === 504 || /timeout/i.test(bruto) ? ": a leitura passou do tempo limite" : r.status >= 500 ? ": falha no servidor, confira se todos os arquivos foram importados" : ""}).`);
     return d;
   }
 
