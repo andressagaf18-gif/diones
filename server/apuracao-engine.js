@@ -116,7 +116,27 @@ export function lerDeclaracao(texto, nomeArq = "") {
     const g = t.match(new RegExp(`2\\.8\\)\\s*Total Geral[\\s\\S]*?IRPJ[^\\n]*\\n\\s*${N}\\s+${N}\\s+${N}\\s+${N}\\s+${N}\\s+${N}\\s+${N}\\s+${N}\\s+${N}`));
     if (g) d.debitoDeclarado = num(g[9]);
   }
+  d.semMovimento = /sem\s+movimento/i.test(t) || ((d.rpa === 0 || d.rpa === undefined) && !d.atividades.some((a) => a.receita > 0) && !(d.debitoDeclarado > 0));
+  if (d.semMovimento && d.rpa === undefined) d.rpa = 0;
+  if (d.semMovimento && d.debitoDeclarado === undefined) d.debitoDeclarado = 0;
   if (d.debitoDeclarado === undefined && d.atividades.length) d.debitoDeclarado = r2(d.atividades.reduce((s, a) => s + (a.tributos?.total || 0), 0));
+  return d;
+}
+
+// Recibo do PGDAS-D: "09/2026  17176998202609001  R$ 23.000,00  R$ 702,42 ..." (ou declaração sem movimento, sem valores).
+export function lerRecibo(texto, nomeArq = "") {
+  const t = String(texto || "").replace(/\r/g, "");
+  if (!/PGDAS|Simples Nacional/i.test(t)) return null;
+  const rec = t.match(/(0[1-9]|1[0-2])\/(\d{4})\s+(\d{17})\s+R\$\s*([\d.]+,\d{2})\s+R\$\s*([\d.]+,\d{2})/);
+  const sem = /sem\s+movimento/i.test(t);
+  let pa = rec ? chave(+rec[2], +rec[1]) : "";
+  if (!pa) { const per = t.match(/Per[ií]odo de Apura[cç][aã]o:?\s*(?:\d{2}\/)?(0[1-9]|1[0-2])\/(\d{4})/i); if (per) pa = chave(+per[2], +per[1]); }
+  if (!pa || (!rec && !sem)) return null;
+  const d = { arquivo: nomeArq, pa, numero: rec ? rec[3] : (t.match(/\b(\d{17})\b/) || [])[1] || "", recibo: true, atividades: [], historico: {}, folha: {}, fatorR: null };
+  d.rpa = rec ? num(rec[4]) : 0;
+  d.debitoDeclarado = rec ? num(rec[5]) : 0;
+  d.semMovimento = sem || (d.rpa === 0 && d.debitoDeclarado === 0);
+  d.soRecibo = true;
   return d;
 }
 
@@ -157,20 +177,30 @@ export function auditarApuracoes({ cliente, declaracoes = [], guias = {}, hoje =
   for (const d of declaracoes) {
     if (!d?.pa) continue;
     const a = porMes.get(d.pa);
-    if (!a || String(d.numero) > String(a.numero) || (d.retificadora && !a.retificadora)) porMes.set(d.pa, d);
+    if (!a || (a.soRecibo && !d.soRecibo) || (!!a.soRecibo === !!d.soRecibo && (String(d.numero) > String(a.numero) || (d.retificadora && !a.retificadora)))) porMes.set(d.pa, d);
   }
   const meses = [...porMes.keys()].sort();
   const linhas = [];
   for (const k of meses) {
     const d = porMes.get(k);
-    const rc = recalcularMes(d);
+    const rc = d.semMovimento || d.soRecibo ? { atividades: [], total: d.debitoDeclarado ?? 0, confiavel: !!d.semMovimento } : recalcularMes(d);
     const linha = {
       mes: k, rotulo: rot(k), numero: d.numero, retificadora: !!d.retificadora, rpa: d.rpa ?? null, rbt12: d.rbt12p ?? d.rbt12 ?? null,
       anexos: [...new Set(rc.atividades.map((a) => a.anexo).filter(Boolean))].join(" / "), faixa: rc.atividades[0]?.faixa ?? null,
       aliquotaEfetiva: rc.atividades[0]?.efetiva ?? null, debitoDeclarado: d.debitoDeclarado ?? null,
-      debitoRecalculado: rc.confiavel ? rc.total : null, diferenca: null, conferido: rc.confiavel, atividades: rc.atividades, situacao: "ok", fatorR: d.fatorR,
+      debitoRecalculado: rc.confiavel ? rc.total : null, diferenca: null, conferido: rc.confiavel, atividades: rc.atividades, situacao: "ok", fatorR: d.fatorR, semMovimento: !!d.semMovimento, soRecibo: !!d.soRecibo,
     };
-    if (rc.confiavel && d.debitoDeclarado !== undefined) {
+    if (d.semMovimento) {
+      linha.situacao = "sem_movimento";
+      linha.diferenca = 0;
+      const guiaMes = guias[k];
+      if (guiaMes?.valorGuia > 0) achados.push(sev("atencao", "Sem movimento", `${rot(k)}: declarado sem movimento, mas existe guia de ${brlN(guiaMes.valorGuia)} na pasta`, "", "Confirmar se houve receita no mês ou se a guia é de outro período.", k));
+    } else if (d.soRecibo) {
+      linha.situacao = "so_recibo";
+      achados.push(sev("info", "Cálculo do Simples", `${rot(k)}: só o recibo está na pasta (declaração completa ausente)`, `Recibo informa receita ${brlN(d.rpa)} e débito ${brlN(d.debitoDeclarado)}; o recálculo exige o PDF da declaração.`, "Anexar a declaração do PGDAS-D desse mês.", k));
+    }
+    if (d.semMovimento || d.soRecibo) { /* tratado acima */ }
+    else if (rc.confiavel && d.debitoDeclarado !== undefined) {
       linha.diferenca = r2(d.debitoDeclarado - rc.total);
       if (Math.abs(linha.diferenca) > 0.05) {
         linha.situacao = "divergente";
@@ -183,6 +213,7 @@ export function auditarApuracoes({ cliente, declaracoes = [], guias = {}, hoje =
       linha.situacao = "manual";
       achados.push(sev("info", "Cálculo do Simples", `${rot(k)}: recálculo não conclusivo`, rc.atividades.filter((a) => a.nota).map((a) => a.nota).join(" "), "Conferir manualmente a segregação das receitas.", k));
     }
+    if (d.semMovimento || d.soRecibo) { linha.valorGuia = guias[k]?.valorGuia ?? null; linha.vencimentoGuia = guias[k]?.vencimento ?? null; linhas.push(linha); continue; }
     // soma das atividades
     const somaAtiv = r2((d.atividades || []).reduce((s, a) => s + a.receita, 0));
     if (d.rpa !== undefined && d.atividades?.length && Math.abs(somaAtiv - d.rpa) > 0.05)
