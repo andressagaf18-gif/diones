@@ -98,12 +98,12 @@ async function paginaComoTexto(pagina) {
   return saida + "\n";
 }
 
-export async function driveClientes(req, res) {
+export async function listarClientesDrive() {
   const bruto = String(process.env.PASTA_DRIVE_ROOT_ID || "").trim();
   // Aceita o ID puro ou a URL inteira da pasta.
   const raiz = (bruto.match(/folders\/([A-Za-z0-9_-]+)/) || [])[1] || bruto.replace(/[?&#].*$/, "").replace(/^["']|["']$/g, "").trim();
-  if (!raiz) return enviar(res, 503, { sucesso: false, error: "Falta a variável PASTA_DRIVE_ROOT_ID (ID da pasta raiz dos clientes)." });
-  if (!/^[A-Za-z0-9_-]{10,}$/.test(raiz)) return enviar(res, 503, { sucesso: false, error: `PASTA_DRIVE_ROOT_ID inválido (tamanho ${raiz.length}). O ID da pasta tem letras e números, cerca de 33 caracteres, e fica depois de “folders/” na URL.` });
+  if (!raiz) { const e = new Error("Falta a variável PASTA_DRIVE_ROOT_ID (ID da pasta raiz dos clientes)."); e.status = 503; throw e; }
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(raiz)) { const e = new Error(`PASTA_DRIVE_ROOT_ID inválido (tamanho ${raiz.length}). O ID da pasta tem letras e números, cerca de 33 caracteres, e fica depois de “folders/” na URL.`); e.status = 503; throw e; }
   let filhos;
   try { filhos = await listarFilhos(raiz); }
   catch (e) {
@@ -121,7 +121,17 @@ export async function driveClientes(req, res) {
     .map((f) => ({ id: f.id, raiz: f.raiz, codigo: f.m[1], nome: f.m[2].trim() }))
     .sort((a, b) => Number(a.codigo) - Number(b.codigo));
   const ignoradas = filhos.filter((f) => f.mimeType === PASTA && !PADRAO_PASTAS.raizCliente.test(f.name)).map((f) => f.name);
-  return enviar(res, 200, { sucesso: true, clientes, ignoradas });
+  return { clientes, ignoradas };
+}
+
+export async function driveClientes(req, res) {
+  try {
+    const r = await listarClientesDrive();
+    return enviar(res, 200, { sucesso: true, ...r });
+  } catch (e) {
+    if (e.status) return enviar(res, e.status, { sucesso: false, error: e.message });
+    throw e;
+  }
 }
 
 async function varrer(pastaId, prefixo, saida, limite) {
@@ -157,11 +167,8 @@ async function emLotes(lista, tamanho, fn) {
   for (let i = 0; i < lista.length; i += tamanho) await Promise.all(lista.slice(i, i + tamanho).map(fn));
 }
 
-export async function driveAuditar(req, res) {
-  if (req.method !== "POST") return enviar(res, 405, { sucesso: false, error: "Use POST." });
-  const { pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "", outros = [] } = req.body || {};
+export async function auditarPastaDrive({ pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "", outros = [], limiteMs = 42000 }) {
   const outrosClientes = (Array.isArray(outros) ? outros : []).slice(0, 700).map((o) => ({ codigo: String(o.codigo || ""), nome: String(o.nome || "").slice(0, 120), cnpj: String(o.cnpj || "").replace(/\D/g, "").slice(0, 14) }));
-  if (!pastaId || !codigo) return enviar(res, 400, { sucesso: false, error: "Informe a pasta do cliente." });
   const inicioT = Date.now();
   const entradas = [];
   await varrer(String(pastaId), "", entradas, 6000);
@@ -176,7 +183,7 @@ export async function driveAuditar(req, res) {
   const fatos = {};
   let lidos = 0;
   await emLotes(candidatos, 4, async (e) => {
-    if (Date.now() - inicioT > 42000) return; // folga para o limite da função
+    if (Date.now() - inicioT > limiteMs) return; // folga para o limite da função
     const nomeArq = e.caminho.split("/").pop();
     try {
       const buf = await baixar(e._id);
@@ -194,6 +201,15 @@ export async function driveAuditar(req, res) {
   const limpas = entradas.map(({ _id, _mime, ...r }) => r);
   const auditoria = auditarCliente({ cliente: { codigo, nome: nome || "", raiz: raiz || "", entradas: limpas }, regime, fatos, inicioObrigacoes: inicio, hoje: new Date(), outrosClientes });
   auditoria.cliente.driveId = String(pastaId);
-  const parcial = candidatos.length > lidos;
-  return enviar(res, 200, { sucesso: true, auditoria, parcial, documentosLidos: lidos, documentosCandidatos: candidatos.length });
+  return { auditoria, parcial: candidatos.length > lidos, documentosLidos: lidos, documentosCandidatos: candidatos.length };
 }
+
+export async function driveAuditar(req, res) {
+  if (req.method !== "POST") return enviar(res, 405, { sucesso: false, error: "Use POST." });
+  const { pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "", outros = [] } = req.body || {};
+  if (!pastaId || !codigo) return enviar(res, 400, { sucesso: false, error: "Informe a pasta do cliente." });
+  const r = await auditarPastaDrive({ pastaId, codigo, nome, raiz, regime, inicio, outros });
+  return enviar(res, 200, { sucesso: true, ...r });
+}
+
+export { varrer, baixar, paginaComoTexto, emLotes };
