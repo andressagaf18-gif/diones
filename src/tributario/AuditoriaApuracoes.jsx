@@ -122,7 +122,7 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
                     <td style={{ padding: "5px 6px" }}>{brlN(m.debitoDeclarado)}</td><td style={{ padding: "5px 6px" }}>{brlN(m.debitoRecalculado)}</td>
                     <td style={{ padding: "5px 6px", fontWeight: 800, color: m.diferenca && Math.abs(m.diferenca) > 0.05 ? COR.critico : MUTED }}>{m.diferenca === null ? "—" : brlN(m.diferenca)}</td>
                     <td style={{ padding: "5px 6px" }}>{brlN(m.valorGuia)}</td>
-                    <td style={{ padding: "5px 6px", fontWeight: 800, color: sit[1] }}>{sit[0]}</td>
+                    <td style={{ padding: "5px 6px", fontWeight: 800, color: sit[1] }}>{sit[0]}{(m.entregaEm || m.reciboNumero) && <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{m.entregaEm ? `Entregue em ${m.entregaEm.split("-").reverse().join("/")}` : "Entregue"}{m.reciboNumero ? ` · recibo ${m.reciboNumero}` : ""}</div>}</td>
                   </tr>);
               })}</tbody>
             </table>
