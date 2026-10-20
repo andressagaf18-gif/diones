@@ -858,9 +858,16 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
     if (tipo === "Documento" || tipo === "XML") tipo = normalizar(nome.replace(/\.[a-z0-9]+$/i, "").replace(/\d+/g, " ")).split(" ").filter((t) => t.length > 2).slice(0, 4).join(" ");
     if (!tipo) continue;
     const chaveF = `${grupo}||${tipo}`;
-    if (!familias.has(chaveF)) familias.set(chaveF, { grupo, tipo, conhecida, meses: new Map() });
+    if (!familias.has(chaveF)) familias.set(chaveF, { grupo, tipo, conhecida, meses: new Map(), post: new Map() });
     const fam = familias.get(chaveF);
     fam.meses.set(mes, (fam.meses.get(mes) || 0) + 1);
+    // Quando o arquivo entrou na pasta (data de modificação no Drive): base para conferir o prazo dos colaboradores.
+    const quando = d.alteradoEm || "";
+    const reg = fam.post.get(mes) || { n: 0, primeiro: "", ultimo: "", nome };
+    reg.n += 1;
+    if (quando && (!reg.primeiro || quando < reg.primeiro)) { reg.primeiro = quando; reg.nome = nome; }
+    if (quando && quando > reg.ultimo) reg.ultimo = quando;
+    fam.post.set(mes, reg);
   }
   const fimEsperado = mesAnterior(hojeUtc);
   const limiteInicio = (() => { const d = new Date(Date.UTC(hojeUtc.getUTCFullYear(), hojeUtc.getUTCMonth() - 35, 1)); return chaveMes(d.getUTCFullYear(), d.getUTCMonth() + 1); })();
@@ -872,7 +879,7 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
     const fim = presentes[presentes.length - 1] > fimEsperado ? presentes[presentes.length - 1] : fimEsperado;
     if (ini > fim) continue;
     const faltando = mesesEntre(ini, fim).filter((m) => !fam.meses.has(m));
-    linhasCobertura.push({ grupo: fam.grupo, tipo: fam.tipo, presentes: Object.fromEntries(fam.meses), faltando, ini, fim });
+    linhasCobertura.push({ grupo: fam.grupo, tipo: fam.tipo, presentes: Object.fromEntries(fam.meses), postados: Object.fromEntries(fam.post), faltando, ini, fim });
     const tratadoNoutroLugar = /simples nacional|pcto|parcelament|dctf/i.test(normalizar(fam.grupo)) || /^Recibo DCTFWeb/.test(fam.tipo);
     if (!faltando.length || tratadoNoutroLugar) continue;
     const meio = faltando.filter((m) => m < presentes[presentes.length - 1]);
@@ -885,7 +892,7 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
   }
   linhasCobertura.sort((x, y) => y.faltando.length - x.faltando.length || x.grupo.localeCompare(y.grupo));
   const mesesCobertura = [...new Set(linhasCobertura.flatMap((l) => mesesEntre(l.ini, l.fim)))].sort().slice(-24);
-  const cobertura = { meses: mesesCobertura, linhas: linhasCobertura.slice(0, 40).map((l) => ({ grupo: l.grupo, tipo: l.tipo, presentes: l.presentes, faltando: l.faltando, ini: l.ini, fim: l.fim })) };
+  const cobertura = { meses: mesesCobertura, linhas: linhasCobertura.slice(0, 40).map((l) => ({ grupo: l.grupo, tipo: l.tipo, presentes: l.presentes, postados: l.postados, faltando: l.faltando, ini: l.ini, fim: l.fim })) };
 
   // 10) Pastas vazias relevantes ------------------------------------------------
   if (temPastasVazias && fiscal) {
