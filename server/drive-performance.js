@@ -6,6 +6,8 @@ export async function varrerComLimite(pastaId, prefixo, saida, limite, listar, p
     const resultados = await Promise.all(lote.map(({ id }) => listar(id)));
     for (let i = 0; i < lote.length; i++) {
       for (const f of resultados[i]) {
+        // Não inclui a pasta arquivada nem agenda a leitura dos seus descendentes.
+        if (f.mimeType === pastaMime && String(f.name).trim().toLocaleUpperCase("pt-BR") === "BAIXADOS E RESCINDIDOS") continue;
         if (saida.length >= limite) return;
         const caminho = lote[i].caminho ? `${lote[i].caminho}/${f.name}` : f.name;
         if (f.mimeType === pastaMime) {
