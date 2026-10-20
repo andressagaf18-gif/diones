@@ -295,7 +295,7 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
                 <td style={{ padding: "5px 8px", fontWeight: 800 }}>{m.rotulo}</td>
                 {[m.declaracao, m.recibo, m.extrato, m.das].map((v, i) => <td key={i} style={{ padding: "5px 8px", color: v ? "#2E7D32" : (m.semMovimento && i > 1) ? MUTED : COR.critico, fontWeight: 800 }}>{v ? "✓" : (m.semMovimento && i > 1) ? "n/a" : "✗"}</td>)}
                 <td style={{ padding: "5px 8px" }}>{m.receita !== null ? brl(m.receita) : "—"}</td>
-                <td style={{ padding: "5px 8px", fontWeight: 800, color: m.situacao === "ok" ? "#2E7D32" : m.situacao === "no_prazo" ? COR.atencao : COR.critico }}>{({ ok: "Completo", incompleto: `Falta ${m.faltam?.join(", ")}`, faltando: "Sem documentos", no_prazo: "Dentro do prazo, sem documentos" })[m.situacao]}</td>
+                <td style={{ padding: "5px 8px", fontWeight: 800, color: m.situacao === "ok" ? "#2E7D32" : m.situacao === "no_prazo" ? COR.atencao : COR.critico }}>{m.semMovimento && m.situacao === "ok" ? "Sem movimento — entregue" : ({ ok: "Completo", incompleto: `Falta ${m.faltam?.join(", ")}`, faltando: "Sem documentos", no_prazo: "Dentro do prazo, sem documentos" })[m.situacao]}{(m.entregaEm || m.reciboNumero) && <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{m.entregaEm ? `Transmitida em ${m.entregaEm.split("-").reverse().join("/")}` : "Transmitida"}{m.reciboNumero ? ` · recibo ${m.reciboNumero}` : ""}</div>}</td>
               </tr>))}</tbody>
           </table>
         </Cartao>
