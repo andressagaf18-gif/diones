@@ -5,6 +5,7 @@ import { registrarSaudeModulo, MODULOS_SAUDE } from "../server/system-health.js"
 import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.js";
 import * as pastaApi from "../server/pasta-api.js";
 import * as pastaDrive from "../server/pasta-drive.js";
+import * as apuracaoApi from "../server/apuracao-api.js";
 
 const sql =
   neon(
@@ -3652,7 +3653,10 @@ export default async function handler(req,res){
     "pasta-painel":pastaApi.pastaPainel,
     "pasta-narrativa":pastaApi.pastaNarrativa,
     "pasta-drive-clientes":pastaDrive.driveClientes,
-    "pasta-drive-auditar":pastaDrive.driveAuditar
+    "pasta-drive-auditar":pastaDrive.driveAuditar,
+    "apuracao-auditar":apuracaoApi.apuracaoAuditar,
+    "apuracao-painel":apuracaoApi.apuracaoPainel,
+    "apuracao-obter":apuracaoApi.apuracaoObter
   };
   const route=routes[action];
   if(!route)return send(res,404,{sucesso:false,error:"Ação tributária não encontrada."});
