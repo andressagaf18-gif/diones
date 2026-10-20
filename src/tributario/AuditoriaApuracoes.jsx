@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { brlN } from "../../server/apuracao-engine.js";
+import { abasApuracao, baixarExcel, nomeArquivoRelatorio } from "./exportarExcel.js";
 
 const NAVY = "#17233D", CORAL = "#FF6B4A", MUTED = "#5B667A", BORDER = "#E3E7EF", WHITE = "#FFFFFF";
 const COR = { critico: "#C62828", atencao: "#E08A00", info: "#4A6FA5" };
@@ -162,6 +163,8 @@ function CorpoApuracao({ a, criadoEm, historico, atualId, abrirVersao }) {
   const semMov = entregasTodas.reduce((t, e) => t + (e.semMovimento?.length || 0), 0);
   const faltando = entregasTodas.reduce((t, e) => t + (e.naoEncontrados?.length || 0), 0);
   const imprimir = () => setTimeout(() => window.print(), 100);
+  const [exportando, setExportando] = useState(false);
+  const exportar = async () => { setExportando(true); try { await baixarExcel(nomeArquivoRelatorio("apuracao", a), abasApuracao(a)); } catch (e) { window.alert(`Não consegui gerar o Excel: ${e.message}`); } setExportando(false); };
   return (
     <div id="relatorio-apuracao">
       <style>{`@media print { body * { visibility: hidden !important; } #relatorio-apuracao, #relatorio-apuracao * { visibility: visible !important; } #relatorio-apuracao { position: absolute; left: 0; top: 0; width: 100%; } .nao-imprimir { display: none !important; } }`}</style>
@@ -174,7 +177,10 @@ function CorpoApuracao({ a, criadoEm, historico, atualId, abrirVersao }) {
               <div style={{ fontSize: 15, fontWeight: 900, color: cor }}>{veredito}</div>
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{a.arquivosLidos ?? 0} arquivo(s) lido(s){a.arquivosDaMemoria ? `, ${a.arquivosDaMemoria} da memória` : ""} · gerado em {dataBr(criadoEm)}</div>
             </div>
-            <button className="nao-imprimir" onClick={imprimir} style={{ border: `1px solid ${BORDER}`, background: WHITE, color: NAVY, borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Imprimir / salvar PDF</button>
+            <div className="nao-imprimir" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={imprimir} style={{ border: `1px solid ${BORDER}`, background: WHITE, color: NAVY, borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Exportar PDF</button>
+              <button onClick={exportar} disabled={exportando} style={{ border: `1px solid ${BORDER}`, background: WHITE, color: NAVY, borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: exportando ? 0.6 : 1 }}>{exportando ? "Gerando…" : "Exportar Excel"}</button>
+            </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginTop: 14 }}>
             {[["Críticos", a.resumo.critico, COR.critico], ["Atenção", a.resumo.atencao, COR.atencao], ["Informativos", a.resumo.info, COR.info], ["Meses sem movimento", semMov, "#0D47A1"], ["Entregas não encontradas", faltando, faltando ? COR.critico : "#2E7D32"]].map(([r, v, c]) => (
