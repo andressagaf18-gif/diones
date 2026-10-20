@@ -1,5 +1,6 @@
 // server/pasta-drive.js — leitura da pasta compartilhada no Google Drive (conta de serviço).
 // Variáveis de ambiente: GOOGLE_SERVICE_ACCOUNT_JSON (JSON completo da chave) e PASTA_DRIVE_ROOT_ID (ID da pasta raiz dos clientes).
+import { varrerComLimite, criarCacheFatos } from "./drive-performance.js";
 import { createSign } from "node:crypto";
 import pdf from "pdf-parse/lib/pdf-parse.js";
 import { auditarCliente, extrairFatosDeTexto, extrairFatosNota, PADRAO_PASTAS } from "./pasta-engine.js";
@@ -147,16 +148,7 @@ export async function driveClientes(req, res) {
 }
 
 async function varrer(pastaId, prefixo, saida, limite) {
-  const fila = [{ id: pastaId, caminho: prefixo }];
-  while (fila.length && saida.length < limite) {
-    const { id, caminho } = fila.shift();
-    const filhos = await listarFilhos(id);
-    for (const f of filhos) {
-      const c = caminho ? `${caminho}/${f.name}` : f.name;
-      if (f.mimeType === PASTA) { saida.push({ caminho: c, tipo: "pasta" }); fila.push({ id: f.id, caminho: c }); }
-      else saida.push({ caminho: c, tipo: "arquivo", tamanho: Number(f.size || 0), modificadoEm: f.modifiedTime, _id: f.id, _mime: f.mimeType });
-    }
-  }
+  return varrerComLimite(pastaId, prefixo, saida, limite, listarFilhos, PASTA);
 }
 
 async function baixar(id) {
@@ -179,6 +171,8 @@ async function emLotes(lista, tamanho, fn) {
   for (let i = 0; i < lista.length; i += tamanho) await Promise.all(lista.slice(i, i + tamanho).map(fn));
 }
 
+const cacheFatos = criarCacheFatos();
+
 export async function auditarPastaDrive({ pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "", outros = [], limiteMs = 230000 }) {
   const outrosClientes = (Array.isArray(outros) ? outros : []).slice(0, 700).map((o) => ({ codigo: String(o.codigo || ""), nome: String(o.nome || "").slice(0, 120), cnpj: String(o.cnpj || "").replace(/\D/g, "").slice(0, 14) }));
   const inicioT = Date.now();
@@ -197,6 +191,10 @@ export async function auditarPastaDrive({ pastaId, codigo, nome, raiz, regime = 
   await emLotes(candidatos, 4, async (e) => {
     if (Date.now() - inicioT > limiteMs) return; // folga para o limite da função
     const nomeArq = e.caminho.split("/").pop();
+    // Inclui cliente, pasta, caminho e versão do arquivo: renomear ou editar invalida a leitura.
+    const chave = e.modificadoEm ? JSON.stringify([codigo, pastaId, e._id, e.caminho, e.modificadoEm, e.tamanho]) : null;
+    const anterior = chave ? cacheFatos.obter(chave) : undefined;
+    if (anterior !== undefined) { fatos[e.caminho] = anterior; lidos += 1; return; }
     try {
       const buf = await baixar(e._id);
       if (/\.pdf$/i.test(nomeArq)) {
@@ -206,6 +204,7 @@ export async function auditarPastaDrive({ pastaId, codigo, nome, raiz, regime = 
         const f = extrairFatosNota(nomeArq, buf.toString("utf8"));
         if (f) fatos[e.caminho] = f;
       }
+      if (chave && fatos[e.caminho]) cacheFatos.salvar(chave, fatos[e.caminho]);
       lidos += 1;
     } catch (erro) { fatos[e.caminho] = { nome: nomeArq, legivel: false, erro: String(erro?.message || erro).slice(0, 140) }; }
   });
