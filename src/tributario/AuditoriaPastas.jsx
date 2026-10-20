@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApuracaoCliente } from "./AuditoriaApuracoes";
 import PainelMensal from "./PainelMensal.jsx";
+import CarteiraGeral from "./CarteiraGeral.jsx";
 import { montarPainel } from "./painelMensal.js";
 import { abasPasta, baixarExcel, nomeArquivoRelatorio } from "./exportarExcel.js";
 import { separarClientes, auditarCliente, extrairFatosDeTexto, extrairFatosNota, brl } from "../../server/pasta-engine.js";
@@ -576,7 +577,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     alertas: comSit.reduce((t, c) => t + c.resumo.critico + c.resumo.atencao, 0),
   };
 
-  const abas = [["auditar", "1 · Auditar"], ["geral", "2 · Visão geral", kp.total || null], ["cliente", "3 · Cliente"], ["vencimentos", "4 · Vencimentos"]];
+  const abas = [["auditar", "1 · Auditar"], ["geral", "2 · Visão geral", kp.total || null], ["cliente", "3 · Cliente"], ["vencimentos", "4 · Vencimentos"], ["carteira", "5 · Visão geral por cliente"]];
 
   // ------------------------- ABA 1: AUDITAR -------------------------
   const abaAuditar = (
@@ -840,6 +841,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
       {aba === "geral" && abaGeral}
       {aba === "cliente" && abaCliente}
       {aba === "vencimentos" && abaVenc}
+      {aba === "carteira" && <CarteiraGeral api={api} />}
     </div>
   );
 }
