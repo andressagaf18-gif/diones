@@ -1,5 +1,29 @@
 // server/apuracao-drive.js — lê as declarações e guias da pasta do cliente no Drive e audita a apuração
 // (Simples: PGDAS-D/DAS · Lucro Presumido/Real: MIT, demonstrativos, DARFs, DAM) e confere as demais declarações (DCTFWeb, DIME, DEFIS).
+import { neon } from "@neondatabase/serverless";
+
+const sqlCache = neon(process.env.DATABASE_URL || "postgres://x");
+let cacheOk = null;
+// Memória das leituras: cada arquivo (id + data de modificação) só é lido uma vez.
+async function carregarCache(codigo) {
+  const m = new Map();
+  try {
+    if (!cacheOk) cacheOk = sqlCache`CREATE TABLE IF NOT EXISTS apuracao_leituras (
+      cliente_codigo TEXT NOT NULL, arquivo_id TEXT NOT NULL, modificado TEXT, tipo TEXT NOT NULL, dado JSONB,
+      lido_em TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (cliente_codigo, arquivo_id))`;
+    await cacheOk;
+    const r = await sqlCache`SELECT arquivo_id, modificado, tipo, dado FROM apuracao_leituras WHERE cliente_codigo = ${String(codigo)}`;
+    for (const x of r) m.set(x.arquivo_id, { modificado: x.modificado || "", tipo: x.tipo, dado: x.dado });
+  } catch { cacheOk = null; }
+  return m;
+}
+async function salvarCache(codigo, novos) {
+  for (let i = 0; i < novos.length; i += 6) {
+    await Promise.all(novos.slice(i, i + 6).map((n) => sqlCache`INSERT INTO apuracao_leituras (cliente_codigo, arquivo_id, modificado, tipo, dado)
+      VALUES (${String(codigo)}, ${n.id}, ${n.modificado}, ${n.tipo}, ${JSON.stringify(n.dado)}::jsonb)
+      ON CONFLICT (cliente_codigo, arquivo_id) DO UPDATE SET modificado = EXCLUDED.modificado, tipo = EXCLUDED.tipo, dado = EXCLUDED.dado, lido_em = NOW()`).map((q) => q.catch(() => null)));
+  }
+}
 import { varrer, baixar, textoDoPdf, emLotes } from "./pasta-drive.js";
 import { extrairFatosDeTexto } from "./pasta-engine.js";
 import { lerDeclaracao, lerRecibo, lerDctf, auditarApuracoes, auditarDctf, resumirEntregas, brlN } from "./apuracao-engine.js";
@@ -76,7 +100,7 @@ function prioridade(e) {
   return 0;
 }
 
-export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limiteMs = 36000 }) {
+export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limiteMs = 230000 }) {
   const t0 = Date.now();
   const entradas = [];
   await varrer(String(pastaId), "", entradas, 6000);
@@ -85,39 +109,59 @@ export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limite
   const ehPdf = (e) => /\.pdf$/i.test(e.caminho);
   const interesse = /simples|pgdas|declara|recibo|das\b|dctf|mit\b|dime|defis|demonst|darf|dam\b|iss|irpj|csll|pis|cofins|apura/i;
   const cand = arquivos.filter((e) => (ehPdf(e) && interesse.test(e.caminho)) || (/\.json$/i.test(e.caminho) && /MIT|DCTFWEB/i.test(e.caminho)) || (/\.txt$/i.test(e.caminho) && /dime/i.test(e.caminho)))
-    .sort((a, b) => prioridade(a) - prioridade(b) || b.caminho.localeCompare(a.caminho)).slice(0, 100);
+    .sort((a, b) => prioridade(a) - prioridade(b) || b.caminho.localeCompare(a.caminho)).slice(0, 250);
 
   const declaracoes = [], dctfs = [], guias = {}, falhas = [];
   const mits = [], dem = [], darfs = [], dams = [], dimes = [], defis = [];
-  let lidos = 0, estourou = false;
-  await emLotes(cand, 4, async (e) => {
-    if (Date.now() - t0 > limiteMs) { estourou = true; if (falhas.length < 12) falhas.push(`${e.caminho.split("/").pop()}: tempo esgotado`); return; }
+  let lidos = 0, estourou = false, doCache = 0;
+  const cache = await carregarCache(codigo);
+  const novos = [];
+  // Coloca no balde certo o que foi lido (ou recuperado da memória).
+  function registrar(tipo, dado) {
+    if (tipo === "mit") mits.push(dado);
+    else if (tipo === "dime") dimes.push(dado);
+    else if (tipo === "defis") defis.push(dado);
+    else if (tipo === "decl") declaracoes.push(dado);
+    else if (tipo === "darf") darfs.push(dado);
+    else if (tipo === "dam") dams.push(dado);
+    else if (tipo === "dem") dem.push(...dado);
+    else if (tipo === "dctf") dctfs.push(dado);
+    else if (tipo === "guia") guias[dado.pa] = { valorGuia: dado.valorGuia, vencimento: dado.vencimento || "" };
+  }
+  await emLotes(cand, 6, async (e) => {
     const nomeArq = e.caminho.split("/").pop();
+    const mod = String(e.modificadoEm || "");
+    const hit = cache.get(e._id);
+    if (hit && hit.modificado === mod) { registrar(hit.tipo, hit.dado); doCache += 1; return; }
+    if (Date.now() - t0 > limiteMs) { estourou = true; if (falhas.length < 12) falhas.push(`${nomeArq}: tempo esgotado`); return; }
+    const guardar = (tipo, dado) => { registrar(tipo, dado); novos.push({ id: e._id, modificado: mod, tipo, dado }); };
     try {
       const buf = await baixar(e._id);
-      if (/\.json$/i.test(nomeArq)) { const m = lerMit(buf.toString("utf8"), nomeArq); if (m) { lidos += 1; mits.push(m); } return; }
-      if (/\.txt$/i.test(nomeArq)) { const d = lerDimeTxt(buf.toString("latin1"), nomeArq); if (d) { lidos += 1; dimes.push(d); } return; }
+      if (/\.json$/i.test(nomeArq)) { const m = lerMit(buf.toString("utf8"), nomeArq); lidos += 1; guardar(m ? "mit" : "nada", m || {}); return; }
+      if (/\.txt$/i.test(nomeArq)) { const d = lerDimeTxt(buf.toString("latin1"), nomeArq); lidos += 1; guardar(d ? "dime" : "nada", d || {}); return; }
       const texto = await textoDoPdf(buf, { max: 10 });
       lidos += 1;
-      const df = lerDefis(texto, nomeArq); if (df) { defis.push(df); return; }
-      const dr = lerDimeRecibo(texto, nomeArq); if (dr) { dimes.push(dr); return; }
+      const df = lerDefis(texto, nomeArq); if (df) return guardar("defis", df);
+      const dr = lerDimeRecibo(texto, nomeArq); if (dr) return guardar("dime", dr);
       const decl = lerDeclaracao(texto, nomeArq) || lerRecibo(texto, nomeArq);
-      if (decl) { decl.caminho = e.caminho; declaracoes.push(decl); return; }
+      if (decl) { decl.caminho = e.caminho; return guardar("decl", decl); }
       const dar = lerDarf(texto, nomeArq);
-      if (dar) { if (dar.codigos.some((c) => CODIGOS_FEDERAIS.includes(c.codigo))) darfs.push(dar); return; } // DARF de INSS/outros não indica Presumido
-      const dam = lerDamIss(texto, nomeArq); if (dam) { dams.push(dam); return; }
-      const dm = lerDemonstrativo(texto, nomeArq); if (dm.length) { dem.push(...dm); return; }
+      if (dar) return dar.codigos.some((c) => CODIGOS_FEDERAIS.includes(c.codigo)) ? guardar("darf", dar) : guardar("nada", {}); // DARF de INSS/outros não indica Presumido
+      const dam = lerDamIss(texto, nomeArq); if (dam) return guardar("dam", dam);
+      const dm = lerDemonstrativo(texto, nomeArq); if (dm.length) return guardar("dem", dm);
       if (/DCTF/i.test(e.caminho) || /DCTF/i.test(texto)) {
         const dc = lerDctf(texto, nomeArq, mesDoCaminho(e.caminho));
-        if (dc) { dc.caminho = e.caminho; dctfs.push(dc); return; }
+        if (dc) { dc.caminho = e.caminho; return guardar("dctf", dc); }
       }
       const f = extrairFatosDeTexto(nomeArq, texto);
       if (f.ehGuiaSimples && !f.ehParcelamento && f.valorGuia !== undefined) {
         const pa = f.pa || mesDoCaminho(e.caminho);
-        if (pa) guias[pa] = { valorGuia: f.valorGuia, vencimento: f.vencimento || "" };
+        if (pa) return guardar("guia", { pa, valorGuia: f.valorGuia, vencimento: f.vencimento || "" });
       }
+      guardar("nada", {});
     } catch (er) { falhas.push(`${nomeArq}: ${String(er?.message || er).slice(0, 80)}`); }
   });
+  await salvarCache(codigo, novos);
 
   const cli = { codigo, nome: nome || "", raiz: raiz || "", driveId: String(pastaId) };
   const dctfweb = dctfs.filter((d) => d.tipo === "DCTFWEB");
@@ -149,6 +193,8 @@ export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limite
   if (aud.presumido) { aud.achados.push(...aud.presumido.achados); recontar(aud); }
   if (falhas.length) aud.falhas = falhas.slice(0, 12);
   aud.arquivosLidos = lidos;
-  if (estourou) { aud.incompleto = true; aud.achados.push(sev("info", "Leitura", "Pasta grande: nem todos os arquivos foram lidos nesta rodada", "O tempo limite foi atingido.", "Clique em Atualizar para o sistema ler de novo.")); recontar(aud); }
+  aud.arquivosDaMemoria = doCache;
+  aud.arquivosPendentes = cand.length - lidos - doCache;
+  if (estourou) { aud.incompleto = true; aud.achados.push(sev("info", "Leitura", "Pasta grande: nem todos os arquivos foram lidos nesta rodada", `Faltam ${aud.arquivosPendentes} arquivo(s). O que já foi lido fica guardado.`, "Clique em Atualizar para o sistema ler de novo.")); recontar(aud); }
   return aud;
 }
