@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApuracaoCliente } from "./AuditoriaApuracoes";
+import PainelMensal from "./PainelMensal.jsx";
+import { montarPainel } from "./painelMensal.js";
 import { abasPasta, baixarExcel, nomeArquivoRelatorio } from "./exportarExcel.js";
 import { separarClientes, auditarCliente, extrairFatosDeTexto, extrairFatosNota, brl } from "../../server/pasta-engine.js";
 
@@ -240,7 +242,7 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
         </div>
       </Cartao>
 
-      <Abas valor={secao} onChange={setSecao} itens={[["resumo", "Resumo"], ["docs", "Documentos por pasta"], ...(a.meses?.length ? [["simples", "Simples mês a mês"]] : []), ...(a.cobertura?.linhas?.length ? [["cobertura", "Cobertura mensal", a.cobertura.linhas.filter((l) => l.faltando.length).length || null]] : []), ...(abaApuracao ? [["apuracoes", "Apurações"]] : []), ["alertas", "Todos os alertas", a.achados.length]]} />
+      <Abas valor={secao} onChange={setSecao} itens={[["resumo", "Resumo"], ...(a.cobertura?.linhas?.length ? [["painel", "Painel mensal", (() => { const p = montarPainel(a); return p.totais(p.ultimaCompetencia).faltando || null; })()]] : []), ["docs", "Documentos por pasta"], ...(a.meses?.length ? [["simples", "Simples mês a mês"]] : []), ...(a.cobertura?.linhas?.length ? [["cobertura", "Cobertura mensal", a.cobertura.linhas.filter((l) => l.faltando.length).length || null]] : []), ...(abaApuracao ? [["apuracoes", "Apurações"]] : []), ["alertas", "Todos os alertas", a.achados.length]]} />
 
       {abaApuracao && mostra("apuracoes") && abaApuracao}
 
@@ -276,6 +278,8 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
           </Cartao>
         </div>
       )}
+
+      {mostra("painel") && a.cobertura?.linhas?.length > 0 && <PainelMensal a={a} />}
 
       {mostra("docs") && a.arvore?.length > 0 && (
         <Cartao style={{ marginBottom: 12 }}>
