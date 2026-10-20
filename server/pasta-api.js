@@ -1,6 +1,7 @@
 // server/pasta-api.js — ações da Auditoria de pastas (roteadas por api/tributario.js).
 import { neon } from "@neondatabase/serverless";
 import * as motor from "./pasta-engine.js";
+import { situacaoCliente, normalizarRegime, mesAnteriorDe, OBRIGACOES } from "./carteira-engine.js";
 const { resumoParaIa } = motor;
 const resumoPainel = motor.resumoPainel || ((a) => ({ codigo: a?.cliente?.codigo || "", nome: a?.cliente?.nome || "", resumo: a?.resumo || {}, saude: a?.saude || 0, achados: [], vencimentos: [], pastasPendentes: [] }));
 
@@ -166,4 +167,87 @@ export async function pastaNarrativa(req, res) {
     console.error("[pasta][narrativa]", e);
     return enviar(res, 502, { sucesso: false, error: "A IA não conseguiu comentar esta pasta agora. O resultado das regras continua válido." });
   }
+}
+
+
+// ---------- Carteira (aba 5 · Visão geral por cliente) ----------
+let carteiraPronta = null;
+function garantirCarteira() {
+  if (!carteiraPronta) {
+    carteiraPronta = (async () => {
+      await sql`CREATE TABLE IF NOT EXISTS carteira_cadastro (
+        cliente_codigo TEXT PRIMARY KEY,
+        cliente_nome TEXT,
+        regime TEXT,
+        carteira TEXT,
+        responsavel TEXT,
+        movimento TEXT,
+        extra JSONB,
+        atualizado_em TIMESTAMPTZ DEFAULT NOW()
+      )`;
+      await sql`CREATE TABLE IF NOT EXISTS apuracao_auditorias (id BIGSERIAL PRIMARY KEY, cliente_codigo TEXT NOT NULL, cliente_nome TEXT NOT NULL, regime TEXT, saude INTEGER, criticos INTEGER DEFAULT 0, atencoes INTEGER DEFAULT 0, infos INTEGER DEFAULT 0, resultado JSONB NOT NULL, usuario TEXT, created_at TIMESTAMPTZ DEFAULT NOW())`;
+    })().catch((e) => { carteiraPronta = null; throw e; });
+  }
+  return carteiraPronta;
+}
+
+// GET ?competencia=AAAA-MM (padrão: mês anterior)
+export async function pastaCarteira(req, res) {
+  await garantirTabela(); await garantirCarteira();
+  const hoje = new Date();
+  const comp = /^\d{4}-\d{2}$/.test(String(req.query?.competencia || "")) ? req.query.competencia : mesAnteriorDe(hoje);
+  const [painelRows, apuRows, cadRows] = await Promise.all([
+    sql`SELECT DISTINCT ON (cliente_codigo) id, cliente_codigo, cliente_nome, created_at, painel, CASE WHEN painel IS NULL THEN resultado END AS resultado
+        FROM pasta_auditorias ORDER BY cliente_codigo, created_at DESC, id DESC LIMIT 700`,
+    sql`SELECT DISTINCT ON (cliente_codigo) cliente_codigo, regime, resultado->'entregas'->'semMovimento' AS sem, created_at
+        FROM apuracao_auditorias ORDER BY cliente_codigo, created_at DESC, id DESC LIMIT 700`,
+    sql`SELECT cliente_codigo, cliente_nome, regime, carteira, responsavel, movimento FROM carteira_cadastro LIMIT 2000`,
+  ]);
+  const cad = new Map(cadRows.map((c) => [String(c.cliente_codigo), c]));
+  const apu = new Map(apuRows.map((a) => [String(a.cliente_codigo), a]));
+  const linhas = new Map();
+  const pegar = (codigo, nome) => { const k = String(codigo); if (!linhas.has(k)) linhas.set(k, { codigo: k, nome: nome || "" }); return linhas.get(k); };
+  for (const l of painelRows) {
+    let painel = l.painel;
+    if (!painel && l.resultado) painel = resumoPainel(l.resultado);
+    const r = pegar(l.cliente_codigo, l.cliente_nome);
+    r.painel = painel || null; r.auditadoEm = l.created_at; r.saude = painel?.saude ?? null;
+    r.achadosCriticos = (painel?.achados || []).filter((x) => x.severidade === "critico").length;
+  }
+  for (const c of cadRows) pegar(c.cliente_codigo, c.cliente_nome);
+  const saida = [];
+  for (const r of linhas.values()) {
+    const c = cad.get(r.codigo) || null;
+    const a = apu.get(r.codigo);
+    let sem = [];
+    try { sem = Array.isArray(a?.sem) ? a.sem : JSON.parse(a?.sem || "[]"); } catch { sem = []; }
+    const sit = situacaoCliente({ painel: r.painel, cadastro: c ? { regime: c.regime } : (a ? { regime: a.regime === "SIMPLES" ? "SIMPLES" : "" } : null), competencia: comp, hoje, extras: { semMovimento: sem } });
+    saida.push({
+      codigo: r.codigo, nome: c?.cliente_nome || r.nome, carteira: c?.carteira || "", responsavel: c?.responsavel || "", movimento: c?.movimento || "",
+      regime: sit.regime, regimeFonte: sit.regimeFonte, auditadoEm: r.auditadoEm || null, semLeitura: sit.semLeitura, saude: r.saude, achadosCriticos: r.achadosCriticos || 0,
+      faltando: sit.faltando, atraso: sit.atraso, noPrazo: sit.noPrazo, semMovimento: sit.semMovimento, aVencer: sit.aVencer,
+      itens: sit.itens.map((i) => ({ key: i.key, status: i.status, prazo: i.prazo, postadoEm: i.postadoEm, arquivo: i.arquivo, diasAtraso: i.diasAtraso })),
+    });
+  }
+  saida.sort((x, y) => (Number(x.codigo) - Number(y.codigo)) || x.codigo.localeCompare(y.codigo));
+  return enviar(res, 200, { sucesso: true, competencia: comp, obrigacoes: OBRIGACOES.map((o) => ({ key: o.key, rotulo: o.rotulo, tipo: o.tipo, regimes: o.regimes, prazo: o.prazo })), clientes: saida });
+}
+
+// POST { clientes: [{ codigo, nome, regime, carteira, responsavel, movimento }] }
+// Atenção: só campos cadastrais. Qualquer coluna de usuário/senha da planilha é descartada aqui também.
+export async function pastaCarteiraImportar(req, res) {
+  if (req.method !== "POST") return enviar(res, 405, { sucesso: false, error: "Use POST." });
+  await garantirCarteira();
+  const lista = Array.isArray(req.body?.clientes) ? req.body.clientes.slice(0, 2000) : [];
+  let salvos = 0;
+  for (const c of lista) {
+    const codigo = texto(c?.codigo, 30);
+    if (!codigo) continue;
+    const regime = normalizarRegime(c?.regime) || "";
+    await sql`INSERT INTO carteira_cadastro (cliente_codigo, cliente_nome, regime, carteira, responsavel, movimento, atualizado_em)
+      VALUES (${codigo}, ${texto(c?.nome, 200)}, ${regime}, ${texto(c?.carteira, 80)}, ${texto(c?.responsavel, 120)}, ${texto(c?.movimento, 40)}, NOW())
+      ON CONFLICT (cliente_codigo) DO UPDATE SET cliente_nome = EXCLUDED.cliente_nome, regime = EXCLUDED.regime, carteira = EXCLUDED.carteira, responsavel = EXCLUDED.responsavel, movimento = EXCLUDED.movimento, atualizado_em = NOW()`;
+    salvos += 1;
+  }
+  return enviar(res, 200, { sucesso: true, salvos });
 }
