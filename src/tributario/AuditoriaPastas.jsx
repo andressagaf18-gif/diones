@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApuracaoCliente } from "./AuditoriaApuracoes";
+import { abasPasta, baixarExcel, nomeArquivoRelatorio } from "./exportarExcel.js";
 import { separarClientes, auditarCliente, extrairFatosDeTexto, extrairFatosNota, brl } from "../../server/pasta-engine.js";
 
 const NAVY = "#17233D", CORAL = "#FF6B4A", MUTED = "#5B667A", BORDER = "#E3E7EF", WHITE = "#FFFFFF";
@@ -233,7 +234,8 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
           <Kpi rotulo="Não conferidos" valor={docsTotais.n} cor="#7A8499" sub="PDF sem texto/leitura" />
         </div>
         <div className="nao-imprimir" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <Btn sec onClick={imprimir}>Imprimir / salvar PDF</Btn>
+          <Btn sec onClick={imprimir}>Exportar PDF</Btn>
+          <Btn sec onClick={async () => { try { await baixarExcel(nomeArquivoRelatorio("pasta", a), abasPasta(a)); } catch (e) { window.alert(`Não consegui gerar o Excel: ${e.message}`); } }}>Exportar Excel</Btn>
           {botoes}
         </div>
       </Cartao>
@@ -370,6 +372,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
   const [salvo, setSalvo] = useState("");
   const [driveLista, setDriveLista] = useState(null);
   const [driveUm, setDriveUm] = useState("todos");
+  const [incluirInativos, setIncluirInativos] = useState(false);
   const [painel, setPainel] = useState(null);
   const [cli, setCli] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -455,7 +458,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
 
   async function carregarDrive() {
     setErro("");
-    try { const d = await api("pasta-drive-clientes", null, "GET"); setDriveLista(d); }
+    try { const d = await api("pasta-drive-clientes", null, "GET", incluirInativos ? { inativos: "1" } : {}); setDriveLista(d); }
     catch (e) { setErro(e.message); }
   }
   const listaOutros = (extra = []) => {
@@ -468,7 +471,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
   const auditarUmDrive = (c) => api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio, outros: listaOutros() });
   async function auditarDrive() {
     setErro(""); setSalvo(""); setAviso([]); setLendo(true);
-    const alvos = driveUm === "todos" ? driveLista.clientes : driveLista.clientes.filter((c) => c.id === driveUm);
+    const alvos = driveUm === "todos" ? driveLista.clientes : [...driveLista.clientes, ...(driveLista.inativos || [])].filter((c) => c.id === driveUm);
     const resultado = []; const avisos = [];
     try {
       for (let i = 0; i < alvos.length; i++) {
@@ -581,9 +584,20 @@ export default function AuditoriaPastas({ token, onVoltar }) {
         ) : (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <select value={driveUm} onChange={(e) => setDriveUm(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${BORDER}`, maxWidth: 360 }}>
-              <option value="todos">Todos os clientes ({driveLista.clientes.length})</option>
+              <option value="todos">Todos os clientes ativos ({driveLista.clientes.length})</option>
               {driveLista.clientes.map((c) => <option key={c.id} value={c.id}>{c.codigo} - {c.nome}</option>)}
+              {driveLista.inativos?.length > 0 && (
+                <optgroup label={`Baixados e rescindidos (${driveLista.inativos.length})`}>
+                  {driveLista.inativos.map((c) => <option key={c.id} value={c.id}>{c.codigo} - {c.nome} (baixado)</option>)}
+                </optgroup>)}
             </select>
+            <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+              <input type="checkbox" checked={incluirInativos} onChange={async (e) => {
+                const v = e.target.checked; setIncluirInativos(v); setDriveUm("todos"); setErro("");
+                try { setDriveLista(await api("pasta-drive-clientes", null, "GET", v ? { inativos: "1" } : {})); } catch (er) { setErro(er.message); }
+              }} />
+              Mostrar baixados e rescindidos
+            </label>
             <Btn onClick={auditarDrive} disabled={lendo || !driveLista.clientes.length}>Auditar pelo Drive</Btn>
             {driveLista.ignoradas?.length > 0 && <span style={{ fontSize: 11, color: MUTED }}>{driveLista.ignoradas.length} pasta(s) fora do padrão ignorada(s)</span>}
           </div>
