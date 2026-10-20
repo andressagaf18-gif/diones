@@ -36,6 +36,16 @@ export function aliquotaEfetiva(anexo, rbt12) {
   return { faixa: i + 1, nominal, deduzir, efetiva };
 }
 
+function dadosEntrega(t) {
+  const e = {};
+  const tr = t.match(/Data e Hor[aá]rio da Transmiss[aã]o[\s\S]{0,160}?(\d{2})\/(\d{2})\/(\d{4})/i);
+  if (tr) e.entregaEm = `${tr[3]}-${tr[2]}-${tr[1]}`;
+  const rc = t.match(/N[úu]mero do Recibo:?\s*([\d]{2}\.[\d.]+-?\d)/i) || t.match(/N[úu]mero do Recibo[\s\S]{0,40}?(\d{2}\.\d{2}\.\d{5}\.\d{7}-\d)/i);
+  if (rc) e.reciboNumero = rc[1];
+  e.original = !/Retificadora/i.test(t);
+  return e;
+}
+
 // ---------- leitura do PGDAS-D (declaração) ----------
 function paresMeses(trecho) {
   const m = new Map();
@@ -46,7 +56,7 @@ function paresMeses(trecho) {
 export function lerDeclaracao(texto, nomeArq = "") {
   const t = String(texto || "").replace(/\r/g, "");
   if (!/Declarat[óo]rio|PGDAS/i.test(t) || !/Apura[cç][aã]o do Simples Nacional/i.test(t)) return null;
-  const d = { arquivo: nomeArq };
+  const d = { arquivo: nomeArq, ...dadosEntrega(t) };
   const per = t.match(/Per[ií]odo de Apura[cç][aã]o:?\s*\d{2}\/(0[1-9]|1[0-2])\/(\d{4})/i);
   if (!per) return null;
   d.pa = chave(+per[2], +per[1]);
@@ -132,7 +142,7 @@ export function lerRecibo(texto, nomeArq = "") {
   let pa = rec ? chave(+rec[2], +rec[1]) : "";
   if (!pa) { const per = t.match(/Per[ií]odo de Apura[cç][aã]o:?\s*(?:\d{2}\/)?(0[1-9]|1[0-2])\/(\d{4})/i); if (per) pa = chave(+per[2], +per[1]); }
   if (!pa || (!rec && !sem)) return null;
-  const d = { arquivo: nomeArq, pa, numero: rec ? rec[3] : (t.match(/\b(\d{17})\b/) || [])[1] || "", recibo: true, atividades: [], historico: {}, folha: {}, fatorR: null };
+  const d = { arquivo: nomeArq, ...dadosEntrega(t), pa, numero: rec ? rec[3] : (t.match(/\b(\d{17})\b/) || [])[1] || "", recibo: true, atividades: [], historico: {}, folha: {}, fatorR: null };
   d.rpa = rec ? num(rec[4]) : 0;
   d.debitoDeclarado = rec ? num(rec[5]) : 0;
   d.semMovimento = sem || (d.rpa === 0 && d.debitoDeclarado === 0);
@@ -180,6 +190,14 @@ export function auditarApuracoes({ cliente, declaracoes = [], guias = {}, hoje =
     if (!a || (a.soRecibo && !d.soRecibo) || (!!a.soRecibo === !!d.soRecibo && (String(d.numero) > String(a.numero) || (d.retificadora && !a.retificadora)))) porMes.set(d.pa, d);
   }
   const meses = [...porMes.keys()].sort();
+  const entregas = {};
+  for (const d of declaracoes) {
+    if (!d?.pa) continue;
+    const e = (entregas[d.pa] ||= { comprovantes: [] });
+    if (d.arquivo) e.comprovantes.push(d.arquivo);
+    if (d.entregaEm && d.original && (!e.entregaEm || d.entregaEm < e.entregaEm)) e.entregaEm = d.entregaEm;
+    if (d.reciboNumero && !e.reciboNumero) e.reciboNumero = d.reciboNumero;
+  }
   const linhas = [];
   for (const k of meses) {
     const d = porMes.get(k);
@@ -189,7 +207,15 @@ export function auditarApuracoes({ cliente, declaracoes = [], guias = {}, hoje =
       anexos: [...new Set(rc.atividades.map((a) => a.anexo).filter(Boolean))].join(" / "), faixa: rc.atividades[0]?.faixa ?? null,
       aliquotaEfetiva: rc.atividades[0]?.efetiva ?? null, debitoDeclarado: d.debitoDeclarado ?? null,
       debitoRecalculado: rc.confiavel ? rc.total : null, diferenca: null, conferido: rc.confiavel, atividades: rc.atividades, situacao: "ok", fatorR: d.fatorR, semMovimento: !!d.semMovimento, soRecibo: !!d.soRecibo,
+      entregaEm: entregas[k]?.entregaEm || null, reciboNumero: entregas[k]?.reciboNumero || null, comprovantes: entregas[k]?.comprovantes || [],
     };
+    // prazo de entrega: dia 20 do mês seguinte
+    if (linha.entregaEm) {
+      const [ay, am] = k.split("-").map(Number);
+      const prazo = new Date(Date.UTC(am === 12 ? ay + 1 : ay, am === 12 ? 0 : am, 20)).toISOString().slice(0, 10);
+      linha.prazoEntrega = prazo;
+      if (linha.entregaEm > prazo) achados.push(sev("atencao", "Prazo de entrega", `${rot(k)}: declaração original entregue em ${linha.entregaEm.split("-").reverse().join("/")}, depois do prazo (${prazo.split("-").reverse().join("/")})`, "", "Verificar se foi cobrada multa por atraso na entrega (MAED).", k));
+    }
     if (d.semMovimento) {
       linha.situacao = "sem_movimento";
       linha.diferenca = 0;
