@@ -289,26 +289,99 @@ export function auditarApuracoes({ cliente, declaracoes = [], guias = {}, hoje =
       }
     }
   }
-  // Resumo das entregas: quais meses foram entregues, quais sem movimento e quais não foram encontrados.
-  const entregasResumo = { entregues: [], comMovimento: [], semMovimento: [], naoEncontrados: [], aVencer: [] };
-  if (meses.length) {
-    const hojeIso = hoje.toISOString().slice(0, 10);
-    const ultimo = (() => { const [y, m] = hojeIso.split("-").map(Number); return mesAnterior(chave(y, m), 1); })();
-    const fim = meses[meses.length - 1] > ultimo ? meses[meses.length - 1] : ultimo;
-    for (let k = meses[0]; k <= fim; k = (() => { const [y, m] = k.split("-").map(Number); return m === 12 ? chave(y + 1, 1) : chave(y, m + 1); })()) {
-      const l = linhas.find((x) => x.mes === k);
-      if (l) { entregasResumo.entregues.push(k); (l.semMovimento ? entregasResumo.semMovimento : entregasResumo.comMovimento).push(k); }
-      else {
-        const [y, m] = k.split("-").map(Number);
-        const prazo = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 20)).toISOString().slice(0, 10);
-        if (hojeIso > prazo) { entregasResumo.naoEncontrados.push(k); achados.push(sev("atencao", "Entrega", `${rot(k)}: nenhuma declaração ou recibo do PGDAS-D encontrado`, "O prazo (dia 20 do mês seguinte) já passou.", "Verificar no portal do Simples se foi entregue e anexar os comprovantes.", k)); }
-        else entregasResumo.aVencer.push(k);
-      }
-    }
-  }
+  const entregasResumo = resumirEntregas({ linhas, hoje, achados, nomeDoc: "PGDAS-D", prazoDia: 20, ondeVerificar: "no portal do Simples" });
   const resumo = { critico: achados.filter((a) => a.severidade === "critico").length, atencao: achados.filter((a) => a.severidade === "atencao").length, info: achados.filter((a) => a.severidade === "info").length };
   const saude = Math.round(100 * Math.exp(-(resumo.critico * 0.35 + resumo.atencao * 0.1 + resumo.info * 0.01)));
-  return { cliente, regime: "SIMPLES", geradoEm: hoje.toISOString(), declaracoes: linhas.length, meses: linhas, entregas: entregasResumo, achados, resumo, saude };
+  return { cliente, regime: linhas.length ? "SIMPLES" : "INDEFINIDO", geradoEm: hoje.toISOString(), declaracoes: linhas.length, meses: linhas, entregas: entregasResumo, achados, resumo, saude };
+}
+
+// Resumo das entregas: quais meses foram entregues, quais sem movimento e quais não foram encontrados.
+export function resumirEntregas({ linhas, hoje, achados, nomeDoc, prazoDia, ondeVerificar, mesesAdiante = 1 }) {
+  const r = { entregues: [], comMovimento: [], semMovimento: [], indefinido: [], naoEncontrados: [], aVencer: [] };
+  const meses = linhas.map((l) => l.mes).sort();
+  if (!meses.length) return r;
+  const hojeIso = hoje.toISOString().slice(0, 10);
+  const [hy, hm] = hojeIso.split("-").map(Number);
+  const ultimo = mesAnterior(chave(hy, hm), mesesAdiante);
+  const fim = meses[meses.length - 1] > ultimo ? meses[meses.length - 1] : ultimo;
+  const proximo = (k) => { const [y, m] = k.split("-").map(Number); return m === 12 ? chave(y + 1, 1) : chave(y, m + 1); };
+  for (let k = meses[0]; k <= fim; k = proximo(k)) {
+    const l = linhas.find((x) => x.mes === k);
+    if (l) {
+      r.entregues.push(k);
+      (l.semMovimento ? r.semMovimento : l.movimentoIndefinido ? r.indefinido : r.comMovimento).push(k);
+    } else {
+      const [y, m] = k.split("-").map(Number);
+      const prazo = new Date(Date.UTC(y, m - 1 + mesesAdiante, prazoDia)).toISOString().slice(0, 10);
+      if (hojeIso > prazo) {
+        r.naoEncontrados.push(k);
+        achados.push(sev("atencao", "Entrega", `${rot(k)}: nenhuma declaração ou recibo do ${nomeDoc} encontrado`, `O prazo (dia ${prazoDia} do ${mesesAdiante === 1 ? "mês seguinte" : "2º mês seguinte"}) já passou.`, `Verificar ${ondeVerificar} se foi entregue e anexar os comprovantes.`, k));
+      } else r.aVencer.push(k);
+    }
+  }
+  return r;
+}
+
+// ---------- DCTF (fiscal) e DCTFWeb (folha) — empresas fora do Simples: Lucro Presumido / Lucro Real ----------
+// DCTF = tributos federais (PIS, COFINS, IRPJ, CSLL…): é a que pode ser entregue "sem movimento".
+// DCTFWeb = contribuições previdenciárias da folha: é outra obrigação e não substitui a DCTF fiscal.
+export function lerDctf(texto, nomeArq = "", mesDaPasta = "") {
+  const t = String(texto || "").replace(/\r/g, "");
+  if (!/DCTF/i.test(t) && !/DCTF/i.test(nomeArq)) return null;
+  const tipo = /DCTFWeb|Previdenci[aá]rios|Outras Entidades/i.test(t) || /DCTFWeb/i.test(nomeArq) ? "DCTFWEB" : "DCTF";
+  const per = t.match(/Per[ií]odo de Apura[cç][aã]o:?\s*(?:\d{2}\/)?(0[1-9]|1[0-2])\/(\d{4})/i) || t.match(/(?:Compet[eê]ncia|M[eê]s\/Ano|M[eê]s de Refer[eê]ncia|M[eê]s de Apura[cç][aã]o):?\s*(0[1-9]|1[0-2])\/(\d{4})/i);
+  const pa = per ? chave(+per[2], +per[1]) : mesDaPasta;
+  if (!pa) return null;
+  const d = { arquivo: nomeArq, pa, tipo, dctf: true, ...dadosEntrega(t) };
+  const tr = t.match(/(?:Data(?:\s+e\s+Hor[aá]rio)?\s+(?:da\s+)?(?:Transmiss[aã]o|Entrega|Recep[cç][aã]o))[\s\S]{0,160}?(\d{2})\/(\d{2})\/(\d{4})/i);
+  if (tr) d.entregaEm = `${tr[3]}-${tr[2]}-${tr[1]}`;
+  if (!d.entregaEm) { const rv = t.match(/recebida via Internet[\s\S]{0,80}?(\d{2})\/(\d{2})\/(\d{4})/i); if (rv) d.entregaEm = `${rv[3]}-${rv[2]}-${rv[1]}`; }
+  const rn = t.match(/N[ºo°]\s*do recibo de entrega\s*(\d{10,})/i); if (rn) d.reciboNumero = rn[1];
+  if (/Declara[cç][aã]o Retificadora\s+Sim/i.test(t)) d.retificadora = true;
+  if (tipo === "DCTFWEB") {
+    // Recibo da DCTFWeb: a linha TOTAL traz débitos apurados e saldo a pagar. Origem: eSocial (folha) e/ou MIT.
+    const tt = t.match(/\bTOTAL\s+R\$\s*([\d.]+,\d{2})\s+R\$\s*([\d.]+,\d{2})/);
+    if (tt) { d.debito = num(tt[1]); d.saldoPagar = num(tt[2]); }
+    d.origens = [...t.matchAll(/(\d{5,})\s*\/\s*(eSocial|MIT|EFD-Reinf|Reinf)/gi)].map((m) => m[2]);
+    d.semMovimento = d.debito === 0;
+    d.movimentoIndefinido = d.debito === undefined;
+    return d;
+  }
+  const tot = t.match(/Total (?:Geral )?(?:dos )?D[eé]bitos[^\d\n]*\n?[^\d\n]*([\d.]+,\d{2})/i);
+  if (tot) d.debito = num(tot[1]);
+  d.semMovimento = /sem\s+movimento/i.test(t) || d.debito === 0;
+  d.movimentoIndefinido = !d.semMovimento && d.debito === undefined;
+  return d;
+}
+export const lerDctfWeb = lerDctf;
+
+function linhasDctf(declaracoes) {
+  const por = new Map();
+  for (const d of declaracoes) {
+    if (!d?.pa) continue;
+    const a = por.get(d.pa) || { mes: d.pa, comprovantes: [] };
+    a.comprovantes.push(d.arquivo);
+    if (d.semMovimento) a.semMovimento = true;
+    if (d.debito !== undefined) a.debito = Math.max(a.debito || 0, d.debito);
+    if (d.entregaEm && (!a.entregaEm || d.entregaEm < a.entregaEm)) a.entregaEm = d.entregaEm;
+    if (d.reciboNumero && !a.reciboNumero) a.reciboNumero = d.reciboNumero;
+    a.movimentoIndefinido = a.semMovimento ? false : (a.movimentoIndefinido ?? true) && d.movimentoIndefinido !== false;
+    por.set(d.pa, a);
+  }
+  return [...por.values()].sort((x, y) => x.mes.localeCompare(y.mes)).map((l) => ({ ...l, rotulo: rot(l.mes), situacao: l.semMovimento ? "sem_movimento" : l.movimentoIndefinido ? "entregue" : "com_movimento" }));
+}
+
+export function auditarDctf({ cliente, declaracoes = [], hoje = new Date() }) {
+  const achados = [];
+  const fiscal = linhasDctf(declaracoes.filter((d) => d.tipo !== "DCTFWEB"));
+  const folha = linhasDctf(declaracoes.filter((d) => d.tipo === "DCTFWEB"));
+  // DCTF fiscal: prazo = 15º dia útil do 2º mês seguinte (aprox. dia 25 por tolerância).
+  const entregas = resumirEntregas({ linhas: fiscal, hoje, achados, nomeDoc: "DCTF (fiscal)", prazoDia: 25, mesesAdiante: 2, ondeVerificar: "no e-CAC (DCTF)" });
+  const entregasFolha = resumirEntregas({ linhas: folha, hoje: new Date(hoje), achados: [], nomeDoc: "DCTFWeb", prazoDia: 20, ondeVerificar: "no e-CAC (DCTFWeb)" });
+  if (!fiscal.length) achados.push(sev("atencao", "Entrega", "Nenhuma DCTF (fiscal) encontrada na pasta", "Só há DCTFWeb (folha), que não substitui a DCTF dos tributos federais.", "Empresa de Lucro Presumido/Real deve entregar a DCTF todo mês, mesmo sem movimento. Anexar os recibos."));
+  const resumo = { critico: 0, atencao: achados.filter((a) => a.severidade === "atencao").length, info: 0 };
+  const saude = Math.round(100 * Math.exp(-(resumo.atencao * 0.1)));
+  return { cliente, regime: "NAO_SIMPLES", geradoEm: hoje.toISOString(), declaracoes: fiscal.length, declaracoesFolha: folha.length, meses: fiscal, mesesFolha: folha, entregas, entregasFolha, achados, resumo, saude };
 }
 
 export const brlN = (v) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
