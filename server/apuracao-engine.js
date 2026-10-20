@@ -289,9 +289,26 @@ export function auditarApuracoes({ cliente, declaracoes = [], guias = {}, hoje =
       }
     }
   }
+  // Resumo das entregas: quais meses foram entregues, quais sem movimento e quais não foram encontrados.
+  const entregasResumo = { entregues: [], comMovimento: [], semMovimento: [], naoEncontrados: [], aVencer: [] };
+  if (meses.length) {
+    const hojeIso = hoje.toISOString().slice(0, 10);
+    const ultimo = (() => { const [y, m] = hojeIso.split("-").map(Number); return mesAnterior(chave(y, m), 1); })();
+    const fim = meses[meses.length - 1] > ultimo ? meses[meses.length - 1] : ultimo;
+    for (let k = meses[0]; k <= fim; k = (() => { const [y, m] = k.split("-").map(Number); return m === 12 ? chave(y + 1, 1) : chave(y, m + 1); })()) {
+      const l = linhas.find((x) => x.mes === k);
+      if (l) { entregasResumo.entregues.push(k); (l.semMovimento ? entregasResumo.semMovimento : entregasResumo.comMovimento).push(k); }
+      else {
+        const [y, m] = k.split("-").map(Number);
+        const prazo = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 20)).toISOString().slice(0, 10);
+        if (hojeIso > prazo) { entregasResumo.naoEncontrados.push(k); achados.push(sev("atencao", "Entrega", `${rot(k)}: nenhuma declaração ou recibo do PGDAS-D encontrado`, "O prazo (dia 20 do mês seguinte) já passou.", "Verificar no portal do Simples se foi entregue e anexar os comprovantes.", k)); }
+        else entregasResumo.aVencer.push(k);
+      }
+    }
+  }
   const resumo = { critico: achados.filter((a) => a.severidade === "critico").length, atencao: achados.filter((a) => a.severidade === "atencao").length, info: achados.filter((a) => a.severidade === "info").length };
   const saude = Math.round(100 * Math.exp(-(resumo.critico * 0.35 + resumo.atencao * 0.1 + resumo.info * 0.01)));
-  return { cliente, regime: "SIMPLES", geradoEm: hoje.toISOString(), declaracoes: linhas.length, meses: linhas, achados, resumo, saude };
+  return { cliente, regime: "SIMPLES", geradoEm: hoje.toISOString(), declaracoes: linhas.length, meses: linhas, entregas: entregasResumo, achados, resumo, saude };
 }
 
 export const brlN = (v) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
