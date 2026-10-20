@@ -190,6 +190,10 @@ function mesDoCaminho(caminhoPartes, nome) {
   }
   const m = String(nome).match(/_(0[1-9]|1[0-2])_(\d{4})\b/);
   if (m) return chaveMes(Number(m[2]), Number(m[1]));
+  const m2 = String(nome).match(/(?:^|[^\d])(0[1-9]|1[0-2])[.\-/](20\d{2})(?:[^\d]|$)/);
+  if (m2) return chaveMes(Number(m2[2]), Number(m2[1]));
+  const m3 = String(nome).match(/(?:^|[^\d])(20\d{2})[.\-/](0[1-9]|1[0-2])(?:[^\d]|$)/);
+  if (m3) return chaveMes(Number(m3[1]), Number(m3[2]));
   return null;
 }
 
@@ -307,6 +311,7 @@ export function extrairFatosNota(nome, xml) {
     cnpjEmitente: emit,
     valor: valorTxt ? Number(valorTxt) : null,
     mes: chaveMes(Number(data[1]), Number(data[2])),
+    cnpjTomador: (x.match(/<(?:toma|dest)>[\s\S]*?<CNPJ>(\d{14})<\/CNPJ>/) || [])[1] || null,
     tomador: ((x.match(/<toma>[\s\S]*?<xNome>([^<]+)<\/xNome>/) || x.match(/<dest>[\s\S]*?<xNome>([^<]+)<\/xNome>/) || [])[1] || "").slice(0, 80),
   };
 }
@@ -359,7 +364,7 @@ export function separarClientes(entradasBrutas) {
 // ---------------------------------------------------------
 const SEV = { critico: 0, atencao: 1, info: 2 };
 
-export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = new Date(), inicioObrigacoes = "", temPastasVazias = true } = {}) {
+export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = new Date(), inicioObrigacoes = "", temPastasVazias = true, outrosClientes = [] } = {}) {
   const achados = [];
   let seq = 0;
   const add = (severidade, categoria, titulo, detalhe, extra = {}) =>
@@ -683,27 +688,47 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
     }
   }
 
-  // 8) CNPJ dos documentos ---------------------------------------------------
+  // 8) Documentos de outro cliente na pasta -------------------------------------
+  const raiz8 = (c) => String(c || "").replace(/\D/g, "").slice(0, 8);
+  const cnpjsDoc = (f) => (f?.cnpjs?.length ? f.cnpjs : [f?.cnpjEmitente, f?.cnpjTomador].filter(Boolean));
+  const topoSocios = normalizar(PADRAO_PASTAS.topo[2].nome);
+  const relevante = (caminho, f) => f?.ehNota || f?.ehGuiaSimples || f?.ehDctfWeb || /pgdasd|\bdas\b|simples|recibo|declara|cnd|certid|extrato|cnpj/i.test(caminho);
   const contagem = new Map();
-  const cnpjPorArquivo = new Map();
   for (const [caminho, f] of Object.entries(fatos)) {
-    const lista = f?.cnpjs || (f?.cnpjEmitente ? [f.cnpjEmitente] : []);
-    if (!lista.length) continue;
-    const topoDoc = partes(caminho)[0] || "";
-    if (normalizar(topoDoc) === normalizar(PADRAO_PASTAS.topo[2].nome)) continue; // docs dos sócios
-    const principal = lista[0];
-    cnpjPorArquivo.set(caminho, principal);
-    if (/pgdasd|das|simples|recibo|declara/i.test(caminho) || f.ehNota) {
-      const raiz = principal.slice(0, 8);
-      contagem.set(raiz, (contagem.get(raiz) || 0) + 1);
+    const lista = cnpjsDoc(f);
+    if (!lista.length || normalizar(partes(caminho)[0] || "") === topoSocios) continue;
+    if (/pgdasd|\bdas\b|simples|recibo|declara/i.test(caminho) || f.ehNota) {
+      const r = raiz8(f.ehNota ? f.cnpjEmitente || lista[0] : lista[0]);
+      if (r) contagem.set(r, (contagem.get(r) || 0) + 1);
     }
   }
   let cnpjEsperado = "";
-  if (contagem.size) cnpjEsperado = [...contagem.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const cartao = Object.entries(fatos).find(([c, f]) => f?.cnpjs?.length && /(^|\/)cnpj[^/]*\.pdf$/i.test(c) && topo.empresa && c.startsWith(`${topo.empresa}/`));
+  if (cartao) cnpjEsperado = raiz8(cartao[1].cnpjs[0]);
+  else if (contagem.size) cnpjEsperado = [...contagem.entries()].sort((x, y) => y[1] - x[1])[0][0];
+  const fmtCnpj8 = (r) => String(r).replace(/^(\d{2})(\d{3})(\d{3})$/, "$1.$2.$3");
+  const donoDe = (lista) => outrosClientes.find((o) => o.cnpj && lista.some((c) => raiz8(c) === raiz8(o.cnpj)) && String(o.codigo) !== String(cliente?.codigo));
   if (cnpjEsperado) {
-    const outros = [...cnpjPorArquivo.entries()].filter(([, c]) => c.slice(0, 8) !== cnpjEsperado);
-    for (const [caminho, c] of outros) {
-      add("critico", "Pasta do cliente", `Documento de outro CNPJ na pasta: ${nomeArquivo(caminho)}`, `O documento é do CNPJ ${c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")}, diferente do cliente (raiz ${cnpjEsperado.replace(/^(\d{2})(\d{3})(\d{3})$/, "$1.$2.$3")}).`, { caminho, sugestao: "Mover para a pasta do cliente correto." });
+    for (const [caminho, f] of Object.entries(fatos)) {
+      const lista = cnpjsDoc(f);
+      if (!lista.length || !relevante(caminho, f) || normalizar(partes(caminho)[0] || "") === topoSocios) continue;
+      if (lista.some((c) => raiz8(c) === cnpjEsperado)) continue;
+      const dono = donoDe(lista);
+      add("critico", "Pasta do cliente", dono ? `Documento de outro cliente: ${nomeArquivo(caminho)} — parece ser de ${dono.codigo} - ${dono.nome}` : `Documento de outro CNPJ na pasta: ${nomeArquivo(caminho)}`, `O documento cita o CNPJ ${lista.map((c) => fmtCnpj8(raiz8(c))).join(", ")}, diferente do desta pasta (raiz ${fmtCnpj8(cnpjEsperado)}).`, { caminho, sugestao: dono ? `Mover para a pasta de ${dono.codigo} - ${dono.nome}.` : "Conferir de quem é o documento e mover para a pasta correta." });
+    }
+  }
+  // Nome de outro cliente no nome do arquivo/pasta.
+  const semSufixo = (n) => normalizar(n).replace(/\b(ltda|me|epp|eireli|sa|s a|ss|mei|cia|ind|de|da|do|dos|das|e)\b/g, " ").replace(/\s+/g, " ").trim();
+  const meuNome = semSufixo(cliente?.nome || "");
+  const jaApontado = new Set(achados.filter((x) => x.categoria === "Pasta do cliente").map((x) => x.caminho));
+  const outrosNomes = outrosClientes.filter((o) => String(o.codigo) !== String(cliente?.codigo)).map((o) => ({ ...o, n: semSufixo(o.nome) })).filter((o) => o.n.length >= 9 && o.n.split(" ").length >= 2 && !meuNome.includes(o.n) && !o.n.includes(meuNome));
+  if (outrosNomes.length) {
+    for (const a of arquivos) {
+      if (jaApontado.has(a.caminho)) continue;
+      const alvo = semSufixo(a.caminho);
+      if (meuNome && alvo.includes(meuNome)) continue;
+      const achou = outrosNomes.find((o) => alvo.includes(o.n));
+      if (achou) add("atencao", "Pasta do cliente", `Possível documento de outro cliente: ${nomeArquivo(a.caminho)} — o nome cita ${achou.codigo} - ${achou.nome}`, "O nome do arquivo (ou da pasta) contém o nome de outro cliente do escritório.", { caminho: a.caminho, sugestao: `Conferir e, se for dele, mover para a pasta de ${achou.codigo} - ${achou.nome}.` });
     }
   }
 
@@ -726,59 +751,6 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
       break;
     }
   }
-
-  // 10) Pastas vazias relevantes ------------------------------------------------
-  if (temPastasVazias && fiscal) {
-    const exigePorRegime = {
-      "DASN-SIMEI": regimeDetectado === "MEI",
-      "DECL. DCTF MENSAL": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
-      "DARF MENSAL - GUIAS": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
-      "DECL. SPED CONTABIL": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
-      "DECL. SPED CONTRIBUIÇÕES - PIS-COFINS": ["REAL"].includes(regimeDetectado),
-      "LIVROS CONTABEIS": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
-    };
-    const vazias = [];
-    for (const sub of PADRAO_PASTAS.topo[3].subpastas) {
-      const caminho = achaPasta(sub, fiscal);
-      if (!caminho || arquivosPor(caminho).length) continue;
-      vazias.push(sub);
-      if (exigePorRegime[sub]) add("atencao", "Pastas vazias", `Pasta vazia, mas esperada para o regime: ${sub}`, `No regime ${regimeDetectado.toLowerCase()} esta obrigação costuma existir.`, { caminho, sugestao: "Anexar os documentos ou registrar que não há obrigação no período." });
-    }
-    if (vazias.length) add("info", "Pastas vazias", `${vazias.length} pasta(s) padrão vazia(s) em DOCS FISCAL-CONTABIL`, `${vazias.join(", ")}. Confirme em cada caso se a obrigação existe para este cliente.`, { sugestao: "Se não se aplica, registrar “não aplicável” (ex.: um arquivo .txt) para a IA não alertar de novo." });
-  }
-
-  // 11) DCTFWeb ------------------------------------------------------------------
-  const pas = [...Object.values(fatos)].filter((f) => f?.ehDctfWeb && f.pa).map((f) => f.pa).sort();
-  if (pas.length) {
-    const unicos = [...new Set(pas)];
-    const faltando = mesesEntre(unicos[0], mesAnterior(hojeUtc)).filter((m) => !unicos.includes(m));
-    if (faltando.length) {
-      add("info", "DCTFWeb", `Recibos de DCTFWeb só de ${unicos.map(rotuloMes).join(", ")}`, `Não há recibo para ${faltando.map(rotuloMes).join(", ")}. Se a empresa tem eSocial/EFD-Reinf ou retenções, a entrega mensal é obrigatória; caso contrário, pode não haver obrigação.`, { sugestao: "Confirmar a obrigatoriedade e anexar os recibos na pasta DECL. DCTF MENSAL." });
-    }
-  }
-
-  // 12) Arquivos ilegíveis ------------------------------------------------------------
-  const falhas = Object.entries(fatos).filter(([, f]) => f && f.erro);
-  const ilegiveis = Object.entries(fatos).filter(([, f]) => f && f.legivel === false && !f.erro).map(([c]) => nomeArquivo(c));
-  if (falhas.length) {
-    add("atencao", "Leitura dos documentos", `${falhas.length} arquivo(s) não puderam ser baixados/lidos — o resultado pode estar incompleto`, `${falhas.slice(0, 5).map(([c, f]) => `${nomeArquivo(c)} (${f.erro})`).join("; ")}${falhas.length > 5 ? "…" : ""}`, { sugestao: "Rode a auditoria novamente só para este cliente. Se persistir, o motivo acima mostra o que o Drive respondeu." });
-  }
-  if (ilegiveis.length) {
-    add("info", "Leitura dos documentos", `${ilegiveis.length} PDF(s) sem texto (digitalizados) não puderam ser conferidos`, ilegiveis.slice(0, 8).join(", ") + (ilegiveis.length > 8 ? "…" : ""), { sugestao: "Se for importante validar o conteúdo, salve versões em PDF com texto (baixadas do portal) ou ative leitura por OCR." });
-  }
-
-  // 13) Série de Simples + extrato fiscal -------------------------------------------------
-  const opcoes = Object.values(fatos).find((f) => f?.opcoesSimples)?.opcoesSimples || null;
-
-  achados.sort((a, b) => SEV[a.severidade] - SEV[b.severidade]);
-  const resumo = {
-    critico: achados.filter((a) => a.severidade === "critico").length,
-    atencao: achados.filter((a) => a.severidade === "atencao").length,
-    info: achados.filter((a) => a.severidade === "info").length,
-  };
-  const saude = Math.round(100 * Math.exp(-(resumo.critico * 0.25 + resumo.atencao * 0.05 + Math.min(resumo.info, 10) * 0.01)));
-
-
 
   // Inventário documento a documento: o que é, de quando é e se está válido.
   const dmy = (iso) => (iso ? iso.split("-").reverse().join("/") : "");
@@ -857,6 +829,109 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
   const ORDEM_SIT = { vencido: 0, vence_em_breve: 1, aviso: 2, nao_lido: 3, sem_validade: 4, valido: 5, sem_prazo: 6 };
   const docsDe = (lista) => lista.map(classificarDoc).sort((x, y) => (ORDEM_SIT[x.situacao] - ORDEM_SIT[y.situacao]) || x.caminho.localeCompare(y.caminho)).slice(0, 400);
 
+
+  // 9b) Cobertura mensal: o que apareceu em algum mês precisa aparecer nos demais.
+  const MENSAIS = /^(PGDAS-D|Guia DAS|Guia de parcelamento|Recibo DCTFWeb|Nota fiscal)/;
+  const IGNORA_FAMILIA = /^(Arquivo de acesso|IRPF|Certid|Certificado|Extrato fiscal|Cartão CNPJ|QSA|Contrato|Inscrição)/;
+  const familias = new Map();
+  const deOutroCliente = new Set(achados.filter((x) => x.categoria === "Pasta do cliente").map((x) => x.caminho));
+  for (const a of arquivos) {
+    if (deOutroCliente.has(a.caminho)) continue;
+    const p = partes(a.caminho);
+    const nome = nomeArquivo(a.caminho);
+    const f = fatos[a.caminho] || {};
+    const mes = mesDoCaminho(p, nome) || paDoNomePgdas(nome) || f.mes || f.pa;
+    if (!mes || !/\.(pdf|xml|xlsx?|docx?|csv|txt|jpe?g|png)$/i.test(nome)) continue;
+    const d = classificarDoc(a);
+    if (IGNORA_FAMILIA.test(d.tipo)) continue;
+    const grupo = p.slice(0, -1).filter((seg) => !mesDoSegmento(seg)).join(" / ");
+    let tipo = d.tipo;
+    const conhecida = MENSAIS.test(tipo);
+    if (tipo === "Documento" || tipo === "XML") tipo = normalizar(nome.replace(/\.[a-z0-9]+$/i, "").replace(/\d+/g, " ")).split(" ").filter((t) => t.length > 2).slice(0, 4).join(" ");
+    if (!tipo) continue;
+    const chaveF = `${grupo}||${tipo}`;
+    if (!familias.has(chaveF)) familias.set(chaveF, { grupo, tipo, conhecida, meses: new Map() });
+    const fam = familias.get(chaveF);
+    fam.meses.set(mes, (fam.meses.get(mes) || 0) + 1);
+  }
+  const fimEsperado = mesAnterior(hojeUtc);
+  const limiteInicio = (() => { const d = new Date(Date.UTC(hojeUtc.getUTCFullYear(), hojeUtc.getUTCMonth() - 35, 1)); return chaveMes(d.getUTCFullYear(), d.getUTCMonth() + 1); })();
+  const linhasCobertura = [];
+  for (const fam of familias.values()) {
+    const presentes = [...fam.meses.keys()].sort();
+    if (!fam.conhecida && presentes.length < 2) continue;
+    const ini = presentes[0] < limiteInicio ? limiteInicio : presentes[0];
+    const fim = presentes[presentes.length - 1] > fimEsperado ? presentes[presentes.length - 1] : fimEsperado;
+    if (ini > fim) continue;
+    const faltando = mesesEntre(ini, fim).filter((m) => !fam.meses.has(m));
+    linhasCobertura.push({ grupo: fam.grupo, tipo: fam.tipo, presentes: Object.fromEntries(fam.meses), faltando, ini, fim });
+    const tratadoNoutroLugar = /simples nacional|pcto|parcelament|dctf/i.test(normalizar(fam.grupo)) || /^Recibo DCTFWeb/.test(fam.tipo);
+    if (!faltando.length || tratadoNoutroLugar) continue;
+    const meio = faltando.filter((m) => m < presentes[presentes.length - 1]);
+    const fimPrazo = faltando.filter((m) => m > presentes[presentes.length - 1]);
+    const vencidos = fimPrazo.filter((m) => { const [ano, mm] = m.split("-").map(Number); return diasEntre(hojeUtc, new Date(Date.UTC(mm === 12 ? ano + 1 : ano, mm === 12 ? 0 : mm, 20))) < 0; });
+    const ehNf = /^Nota fiscal/.test(fam.tipo);
+    const sev = ehNf ? "info" : meio.length || vencidos.length ? "atencao" : "info";
+    const pastaCurta = fam.grupo.split(" / ").slice(-1)[0] || "raiz";
+    add(sev, "Cobertura mensal", `Documento recorrente com meses faltando — ${pastaCurta}: ${fam.tipo}`, `Há registros em ${presentes.map(rotuloMes).join(", ")}, mas faltam ${faltando.map(rotuloMes).join(", ")}.${ehNf ? " Em meses sem faturamento pode não haver nota." : ""}`, { sugestao: "Anexar o documento dos meses que faltam ou registrar que não houve movimento naquele mês (um .txt na subpasta do mês)." });
+  }
+  linhasCobertura.sort((x, y) => y.faltando.length - x.faltando.length || x.grupo.localeCompare(y.grupo));
+  const mesesCobertura = [...new Set(linhasCobertura.flatMap((l) => mesesEntre(l.ini, l.fim)))].sort().slice(-24);
+  const cobertura = { meses: mesesCobertura, linhas: linhasCobertura.slice(0, 40).map((l) => ({ grupo: l.grupo, tipo: l.tipo, presentes: l.presentes, faltando: l.faltando, ini: l.ini, fim: l.fim })) };
+
+  // 10) Pastas vazias relevantes ------------------------------------------------
+  if (temPastasVazias && fiscal) {
+    const exigePorRegime = {
+      "DASN-SIMEI": regimeDetectado === "MEI",
+      "DECL. DCTF MENSAL": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
+      "DARF MENSAL - GUIAS": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
+      "DECL. SPED CONTABIL": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
+      "DECL. SPED CONTRIBUIÇÕES - PIS-COFINS": ["REAL"].includes(regimeDetectado),
+      "LIVROS CONTABEIS": ["PRESUMIDO", "REAL"].includes(regimeDetectado),
+    };
+    const vazias = [];
+    for (const sub of PADRAO_PASTAS.topo[3].subpastas) {
+      const caminho = achaPasta(sub, fiscal);
+      if (!caminho || arquivosPor(caminho).length) continue;
+      vazias.push(sub);
+      if (exigePorRegime[sub]) add("atencao", "Pastas vazias", `Pasta vazia, mas esperada para o regime: ${sub}`, `No regime ${regimeDetectado.toLowerCase()} esta obrigação costuma existir.`, { caminho, sugestao: "Anexar os documentos ou registrar que não há obrigação no período." });
+    }
+    if (vazias.length) add("info", "Pastas vazias", `${vazias.length} pasta(s) padrão vazia(s) em DOCS FISCAL-CONTABIL`, `${vazias.join(", ")}. Confirme em cada caso se a obrigação existe para este cliente.`, { sugestao: "Se não se aplica, registrar “não aplicável” (ex.: um arquivo .txt) para a IA não alertar de novo." });
+  }
+
+  // 11) DCTFWeb ------------------------------------------------------------------
+  const pas = [...Object.values(fatos)].filter((f) => f?.ehDctfWeb && f.pa).map((f) => f.pa).sort();
+  if (pas.length) {
+    const unicos = [...new Set(pas)];
+    const faltando = mesesEntre(unicos[0], mesAnterior(hojeUtc)).filter((m) => !unicos.includes(m));
+    if (faltando.length) {
+      add("info", "DCTFWeb", `Recibos de DCTFWeb só de ${unicos.map(rotuloMes).join(", ")}`, `Não há recibo para ${faltando.map(rotuloMes).join(", ")}. Se a empresa tem eSocial/EFD-Reinf ou retenções, a entrega mensal é obrigatória; caso contrário, pode não haver obrigação.`, { sugestao: "Confirmar a obrigatoriedade e anexar os recibos na pasta DECL. DCTF MENSAL." });
+    }
+  }
+
+  // 12) Arquivos ilegíveis ------------------------------------------------------------
+  const falhas = Object.entries(fatos).filter(([, f]) => f && f.erro);
+  const ilegiveis = Object.entries(fatos).filter(([, f]) => f && f.legivel === false && !f.erro).map(([c]) => nomeArquivo(c));
+  if (falhas.length) {
+    add("atencao", "Leitura dos documentos", `${falhas.length} arquivo(s) não puderam ser baixados/lidos — o resultado pode estar incompleto`, `${falhas.slice(0, 5).map(([c, f]) => `${nomeArquivo(c)} (${f.erro})`).join("; ")}${falhas.length > 5 ? "…" : ""}`, { sugestao: "Rode a auditoria novamente só para este cliente. Se persistir, o motivo acima mostra o que o Drive respondeu." });
+  }
+  if (ilegiveis.length) {
+    add("info", "Leitura dos documentos", `${ilegiveis.length} PDF(s) sem texto (digitalizados) não puderam ser conferidos`, ilegiveis.slice(0, 8).join(", ") + (ilegiveis.length > 8 ? "…" : ""), { sugestao: "Se for importante validar o conteúdo, salve versões em PDF com texto (baixadas do portal) ou ative leitura por OCR." });
+  }
+
+  // 13) Série de Simples + extrato fiscal -------------------------------------------------
+  const opcoes = Object.values(fatos).find((f) => f?.opcoesSimples)?.opcoesSimples || null;
+
+  achados.sort((a, b) => SEV[a.severidade] - SEV[b.severidade]);
+  const resumo = {
+    critico: achados.filter((a) => a.severidade === "critico").length,
+    atencao: achados.filter((a) => a.severidade === "atencao").length,
+    info: achados.filter((a) => a.severidade === "info").length,
+  };
+  const saude = Math.round(100 * Math.exp(-(resumo.critico * 0.25 + resumo.atencao * 0.05 + Math.min(resumo.info, 10) * 0.01)));
+
+
+
   // Análise pasta a pasta (padrão + subpastas).
   const regimeChave = ["SIMPLES", "MEI", "PRESUMIDO", "REAL"].includes(regimeDetectado) ? regimeDetectado : "SIMPLES";
   const sevDe = (ids) => (ids.some((a) => a.severidade === "critico") ? "critico" : ids.some((a) => a.severidade === "atencao") ? "atencao" : ids.length ? "info" : "ok");
@@ -929,6 +1004,7 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
     parcelamentos,
     inventario,
     arvore,
+    cobertura,
     opcoesSimples: opcoes,
   };
 }
@@ -955,7 +1031,7 @@ const RE_FALTA = /n[aã]o localizad|n[aã]o encontrad|ausente|sem comprovantes|s
 export function resumoPainel(a) {
   const out = {
     codigo: a?.cliente?.codigo || "", nome: a?.cliente?.nome || "", regime: a?.regime || "", saude: a?.saude ?? 0,
-    resumo: a?.resumo || { critico: 0, atencao: 0, info: 0 }, geradoEm: a?.geradoEm || "", totalArquivos: a?.totalArquivos || 0, driveId: a?.cliente?.driveId || "",
+    resumo: a?.resumo || { critico: 0, atencao: 0, info: 0 }, geradoEm: a?.geradoEm || "", totalArquivos: a?.totalArquivos || 0, cnpj: a?.cnpj || "", driveId: a?.cliente?.driveId || "",
     achados: (a?.achados || []).slice(0, 80).map((x) => ({ severidade: x.severidade, categoria: x.categoria, titulo: x.titulo, sugestao: x.sugestao || "", falta: RE_FALTA.test(x.titulo) })),
     vencimentos: [], pastasPendentes: [],
   };
