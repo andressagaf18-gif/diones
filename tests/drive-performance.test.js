@@ -45,3 +45,27 @@ test('cache não reutiliza resultados de outro arquivo, caminho ou versão', () 
   assert.equal(cache.obter(chave('2', 'a.pdf', 'v1')), undefined);
   assert.deepEqual(cache.obter(chave('1', 'a.pdf', 'v1')), { nome: 'a.pdf' });
 });
+
+test('ignora somente a pasta BAIXADOS E RESCINDIDOS e não consulta descendentes', async () => {
+  const consultadas = [];
+  const listar = async (id) => {
+    consultadas.push(id);
+    if (id === 'root') return [
+      { id: 'arquivados', name: 'BAIXADOS E RESCINDIDOS', mimeType: 'pasta' },
+      { id: 'ativos', name: 'ATIVOS', mimeType: 'pasta' },
+      { id: 'arquivo', name: 'BAIXADOS E RESCINDIDOS', mimeType: 'txt' },
+      { id: 'baixados', name: 'BAIXADOS', mimeType: 'pasta' },
+    ];
+    if (id === 'ativos') return [
+      { id: 'aninhada', name: ' baixados e rescindidos ', mimeType: 'pasta' },
+      { id: 'pdf', name: 'cliente.pdf', mimeType: 'pdf' },
+    ];
+    return [];
+  };
+  const saida = [];
+  await varrerComLimite('root', '', saida, 100, listar, 'pasta');
+  assert.deepEqual(consultadas, ['root', 'ativos', 'baixados']);
+  assert.ok(saida.some(e => e.caminho === 'ATIVOS/cliente.pdf'));
+  assert.ok(saida.some(e => e.tipo === 'arquivo' && e.caminho === 'BAIXADOS E RESCINDIDOS'));
+  assert.ok(!saida.some(e => e.tipo === 'pasta' && /rescindidos/i.test(e.caminho)));
+});
