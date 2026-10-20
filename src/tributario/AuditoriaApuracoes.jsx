@@ -120,13 +120,15 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
   const [carregando, setCarregando] = useState(true);
   const [fazendo, setFazendo] = useState({}); // codigo -> true
   const [lote, setLote] = useState(null);     // { feitos, total, atual }
+  const [falhasLote, setFalhasLote] = useState([]);
   const [detalhe, setDetalhe] = useState(null); // { atual, historico }
 
   async function api(action, body, method = "POST", query = {}) {
     const p = new URLSearchParams({ action, ...query });
     const r = await fetch(`/api/tributario?${p}`, { method, headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: method === "GET" ? undefined : JSON.stringify(body) });
-    const d = await r.json().catch(() => null);
-    if (!r.ok || !d?.sucesso) throw new Error(d?.error || "Erro na auditoria de apurações.");
+    const bruto = await r.text();
+    let d = null; try { d = JSON.parse(bruto); } catch { d = null; }
+    if (!r.ok || !d?.sucesso) throw new Error(d?.error || `Erro na auditoria de apurações (servidor respondeu ${r.status}${r.status === 504 || /timeout/i.test(bruto) ? ": a leitura passou do tempo limite" : r.status >= 500 ? ": falha no servidor, confira se todos os arquivos foram importados" : ""}).`);
     return d;
   }
   async function carregar() {
@@ -140,13 +142,16 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
   }
   useEffect(() => { carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function auditar(c) {
+  async function auditar(c, tentativas = 1) {
     setFazendo((f) => ({ ...f, [c.codigo]: true }));
     try {
       const d = await api("apuracao-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz });
-      setPainel((p) => ({ ...p, [c.codigo]: { cliente_codigo: c.codigo, cliente_nome: c.nome, saude: d.auditoria.saude, criticos: d.auditoria.resumo.critico, atencoes: d.auditoria.resumo.atencao, infos: d.auditoria.resumo.info, declaracoes: String(d.auditoria.declaracoes), aviso: d.auditoria.aviso || null, regime: d.auditoria.regime, entregas: d.auditoria.entregas, created_at: d.criadoEm, id: d.id } }));
+      setPainel((p) => ({ ...p, [c.codigo]: { cliente_codigo: c.codigo, cliente_nome: c.nome, saude: d.auditoria.saude, criticos: d.auditoria.resumo.critico, atencoes: d.auditoria.resumo.atencao, infos: d.auditoria.resumo.info, declaracoes: String(d.auditoria.declaracoes), aviso: d.auditoria.aviso || null, regime: d.auditoria.regime, entregas: d.auditoria.entregas, incompleto: d.auditoria.incompleto ? "true" : null, created_at: d.criadoEm, id: d.id } }));
       return d;
-    } catch (e) { setErro(`${c.codigo} - ${c.nome}: ${e.message}`); }
+    } catch (e) {
+      if (tentativas > 0) { setFazendo((f) => ({ ...f, [c.codigo]: false })); return auditar(c, tentativas - 1); }
+      setErro(`${c.codigo} - ${c.nome}: ${e.message}`); return null;
+    }
     finally { setFazendo((f) => ({ ...f, [c.codigo]: false })); }
   }
   async function abrir(c) {
@@ -159,13 +164,17 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
   }
   async function auditarEAbrir(c) { const d = await auditar(c); if (d) await abrir(c); }
   async function auditarLote(somentePendentes) {
-    const alvo = clientes.filter((c) => !somentePendentes || !painel[c.codigo]);
+    const alvo = clientes.filter((c) => !somentePendentes || !painel[c.codigo] || painel[c.codigo].incompleto === "true");
     setLote({ feitos: 0, total: alvo.length, atual: "" });
-    for (let i = 0; i < alvo.length; i++) {
-      setLote({ feitos: i, total: alvo.length, atual: `${alvo[i].codigo} - ${alvo[i].nome}` });
-      await auditar(alvo[i]);
-    }
-    setLote(null);
+    setFalhasLote([]); setErro("");
+    const falhou = [];
+    try {
+      for (let i = 0; i < alvo.length; i++) {
+        setLote({ feitos: i, total: alvo.length, atual: `${alvo[i].codigo} - ${alvo[i].nome}` });
+        try { const d = await auditar(alvo[i]); if (!d) falhou.push(`${alvo[i].codigo} - ${alvo[i].nome}`); }
+        catch { falhou.push(`${alvo[i].codigo} - ${alvo[i].nome}`); }
+      }
+    } finally { setLote(null); setFalhasLote(falhou); }
   }
 
   const lista = useMemo(() => clientes.filter((c) => {
@@ -289,6 +298,7 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
         </div>
         {lote && <div style={{ marginTop: 10, fontSize: 12 }}><b>{lote.feitos}/{lote.total}</b> · auditando {lote.atual}…<div style={{ height: 6, background: BORDER, borderRadius: 4, marginTop: 4 }}><div style={{ height: 6, width: `${(lote.feitos / Math.max(1, lote.total)) * 100}%`, background: CORAL, borderRadius: 4 }} /></div></div>}
       </Cartao>
+      {falhasLote.length > 0 && <Cartao style={{ marginBottom: 12, borderColor: COR.atencao, fontSize: 12 }}>Concluído, mas {falhasLote.length} cliente(s) deram erro e ficaram pendentes: {falhasLote.join(" · ")}. Os demais já estão salvos. Clique em “Auditar clientes ainda não auditados” para tentar só estes.</Cartao>}
       {erro && <Cartao style={{ marginBottom: 12, borderColor: COR.critico, color: COR.critico, fontSize: 12 }}>{erro}</Cartao>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {[["todos", `Todos (${tot.total})`], ["pendente", `Não auditados (${tot.total - tot.auditados})`], ["critico", `Com divergência (${tot.criticos})`], ["ok", `Conferidos (${tot.ok})`], ["foraSimples", `Fora do Simples · MIT/DCTF (${tot.foraSimples})`], ["semDecl", `Sem nenhuma declaração (${tot.semDecl})`]].map(([k, r]) => (
