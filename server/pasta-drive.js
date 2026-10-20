@@ -159,7 +159,8 @@ async function emLotes(lista, tamanho, fn) {
 
 export async function driveAuditar(req, res) {
   if (req.method !== "POST") return enviar(res, 405, { sucesso: false, error: "Use POST." });
-  const { pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "" } = req.body || {};
+  const { pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "", outros = [] } = req.body || {};
+  const outrosClientes = (Array.isArray(outros) ? outros : []).slice(0, 700).map((o) => ({ codigo: String(o.codigo || ""), nome: String(o.nome || "").slice(0, 120), cnpj: String(o.cnpj || "").replace(/\D/g, "").slice(0, 14) }));
   if (!pastaId || !codigo) return enviar(res, 400, { sucesso: false, error: "Informe a pasta do cliente." });
   const inicioT = Date.now();
   const entradas = [];
@@ -191,7 +192,7 @@ export async function driveAuditar(req, res) {
   });
 
   const limpas = entradas.map(({ _id, _mime, ...r }) => r);
-  const auditoria = auditarCliente({ cliente: { codigo, nome: nome || "", raiz: raiz || "", entradas: limpas }, regime, fatos, inicioObrigacoes: inicio, hoje: new Date() });
+  const auditoria = auditarCliente({ cliente: { codigo, nome: nome || "", raiz: raiz || "", entradas: limpas }, regime, fatos, inicioObrigacoes: inicio, hoje: new Date(), outrosClientes });
   auditoria.cliente.driveId = String(pastaId);
   const parcial = candidatos.length > lidos;
   return enviar(res, 200, { sucesso: true, auditoria, parcial, documentosLidos: lidos, documentosCandidatos: candidatos.length });
