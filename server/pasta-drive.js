@@ -85,17 +85,29 @@ const PASTA = "application/vnd.google-apps.folder";
 
 // Mesma montagem de linhas usada no navegador (itens na mesma linha separados por espaço).
 async function paginaComoTexto(pagina) {
+  // Reconstrói a leitura visual: agrupa os trechos pela altura (linha) e ordena da esquerda para a direita.
   const c = await pagina.getTextContent();
-  let y = null;
-  let saida = "";
+  const linhas = [];
   for (const it of c.items) {
-    const yy = Math.round(it.transform?.[5] ?? 0);
-    if (y !== null && Math.abs(yy - y) > 2) saida += "\n";
-    else if (y !== null) saida += " ";
-    saida += it.str;
-    y = yy;
+    if (!it.str || !it.str.trim()) continue;
+    const y = it.transform?.[5] ?? 0;
+    const x = it.transform?.[4] ?? 0;
+    let l = linhas.find((q) => Math.abs(q.y - y) <= 2.5);
+    if (!l) { l = { y, itens: [] }; linhas.push(l); }
+    l.itens.push({ x, w: it.width || 0, s: it.str });
   }
-  return saida + "\n";
+  linhas.sort((a, b) => b.y - a.y);
+  const saida = linhas.map((l) => {
+    l.itens.sort((a, b) => a.x - b.x);
+    let t = "", fim = null;
+    for (const i of l.itens) {
+      if (fim !== null) t += i.x - fim > 6 ? "  " : (i.x - fim > 0.5 ? " " : "");
+      t += i.s;
+      fim = i.x + i.w;
+    }
+    return t;
+  });
+  return saida.join("\n") + "\n";
 }
 
 export async function listarClientesDrive() {
@@ -240,7 +252,20 @@ export function repararPdf(buf) {
 }
 
 // Lê o texto de um PDF; se o leitor padrão falhar, tenta reparar a tabela de referências e usar outras versões do leitor.
-export async function textoDoPdf(buf, { max = 6 } = {}) {
+// O leitor de PDF usa estado compartilhado: ler dois PDFs ao mesmo tempo pode devolver o texto de um no outro.
+// Por isso as leituras entram numa fila (os downloads continuam em paralelo).
+let filaPdf = Promise.resolve();
+export function textoDoPdf(buf, opcoes = {}) {
+  // Cópia com ArrayBuffer exclusivo: Buffers pequenos dividem um bloco de memória e o leitor de PDF ignora o deslocamento, lendo o arquivo errado.
+  const exclusivo = new ArrayBuffer(buf.length);
+  new Uint8Array(exclusivo).set(buf);
+  const proprio = Buffer.from(exclusivo);
+  const tarefa = filaPdf.then(() => lerTextoDoPdf(proprio, opcoes));
+  filaPdf = tarefa.catch(() => {});
+  return tarefa;
+}
+
+async function lerTextoDoPdf(buf, { max = 6 } = {}) {
   const versoes = [{}, { version: "v2.0.550" }, { version: "v1.9.426" }, { version: "v1.10.88" }];
   let ultimoErro;
   let reparado;
