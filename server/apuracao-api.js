@@ -34,7 +34,9 @@ export async function apuracaoAuditar(req, res) {
   await garantirTabela();
   const { pastaId, codigo, nome, raiz } = req.body || {};
   if (!pastaId || !codigo) return enviar(res, 400, { sucesso: false, error: "Informe a pasta do cliente." });
-  const a = await auditarApuracaoDrive({ pastaId, codigo: texto(codigo, 30), nome: texto(nome, 200), raiz: texto(raiz, 200) });
+  let a;
+  try { a = await auditarApuracaoDrive({ pastaId, codigo: texto(codigo, 30), nome: texto(nome, 200), raiz: texto(raiz, 200) }); }
+  catch (e) { return enviar(res, 502, { sucesso: false, error: `Não foi possível ler a pasta no Drive: ${String(e?.message || e).slice(0, 160)}` }); }
   const [l] = await sql`INSERT INTO apuracao_auditorias (cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, resultado, usuario)
     VALUES (${texto(codigo, 30)}, ${texto(nome, 200)}, ${a.regime}, ${a.saude}, ${a.resumo.critico}, ${a.resumo.atencao}, ${a.resumo.info}, ${JSON.stringify(a)}::jsonb, ${texto(req.body?.usuario, 120)}) RETURNING id, created_at`;
   return enviar(res, 200, { sucesso: true, id: l?.id, criadoEm: l?.created_at, auditoria: a });
@@ -44,7 +46,7 @@ export async function apuracaoPainel(req, res) {
   await garantirTabela();
   const linhas = await sql`
     SELECT DISTINCT ON (cliente_codigo) id, cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, created_at,
-      resultado->>'declaracoes' AS declaracoes, resultado->>'aviso' AS aviso, resultado->'entregas' AS entregas
+      resultado->>'declaracoes' AS declaracoes, resultado->>'aviso' AS aviso, resultado->'entregas' AS entregas, resultado->>'incompleto' AS incompleto
     FROM apuracao_auditorias ORDER BY cliente_codigo, created_at DESC, id DESC LIMIT 700`;
   return enviar(res, 200, { sucesso: true, clientes: linhas });
 }
