@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ApuracaoCliente } from "./AuditoriaApuracoes";
 import { separarClientes, auditarCliente, extrairFatosDeTexto, extrairFatosNota, brl } from "../../server/pasta-engine.js";
 
 const NAVY = "#17233D", CORAL = "#FF6B4A", MUTED = "#5B667A", BORDER = "#E3E7EF", WHITE = "#FFFFFF";
@@ -193,7 +194,7 @@ function Abas({ itens, valor, onChange, sticky }) {
   );
 }
 
-export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, iaBusy, botoes }) {
+export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, iaBusy, botoes, abaApuracao }) {
   const [filtro, setFiltro] = useState("todos");
   const [secao, setSecao] = useState("resumo");
   const [abertas, setAbertas] = useState({});
@@ -237,7 +238,9 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
         </div>
       </Cartao>
 
-      <Abas valor={secao} onChange={setSecao} itens={[["resumo", "Resumo"], ["docs", "Documentos por pasta"], ...(a.meses?.length ? [["simples", "Simples mês a mês"]] : []), ...(a.cobertura?.linhas?.length ? [["cobertura", "Cobertura mensal", a.cobertura.linhas.filter((l) => l.faltando.length).length || null]] : []), ["alertas", "Todos os alertas", a.achados.length]]} />
+      <Abas valor={secao} onChange={setSecao} itens={[["resumo", "Resumo"], ["docs", "Documentos por pasta"], ...(a.meses?.length ? [["simples", "Simples mês a mês"]] : []), ...(a.cobertura?.linhas?.length ? [["cobertura", "Cobertura mensal", a.cobertura.linhas.filter((l) => l.faltando.length).length || null]] : []), ...(abaApuracao ? [["apuracoes", "Apurações"]] : []), ["alertas", "Todos os alertas", a.achados.length]]} />
+
+      {abaApuracao && mostra("apuracoes") && abaApuracao}
 
       {mostra("resumo") && (
         <div>
@@ -706,7 +709,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
       </Cartao>
       {!cli && !ocupado && <Cartao><div style={{ color: MUTED, fontSize: 13 }}>Selecione um cliente acima, ou clique em um cliente na Visão geral, para ver tudo o que há nas pastas dele.</div></Cartao>}
       {ocupado && !cli && <Cartao>Carregando…</Cartao>}
-      {cli && <Relatorio key={cli.id} a={cli.atual} narrativa={cli.narrativa} anterior={cli.anterior} anteriorEm={cli.anteriorEm} criadoEm={cli.criadoEm} onIa={pedirIaCliente} iaBusy={ia} />}
+      {cli && <Relatorio key={cli.id} a={cli.atual} narrativa={cli.narrativa} anterior={cli.anterior} anteriorEm={cli.anteriorEm} criadoEm={cli.criadoEm} onIa={pedirIaCliente} iaBusy={ia} abaApuracao={<ApuracaoCliente token={token} cliente={{ codigo: cli.atual.cliente.codigo, nome: cli.atual.cliente.nome, raiz: cli.atual.cliente.raiz, id: cli.atual.cliente.driveId }} />} />}
     </div>
   );
 
