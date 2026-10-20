@@ -44,7 +44,7 @@ export async function apuracaoPainel(req, res) {
   await garantirTabela();
   const linhas = await sql`
     SELECT DISTINCT ON (cliente_codigo) id, cliente_codigo, cliente_nome, regime, saude, criticos, atencoes, infos, created_at,
-      resultado->>'declaracoes' AS declaracoes, resultado->>'aviso' AS aviso
+      resultado->>'declaracoes' AS declaracoes, resultado->>'aviso' AS aviso, resultado->'entregas' AS entregas
     FROM apuracao_auditorias ORDER BY cliente_codigo, created_at DESC, id DESC LIMIT 700`;
   return enviar(res, 200, { sucesso: true, clientes: linhas });
 }
