@@ -1,4 +1,5 @@
 // Exportação dos relatórios para Excel (.xlsx). As abas são montadas por funções puras e o arquivo é gerado no navegador.
+import { montarPainel, STATUS_PAINEL } from "./painelMensal.js";
 const REGIME = { SIMPLES: "Simples Nacional", MEI: "MEI", PRESUMIDO: "Lucro Presumido / Real", REAL: "Lucro Real", NAO_SIMPLES: "Fora do Simples (DCTF)", INDEFINIDO: "Não identificado", NAO_IDENTIFICADO: "Não identificado" };
 const SEV = { critico: "Crítico", atencao: "Atenção", info: "Informativo" };
 const SIT = { sem_movimento: "Sem movimento", com_movimento: "Com movimento", entregue: "Entregue (movimento não lido)", ok: "Conferido", divergente: "Divergente", so_recibo: "Só recibo", so_documentos: "Só documentos" };
@@ -75,6 +76,12 @@ export function abasPasta(a) {
   if (docs.length > 1) abas.push({ nome: "Documentos", linhas: docs, larguras: [34, 60, 24, 10, 16, 70] });
   const pastas = [["Pasta", "Situação", "Arquivos", "Vencidos", "Vencendo", "Não lidos", "O que deve ter"], ...(a.arvore || []).map((no) => [`${"  ".repeat(no.nivel || 0)}${no.nome}`, no.status || "", n(no.arquivos), no.resumoDocs?.vencidos || 0, no.resumoDocs?.vencendo || 0, no.resumoDocs?.naoLidos || 0, no.conteudoEsperado || ""])];
   if (pastas.length > 1) abas.push({ nome: "Pastas", linhas: pastas, larguras: [40, 18, 10, 10, 10, 10, 70] });
+  if (a.cobertura?.linhas?.length) {
+    const p = montarPainel(a, { prazoDia: 15 });
+    const linhas = [["Pasta", "Documento", "Competência", "Prazo (dia 15 do mês seguinte)", "Situação", "Entrou na pasta em", "Dias de atraso", "Arquivo"]];
+    for (const i of p.itens) for (const m of p.meses) { const c = i.celulas[m]; if (!c || c.status === "nao_se_aplica") continue; linhas.push([i.pasta, i.tipo, rot(m), dt(c.prazo), STATUS_PAINEL[c.status][0], dt(c.postadoEm), c.diasAtraso || "", c.arquivo]); }
+    abas.splice(1, 0, { nome: "Painel mensal", linhas, larguras: [34, 30, 12, 18, 28, 16, 12, 50] });
+  }
   if (a.meses?.length) abas.push({ nome: "Simples mês a mês", linhas: [["Mês", "Declaração", "Recibo", "Extrato", "Guia DAS", "Receita", "Situação"], ...a.meses.map((m) => [m.rotulo, m.declaracao ? "Sim" : "Não", m.recibo ? "Sim" : "Não", m.extrato ? "Sim" : "Não", m.das ? "Sim" : "Não", n(m.receita), m.semMovimento && m.situacao === "ok" ? "Sem movimento (entregue)" : m.situacao || ""])], larguras: [10, 12, 10, 10, 10, 14, 28] });
   if (a.cobertura?.linhas?.length) abas.push({ nome: "Cobertura mensal", linhas: [["Documento", "Pasta", ...a.cobertura.meses.map(rot)], ...a.cobertura.linhas.map((l) => [l.tipo, String(l.grupo || "").split(" / ").slice(-1)[0], ...a.cobertura.meses.map((m) => (l.presentes?.[m] ? "OK" : m >= l.ini && m <= l.fim ? "FALTA" : ""))])], larguras: [34, 28] });
   return abas;
