@@ -179,7 +179,7 @@ async function emLotes(lista, tamanho, fn) {
   for (let i = 0; i < lista.length; i += tamanho) await Promise.all(lista.slice(i, i + tamanho).map(fn));
 }
 
-export async function auditarPastaDrive({ pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "", outros = [], limiteMs = 42000 }) {
+export async function auditarPastaDrive({ pastaId, codigo, nome, raiz, regime = "AUTO", inicio = "", outros = [], limiteMs = 230000 }) {
   const outrosClientes = (Array.isArray(outros) ? outros : []).slice(0, 700).map((o) => ({ codigo: String(o.codigo || ""), nome: String(o.nome || "").slice(0, 120), cnpj: String(o.cnpj || "").replace(/\D/g, "").slice(0, 14) }));
   const inicioT = Date.now();
   const entradas = [];
