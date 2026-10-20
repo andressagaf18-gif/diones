@@ -188,8 +188,8 @@ export async function auditarPastaDrive({ pastaId, codigo, nome, raiz, regime = 
     try {
       const buf = await baixar(e._id);
       if (/\.pdf$/i.test(nomeArq)) {
-        const d = await pdf(buf, { max: 4, pagerender: paginaComoTexto });
-        fatos[e.caminho] = extrairFatosDeTexto(nomeArq, d.text || "");
+        const texto = await textoDoPdf(buf, { max: 4 });
+        fatos[e.caminho] = extrairFatosDeTexto(nomeArq, texto);
       } else {
         const f = extrairFatosNota(nomeArq, buf.toString("utf8"));
         if (f) fatos[e.caminho] = f;
@@ -210,6 +210,51 @@ export async function driveAuditar(req, res) {
   if (!pastaId || !codigo) return enviar(res, 400, { sucesso: false, error: "Informe a pasta do cliente." });
   const r = await auditarPastaDrive({ pastaId, codigo, nome, raiz, regime, inicio, outros });
   return enviar(res, 200, { sucesso: true, ...r });
+}
+
+// PDFs com a tabela de referências (xref) quebrada ("bad XRef entry"): reconstrói a tabela varrendo os objetos do arquivo.
+export function repararPdf(buf) {
+  const txt = buf.toString("latin1");
+  const objs = new Map();
+  for (const m of txt.matchAll(/(?:^|[\r\n\s])(\d+)\s+(\d+)\s+obj\b/g)) {
+    const inicio = m.index + m[0].indexOf(m[1]);
+    objs.set(Number(m[1]), { off: inicio, gen: Number(m[2]) });
+  }
+  if (!objs.size) return null;
+  let raiz = null, info = null;
+  for (const m of txt.matchAll(/trailer\s*<<([\s\S]*?)>>/g)) {
+    const r = m[1].match(/\/Root\s+(\d+)\s+(\d+)\s+R/); if (r) raiz = `${r[1]} ${r[2]} R`;
+    const i = m[1].match(/\/Info\s+(\d+)\s+(\d+)\s+R/); if (i) info = `${i[1]} ${i[2]} R`;
+  }
+  if (!raiz) { const c = txt.match(/(\d+)\s+(\d+)\s+obj[\s\S]{0,80}?\/Type\s*\/Catalog/); if (c) raiz = `${c[1]} ${c[2]} R`; }
+  if (!raiz) return null;
+  const max = Math.max(...objs.keys());
+  let tabela = `xref\n0 ${max + 1}\n0000000000 65535 f \n`;
+  for (let n = 1; n <= max; n++) {
+    const o = objs.get(n);
+    tabela += o ? `${String(o.off).padStart(10, "0")} ${String(o.gen).padStart(5, "0")} n \n` : "0000000000 65535 f \n";
+  }
+  const inicioTabela = buf.length + 1;
+  const cauda = `\n${tabela}trailer\n<< /Size ${max + 1} /Root ${raiz}${info ? ` /Info ${info}` : ""} >>\nstartxref\n${inicioTabela}\n%%EOF\n`;
+  return Buffer.concat([buf, Buffer.from(cauda, "latin1")]);
+}
+
+// Lê o texto de um PDF; se o leitor padrão falhar, tenta reparar a tabela de referências e usar outras versões do leitor.
+export async function textoDoPdf(buf, { max = 6 } = {}) {
+  const versoes = [{}, { version: "v2.0.550" }, { version: "v1.9.426" }, { version: "v1.10.88" }];
+  let ultimoErro;
+  let reparado;
+  for (const reparar of [false, true]) {
+    let base = buf;
+    if (reparar) { reparado ||= repararPdf(buf); if (!reparado) break; base = reparado; }
+    for (const v of versoes) {
+      try {
+        const d = await pdf(base, { max, pagerender: paginaComoTexto, ...v });
+        return d.text || "";
+      } catch (e) { ultimoErro ||= e; }
+    }
+  }
+  throw ultimoErro || new Error("PDF ilegível");
 }
 
 export { varrer, baixar, paginaComoTexto, emLotes };
