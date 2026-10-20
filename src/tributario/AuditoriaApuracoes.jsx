@@ -5,6 +5,8 @@ const NAVY = "#17233D", CORAL = "#FF6B4A", MUTED = "#5B667A", BORDER = "#E3E7EF"
 const COR = { critico: "#C62828", atencao: "#E08A00", info: "#4A6FA5" };
 const ROTULO = { critico: "Crítico", atencao: "Atenção", info: "Informativo" };
 const pct = (v) => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(2).replace(".", ",")}%`);
+const mesBr = (k) => `${k.slice(5, 7)}/${k.slice(2, 4)}`;
+const Chips = ({ meses, cor, fundo }) => (meses?.length ? <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>{meses.map((k) => <span key={k} style={{ background: fundo, color: cor, borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 800 }}>{mesBr(k)}</span>)}</span> : <span style={{ color: MUTED }}>nenhum</span>);
 const dataBr = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
 
 const Cartao = ({ children, style }) => <div style={{ background: WHITE, borderWidth: 1, borderStyle: "solid", borderColor: BORDER, borderRadius: 14, padding: 16, ...style }}>{children}</div>;
@@ -45,7 +47,7 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
     setFazendo((f) => ({ ...f, [c.codigo]: true }));
     try {
       const d = await api("apuracao-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz });
-      setPainel((p) => ({ ...p, [c.codigo]: { cliente_codigo: c.codigo, cliente_nome: c.nome, saude: d.auditoria.saude, criticos: d.auditoria.resumo.critico, atencoes: d.auditoria.resumo.atencao, infos: d.auditoria.resumo.info, declaracoes: String(d.auditoria.declaracoes), aviso: d.auditoria.aviso || null, created_at: d.criadoEm, id: d.id } }));
+      setPainel((p) => ({ ...p, [c.codigo]: { cliente_codigo: c.codigo, cliente_nome: c.nome, saude: d.auditoria.saude, criticos: d.auditoria.resumo.critico, atencoes: d.auditoria.resumo.atencao, infos: d.auditoria.resumo.info, declaracoes: String(d.auditoria.declaracoes), aviso: d.auditoria.aviso || null, entregas: d.auditoria.entregas, created_at: d.criadoEm, id: d.id } }));
       return d;
     } catch (e) { setErro(`${c.codigo} - ${c.nome}: ${e.message}`); }
     finally { setFazendo((f) => ({ ...f, [c.codigo]: false })); }
@@ -105,6 +107,17 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
             <div style={{ marginTop: 10, fontSize: 12 }}>Versões: {detalhe.historico.map((h) => <button key={h.id} onClick={() => abrirVersao(h.id)} style={{ marginRight: 6, border: `1px solid ${BORDER}`, background: h.id === detalhe.atual.id ? NAVY : WHITE, color: h.id === detalhe.atual.id ? WHITE : NAVY, borderRadius: 8, padding: "3px 8px", cursor: "pointer", fontSize: 11 }}>{dataBr(h.created_at)}</button>)}</div>
           )}
         </Cartao>
+        {a.entregas && (a.entregas.entregues.length > 0 || a.entregas.naoEncontrados.length > 0) && (
+          <Cartao style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Entregas do Simples Nacional (PGDAS-D)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: "8px 10px", fontSize: 12, alignItems: "center" }}>
+              <b>Entregues com movimento ({a.entregas.comMovimento.length})</b><Chips meses={a.entregas.comMovimento} cor="#1B5E20" fundo="#E3F4E6" />
+              <b>Entregues sem movimento ({a.entregas.semMovimento.length})</b><Chips meses={a.entregas.semMovimento} cor="#0D47A1" fundo="#E3EEFB" />
+              <b>Não encontradas ({a.entregas.naoEncontrados.length})</b><Chips meses={a.entregas.naoEncontrados} cor={COR.critico} fundo="#FDECEC" />
+              {a.entregas.aVencer?.length > 0 && (<><b>Dentro do prazo</b><Chips meses={a.entregas.aVencer} cor="#8A5A00" fundo="#FFF3D6" /></>)}
+            </div>
+          </Cartao>
+        )}
         {a.aviso && <Cartao style={{ marginBottom: 12, borderColor: COR.atencao }}>{a.aviso}</Cartao>}
         {a.meses?.length > 0 && (
           <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
@@ -167,13 +180,14 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
       {carregando ? <Cartao>Carregando clientes do Drive…</Cartao> : (
         <Cartao style={{ padding: 0, overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
-            <thead><tr style={{ textAlign: "left", color: MUTED, background: "#F6F8FB" }}>{["Cliente", "Declarações", "Críticos", "Atenção", "Saúde", "Última auditoria", ""].map((h) => <th key={h} style={{ padding: "8px 10px" }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ textAlign: "left", color: MUTED, background: "#F6F8FB" }}>{["Cliente", "Declarações", "Sem movimento", "Críticos", "Atenção", "Saúde", "Última auditoria", ""].map((h) => <th key={h} style={{ padding: "8px 10px" }}>{h}</th>)}</tr></thead>
             <tbody>{lista.map((c) => {
               const p = painel[c.codigo];
               return (
                 <tr key={c.codigo} style={{ borderTop: `1px solid ${BORDER}` }}>
                   <td style={{ padding: "7px 10px", fontWeight: 800 }}>{c.codigo} - {c.nome}</td>
                   <td style={{ padding: "7px 10px" }}>{p ? (p.aviso ? <span style={{ color: COR.atencao }}>sem PGDAS</span> : p.declaracoes) : "—"}</td>
+                  <td style={{ padding: "7px 10px" }}>{p?.entregas ? (p.entregas.semMovimento.length ? <Chips meses={p.entregas.semMovimento.slice(-6)} cor="#0D47A1" fundo="#E3EEFB" /> : "—") : "—"}{p?.entregas?.semMovimento?.length > 6 ? ` +${p.entregas.semMovimento.length - 6}` : ""}</td>
                   <td style={{ padding: "7px 10px", fontWeight: 900, color: p?.criticos > 0 ? COR.critico : MUTED }}>{p ? p.criticos : "—"}</td>
                   <td style={{ padding: "7px 10px", color: p?.atencoes > 0 ? COR.atencao : MUTED }}>{p ? p.atencoes : "—"}</td>
                   <td style={{ padding: "7px 10px" }}>{p ? p.saude : "—"}</td>
