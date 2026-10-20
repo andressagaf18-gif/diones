@@ -467,7 +467,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
   };
   const auditarUmDrive = (c) => api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio, outros: listaOutros() });
   async function auditarDrive() {
-    setErro(""); setSalvo(""); setLendo(true);
+    setErro(""); setSalvo(""); setAviso([]); setLendo(true);
     const alvos = driveUm === "todos" ? driveLista.clientes : driveLista.clientes.filter((c) => c.id === driveUm);
     const resultado = []; const avisos = [];
     try {
@@ -477,11 +477,19 @@ export default function AuditoriaPastas({ token, onVoltar }) {
         try {
           const d = await auditarUmDrive(c);
           resultado.push(d.auditoria);
+          // Persiste cada cliente antes de continuar: todas as abas usam o histórico salvo.
+          const ids = await salvarVersoes([d.auditoria], "drive");
+          if (!ids[c.codigo]) avisos.push(`${c.codigo} - ${c.nome}: análise concluída, mas não foi possível salvar no histórico. Rode novamente este cliente.`);
+          await carregarPainel();
           if (d.parcial) avisos.push(`${c.codigo} - ${c.nome}: li ${d.documentosLidos} de ${d.documentosCandidatos} documentos (limite de tempo). Rode de novo só para este cliente para completar.`);
         } catch (e) { avisos.push(`${c.codigo} - ${c.nome}: não consegui ler (${e.message}).`); }
+        setAviso([...avisos]);
       }
       if (!resultado.length) throw new Error("Nenhum cliente pôde ser auditado. " + (avisos[0] || ""));
-      await aposAuditoria(resultado, "drive", avisos);
+      // Os resultados já foram salvos individualmente; não duplicar versões no final.
+      setAviso([...avisos]);
+      setLendo(false);
+      setProgresso("");
     } catch (e) { setErro(e.message); setLendo(false); }
   }
 
@@ -808,6 +816,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     <div>
       {cabecalho}
       <Abas valor={aba} onChange={(k) => { setAba(k); if (k === "geral" || k === "vencimentos") carregarPainel(); }} itens={abas} sticky />
+      {lendo && aba !== "auditar" && <div role="status" style={{ marginBottom: 10, color: MUTED, fontSize: 12 }}>{progresso} · Os clientes já concluídos estão disponíveis; a análise continua.</div>}
       {erro && <div className="nao-imprimir" style={{ marginBottom: 10, color: COR.critico, fontSize: 12, fontWeight: 700, background: "#FDECEC", borderRadius: 8, padding: "8px 10px" }}>{erro} <button type="button" onClick={() => setErro("")} style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", fontWeight: 900 }}>×</button></div>}
       {aba === "auditar" && abaAuditar}
       {aba === "geral" && abaGeral}
