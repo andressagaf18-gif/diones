@@ -17,17 +17,49 @@ const Botao = ({ children, onClick, disabled, claro }) => (
 
 const SIT = { sem_movimento: ["Sem movimento", "#0D47A1"], com_movimento: ["Com movimento", "#2E7D32"], entregue: ["Entregue (movimento não lido)", "#555"], ok: ["Conferido", "#2E7D32"], divergente: ["Divergente", COR.critico], entregue_mit: ["Entregue", "#555"], so_documentos: ["Só documentos", COR.info] };
 const dtBr = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
-const BlocoEntregas = ({ titulo, e }) => (e && (e.entregues.length > 0 || e.naoEncontrados.length > 0) ? (
-  <Cartao style={{ marginBottom: 12 }}>
-    <div style={{ fontWeight: 900, marginBottom: 8 }}>{titulo}</div>
-    <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: "8px 10px", fontSize: 12, alignItems: "center" }}>
-      <b>Entregues com movimento ({e.comMovimento.length})</b><Chips meses={e.comMovimento} cor="#1B5E20" fundo="#E3F4E6" />
-      <b>Entregues sem movimento ({e.semMovimento.length})</b><Chips meses={e.semMovimento} cor="#0D47A1" fundo="#E3EEFB" />
-      <b>Não encontradas ({e.naoEncontrados.length})</b><Chips meses={e.naoEncontrados} cor={COR.critico} fundo="#FDECEC" />
-      {e.indefinido?.length > 0 && (<><b>Entregues (movimento não identificado)</b><Chips meses={e.indefinido} cor="#555" fundo="#ECEFF4" /></>)}
-      {e.aVencer?.length > 0 && (<><b>Dentro do prazo</b><Chips meses={e.aVencer} cor="#8A5A00" fundo="#FFF3D6" /></>)}
-    </div>
-  </Cartao>) : null);
+const ESTADOS = [
+  ["comMovimento", "Com movimento", "#1B5E20", "#E3F4E6"],
+  ["semMovimento", "Sem movimento", "#0D47A1", "#DCEBFB"],
+  ["indefinido", "Entregue (movimento não lido)", "#4A5568", "#E9ECF2"],
+  ["naoEncontrados", "Não encontrada", "#B71C1C", "#FDE3E3"],
+  ["aVencer", "Dentro do prazo", "#8A5A00", "#FFF1CF"],
+];
+// Linha do tempo: um quadrado por mês, colorido pela situação da entrega.
+const BlocoEntregas = ({ titulo, e }) => {
+  if (!e || !(e.entregues.length > 0 || e.naoEncontrados.length > 0)) return null;
+  const mapa = {};
+  for (const [k] of ESTADOS) for (const m of e[k] || []) mapa[m] = k;
+  const meses = Object.keys(mapa).sort();
+  const anos = [...new Set(meses.map((m) => m.slice(0, 4)))];
+  const total = meses.length;
+  const entregues = e.entregues.length;
+  return (
+    <Cartao style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "baseline" }}>
+        <div style={{ fontWeight: 900 }}>{titulo}</div>
+        <div style={{ fontSize: 11.5, color: MUTED }}>{entregues} de {total} mês(es) com declaração · {e.semMovimento.length} sem movimento{e.naoEncontrados.length ? ` · ${e.naoEncontrados.length} não encontrado(s)` : ""}</div>
+      </div>
+      {anos.map((ano) => (
+        <div key={ano} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <div style={{ width: 38, fontSize: 11, fontWeight: 900, color: MUTED }}>{ano}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(12, minmax(34px, 1fr))", gap: 4, flex: 1, minWidth: 330 }}>
+            {Array.from({ length: 12 }, (_, i) => {
+              const k = `${ano}-${String(i + 1).padStart(2, "0")}`;
+              const st = ESTADOS.find(([x]) => x === mapa[k]);
+              return (
+                <div key={k} title={st ? `${String(i + 1).padStart(2, "0")}/${ano}: ${st[1]}` : `${String(i + 1).padStart(2, "0")}/${ano}: fora do período`}
+                  style={{ borderRadius: 8, textAlign: "center", padding: "6px 0", fontSize: 10.5, fontWeight: 900, background: st ? st[3] : "#F6F7FA", color: st ? st[2] : "#B8BFCC", border: `1px solid ${st ? st[2] + "33" : "#EEF0F5"}` }}>
+                  {String(i + 1).padStart(2, "0")}
+                </div>);
+            })}
+          </div>
+        </div>))}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12, fontSize: 11, color: MUTED }}>
+        {ESTADOS.filter(([k]) => (e[k] || []).length > 0).map(([k, r, c, f]) => (
+          <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: f, border: `1px solid ${c}66` }} />{r} ({e[k].length})</span>))}
+      </div>
+    </Cartao>);
+};
 
 // Lucro Presumido / Real: conferência mês a mês por tributo
 const BlocoPresumido = ({ P }) => (
@@ -111,20 +143,55 @@ const BlocoOutras = ({ a }) => (
   </>
 );
 
-function CorpoApuracao({ a, criadoEm, historico, atualId, abrirVersao }) {
+const REGIME_ROTULO = { SIMPLES: "Simples Nacional", PRESUMIDO: "Lucro Presumido / Real", NAO_SIMPLES: "Fora do Simples (DCTF)", INDEFINIDO: "Regime não identificado" };
+const Anel = ({ valor, cor }) => {
+  const r = 34, c = 2 * Math.PI * r;
   return (
-    <>
-        <Cartao style={{ marginBottom: 12 }}>
-          <div style={{ color: CORAL, fontSize: 9, fontWeight: 900, letterSpacing: 1 }}>AUDITORIA DA APURAÇÃO · {a.regime === "NAO_SIMPLES" ? "FORA DO SIMPLES (DCTF)" : a.regime === "PRESUMIDO" ? "LUCRO PRESUMIDO / REAL (MIT)" : "SIMPLES NACIONAL"}</div>
-          <h2 style={{ margin: "6px 0 2px" }}>{a.cliente.codigo} - {a.cliente.nome}</h2>
-          <div style={{ fontSize: 12, color: MUTED }}>{a.declaracoes} {a.regime === "PRESUMIDO" ? "MIT" : "declaração(ões)"} lida(s) · gerado em {dataBr(criadoEm)}</div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            {[["Saúde", a.saude, a.saude >= 80 ? "#2E7D32" : a.saude >= 50 ? COR.atencao : COR.critico], ["Críticos", a.resumo.critico, COR.critico], ["Atenção", a.resumo.atencao, COR.atencao], ["Informativos", a.resumo.info, COR.info]].map(([r, v, c]) => (
-              <div key={r} style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: "8px 14px", minWidth: 100 }}><div style={{ fontSize: 10, color: MUTED }}>{r}</div><div style={{ fontSize: 22, fontWeight: 900, color: c }}>{v}</div></div>
+    <svg width="92" height="92" viewBox="0 0 92 92" role="img" aria-label={`Saúde ${valor} de 100`}>
+      <circle cx="46" cy="46" r={r} fill="none" stroke="#E8ECF3" strokeWidth="9" />
+      <circle cx="46" cy="46" r={r} fill="none" stroke={cor} strokeWidth="9" strokeLinecap="round" strokeDasharray={`${(valor / 100) * c} ${c}`} transform="rotate(-90 46 46)" />
+      <text x="46" y="52" textAnchor="middle" fontSize="22" fontWeight="900" fill={cor}>{valor}</text>
+    </svg>);
+};
+
+function CorpoApuracao({ a, criadoEm, historico, atualId, abrirVersao }) {
+  const cor = a.saude >= 80 ? "#2E7D32" : a.saude >= 50 ? COR.atencao : COR.critico;
+  const prioridades = [...a.achados.filter((x) => x.severidade === "critico"), ...a.achados.filter((x) => x.severidade === "atencao")].slice(0, 4);
+  const veredito = a.resumo.critico > 0 ? `${a.resumo.critico} ponto(s) crítico(s) para corrigir` : a.resumo.atencao > 0 ? `${a.resumo.atencao} ponto(s) de atenção` : "Nenhuma divergência nas declarações lidas";
+  const entregasTodas = [a.entregas, a.presumido?.entregas].filter(Boolean);
+  const semMov = entregasTodas.reduce((t, e) => t + (e.semMovimento?.length || 0), 0);
+  const faltando = entregasTodas.reduce((t, e) => t + (e.naoEncontrados?.length || 0), 0);
+  const imprimir = () => setTimeout(() => window.print(), 100);
+  return (
+    <div id="relatorio-apuracao">
+      <style>{`@media print { body * { visibility: hidden !important; } #relatorio-apuracao, #relatorio-apuracao * { visibility: visible !important; } #relatorio-apuracao { position: absolute; left: 0; top: 0; width: 100%; } .nao-imprimir { display: none !important; } }`}</style>
+        <Cartao style={{ marginBottom: 12, borderTop: `4px solid ${cor}` }}>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
+            <Anel valor={a.saude} cor={cor} />
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ color: CORAL, fontSize: 9, fontWeight: 900, letterSpacing: 1 }}>AUDITORIA DA APURAÇÃO · {(REGIME_ROTULO[a.regime] || a.regime).toUpperCase()}{a.presumido ? " + LUCRO PRESUMIDO/REAL" : ""}</div>
+              <h2 style={{ margin: "4px 0 2px", fontSize: 21 }}>{a.cliente.codigo} - {a.cliente.nome}</h2>
+              <div style={{ fontSize: 15, fontWeight: 900, color: cor }}>{veredito}</div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{a.arquivosLidos ?? 0} arquivo(s) lido(s){a.arquivosDaMemoria ? `, ${a.arquivosDaMemoria} da memória` : ""} · gerado em {dataBr(criadoEm)}</div>
+            </div>
+            <button className="nao-imprimir" onClick={imprimir} style={{ border: `1px solid ${BORDER}`, background: WHITE, color: NAVY, borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Imprimir / salvar PDF</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginTop: 14 }}>
+            {[["Críticos", a.resumo.critico, COR.critico], ["Atenção", a.resumo.atencao, COR.atencao], ["Informativos", a.resumo.info, COR.info], ["Meses sem movimento", semMov, "#0D47A1"], ["Entregas não encontradas", faltando, faltando ? COR.critico : "#2E7D32"]].map(([r, v, c]) => (
+              <div key={r} style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: "8px 12px" }}><div style={{ fontSize: 10, color: MUTED }}>{r}</div><div style={{ fontSize: 22, fontWeight: 900, color: c }}>{v}</div></div>
             ))}
           </div>
+          {prioridades.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, color: MUTED, letterSpacing: 0.5, marginBottom: 6 }}>O QUE FAZER PRIMEIRO</div>
+              {prioridades.map((x, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: i ? `1px solid ${BORDER}` : "none" }}>
+                  <span style={{ flex: "0 0 auto", width: 22, height: 22, borderRadius: 999, background: COR[x.severidade], color: WHITE, fontSize: 11, fontWeight: 900, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                  <div style={{ fontSize: 12.5 }}><b>{x.titulo}</b>{x.sugestao && <div style={{ color: MUTED }}>→ {x.sugestao}</div>}</div>
+                </div>))}
+            </div>)}
           {historico?.length > 1 && (
-            <div style={{ marginTop: 10, fontSize: 12 }}>Versões: {historico.map((h) => <button key={h.id} onClick={() => abrirVersao(h.id)} style={{ marginRight: 6, border: `1px solid ${BORDER}`, background: h.id === atualId ? NAVY : WHITE, color: h.id === atualId ? WHITE : NAVY, borderRadius: 8, padding: "3px 8px", cursor: "pointer", fontSize: 11 }}>{dataBr(h.created_at)}</button>)}</div>
+            <div className="nao-imprimir" style={{ marginTop: 12, fontSize: 12 }}>Versões: {historico.map((h) => <button key={h.id} onClick={() => abrirVersao(h.id)} style={{ marginRight: 6, marginBottom: 4, border: `1px solid ${BORDER}`, background: h.id === atualId ? NAVY : WHITE, color: h.id === atualId ? WHITE : NAVY, borderRadius: 8, padding: "3px 8px", cursor: "pointer", fontSize: 11 }}>{dataBr(h.created_at)}</button>)}</div>
           )}
         </Cartao>
         {a.regime !== "PRESUMIDO" && <BlocoEntregas titulo={a.regime === "NAO_SIMPLES" ? "Entregas da DCTF (tributos federais)" : "Entregas do Simples Nacional (PGDAS-D)"} e={a.entregas} />}
@@ -193,7 +260,7 @@ function CorpoApuracao({ a, criadoEm, historico, atualId, abrirVersao }) {
             </div>)))}
           {a.falhas?.length > 0 && <div style={{ marginTop: 8, fontSize: 11.5, color: MUTED }}>Arquivos não lidos: {a.falhas.join(" · ")}</div>}
         </Cartao>
-    </>
+    </div>
   );
 }
 
