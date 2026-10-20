@@ -288,6 +288,17 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
       {mostra("simples") && a.meses?.length > 0 && (
         <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>Simples Nacional — mês a mês</div>
+          {(() => {
+            const ok = a.meses.filter((m) => m.declaracao || m.recibo);
+            const sem = ok.filter((m) => m.semMovimento).map((m) => m.rotulo);
+            const com = ok.filter((m) => !m.semMovimento).map((m) => m.rotulo);
+            const falta = a.meses.filter((m) => !(m.declaracao || m.recibo) && m.situacao !== "no_prazo").map((m) => m.rotulo);
+            return (<div style={{ fontSize: 12, lineHeight: 1.7, marginBottom: 8 }}>
+              <div><b>Entregues sem movimento ({sem.length}):</b> {sem.join(", ") || "nenhum"}</div>
+              <div><b>Entregues com movimento ({com.length}):</b> {com.join(", ") || "nenhum"}</div>
+              {falta.length > 0 && <div style={{ color: COR.critico }}><b>Sem declaração/recibo ({falta.length}):</b> {falta.join(", ")}</div>}
+            </div>);
+          })()}
           <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
             <thead><tr style={{ textAlign: "left", color: MUTED }}>{["Mês", "Declaração", "Recibo", "Extrato", "Guia DAS", "Receita", "Situação"].map((h) => <th key={h} style={{ padding: "4px 8px" }}>{h}</th>)}</tr></thead>
             <tbody>{a.meses.map((m) => (
