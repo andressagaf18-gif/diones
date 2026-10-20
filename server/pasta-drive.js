@@ -111,7 +111,11 @@ async function paginaComoTexto(pagina) {
   return saida.join("\n") + "\n";
 }
 
-export async function listarClientesDrive() {
+// Pastas de clientes que saíram da base ("BAIXADOS E RESCINDIDOS"): ficam fora do lote, mas podem ser listadas à parte.
+const semAcento = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+export const pastaInativa = (nome) => /baixad|rescind/i.test(semAcento(nome));
+
+export async function listarClientesDrive({ incluirInativos = false } = {}) {
   const bruto = String(process.env.PASTA_DRIVE_ROOT_ID || "").trim();
   // Aceita o ID puro ou a URL inteira da pasta.
   const raiz = (bruto.match(/folders\/([A-Za-z0-9_-]+)/) || [])[1] || bruto.replace(/[?&#].*$/, "").replace(/^["']|["']$/g, "").trim();
@@ -128,18 +132,29 @@ export async function listarClientesDrive() {
     throw e;
   }
   const clientes = filhos
-    .filter((f) => f.mimeType === PASTA)
+    .filter((f) => f.mimeType === PASTA && !pastaInativa(f.name))
     .map((f) => ({ id: f.id, raiz: f.name, m: f.name.match(PADRAO_PASTAS.raizCliente) }))
     .filter((f) => f.m)
     .map((f) => ({ id: f.id, raiz: f.raiz, codigo: f.m[1], nome: f.m[2].trim() }))
     .sort((a, b) => Number(a.codigo) - Number(b.codigo));
   const ignoradas = filhos.filter((f) => f.mimeType === PASTA && !PADRAO_PASTAS.raizCliente.test(f.name)).map((f) => f.name);
-  return { clientes, ignoradas };
+  const inativos = [];
+  if (incluirInativos) {
+    for (const pasta of filhos.filter((f) => f.mimeType === PASTA && pastaInativa(f.name))) {
+      const dentro = await listarFilhos(pasta.id);
+      for (const f of dentro) {
+        const m = f.mimeType === PASTA ? f.name.match(PADRAO_PASTAS.raizCliente) : null;
+        if (m) inativos.push({ id: f.id, raiz: `${pasta.name}/${f.name}`, codigo: m[1], nome: m[2].trim(), inativo: true });
+      }
+    }
+    inativos.sort((a, b) => Number(a.codigo) - Number(b.codigo));
+  }
+  return { clientes, ignoradas, inativos };
 }
 
 export async function driveClientes(req, res) {
   try {
-    const r = await listarClientesDrive();
+    const r = await listarClientesDrive({ incluirInativos: String(req.query?.inativos || "") === "1" });
     return enviar(res, 200, { sucesso: true, ...r });
   } catch (e) {
     if (e.status) return enviar(res, e.status, { sucesso: false, error: e.message });
