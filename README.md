@@ -58,3 +58,21 @@ vercel dev
 O `vercel dev` sobe tanto o front-end quanto as funções da pasta `/api` juntos,
 simulando o ambiente de produção. Copie `.env.example` para `.env` e preencha
 sua chave antes de rodar.
+
+### Desempenho das auditorias do Drive
+
+A varredura consulta até quatro pastas simultaneamente e mantém o limite de
+6.000 entradas. A auditoria de pastas reutiliza fatos extraídos de documentos
+inalterados em um cache em memória por instância (até 500 entradas, por 15 minutos).
+A chave considera cliente, pasta, arquivo, caminho, modificação e tamanho;
+arquivos sem data de modificação e falhas de leitura não são armazenados.
+Não há alteração de banco nem armazenamento dos PDFs nesse cache.
+O benefício nas repetições depende de a mesma instância continuar ativa;
+a primeira auditoria ainda precisa baixar e analisar os documentos.
+A fila de leitura de PDFs permanece serializada por segurança.
+
+Testes isolados, sem credenciais ou acesso ao Drive:
+
+```bash
+node --test tests/drive-performance.test.js
+```
