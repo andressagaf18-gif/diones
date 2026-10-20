@@ -1,3 +1,4 @@
+import { clientesSemAuditoria } from "./clientes-auditoria.js";
 import { useEffect, useMemo, useState } from "react";
 import { brlN } from "../../server/apuracao-engine.js";
 
@@ -293,18 +294,25 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
     setDetalhe((x) => ({ ...x, atual: d.atual }));
   }
   async function auditarEAbrir(c) { const d = await auditar(c); if (d) await abrir(c); }
-  async function auditarLote(somentePendentes) {
-    const alvo = clientes.filter((c) => !somentePendentes || !painel[c.codigo] || painel[c.codigo].incompleto === "true");
+  async function auditarLote(modo) {
+    let alvo = clientes;
     setLote({ feitos: 0, total: alvo.length, atual: "" });
     setFalhasLote([]); setErro("");
     const falhou = [];
     try {
+      if (modo !== "todos") {
+        const base = await api("apuracao-painel", null, "GET");
+        const historico = base.clientes || [];
+        setPainel(Object.fromEntries(historico.map(x => [String(x.cliente_codigo), x])));
+        alvo = modo === "novos" ? clientesSemAuditoria(clientes, historico, "cliente_codigo") : clientes.filter(c => historico.some(x => String(x.cliente_codigo) === String(c.codigo) && x.incompleto === "true"));
+        if (!alvo.length) { setErro(modo === "novos" ? "Todos os clientes já possuem auditoria salva de apurações." : "Não há análises incompletas para retomar."); return; }
+      }
       for (let i = 0; i < alvo.length; i++) {
         setLote({ feitos: i, total: alvo.length, atual: `${alvo[i].codigo} - ${alvo[i].nome}` });
         try { const d = await auditar(alvo[i]); if (!d) falhou.push(`${alvo[i].codigo} - ${alvo[i].nome}`); }
         catch { falhou.push(`${alvo[i].codigo} - ${alvo[i].nome}`); }
       }
-    } finally { setLote(null); setFalhasLote(falhou); }
+    } catch (e) { setErro(e.message); } finally { setLote(null); setFalhasLote(falhou); }
   }
 
   const lista = useMemo(() => clientes.filter((c) => {
@@ -344,13 +352,14 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
         <h2 style={{ margin: "6px 0" }}>Conferir se o imposto apurado está certo</h2>
         <p style={{ color: MUTED, fontSize: 12, lineHeight: 1.55, margin: 0, maxWidth: 800 }}>Lê direto do Drive as declarações e guias. Simples: refaz o PGDAS-D e compara com o DAS. Lucro Presumido: refaz IRPJ, CSLL, PIS, COFINS e ISS e compara com a MIT, DARFs e DAM. Mostra também as entregas sem movimento (MIT, PGDAS-D), a DCTFWeb da folha, a DIME e a DEFIS. Lucro Real ainda não é recalculado.</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <Botao onClick={() => auditarLote(true)} disabled={!!lote || carregando}>Auditar clientes ainda não auditados</Botao>
-          <Botao claro onClick={() => auditarLote(false)} disabled={!!lote || carregando}>Reauditar todos</Botao>
+          <Botao onClick={() => auditarLote("novos")} disabled={!!lote || carregando}>Somente clientes sem auditoria salva ({clientesSemAuditoria(clientes, Object.values(painel), "cliente_codigo").length})</Botao>
+          <Botao claro onClick={() => auditarLote("incompletos")} disabled={!!lote || carregando}>Retomar análises incompletas</Botao>
+          <Botao claro onClick={() => auditarLote("todos")} disabled={!!lote || carregando}>Reauditar todos</Botao>
           <Botao claro onClick={carregar} disabled={!!lote || carregando}>Recarregar lista</Botao>
         </div>
         {lote && <div style={{ marginTop: 10, fontSize: 12 }}><b>{lote.feitos}/{lote.total}</b> · auditando {lote.atual}…<div style={{ height: 6, background: BORDER, borderRadius: 4, marginTop: 4 }}><div style={{ height: 6, width: `${(lote.feitos / Math.max(1, lote.total)) * 100}%`, background: CORAL, borderRadius: 4 }} /></div></div>}
       </Cartao>
-      {falhasLote.length > 0 && <Cartao style={{ marginBottom: 12, borderColor: COR.atencao, fontSize: 12 }}>Concluído, mas {falhasLote.length} cliente(s) deram erro e ficaram pendentes: {falhasLote.join(" · ")}. Os demais já estão salvos. Clique em “Auditar clientes ainda não auditados” para tentar só estes.</Cartao>}
+      {falhasLote.length > 0 && <Cartao style={{ marginBottom: 12, borderColor: COR.atencao, fontSize: 12 }}>Concluído, mas {falhasLote.length} cliente(s) deram erro e ficaram pendentes: {falhasLote.join(" · ")}. Os demais já estão salvos. Use “Somente clientes sem auditoria salva” para os que não foram salvos ou “Retomar análises incompletas” para os que ficaram parciais.</Cartao>}
       {erro && <Cartao style={{ marginBottom: 12, borderColor: COR.critico, color: COR.critico, fontSize: 12 }}>{erro}</Cartao>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {[["todos", `Todos (${tot.total})`], ["pendente", `Não auditados (${tot.total - tot.auditados})`], ["critico", `Com divergência (${tot.criticos})`], ["ok", `Conferidos (${tot.ok})`], ["foraSimples", `Fora do Simples · MIT/DCTF (${tot.foraSimples})`], ["semDecl", `Sem nenhuma declaração (${tot.semDecl})`]].map(([k, r]) => (
