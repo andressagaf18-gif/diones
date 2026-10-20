@@ -250,6 +250,12 @@ export function extrairFatosDeTexto(nome, texto) {
     fatos.debitoDeclarado = paraNumero(rec[5]);
   }
 
+  // Entrega: data/hora da transmissão e número do recibo do PGDAS-D.
+  const tr = t.match(/Data e Hor[aá]rio da Transmiss[aã]o[\s\S]{0,160}?(\d{2})\/(\d{2})\/(\d{4})/i);
+  if (tr && !/Retificadora/i.test(t)) fatos.entregaEm = `${tr[3]}-${tr[2]}-${tr[1]}`;
+  const nr = t.match(/N[úu]mero do Recibo:?\s*(\d{2}\.\d{2}\.\d{5}\.\d{7}-\d)/i) || t.match(/N[úu]mero do Recibo[\s\S]{0,40}?(\d{2}\.\d{2}\.\d{5}\.\d{7}-\d)/i);
+  if (nr) fatos.reciboNumero = nr[1];
+
   // Declaração: "Período de Apuração: 01/09/2026 a 30/09/2026" + RPA.
   const per = t.match(/Per[ií]odo de Apura[cç][aã]o:?\s*\d{2}\/(0[1-9]|1[0-2])\/(\d{4})/i);
   if (per && !fatos.pa) fatos.pa = chaveMes(Number(per[2]), Number(per[1]));
@@ -533,6 +539,8 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
       if (tipo !== "outro") reg[tipo] = true;
       if (f.receita !== undefined && f.receita !== null && (tipo === "recibo" || reg.receita === null)) reg.receita = f.receita;
       if (f.debitoDeclarado !== undefined && f.debitoDeclarado !== null) reg.debito = f.debitoDeclarado;
+      if (f.entregaEm && (!reg.entregaEm || f.entregaEm < reg.entregaEm)) reg.entregaEm = f.entregaEm;
+      if (f.reciboNumero && !reg.reciboNumero) reg.reciboNumero = f.reciboNumero;
       if (f.vencimento) reg.vencimento = f.vencimento;
       if (f.valorGuia !== undefined && f.valorGuia !== null) reg.valorGuia = f.valorGuia;
 
@@ -559,7 +567,7 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
       const [ano, m] = mes.split("-").map(Number);
       const vencimentoPrazo = new Date(Date.UTC(m === 12 ? ano + 1 : ano, m === 12 ? 0 : m, 20));
       const diasParaPrazo = diasEntre(hojeUtc, vencimentoPrazo);
-      const linha = { mes, rotulo: rotuloMes(mes), declaracao: !!reg?.declaracao, recibo: !!reg?.recibo, extrato: !!reg?.extrato, das: !!reg?.das, receita: reg?.receita ?? null, debito: reg?.debito ?? null, vencimento: reg?.vencimento || null, valorGuia: reg?.valorGuia ?? null, prazo: ISO(vencimentoPrazo), situacao: "ok" };
+      const linha = { mes, rotulo: rotuloMes(mes), declaracao: !!reg?.declaracao, recibo: !!reg?.recibo, extrato: !!reg?.extrato, das: !!reg?.das, receita: reg?.receita ?? null, debito: reg?.debito ?? null, vencimento: reg?.vencimento || null, valorGuia: reg?.valorGuia ?? null, prazo: ISO(vencimentoPrazo), situacao: "ok", entregaEm: reg?.entregaEm || null, reciboNumero: reg?.reciboNumero || null };
       if (!reg || (!reg.declaracao && !reg.recibo)) {
         linha.situacao = diasParaPrazo < 0 ? "faltando" : "no_prazo";
         pendentes.push({ mes, diasParaPrazo });
