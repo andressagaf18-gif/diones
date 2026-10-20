@@ -3,6 +3,7 @@ import { estimarDasResidualPorFora, calcularIrpjCsllPresumido, calcularIrpjCsllR
 import { jsPDF } from "jspdf";
 import PlanejamentoTributario from "./PlanejamentoTributario";
 import AuditoriaPastas from "./AuditoriaPastas";
+import AuditoriaApuracoes from "./AuditoriaApuracoes";
 import {
   useEffect,
   useMemo,
@@ -5582,6 +5583,9 @@ export default function Tributario({
       />
     );
   }
+  if (tela === "auditoria-apuracoes") {
+    return <AuditoriaApuracoes token={token} onVoltar={() => setTela("inicio")} />;
+  }
   if (tela === "auditoria-pastas") {
     return <AuditoriaPastas token={token} onVoltar={() => setTela("inicio")} />;
   }
@@ -5665,6 +5669,8 @@ export default function Tributario({
         </div>
 
         <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${CORAL}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>INTELIGÊNCIA TRIBUTÁRIA</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:24}}>Uma única análise: regimes + Reforma Tributária</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>CNPJ, CNAE, documentos e dados econômicos alimentam a mesma base. A comparação entre Simples Nacional, Lucro Presumido e Lucro Real e o impacto do IBS/CBS ficam dentro da mesma análise — não são mais fluxos separados.</p><p style={{color:MUTED,fontSize:9,marginTop:4}}>Empresa → CNAE → documentos → comparação de regimes → impacto da Reforma → transição → relatório, tudo em um só lugar.</p><div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:12}}><Botao onClick={()=>escolherProjeto("reforma")}>Iniciar nova análise</Botao></div></div>
+
+        <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${NAVY}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>AUDITORIA DE APURAÇÕES</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:22}}>Conferir se o imposto apurado está certo</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>Lê as declarações e guias direto do Drive, refaz o cálculo e aponta diferenças em reais. Simples Nacional já disponível; Lucro Presumido e Real na sequência.</p><div style={{marginTop:12}}><Botao onClick={()=>setTela("auditoria-apuracoes")}>Auditar apurações</Botao></div></div>
 
         <div style={{background:WHITE,border:`1px solid ${BORDER}`,borderTop:`4px solid ${NAVY}`,borderRadius:16,padding:20,marginBottom:14}}><div style={{color:CORAL,fontSize:9,fontWeight:900,letterSpacing:1}}>AUDITORIA DE PASTAS</div><h3 style={{margin:"7px 0",fontFamily:DISPLAY_FONT,fontSize:22}}>Conferir a pasta de documentos dos clientes</h3><p style={{color:MUTED,fontSize:11,lineHeight:1.55,maxWidth:780}}>Envie a pasta de um cliente (ou de todos). O sistema aponta o que está faltando, o que venceu, o que está no lugar errado e se declarações, guias e notas batem.</p><div style={{marginTop:12}}><Botao onClick={()=>setTela("auditoria-pastas")}>Auditar pastas</Botao></div></div>
 
