@@ -1,6 +1,5 @@
 // server/apuracao-drive.js — lê as declarações PGDAS-D e guias DAS da pasta do cliente no Drive e audita a apuração.
-import pdf from "pdf-parse/lib/pdf-parse.js";
-import { varrer, baixar, paginaComoTexto, emLotes } from "./pasta-drive.js";
+import { varrer, baixar, textoDoPdf, emLotes } from "./pasta-drive.js";
 import { extrairFatosDeTexto } from "./pasta-engine.js";
 import { lerDeclaracao, lerRecibo, auditarApuracoes } from "./apuracao-engine.js";
 
@@ -22,8 +21,7 @@ export async function auditarApuracaoDrive({ pastaId, codigo, nome, raiz, limite
     const nomeArq = e.caminho.split("/").pop();
     try {
       const buf = await baixar(e._id);
-      const d = await pdf(buf, { max: 6, pagerender: paginaComoTexto });
-      const texto = d.text || "";
+      const texto = await textoDoPdf(buf, { max: 6 });
       lidos += 1;
       const decl = lerDeclaracao(texto, nomeArq) || lerRecibo(texto, nomeArq);
       if (decl) { decl.caminho = e.caminho; declaracoes.push(decl); return; }
