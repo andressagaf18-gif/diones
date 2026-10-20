@@ -111,6 +111,136 @@ const BlocoOutras = ({ a }) => (
   </>
 );
 
+function CorpoApuracao({ a, criadoEm, historico, atualId, abrirVersao }) {
+  return (
+    <>
+        <Cartao style={{ marginBottom: 12 }}>
+          <div style={{ color: CORAL, fontSize: 9, fontWeight: 900, letterSpacing: 1 }}>AUDITORIA DA APURAÇÃO · {a.regime === "NAO_SIMPLES" ? "FORA DO SIMPLES (DCTF)" : a.regime === "PRESUMIDO" ? "LUCRO PRESUMIDO / REAL (MIT)" : "SIMPLES NACIONAL"}</div>
+          <h2 style={{ margin: "6px 0 2px" }}>{a.cliente.codigo} - {a.cliente.nome}</h2>
+          <div style={{ fontSize: 12, color: MUTED }}>{a.declaracoes} {a.regime === "PRESUMIDO" ? "MIT" : "declaração(ões)"} lida(s) · gerado em {dataBr(criadoEm)}</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            {[["Saúde", a.saude, a.saude >= 80 ? "#2E7D32" : a.saude >= 50 ? COR.atencao : COR.critico], ["Críticos", a.resumo.critico, COR.critico], ["Atenção", a.resumo.atencao, COR.atencao], ["Informativos", a.resumo.info, COR.info]].map(([r, v, c]) => (
+              <div key={r} style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: "8px 14px", minWidth: 100 }}><div style={{ fontSize: 10, color: MUTED }}>{r}</div><div style={{ fontSize: 22, fontWeight: 900, color: c }}>{v}</div></div>
+            ))}
+          </div>
+          {historico?.length > 1 && (
+            <div style={{ marginTop: 10, fontSize: 12 }}>Versões: {historico.map((h) => <button key={h.id} onClick={() => abrirVersao(h.id)} style={{ marginRight: 6, border: `1px solid ${BORDER}`, background: h.id === atualId ? NAVY : WHITE, color: h.id === atualId ? WHITE : NAVY, borderRadius: 8, padding: "3px 8px", cursor: "pointer", fontSize: 11 }}>{dataBr(h.created_at)}</button>)}</div>
+          )}
+        </Cartao>
+        {a.regime !== "PRESUMIDO" && <BlocoEntregas titulo={a.regime === "NAO_SIMPLES" ? "Entregas da DCTF (tributos federais)" : "Entregas do Simples Nacional (PGDAS-D)"} e={a.entregas} />}
+        {a.aviso && <Cartao style={{ marginBottom: 12, borderColor: COR.atencao }}>{a.aviso}</Cartao>}
+        {a.regime === "PRESUMIDO" && <BlocoPresumido P={a} />}
+        {a.regime === "NAO_SIMPLES" && a.meses?.length > 0 && (
+          <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>DCTF mês a mês (tributos federais)</div>
+            <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>Empresa fora do Simples: não há PGDAS nem DAS. A DCTF entregue sem movimento significa que não há tributo federal a declarar naquele mês.</div>
+            <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
+              <thead><tr style={{ textAlign: "left", color: MUTED }}>{["Mês", "Situação", "Entrega", "Recibo", "Comprovantes"].map((h) => <th key={h} style={{ padding: "4px 6px" }}>{h}</th>)}</tr></thead>
+              <tbody>{a.meses.map((m) => (
+                <tr key={m.mes} style={{ borderTop: `1px solid ${BORDER}` }}>
+                  <td style={{ padding: "5px 6px", fontWeight: 800 }}>{m.rotulo}</td>
+                  <td style={{ padding: "5px 6px", fontWeight: 800, color: m.situacao === "sem_movimento" ? "#0D47A1" : "#2E7D32" }}>{m.situacao === "sem_movimento" ? "Sem movimento (entregue)" : m.situacao === "entregue" ? "Entregue" : "Entregue com movimento"}</td>
+                  <td style={{ padding: "5px 6px" }}>{m.entregaEm ? m.entregaEm.split("-").reverse().join("/") : "—"}</td>
+                  <td style={{ padding: "5px 6px" }}>{m.reciboNumero || "—"}</td>
+                  <td style={{ padding: "5px 6px", color: MUTED, fontSize: 10.5 }}>{(m.comprovantes || []).join(" · ")}</td>
+                </tr>))}</tbody>
+            </table>
+          </Cartao>
+        )}
+        {a.regime === "NAO_SIMPLES" && a.mesesFolha?.length > 0 && (
+          <Cartao style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 4 }}>DCTFWeb (folha de pagamento) — informativo</div>
+            <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>A DCTFWeb trata das contribuições previdenciárias da folha. Não é a declaração fiscal e não substitui a DCTF. "Sem movimento" aqui significa que não houve folha/retenção no mês.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: "8px 10px", fontSize: 12, alignItems: "center" }}>
+              <b>Com movimento ({a.entregasFolha?.comMovimento?.length || 0})</b><Chips meses={a.entregasFolha?.comMovimento} cor="#1B5E20" fundo="#E3F4E6" />
+              <b>Sem movimento ({a.entregasFolha?.semMovimento?.length || 0})</b><Chips meses={a.entregasFolha?.semMovimento} cor="#0D47A1" fundo="#E3EEFB" />
+            </div>
+          </Cartao>
+        )}
+        {a.regime !== "NAO_SIMPLES" && a.regime !== "PRESUMIDO" && a.meses?.length > 0 && (
+          <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Conferência mês a mês</div>
+            <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>O sistema refaz o cálculo do PGDAS-D (anexo, faixa pela RBT12, alíquota efetiva e repartição) e compara com o que foi declarado e com a guia.</div>
+            <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
+              <thead><tr style={{ textAlign: "left", color: MUTED }}>{["Mês", "Receita", "RBT12", "Anexo", "Faixa", "Alíq. efetiva", "Declarado", "Recalculado", "Diferença", "Guia", "Situação"].map((h) => <th key={h} style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+              <tbody>{a.meses.map((m) => {
+                const sit = m.situacao === "ok" ? ["Conferido", "#2E7D32"] : m.situacao === "sem_movimento" ? ["Sem movimento (entregue)", "#2E7D32"] : m.situacao === "so_recibo" ? ["Só recibo", COR.info] : m.situacao === "divergente" ? ["Divergente", COR.critico] : ["Conferir manual", COR.atencao];
+                return (
+                  <tr key={m.mes} style={{ borderTop: `1px solid ${BORDER}` }}>
+                    <td style={{ padding: "5px 6px", fontWeight: 800 }}>{m.rotulo}{m.retificadora ? " (retif.)" : ""}</td>
+                    <td style={{ padding: "5px 6px" }}>{brlN(m.rpa)}</td><td style={{ padding: "5px 6px" }}>{brlN(m.rbt12)}</td>
+                    <td style={{ padding: "5px 6px" }}>{m.anexos || "—"}</td><td style={{ padding: "5px 6px" }}>{m.faixa ?? "—"}</td><td style={{ padding: "5px 6px" }}>{pct(m.aliquotaEfetiva)}</td>
+                    <td style={{ padding: "5px 6px" }}>{brlN(m.debitoDeclarado)}</td><td style={{ padding: "5px 6px" }}>{brlN(m.debitoRecalculado)}</td>
+                    <td style={{ padding: "5px 6px", fontWeight: 800, color: m.diferenca && Math.abs(m.diferenca) > 0.05 ? COR.critico : MUTED }}>{m.diferenca === null ? "—" : brlN(m.diferenca)}</td>
+                    <td style={{ padding: "5px 6px" }}>{brlN(m.valorGuia)}</td>
+                    <td style={{ padding: "5px 6px", fontWeight: 800, color: sit[1] }}>{sit[0]}{(m.entregaEm || m.reciboNumero) && <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{m.entregaEm ? `Entregue em ${m.entregaEm.split("-").reverse().join("/")}` : "Entregue"}{m.reciboNumero ? ` · recibo ${m.reciboNumero}` : ""}</div>}</td>
+                  </tr>);
+              })}</tbody>
+            </table>
+          </Cartao>
+        )}
+        {a.presumido && <BlocoPresumido P={a.presumido} />}
+        <BlocoOutras a={a} />
+        <Cartao>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Alertas ({a.achados.length})</div>
+          {a.achados.length === 0 && <div style={{ color: "#2E7D32", fontWeight: 800 }}>Nenhuma divergência encontrada nas declarações lidas.</div>}
+          {["critico", "atencao", "info"].map((s) => a.achados.filter((x) => x.severidade === s).map((x, i) => (
+            <div key={s + i} style={{ borderLeft: `4px solid ${COR[s]}`, padding: "6px 10px", margin: "6px 0", background: "#FAFBFD" }}>
+              <div style={{ fontSize: 10, fontWeight: 900, color: COR[s] }}>{ROTULO[s].toUpperCase()} · {x.categoria}</div>
+              <div style={{ fontWeight: 800, fontSize: 13 }}>{x.titulo}</div>
+              {x.detalhe && <div style={{ fontSize: 12, color: MUTED }}>{x.detalhe}</div>}
+              {x.sugestao && <div style={{ fontSize: 12 }}>→ {x.sugestao}</div>}
+            </div>)))}
+          {a.falhas?.length > 0 && <div style={{ marginTop: 8, fontSize: 11.5, color: MUTED }}>Arquivos não lidos: {a.falhas.join(" · ")}</div>}
+        </Cartao>
+    </>
+  );
+}
+
+async function chamar(token, action, body, method = "POST", query = {}) {
+  const p = new URLSearchParams({ action, ...query });
+  const r = await fetch(`/api/tributario?${p}`, { method, headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: method === "GET" ? undefined : JSON.stringify(body) });
+  const bruto = await r.text();
+  let d = null; try { d = JSON.parse(bruto); } catch { d = null; }
+  if (!r.ok || !d?.sucesso) throw new Error(d?.error || `Erro na conferência (servidor respondeu ${r.status}${r.status === 504 ? ": a leitura passou do tempo limite" : ""}).`);
+  return d;
+}
+
+// Aba "Apurações" dentro do relatório do cliente (Auditoria de pastas).
+export function ApuracaoCliente({ token, cliente }) {
+  const [d, setD] = useState(null);
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [fazendo, setFazendo] = useState(false);
+  async function carregar() {
+    try { setD(await chamar(token, "apuracao-obter", null, "GET", { codigo: cliente.codigo })); setErro(""); }
+    catch (e) { if (/Nenhuma auditoria/i.test(e.message)) setD(null); else setErro(e.message); }
+    setCarregando(false);
+  }
+  useEffect(() => { setCarregando(true); carregar(); }, [cliente.codigo]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function conferir() {
+    if (!cliente.id) { setErro("Esta auditoria veio de um envio manual. A conferência da apuração lê direto do Google Drive: rode o cliente pela opção “Direto do Google Drive”."); return; }
+    setFazendo(true); setErro("");
+    try { await chamar(token, "apuracao-auditar", { pastaId: cliente.id, codigo: cliente.codigo, nome: cliente.nome, raiz: cliente.raiz }); await carregar(); }
+    catch (e) { setErro(e.message); }
+    setFazendo(false);
+  }
+  async function versao(id) { try { const r = await chamar(token, "apuracao-obter", null, "GET", { id }); setD((x) => ({ ...x, atual: r.atual })); } catch (e) { setErro(e.message); } }
+  return (
+    <div>
+      <Cartao style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ fontSize: 12, color: MUTED, maxWidth: 640, lineHeight: 1.5 }}>Confere se o imposto apurado está certo: refaz o cálculo do Simples (PGDAS-D) ou do Lucro Presumido (IRPJ, CSLL, PIS, COFINS, ISS) e mostra as entregas sem movimento (PGDAS-D, MIT), a DCTFWeb, a DIME e a DEFIS. Lê a pasta do Drive em uma chamada própria.</div>
+          <Botao onClick={conferir} disabled={fazendo}>{fazendo ? "Lendo a pasta…" : d ? "Conferir de novo pelo Drive" : "Conferir apuração pelo Drive"}</Botao>
+        </div>
+        {erro && <div style={{ marginTop: 8, color: COR.critico, fontSize: 12, fontWeight: 700 }}>{erro}</div>}
+      </Cartao>
+      {carregando ? <Cartao>Carregando…</Cartao> : !d ? <Cartao style={{ color: MUTED, fontSize: 12.5 }}>A apuração deste cliente ainda não foi conferida. Clique em “Conferir apuração pelo Drive”.</Cartao>
+        : <CorpoApuracao a={d.atual.resultado} criadoEm={d.atual.created_at} historico={d.historico} atualId={d.atual.id} abrirVersao={versao} />}
+    </div>
+  );
+}
+
 export default function AuditoriaApuracoes({ token, onVoltar }) {
   const [clientes, setClientes] = useState([]);
   const [painel, setPainel] = useState({});
@@ -201,85 +331,7 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
           <Botao claro onClick={() => setDetalhe(null)}>← Voltar à lista</Botao>
           <Botao onClick={() => auditarEAbrir(detalhe.cliente)} disabled={fazendo[detalhe.cliente.codigo]}>{fazendo[detalhe.cliente.codigo] ? "Atualizando…" : "Atualizar agora pelo Drive"}</Botao>
         </div>
-        <Cartao style={{ marginBottom: 12 }}>
-          <div style={{ color: CORAL, fontSize: 9, fontWeight: 900, letterSpacing: 1 }}>AUDITORIA DA APURAÇÃO · {a.regime === "NAO_SIMPLES" ? "FORA DO SIMPLES (DCTF)" : a.regime === "PRESUMIDO" ? "LUCRO PRESUMIDO / REAL (MIT)" : "SIMPLES NACIONAL"}</div>
-          <h2 style={{ margin: "6px 0 2px" }}>{a.cliente.codigo} - {a.cliente.nome}</h2>
-          <div style={{ fontSize: 12, color: MUTED }}>{a.declaracoes} {a.regime === "PRESUMIDO" ? "MIT" : "declaração(ões)"} lida(s) · gerado em {dataBr(detalhe.atual.created_at)}</div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            {[["Saúde", a.saude, a.saude >= 80 ? "#2E7D32" : a.saude >= 50 ? COR.atencao : COR.critico], ["Críticos", a.resumo.critico, COR.critico], ["Atenção", a.resumo.atencao, COR.atencao], ["Informativos", a.resumo.info, COR.info]].map(([r, v, c]) => (
-              <div key={r} style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: "8px 14px", minWidth: 100 }}><div style={{ fontSize: 10, color: MUTED }}>{r}</div><div style={{ fontSize: 22, fontWeight: 900, color: c }}>{v}</div></div>
-            ))}
-          </div>
-          {detalhe.historico?.length > 1 && (
-            <div style={{ marginTop: 10, fontSize: 12 }}>Versões: {detalhe.historico.map((h) => <button key={h.id} onClick={() => abrirVersao(h.id)} style={{ marginRight: 6, border: `1px solid ${BORDER}`, background: h.id === detalhe.atual.id ? NAVY : WHITE, color: h.id === detalhe.atual.id ? WHITE : NAVY, borderRadius: 8, padding: "3px 8px", cursor: "pointer", fontSize: 11 }}>{dataBr(h.created_at)}</button>)}</div>
-          )}
-        </Cartao>
-        {a.regime !== "PRESUMIDO" && <BlocoEntregas titulo={a.regime === "NAO_SIMPLES" ? "Entregas da DCTF (tributos federais)" : "Entregas do Simples Nacional (PGDAS-D)"} e={a.entregas} />}
-        {a.aviso && <Cartao style={{ marginBottom: 12, borderColor: COR.atencao }}>{a.aviso}</Cartao>}
-        {a.regime === "PRESUMIDO" && <BlocoPresumido P={a} />}
-        {a.regime === "NAO_SIMPLES" && a.meses?.length > 0 && (
-          <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>DCTF mês a mês (tributos federais)</div>
-            <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>Empresa fora do Simples: não há PGDAS nem DAS. A DCTF entregue sem movimento significa que não há tributo federal a declarar naquele mês.</div>
-            <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
-              <thead><tr style={{ textAlign: "left", color: MUTED }}>{["Mês", "Situação", "Entrega", "Recibo", "Comprovantes"].map((h) => <th key={h} style={{ padding: "4px 6px" }}>{h}</th>)}</tr></thead>
-              <tbody>{a.meses.map((m) => (
-                <tr key={m.mes} style={{ borderTop: `1px solid ${BORDER}` }}>
-                  <td style={{ padding: "5px 6px", fontWeight: 800 }}>{m.rotulo}</td>
-                  <td style={{ padding: "5px 6px", fontWeight: 800, color: m.situacao === "sem_movimento" ? "#0D47A1" : "#2E7D32" }}>{m.situacao === "sem_movimento" ? "Sem movimento (entregue)" : m.situacao === "entregue" ? "Entregue" : "Entregue com movimento"}</td>
-                  <td style={{ padding: "5px 6px" }}>{m.entregaEm ? m.entregaEm.split("-").reverse().join("/") : "—"}</td>
-                  <td style={{ padding: "5px 6px" }}>{m.reciboNumero || "—"}</td>
-                  <td style={{ padding: "5px 6px", color: MUTED, fontSize: 10.5 }}>{(m.comprovantes || []).join(" · ")}</td>
-                </tr>))}</tbody>
-            </table>
-          </Cartao>
-        )}
-        {a.regime === "NAO_SIMPLES" && a.mesesFolha?.length > 0 && (
-          <Cartao style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 900, marginBottom: 4 }}>DCTFWeb (folha de pagamento) — informativo</div>
-            <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>A DCTFWeb trata das contribuições previdenciárias da folha. Não é a declaração fiscal e não substitui a DCTF. "Sem movimento" aqui significa que não houve folha/retenção no mês.</div>
-            <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: "8px 10px", fontSize: 12, alignItems: "center" }}>
-              <b>Com movimento ({a.entregasFolha?.comMovimento?.length || 0})</b><Chips meses={a.entregasFolha?.comMovimento} cor="#1B5E20" fundo="#E3F4E6" />
-              <b>Sem movimento ({a.entregasFolha?.semMovimento?.length || 0})</b><Chips meses={a.entregasFolha?.semMovimento} cor="#0D47A1" fundo="#E3EEFB" />
-            </div>
-          </Cartao>
-        )}
-        {a.regime !== "NAO_SIMPLES" && a.regime !== "PRESUMIDO" && a.meses?.length > 0 && (
-          <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Conferência mês a mês</div>
-            <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>O sistema refaz o cálculo do PGDAS-D (anexo, faixa pela RBT12, alíquota efetiva e repartição) e compara com o que foi declarado e com a guia.</div>
-            <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
-              <thead><tr style={{ textAlign: "left", color: MUTED }}>{["Mês", "Receita", "RBT12", "Anexo", "Faixa", "Alíq. efetiva", "Declarado", "Recalculado", "Diferença", "Guia", "Situação"].map((h) => <th key={h} style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-              <tbody>{a.meses.map((m) => {
-                const sit = m.situacao === "ok" ? ["Conferido", "#2E7D32"] : m.situacao === "sem_movimento" ? ["Sem movimento (entregue)", "#2E7D32"] : m.situacao === "so_recibo" ? ["Só recibo", COR.info] : m.situacao === "divergente" ? ["Divergente", COR.critico] : ["Conferir manual", COR.atencao];
-                return (
-                  <tr key={m.mes} style={{ borderTop: `1px solid ${BORDER}` }}>
-                    <td style={{ padding: "5px 6px", fontWeight: 800 }}>{m.rotulo}{m.retificadora ? " (retif.)" : ""}</td>
-                    <td style={{ padding: "5px 6px" }}>{brlN(m.rpa)}</td><td style={{ padding: "5px 6px" }}>{brlN(m.rbt12)}</td>
-                    <td style={{ padding: "5px 6px" }}>{m.anexos || "—"}</td><td style={{ padding: "5px 6px" }}>{m.faixa ?? "—"}</td><td style={{ padding: "5px 6px" }}>{pct(m.aliquotaEfetiva)}</td>
-                    <td style={{ padding: "5px 6px" }}>{brlN(m.debitoDeclarado)}</td><td style={{ padding: "5px 6px" }}>{brlN(m.debitoRecalculado)}</td>
-                    <td style={{ padding: "5px 6px", fontWeight: 800, color: m.diferenca && Math.abs(m.diferenca) > 0.05 ? COR.critico : MUTED }}>{m.diferenca === null ? "—" : brlN(m.diferenca)}</td>
-                    <td style={{ padding: "5px 6px" }}>{brlN(m.valorGuia)}</td>
-                    <td style={{ padding: "5px 6px", fontWeight: 800, color: sit[1] }}>{sit[0]}{(m.entregaEm || m.reciboNumero) && <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{m.entregaEm ? `Entregue em ${m.entregaEm.split("-").reverse().join("/")}` : "Entregue"}{m.reciboNumero ? ` · recibo ${m.reciboNumero}` : ""}</div>}</td>
-                  </tr>);
-              })}</tbody>
-            </table>
-          </Cartao>
-        )}
-        {a.presumido && <BlocoPresumido P={a.presumido} />}
-        <BlocoOutras a={a} />
-        <Cartao>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Alertas ({a.achados.length})</div>
-          {a.achados.length === 0 && <div style={{ color: "#2E7D32", fontWeight: 800 }}>Nenhuma divergência encontrada nas declarações lidas.</div>}
-          {["critico", "atencao", "info"].map((s) => a.achados.filter((x) => x.severidade === s).map((x, i) => (
-            <div key={s + i} style={{ borderLeft: `4px solid ${COR[s]}`, padding: "6px 10px", margin: "6px 0", background: "#FAFBFD" }}>
-              <div style={{ fontSize: 10, fontWeight: 900, color: COR[s] }}>{ROTULO[s].toUpperCase()} · {x.categoria}</div>
-              <div style={{ fontWeight: 800, fontSize: 13 }}>{x.titulo}</div>
-              {x.detalhe && <div style={{ fontSize: 12, color: MUTED }}>{x.detalhe}</div>}
-              {x.sugestao && <div style={{ fontSize: 12 }}>→ {x.sugestao}</div>}
-            </div>)))}
-          {a.falhas?.length > 0 && <div style={{ marginTop: 8, fontSize: 11.5, color: MUTED }}>Arquivos não lidos: {a.falhas.join(" · ")}</div>}
-        </Cartao>
+        <CorpoApuracao a={a} criadoEm={detalhe.atual.created_at} historico={detalhe.historico} atualId={detalhe.atual.id} abrirVersao={abrirVersao} />
       </div>
     );
   }
