@@ -1,3 +1,4 @@
+import { clientesSemAuditoria } from "./clientes-auditoria.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApuracaoCliente } from "./AuditoriaApuracoes";
 import { separarClientes, auditarCliente, extrairFatosDeTexto, extrairFatosNota, brl } from "../../server/pasta-engine.js";
@@ -467,21 +468,35 @@ export default function AuditoriaPastas({ token, onVoltar }) {
   };
   const auditarUmDrive = (c) => api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio, outros: listaOutros() });
   async function auditarDrive() {
-    setErro(""); setSalvo(""); setLendo(true);
-    const alvos = driveUm === "todos" ? driveLista.clientes : driveLista.clientes.filter((c) => c.id === driveUm);
+    setErro(""); setSalvo(""); setAviso([]); setLendo(true);
+    let alvos = driveUm === "todos" ? driveLista.clientes : driveLista.clientes.filter((c) => c.id === driveUm);
     const resultado = []; const avisos = [];
     try {
+      if (driveUm === "novos") {
+        const base = await api("pasta-painel", null, "GET");
+        setPainel(base.clientes || []);
+        alvos = clientesSemAuditoria(driveLista.clientes, base.clientes || []);
+        if (!alvos.length) { setSalvo("Todos os clientes já possuem auditoria salva de pastas."); setLendo(false); return; }
+      }
       for (let i = 0; i < alvos.length; i++) {
         const c = alvos[i];
         setProgresso(`Lendo o Drive — cliente ${i + 1} de ${alvos.length}: ${c.codigo} - ${c.nome}`);
         try {
           const d = await auditarUmDrive(c);
           resultado.push(d.auditoria);
+          // Persiste cada cliente antes de continuar: todas as abas usam o histórico salvo.
+          const ids = await salvarVersoes([d.auditoria], "drive");
+          if (!ids[c.codigo]) avisos.push(`${c.codigo} - ${c.nome}: análise concluída, mas não foi possível salvar no histórico. Rode novamente este cliente.`);
+          await carregarPainel();
           if (d.parcial) avisos.push(`${c.codigo} - ${c.nome}: li ${d.documentosLidos} de ${d.documentosCandidatos} documentos (limite de tempo). Rode de novo só para este cliente para completar.`);
         } catch (e) { avisos.push(`${c.codigo} - ${c.nome}: não consegui ler (${e.message}).`); }
+        setAviso([...avisos]);
       }
       if (!resultado.length) throw new Error("Nenhum cliente pôde ser auditado. " + (avisos[0] || ""));
-      await aposAuditoria(resultado, "drive", avisos);
+      // Os resultados já foram salvos individualmente; não duplicar versões no final.
+      setAviso([...avisos]);
+      setLendo(false);
+      setProgresso("");
     } catch (e) { setErro(e.message); setLendo(false); }
   }
 
@@ -574,6 +589,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <select value={driveUm} onChange={(e) => setDriveUm(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${BORDER}`, maxWidth: 360 }}>
               <option value="todos">Todos os clientes ({driveLista.clientes.length})</option>
+              <option value="novos" disabled={painel === null}>Somente clientes sem auditoria salva ({clientesSemAuditoria(driveLista.clientes, painel || []).length})</option>
               {driveLista.clientes.map((c) => <option key={c.id} value={c.id}>{c.codigo} - {c.nome}</option>)}
             </select>
             <Btn onClick={auditarDrive} disabled={lendo || !driveLista.clientes.length}>Auditar pelo Drive</Btn>
@@ -808,6 +824,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     <div>
       {cabecalho}
       <Abas valor={aba} onChange={(k) => { setAba(k); if (k === "geral" || k === "vencimentos") carregarPainel(); }} itens={abas} sticky />
+      {lendo && aba !== "auditar" && <div role="status" style={{ marginBottom: 10, color: MUTED, fontSize: 12 }}>{progresso} · Os clientes já concluídos estão disponíveis; a análise continua.</div>}
       {erro && <div className="nao-imprimir" style={{ marginBottom: 10, color: COR.critico, fontSize: 12, fontWeight: 700, background: "#FDECEC", borderRadius: 8, padding: "8px 10px" }}>{erro} <button type="button" onClick={() => setErro("")} style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", fontWeight: 900 }}>×</button></div>}
       {aba === "auditar" && abaAuditar}
       {aba === "geral" && abaGeral}
