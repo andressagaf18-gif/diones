@@ -237,7 +237,7 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
         </div>
       </Cartao>
 
-      <Abas valor={secao} onChange={setSecao} itens={[["resumo", "Resumo"], ["docs", "Documentos por pasta"], ...(a.meses?.length ? [["simples", "Simples mês a mês"]] : []), ["alertas", "Todos os alertas", a.achados.length]]} />
+      <Abas valor={secao} onChange={setSecao} itens={[["resumo", "Resumo"], ["docs", "Documentos por pasta"], ...(a.meses?.length ? [["simples", "Simples mês a mês"]] : []), ...(a.cobertura?.linhas?.length ? [["cobertura", "Cobertura mensal", a.cobertura.linhas.filter((l) => l.faltando.length).length || null]] : []), ["alertas", "Todos os alertas", a.achados.length]]} />
 
       {mostra("resumo") && (
         <div>
@@ -296,6 +296,24 @@ export function Relatorio({ a, narrativa, anterior, anteriorEm, criadoEm, onIa, 
                 {[m.declaracao, m.recibo, m.extrato, m.das].map((v, i) => <td key={i} style={{ padding: "5px 8px", color: v ? "#2E7D32" : (m.semMovimento && i > 1) ? MUTED : COR.critico, fontWeight: 800 }}>{v ? "✓" : (m.semMovimento && i > 1) ? "n/a" : "✗"}</td>)}
                 <td style={{ padding: "5px 8px" }}>{m.receita !== null ? brl(m.receita) : "—"}</td>
                 <td style={{ padding: "5px 8px", fontWeight: 800, color: m.situacao === "ok" ? "#2E7D32" : m.situacao === "no_prazo" ? COR.atencao : COR.critico }}>{({ ok: "Completo", incompleto: `Falta ${m.faltam?.join(", ")}`, faltando: "Sem documentos", no_prazo: "Dentro do prazo, sem documentos" })[m.situacao]}</td>
+              </tr>))}</tbody>
+          </table>
+        </Cartao>
+      )}
+
+      {mostra("cobertura") && a.cobertura?.linhas?.length > 0 && (
+        <Cartao style={{ marginBottom: 12, overflowX: "auto" }}>
+          <div style={{ fontWeight: 900, marginBottom: 4 }}>Cobertura mensal dos documentos</div>
+          <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8 }}>Regra: se um tipo de documento apareceu em algum mês, ele deve existir nos meses seguintes. ✓ = existe · ✗ = falta · vazio = antes do primeiro registro.</div>
+          <table style={{ borderCollapse: "collapse", fontSize: 11, width: "100%" }}>
+            <thead><tr style={{ textAlign: "left", color: MUTED }}><th style={{ padding: "3px 6px" }}>Pasta · documento</th>{a.cobertura.meses.map((m) => <th key={m} style={{ padding: "3px 4px", textAlign: "center", whiteSpace: "nowrap" }}>{m.slice(5)}/{m.slice(2, 4)}</th>)}</tr></thead>
+            <tbody>{a.cobertura.linhas.map((l, i) => (
+              <tr key={i} style={{ borderTop: `1px solid ${BORDER}` }}>
+                <td style={{ padding: "4px 6px", minWidth: 220 }}><b>{l.tipo}</b><div style={{ fontSize: 10, color: MUTED }}>{l.grupo.split(" / ").slice(-1)[0]}</div></td>
+                {a.cobertura.meses.map((m) => {
+                  const tem = l.presentes[m]; const dentro = m >= l.ini && m <= l.fim;
+                  return <td key={m} style={{ textAlign: "center", padding: "3px 4px", fontWeight: 900, color: tem ? "#2E7D32" : dentro ? COR.critico : "#C8CEDA", background: !tem && dentro ? "#FDECEC" : "transparent" }}>{tem ? "✓" : dentro ? "✗" : ""}</td>;
+                })}
               </tr>))}</tbody>
           </table>
         </Cartao>
@@ -413,7 +431,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
             }
           } catch (er) { fatos[e.caminho] = { nome, legivel: false, erro: String(er?.message || er).slice(0, 120) }; }
         }
-        resultado.push(auditarCliente({ cliente: c, regime, fatos, inicioObrigacoes: inicio, hoje: new Date() }));
+        resultado.push(auditarCliente({ cliente: c, regime, fatos, inicioObrigacoes: inicio, hoje: new Date(), outrosClientes: listaOutros(clientes) }));
       }
       if (pdfsLidos >= LIMITE_PDFS) avisos.push(`Para manter a análise rápida, li o texto de até ${LIMITE_PDFS} PDFs; os demais foram avaliados só pelo nome e pela pasta.`);
       await aposAuditoria(resultado, "upload", avisos);
@@ -425,7 +443,14 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     try { const d = await api("pasta-drive-clientes", null, "GET"); setDriveLista(d); }
     catch (e) { setErro(e.message); }
   }
-  const auditarUmDrive = (c) => api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio });
+  const listaOutros = (extra = []) => {
+    const m = new Map();
+    (driveLista?.clientes || []).forEach((c) => m.set(String(c.codigo), { codigo: c.codigo, nome: c.nome, cnpj: "" }));
+    extra.forEach((c) => m.set(String(c.codigo), { ...m.get(String(c.codigo)), codigo: c.codigo, nome: c.nome, cnpj: m.get(String(c.codigo))?.cnpj || "" }));
+    (painel || []).forEach((c) => m.set(String(c.codigo), { codigo: c.codigo, nome: c.nome, cnpj: c.cnpj || m.get(String(c.codigo))?.cnpj || "" }));
+    return [...m.values()];
+  };
+  const auditarUmDrive = (c) => api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio, outros: listaOutros() });
   async function auditarDrive() {
     setErro(""); setSalvo(""); setLendo(true);
     const alvos = driveUm === "todos" ? driveLista.clientes : driveLista.clientes.filter((c) => c.id === driveUm);
