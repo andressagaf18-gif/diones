@@ -1,3 +1,4 @@
+import { classificarObrigacao } from "./carteira-engine.js";
 // server/pasta-engine.js
 // Finder — Auditoria de pastas de clientes (Inteligência Tributária).
 //
@@ -843,6 +844,7 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
   const IGNORA_FAMILIA = /^(Arquivo de acesso|IRPF|Certid|Certificado|Extrato fiscal|Cartão CNPJ|QSA|Contrato|Inscrição)/;
   const familias = new Map();
   const deOutroCliente = new Set(achados.filter((x) => x.categoria === "Pasta do cliente").map((x) => x.caminho));
+  const obrigacoes = {};
   for (const a of arquivos) {
     if (deOutroCliente.has(a.caminho)) continue;
     const p = partes(a.caminho);
@@ -851,6 +853,14 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
     const mes = mesDoCaminho(p, nome) || paDoNomePgdas(nome) || f.mes || f.pa;
     if (!mes || !/\.(pdf|xml|xlsx?|docx?|csv|txt|jpe?g|png)$/i.test(nome)) continue;
     const d = classificarDoc(a);
+    const ob = classificarObrigacao(p.slice(0, -1).join(" / "), nome, d.tipo);
+    if (ob && /^\d{4}-\d{2}$/.test(String(mes))) {
+      const q = d.alteradoEm || "";
+      const r = (obrigacoes[mes] ||= {})[ob] ||= { n: 0, primeiro: "", ultimo: "", nome };
+      r.n += 1;
+      if (q && (!r.primeiro || q < r.primeiro)) { r.primeiro = q; r.nome = nome; }
+      if (q && q > r.ultimo) r.ultimo = q;
+    }
     if (IGNORA_FAMILIA.test(d.tipo)) continue;
     const grupo = p.slice(0, -1).filter((seg) => !mesDoSegmento(seg)).join(" / ");
     let tipo = d.tipo;
@@ -1020,6 +1030,7 @@ export function auditarCliente({ cliente, regime = "AUTO", fatos = {}, hoje = ne
     inventario,
     arvore,
     cobertura,
+    obrigacoes,
     opcoesSimples: opcoes,
   };
 }
@@ -1070,5 +1081,6 @@ export function resumoPainel(a) {
     if (!atual || (v.data && (!atual.data || v.data > atual.data))) porTipo.set(k, v);
   }
   out.vencimentos = [...porTipo.values(), ...resto];
+  out.obrigacoes = a?.obrigacoes || null;
   return out;
 }
