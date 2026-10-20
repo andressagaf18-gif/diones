@@ -113,7 +113,7 @@ export default function AuditoriaApuracoes({ token, onVoltar }) {
             <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%" }}>
               <thead><tr style={{ textAlign: "left", color: MUTED }}>{["Mês", "Receita", "RBT12", "Anexo", "Faixa", "Alíq. efetiva", "Declarado", "Recalculado", "Diferença", "Guia", "Situação"].map((h) => <th key={h} style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
               <tbody>{a.meses.map((m) => {
-                const sit = m.situacao === "ok" ? ["Conferido", "#2E7D32"] : m.situacao === "divergente" ? ["Divergente", COR.critico] : ["Conferir manual", COR.atencao];
+                const sit = m.situacao === "ok" ? ["Conferido", "#2E7D32"] : m.situacao === "sem_movimento" ? ["Sem movimento (entregue)", "#2E7D32"] : m.situacao === "so_recibo" ? ["Só recibo", COR.info] : m.situacao === "divergente" ? ["Divergente", COR.critico] : ["Conferir manual", COR.atencao];
                 return (
                   <tr key={m.mes} style={{ borderTop: `1px solid ${BORDER}` }}>
                     <td style={{ padding: "5px 6px", fontWeight: 800 }}>{m.rotulo}{m.retificadora ? " (retif.)" : ""}</td>
