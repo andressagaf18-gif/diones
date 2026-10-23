@@ -892,6 +892,59 @@ function tituloChave(chave = "") {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
+// Une várias listas (ou objetos com chaves) numa só, sem repetir itens. Usado na "Visão comercial Finder",
+// que antes saía três vezes (consultor, comercial e oportunidades) com o mesmo texto.
+function normalizarParaComparar(t) {
+  return String(t || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/^proximo passo sugerido:\s*/, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function mesclarVisoesSemRepetir(fontes = [], ordemChaves = []) {
+  const grupos = new Map();
+  const vistos = [];
+  const jaExiste = (norm) =>
+    vistos.some((v) => v === norm || (norm.length > 30 && (v.includes(norm) || norm.includes(v))));
+
+  const incluir = (chave, valor) => {
+    const itens = Array.isArray(valor) ? valor : [valor];
+    for (const item of itens) {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        for (const [k, v] of Object.entries(item)) incluir(k, v);
+        continue;
+      }
+      const texto = textoSeguro(item).trim();
+      if (!texto) continue;
+      const norm = normalizarParaComparar(texto);
+      if (!norm || jaExiste(norm)) continue;
+      vistos.push(norm);
+      const ehProximoPasso = /^Próximo passo sugerido:/i.test(texto);
+      const rotulo = ehProximoPasso ? "Próximo passo comercial" : tituloChave(chave || "oportunidades");
+      if (!grupos.has(rotulo)) grupos.set(rotulo, []);
+      grupos.get(rotulo).push(texto.replace(/^Próximo passo sugerido:\s*/i, ""));
+    }
+  };
+
+  for (const fonte of fontes) {
+    if (!fonte) continue;
+    if (Array.isArray(fonte)) incluir("oportunidades", fonte);
+    else if (typeof fonte === "object") for (const [k, v] of Object.entries(fonte)) incluir(k, v);
+    else incluir("oportunidades", fonte);
+  }
+
+  const peso = (rotulo) => {
+    const i = ordemChaves.findIndex((o) => normalizarParaComparar(o) === normalizarParaComparar(rotulo));
+    return i < 0 ? 99 : i;
+  };
+  return [...grupos.entries()]
+    .sort((a, b) => peso(a[0]) - peso(b[0]))
+    .map(([chave, valor]) => ({ chave, valor }));
+}
+
 function BlocoDossie({ titulo, children, destaque = false }) {
   return (
     <>
@@ -14726,6 +14779,12 @@ function DetalheDiagnostico({
       ? [`Próximo passo sugerido: ${proximoPassoComercialIa}`, ...oportunidadesConsultoriaBase]
       : oportunidadesConsultoriaBase;
 
+  // Uma única visão comercial: consultor + comercial + oportunidades + próximo passo, sem itens repetidos.
+  const visaoComercialUnica = mesclarVisoesSemRepetir(
+    [oportunidadesConsultoria, visaoComercial, visaoConsultor],
+    ["Oportunidades", "Próximo passo comercial", "Riscos comerciais", "Aprofundamentos", "Departamentos sugeridos"]
+  );
+
   // COMPLEMENTO — inteligência tributária
   const relatoriosSegmentados =
     resultado.relatoriosSegmentados ||
@@ -15333,9 +15392,11 @@ function DetalheDiagnostico({
           <title>${tituloDocumento}</title>
 
           <style>
+            /* margem 0 na página: o navegador deixa de imprimir data, título e endereço (vercel.app) nas bordas.
+               A margem real vem do cabeçalho/rodapé espaçadores da tabela, repetidos em todas as páginas. */
             @page {
               size: A4;
-              margin: 13mm;
+              margin: 0;
             }
 
             * {
@@ -15365,9 +15426,43 @@ function DetalheDiagnostico({
             }
 
             #pdf-shell {
-              width: 100%;
+              width: 184mm;
               max-width: none;
+              margin: 0 auto;
             }
+
+            table.pdf-pagina {
+              width: 184mm;
+              margin: 0 auto;
+              border-collapse: collapse;
+            }
+
+            table.pdf-pagina > thead > tr > td > div { height: 13mm; }
+            table.pdf-pagina > tfoot > tr > td > div { height: 17mm; }
+            table.pdf-pagina > thead { display: table-header-group; }
+            table.pdf-pagina > tfoot { display: table-footer-group; }
+            table.pdf-pagina > tbody > tr > td { padding: 0; }
+
+            /* Rodapé próprio, repetido em toda página (substitui o rodapé do navegador). */
+            .pdf-rodape {
+              position: fixed;
+              left: 13mm;
+              right: 13mm;
+              bottom: 6mm;
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+              font-size: 8.5px;
+              color: #5B667A;
+              border-top: 1px solid #E3E7EF;
+              padding-top: 4px;
+            }
+
+            /* Quebras de página: tabelas, linhas e blocos curtos não são cortados no meio. */
+            tr, thead { break-inside: avoid; page-break-inside: avoid; }
+            .pdf-inteiro { break-inside: avoid; page-break-inside: avoid; }
+            .pdf-nova-pagina { break-before: page; page-break-before: always; }
+            .pdf-sem-quebra-depois { break-after: avoid; page-break-after: avoid; }
 
             button,
             select,
@@ -15424,12 +15519,35 @@ function DetalheDiagnostico({
         </head>
 
         <body>
-          <div id="pdf-shell">
-            ${relatorio.outerHTML}
+          <div class="pdf-rodape">
+            <span>Finder of Solutions · Relatório ${tipoRelatorio} · uso interno</span>
+            <span>${String(nomeArquivoBase).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]))}</span>
           </div>
 
+          <table class="pdf-pagina">
+            <thead><tr><td><div></div></td></tr></thead>
+            <tfoot><tr><td><div></div></td></tr></tfoot>
+            <tbody><tr><td>
+              <div id="pdf-shell">
+                ${relatorio.outerHTML}
+              </div>
+            </td></tr></tbody>
+          </table>
+
           <script>
+            // Blocos curtos (cartões, quadros) não são partidos entre páginas; blocos grandes continuam fluindo.
+            function protegerBlocos() {
+              var limite = 330;
+              var nos = document.querySelectorAll("#pdf-shell div[style*='border-radius'], #pdf-shell table");
+              for (var i = 0; i < nos.length; i++) {
+                var n = nos[i];
+                if (n.offsetHeight > 0 && n.offsetHeight < limite) n.classList.add("pdf-inteiro");
+              }
+              var titulos = document.querySelectorAll("#pdf-shell h1, #pdf-shell h2, #pdf-shell h3");
+              for (var j = 0; j < titulos.length; j++) titulos[j].classList.add("pdf-sem-quebra-depois");
+            }
             window.onload = function () {
+              protegerBlocos();
               setTimeout(function () {
                 window.focus();
                 window.print();
@@ -15918,6 +16036,19 @@ function DetalheDiagnostico({
                   </>
                 )}
               </Card>
+            )}
+
+            <BlocoDossie
+              titulo={`Plano de ação em resumo — 30 / 60 / 90 dias · ${estruturaAtualLabel}`}
+              destaque
+            >
+              <Plano90Dias plano={plano90Dias} />
+            </BlocoDossie>
+
+            {listaFlexivel(quickWins).length > 0 && (
+              <BlocoDossie titulo="Quick wins — para executar já">
+                <ListaDossie itens={quickWins} vazio="Nenhum quick win gerado." />
+              </BlocoDossie>
             )}
 
             <VisaoConsultiva
@@ -16785,6 +16916,7 @@ function DetalheDiagnostico({
         {/* ================================================= */}
 
         <div
+          className="pdf-nova-pagina pdf-sem-quebra-depois"
           style={{
             marginTop: 34,
             paddingTop: 8,
@@ -16836,23 +16968,8 @@ function DetalheDiagnostico({
           </p>
         </div>
 
-        <BlocoDossie
-          titulo={`Plano de ação — 30 / 60 / 90 dias · ${estruturaAtualLabel}`}
-          destaque
-        >
-          <Plano90Dias plano={plano90Dias} />
-        </BlocoDossie>
-
-        <BlocoDossie titulo="Quick wins">
-          <ListaDossie itens={quickWins} vazio="Nenhum quick win gerado." />
-        </BlocoDossie>
-
         <BlocoDossie titulo="KPIs recomendados">
           <ListaDossie itens={kpisRecomendados} vazio="Nenhum KPI recomendado." />
-        </BlocoDossie>
-
-        <BlocoDossie titulo="Visão do consultor" destaque>
-          <ListaDossie itens={visaoConsultor} vazio="Visão do consultor não gerada." />
         </BlocoDossie>
 
         <BlocoDossie titulo="Perguntas para aprofundamento">
@@ -16862,21 +16979,18 @@ function DetalheDiagnostico({
           />
         </BlocoDossie>
 
-        <BlocoDossie titulo="Visão comercial Finder">
-          <ListaDossie itens={visaoComercial} vazio="Visão comercial não gerada." />
+        <BlocoDossie titulo="Visão comercial Finder" destaque>
+          <ListaDossie
+            itens={visaoComercialUnica}
+            vazio="Visão comercial não gerada."
+          />
         </BlocoDossie>
-
         {listaFlexivel(lacunasDiagnostico).length > 0 && (
           <BlocoDossie titulo="Lacunas do diagnóstico">
             <ListaDossie itens={lacunasDiagnostico} />
           </BlocoDossie>
         )}
 
-        {listaFlexivel(oportunidadesConsultoria).length > 0 && (
-          <BlocoDossie titulo="Oportunidades de consultoria">
-            <ListaDossie itens={oportunidadesConsultoria} />
-          </BlocoDossie>
-        )}
 
         <h2
           style={
