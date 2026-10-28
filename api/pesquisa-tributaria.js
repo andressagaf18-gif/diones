@@ -7,14 +7,8 @@ import { neon } from "@neondatabase/serverless";
 import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
-const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V6_CNAE_CLASSIFICACAO_AUTOMATICA";
-const PREMISSA_REFERENCIA = Object.freeze({
-  cbsPct: 9.21,
-  ibsPct: 18.7,
-  totalPct: 27.91,
-  situacao: "ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
-  fonte: "Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva",
-});
+const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V7_CBS_TCU_11_3";
+import { PREMISSA_REFERENCIA, TEXTO_CBS_TCU } from "../server/reforma-referencia.js";
 const FONTES_OFICIAIS = [
   "planalto.gov.br",
   "gov.br",
@@ -137,7 +131,7 @@ function construirCacheKey(body) {
     normalizar(body.nbsNcm), normalizar(body.regime), normalizar(body.municipio),
     texto(body.uf).toUpperCase(), texto(body.ano),
     texto(body.cbsReferenciaPct), texto(body.ibsReferenciaPct),
-    "LC214_LOCAL_V6_CLASSIFICACAO_AUTOMATICA",
+    "LC214_LOCAL_V7_CBS_TCU_11_3",
   ];
   return `tributario_${hash(partes.join("|"))}`;
 }
@@ -428,11 +422,11 @@ async function pesquisar(req, res) {
   const cbsPremissa = numero(body.cbsReferenciaPct, PREMISSA_REFERENCIA.cbsPct);
   const ibsPremissa = numero(body.ibsReferenciaPct, PREMISSA_REFERENCIA.ibsPct);
   const prompt = `Você é um pesquisador tributário brasileiro. Pesquise a legislação vigente usando somente fontes oficiais.
-Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}. Premissas nominais da simulação: CBS ${cbsPremissa}% e IBS ${ibsPremissa}% — ${PREMISSA_REFERENCIA.situacao}. Não substitua essas premissas por uma alíquota apresentada como definitiva.
+Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}. Premissas nominais da simulação: CBS ${cbsPremissa}% e IBS ${ibsPremissa}% — ${PREMISSA_REFERENCIA.situacao}. Não substitua essas premissas por uma alíquota apresentada como definitiva. Fato já ocorrido: ${TEXTO_CBS_TCU}
 Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Verifique expressamente se a atividade possui redução de IBS/CBS na LC 214/2025, inclusive o art. 127 quando se tratar de profissão intelectual regulamentada. Todo requisito que não puder ser comprovado pelos dados pesquisados deve obrigatoriamente constar em informacoes_faltantes. Use grau_confianca ALTO somente quando as fontes oficiais sustentarem diretamente a conclusão e não houver requisito de elegibilidade pendente.
 Classifique automaticamente a operação como SERVICO, COMERCIO, INDUSTRIA ou MISTA. Para serviço, pesquise o item exato ou mais aderente da lista da LC 116/2003 e devolva o código no formato 17.19. Para comércio ou indústria, só devolva NCM quando o produto estiver suficientemente identificado; CNAE isolado não prova NCM. Se faltar produto, devolva codigo null e explique o dado necessário. Informe NBS ou cClassTrib somente quando houver correspondência oficial sustentada pela fonte.
 Pesquise também o tributo do regime atual. Para serviços, identifique o item da lista, o município competente, o ISS nominal/efetivo e a legislação municipal. Para comércio ou indústria, identifique o ICMS conforme NCM, UF de origem e destino, operação interna/interestadual, consumidor, benefício, ST, monofasia ou redução de base. Se os dados não permitirem uma alíquota exata, devolva null e liste precisamente o que falta; nunca devolva zero apenas por falta de informação.
-Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários ou texto antes/depois, contendo: tratamento_sugerido; classificacao_operacao {setor,tipo_codigo,codigo,descricao,origem,automatico,confianca,base_legal,informacoes_faltantes[]}; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (27.91 significa 27,91%).`;
+Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários ou texto antes/depois, contendo: tratamento_sugerido; classificacao_operacao {setor,tipo_codigo,codigo,descricao,origem,automatico,confianca,base_legal,informacoes_faltantes[]}; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (30.0 significa 30%).`;
   const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
   const resposta = await fetch("https://api.openai.com/v1/responses", {
     method:"POST",
