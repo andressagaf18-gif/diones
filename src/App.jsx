@@ -1,4 +1,4 @@
-import { PREMISSA_REFERENCIA, TEXTO_CBS_TCU } from "../server/reforma-referencia.js";
+import { PREMISSA_REFERENCIA, TEXTO_CBS_TCU, FONTES_DECISAO_CBS } from "../server/reforma-referencia.js";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
@@ -3517,7 +3517,7 @@ ${decisao.pendencias?.length?`<h2 class="section">O que precisa ser confirmado</
 
   <div class="alert" style="margin-top:14px">
     <strong>Origem da alíquota:</strong> ${fonteAliquota.titulo}. ${fonteAliquota.texto}
-    <br><br><strong>Referência:</strong> ${fonteAliquota.referencia}
+    <br><br><strong>Referência:</strong> ${fonteAliquota.referencia}${/^20(2[7-9]|3[0-3])$/.test(cenarioAliquota)?`<br><br><strong>Fontes da decisão sobre a CBS:</strong><ul style="margin:4px 0 0;padding-left:18px">${FONTES_DECISAO_CBS.map(f=>`<li>${f.titulo} — <a href="${f.url}">${f.url}</a> (${f.tipo==="oficial"?"fonte oficial":"apoio"})</li>`).join("")}</ul>`:""}
   </div>
 
   ${regime==="Simples Nacional"?`
@@ -4352,6 +4352,14 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           <div style={{...muted,fontSize:7.4,marginTop:4}}>
             <b>Fonte/referência:</b> {fonteAliquota.referencia}
           </div>
+          {/^20(2[7-9]|3[0-3])$/.test(cenarioAliquota)&&(
+            <div style={{...muted,fontSize:7.4,marginTop:4,lineHeight:1.5}}>
+              <b>Fontes da decisão sobre a CBS:</b>
+              {FONTES_DECISAO_CBS.map((f,i)=>(
+                <div key={i}>• <a href={f.url} target="_blank" rel="noreferrer">{f.titulo}</a> ({f.tipo==="oficial"?"fonte oficial":"apoio"})</div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{
