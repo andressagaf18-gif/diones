@@ -1,3 +1,4 @@
+import { PREMISSA_REFERENCIA } from "../../server/reforma-referencia.js";
 import ReformaSimulador from "./ReformaSimulador";
 import { estimarDasResidualPorFora, calcularIrpjCsllPresumido, calcularIrpjCsllReal, calcularCargaCompleta, ANOS_TRANSICAO } from "./reforma-engine.js";
 import { jsPDF } from "jspdf";
@@ -1627,8 +1628,8 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
     body:JSON.stringify({
      projetoId,cnpj:digits(cnpj),cnae,atividadeReal:atividade,
      regime:regime||"Simples Nacional",municipio,uf,ano:2027,
-     situacaoPremissaReferencia:"ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
-     fontePremissaReferencia:"Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva",
+     situacaoPremissaReferencia:PREMISSA_REFERENCIA.situacao,
+     fontePremissaReferencia:PREMISSA_REFERENCIA.fonte,
     }),
    });
    const d=await r.json().catch(()=>null);
@@ -1854,7 +1855,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
  const transicaoModelo=useMemo(()=>[
   {ano:"2026",ibs:0,antigos:100,fase:"Teste",descricao:"CBS 0,9% e IBS 0,1% em fase de teste/compensação, observadas as regras aplicáveis."},
-  {ano:"2027",ibs:0.1,antigos:100,fase:"CBS entra",descricao:"CBS passa a substituir PIS/Cofins; IBS permanece em 0,1 p.p.; IPI é reduzido a zero nas hipóteses gerais, ressalvadas exceções."},
+  {ano:"2027",ibs:0.1,antigos:100,fase:"CBS entra",descricao:"CBS passa a substituir PIS/Cofins (referência de 11,3% calculada pelo TCU em 28/10/2026, pendente de resolução do Senado); IBS permanece em 0,1 p.p.; IPI é reduzido a zero nas hipóteses gerais, ressalvadas exceções."},
   {ano:"2028",ibs:0.1,antigos:100,fase:"Preparação",descricao:"CBS em vigor e IBS ainda em transição inicial."},
   {ano:"2029",ibs:10,antigos:90,fase:"10% IBS",descricao:"10% da transição ICMS/ISS para IBS e 90% dos tributos antigos."},
   {ano:"2030",ibs:20,antigos:80,fase:"20% IBS",descricao:"20% IBS e 80% ICMS/ISS."},
@@ -3126,7 +3127,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
       {beneficio.base_legal&&<p style={{fontSize:8.5,color:"#697386"}}><b>Base legal:</b> {beneficio.base_legal}</p>}
       {Array.isArray(res.alertas)&&res.alertas.length>0&&<ul style={{margin:"6px 0 0",paddingLeft:16,fontSize:8.5,color:"#805B10"}}>{res.alertas.map((a,i)=><li key={i}>{a}</li>)}</ul>}
       {Array.isArray(res.fontes)&&res.fontes.length>0&&<div style={{marginTop:6,fontSize:8,color:"#697386"}}>Fontes: {res.fontes.map(f=>f.titulo||f.url).filter(Boolean).join(" · ")}</div>}
-      {!validado&&<p style={{fontSize:8.5,color:"#805B10",marginTop:6}}>A pesquisa foi salva, mas ainda não foi confirmada automaticamente. Enquanto isso, a etapa "Simulações" usa a alíquota-padrão de referência (27,91%) até a validação.</p>}
+      {!validado&&<p style={{fontSize:8.5,color:"#805B10",marginTop:6}}>A pesquisa foi salva, mas ainda não foi confirmada automaticamente. Enquanto isso, a etapa "Simulações" usa a alíquota-padrão de referência (CBS 11,3% + IBS 18,7% = 30%, premissa; CBS conforme cálculo do TCU) até a validação.</p>}
      </div>;
     })()}
    </div>
@@ -3311,7 +3312,7 @@ function ReformaTributariaV2({token,onVoltar,projetoInicial=null}){
 
    <div style={{...card,background:"#F8FBFF",borderColor:"#C9D7F1"}}>
     <b style={{fontSize:9.5}}>Base de atualização</b>
-    <p style={{fontSize:8.6,lineHeight:1.55,color:"#5B667A",marginBottom:0}}>A linha do tempo considera o cronograma oficial vigente na data desta versão. Alíquotas de referência, reduções setoriais, regras do Simples e atos regulamentares devem continuar sendo validados antes de uma recomendação definitiva.</p>
+    <p style={{fontSize:8.6,lineHeight:1.55,color:"#5B667A",marginBottom:0}}>A linha do tempo considera o cronograma oficial vigente na data desta versão. CBS de referência 2027: 11,3% (cálculo do TCU aprovado em 28/10/2026, pendente de resolução do Senado). IBS, reduções setoriais, regras do Simples e atos regulamentares devem continuar sendo validados antes de uma recomendação definitiva.</p>
    </div>
   </div>}
 
