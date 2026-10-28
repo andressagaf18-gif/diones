@@ -1,3 +1,4 @@
+import { PREMISSA_REFERENCIA, TEXTO_CBS_TCU } from "../server/reforma-referencia.js";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   QrCode, Loader2, ArrowRight, ArrowLeft, CheckCircle2, Download,
@@ -1817,7 +1818,7 @@ function SimuladorReformaPublico({
   const [custosDespesasDedutiveis,setCustosDespesasDedutiveis]=useState("");
 
   const [cenarioAliquota,setCenarioAliquota]=useState("2033");
-  const [cbs,setCbs]=useState("9,21");
+  const [cbs,setCbs]=useState("11,3");
   const [ibs,setIbs]=useState("18,7");
   const [reducaoCbs,setReducaoCbs]=useState("0");
   const [reducaoIbs,setReducaoIbs]=useState("0");
@@ -2433,13 +2434,13 @@ function SimuladorReformaPublico({
   const anosTransicao=[2026,2027,2028,2029,2030,2031,2032,2033];
   const cronogramaLegalTransicao=[
     {ano:2026,cbs:"0,90% (teste)",ibs:"0,10% (teste)",legados:"PIS/Cofins, ICMS e ISS mantidos",publicacao:"Alíquotas de teste publicadas"},
-    {ano:2027,cbs:"Referência − 0,10 p.p.",ibs:"0,10%: 0,05% estadual + 0,05% municipal",legados:"ICMS/ISS: 100% · PIS/Cofins: extintos",publicacao:"IBS exato; CBS de referência a fixar"},
-    {ano:2028,cbs:"Referência − 0,10 p.p.",ibs:"0,10%: 0,05% estadual + 0,05% municipal",legados:"ICMS/ISS: 100% · PIS/Cofins: extintos",publicacao:"IBS exato; CBS de referência a fixar"},
-    {ano:2029,cbs:"100% da referência",ibs:"10% da referência",legados:"ICMS/ISS: 90%",publicacao:"Percentual da transição exato; referência a fixar"},
-    {ano:2030,cbs:"100% da referência",ibs:"20% da referência",legados:"ICMS/ISS: 80%",publicacao:"Percentual da transição exato; referência a fixar"},
-    {ano:2031,cbs:"100% da referência",ibs:"30% da referência",legados:"ICMS/ISS: 70%",publicacao:"Percentual da transição exato; referência a fixar"},
-    {ano:2032,cbs:"100% da referência",ibs:"40% da referência",legados:"ICMS/ISS: 60%",publicacao:"Percentual da transição exato; referência a fixar"},
-    {ano:2033,cbs:"100% da referência",ibs:"100% da referência",legados:"ICMS/ISS: extintos",publicacao:"Referências nominais a fixar pelo Senado"},
+    {ano:2027,cbs:"Referência − 0,10 p.p. (referência 11,3% — TCU)",ibs:"0,10%: 0,05% estadual + 0,05% municipal",legados:"ICMS/ISS: 100% · PIS/Cofins: extintos",publicacao:"IBS exato; CBS: cálculo do TCU em 11,3% (28/10/2026), aguarda resolução do Senado"},
+    {ano:2028,cbs:"Referência − 0,10 p.p. (referência 11,3% — TCU)",ibs:"0,10%: 0,05% estadual + 0,05% municipal",legados:"ICMS/ISS: 100% · PIS/Cofins: extintos",publicacao:"IBS exato; CBS: cálculo do TCU em 11,3% (28/10/2026), aguarda resolução do Senado"},
+    {ano:2029,cbs:"100% da referência (11,3% — TCU)",ibs:"10% da referência",legados:"ICMS/ISS: 90%",publicacao:"Percentual da transição exato; CBS 11,3% (TCU) aguarda resolução do Senado; IBS a fixar"},
+    {ano:2030,cbs:"100% da referência (11,3% — TCU)",ibs:"20% da referência",legados:"ICMS/ISS: 80%",publicacao:"Percentual da transição exato; CBS 11,3% (TCU) aguarda resolução do Senado; IBS a fixar"},
+    {ano:2031,cbs:"100% da referência (11,3% — TCU)",ibs:"30% da referência",legados:"ICMS/ISS: 70%",publicacao:"Percentual da transição exato; CBS 11,3% (TCU) aguarda resolução do Senado; IBS a fixar"},
+    {ano:2032,cbs:"100% da referência (11,3% — TCU)",ibs:"40% da referência",legados:"ICMS/ISS: 60%",publicacao:"Percentual da transição exato; CBS 11,3% (TCU) aguarda resolução do Senado; IBS a fixar"},
+    {ano:2033,cbs:"100% da referência (11,3% — TCU)",ibs:"100% da referência",legados:"ICMS/ISS: extintos",publicacao:"CBS: cálculo do TCU aguarda resolução do Senado; IBS a fixar pelo Senado"},
   ];
   const comparativoTransicao=anosTransicao.map(ano=>{
     if(ano===2026){
@@ -2516,8 +2517,8 @@ function SimuladorReformaPublico({
     }
 
     if(/^20(2[7-9]|3[0-3])$/.test(valor)){
-      // Premissas gerenciais editáveis. Não representam alíquota legal definitiva.
-      setCbs("9,21");
+      // Premissas gerenciais editáveis. CBS: cálculo do TCU (11,3%, 28/10/2026), ainda sem resolução do Senado. IBS: estimativa.
+      setCbs("11,3");
       setIbs("18,7");
       setReducaoCbs("0");
       setReducaoIbs("0");
@@ -2666,8 +2667,8 @@ function SimuladorReformaPublico({
           municipio:empresaCadastral?.endereco?.municipio||"",
           uf:empresaCadastral?.endereco?.uf||"",ano:cenarioAliquota,
           cbsReferenciaPct:n(cbs),ibsReferenciaPct:n(ibs),
-          situacaoPremissaReferencia:"ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
-          fontePremissaReferencia:"Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva",
+          situacaoPremissaReferencia:PREMISSA_REFERENCIA.situacao,
+          fontePremissaReferencia:PREMISSA_REFERENCIA.fonte,
         }),
       });
       const data=await resposta.json().catch(()=>null);
@@ -2743,8 +2744,8 @@ function SimuladorReformaPublico({
           municipio:empresaCadastral?.endereco?.municipio||"",
           uf:empresaCadastral?.endereco?.uf||"",ano:cenarioAliquota,
           cbsReferenciaPct:n(cbs),ibsReferenciaPct:n(ibs),
-          situacaoPremissaReferencia:"ESTIMATIVA_TECNICA_CGIBS_RESOLUCAO_14_2026_NAO_DEFINITIVA",
-          fontePremissaReferencia:"Resolução CGIBS nº 14/2026 — premissa para projeção, não alíquota definitiva",
+          situacaoPremissaReferencia:PREMISSA_REFERENCIA.situacao,
+          fontePremissaReferencia:PREMISSA_REFERENCIA.fonte,
         }),
       });
       const data=await resposta.json().catch(()=>null);
@@ -2870,10 +2871,10 @@ function SimuladorReformaPublico({
     if(/^20(2[7-9]|3[0-3])$/.test(cenarioAliquota)){
       const item=cronogramaLegalTransicao.find(x=>String(x.ano)===cenarioAliquota);
       return{
-        titulo:`Transição legal de ${cenarioAliquota} · alíquotas nominais ainda editáveis`,
-        texto:`CBS: ${item?.cbs||"referência a fixar"}. IBS: ${item?.ibs||"referência a fixar"}. Os percentuais da transição são legais; os valores nominais digitados são apenas premissas até a resolução aplicável do Senado.`,
+        titulo:`Transição legal de ${cenarioAliquota} · CBS com cálculo do TCU, IBS ainda estimado`,
+        texto:`CBS: ${item?.cbs||"referência a fixar"}. IBS: ${item?.ibs||"referência a fixar"}. ${TEXTO_CBS_TCU} Os percentuais da transição são legais; o IBS digitado é premissa até a resolução do Senado.`,
         oficial:false,
-        referencia:"EC 132/2023, arts. 125, 127 e 130 do ADCT; LC 214/2025; Receita Federal.",
+        referencia:"EC 132/2023, arts. 125, 127 e 130 do ADCT; LC 214/2025; TCU (TC 006.529/2026-7, 28/10/2026); Receita Federal.",
       };
     }
 
@@ -3248,7 +3249,7 @@ function SimuladorReformaPublico({
         instrucoesEspeciais:[
           "Não apresentar a soma CBS/IBS digitada no simulador como alíquota oficial definitiva.",
           "Quando citar percentual posterior a 2026, identificar expressamente como premissa editável do cenário.",
-          "Distinguir os percentuais legais da transição das alíquotas nominais de referência, que dependem de resolução do Senado.",
+          "Distinguir os percentuais legais da transição das alíquotas nominais de referência, que dependem de resolução do Senado. CBS 2027: o TCU aprovou em 28/10/2026 o cálculo de 11,3468% (arredondada para 11,3%), ainda pendente de resolução do Senado; o IBS segue como premissa estimada.",
           "No Simples Nacional, não comparar IBS/CBS isolado com o DAS total nem concluir carga por fora sem o DAS residual.",
           "A leitura é destinada ao cliente e deve usar tom consultivo: iniciar recomendações e próximos passos com 'Sugerimos'. Não usar imperativos como 'faça', 'solicite', 'obtenha', 'verifique' ou 'deve'.",
         ],
@@ -3552,7 +3553,7 @@ ${decisao.pendencias?.length?`<h2 class="section">O que precisa ser confirmado</
     <thead><tr><th>Ano</th><th>CBS prevista</th><th>IBS previsto</th><th>Tributos anteriores</th><th>Publicação</th></tr></thead>
     <tbody>${cronogramaLegalPdf}</tbody>
   </table>
-  <div class="muted" style="margin-top:8px">Fontes: EC 132/2023, arts. 125, 127 e 130 do ADCT; LC 214/2025; Receita Federal. Os percentuais da transição são legais. As alíquotas nominais de referência posteriores a 2026 ainda dependem dos atos competentes.</div>
+  <div class="muted" style="margin-top:8px">Fontes: EC 132/2023, arts. 125, 127 e 130 do ADCT; LC 214/2025; Receita Federal. Os percentuais da transição são legais. CBS: o TCU aprovou em 28/10/2026 o cálculo da alíquota de referência de 2027 em 11,3468% (arredondada para 11,3%), pendente de resolução do Senado. As demais alíquotas nominais (IBS) ainda dependem dos atos competentes.</div>
 
   <h2>Projeção financeira 2026-2033 - valores anuais</h2>
   <table>
@@ -4592,7 +4593,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
 
       <div style={card}>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 4px"}}>Transição 2026–2033</h3>
-        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Primeiro, confira o cronograma definido na legislação. Os percentuais de implantação são exatos; as alíquotas nominais de referência posteriores a 2026 ainda serão fixadas por resolução do Senado.</div>
+        <div style={{...muted,fontSize:7.4,lineHeight:1.4}}>Primeiro, confira o cronograma definido na legislação. Os percentuais de implantação são exatos; a CBS de referência de 2027 foi calculada pelo TCU em 11,3% (28/10/2026) e aguarda a resolução do Senado; o IBS ainda será fixado.</div>
         <div className="sr-table-wrap" style={{marginTop:8}}>
           <table style={{width:"100%",minWidth:760,borderCollapse:"collapse",fontSize:7.35}}>
             <thead><tr style={{background:NAVY,color:"#fff"}}>
