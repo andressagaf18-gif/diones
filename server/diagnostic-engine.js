@@ -167,7 +167,7 @@ export const ESTRUTURAS = {
       "apresentar a soma de CBS/IBS digitada no simulador como alíquota oficial definitiva",
       "avaliar comercial, marketing, RH, tecnologia, administrativo ou operacional — fora do escopo desta simulação",
       "calcular a carga do Simples Nacional sem considerar o DAS residual (IRPJ, CSLL, CPP e ISS/ICMS remanescentes)",
-      "tratar percentuais nominais de referência ainda não fixados por Resolução do Senado como definitivos",
+      "tratar percentuais nominais de referência ainda não fixados por Resolução do Senado como definitivos (CBS 2027: o TCU aprovou 11,3468%, arredondada para 11,3%, em 28/10/2026, mas o Senado ainda fixa a alíquota por resolução; IBS segue estimado)",
       "citar PGDAS, DEFIS, DAS ou DAS residual para empresa que NÃO está no Simples Nacional; usar os documentos do regime informado",
       "avaliar apenas os eixos efetivamente perguntados; eixo sem respostas deve ser marcado como não avaliado, sem nota",
     ],
