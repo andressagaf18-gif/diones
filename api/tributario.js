@@ -3596,7 +3596,7 @@ REGRAS OBRIGATÓRIAS:
 6. Liste riscos, oportunidades, divergências, dados faltantes e perguntas de validação.
 7. Cite título, artigo e URL oficial dentro de dadosExtraidos quando houver enquadramento legal relevante.
 8. Nunca informe um percentual, prazo, artigo de lei ou limite legal sem confirmar por pesquisa que ele está vigente na data de hoje. Se a pesquisa não confirmar, registre em dadosFaltantes/pontosParaValidacao como "sem confirmação legal atual" em vez de apresentar o dado como fato.
-9. Alíquotas nominais do IBS/CBS ainda dependem de Resolução do Senado: sempre identifique explicitamente qualquer percentual de referência como estimativa sujeita a alteração, nunca como valor final.
+9. Alíquotas nominais do IBS/CBS ainda dependem de Resolução do Senado: sempre identifique explicitamente qualquer percentual de referência como estimativa sujeita a alteração, nunca como valor final. Atualização: em 28/10/2026 o TCU aprovou o cálculo da alíquota de referência da CBS para 2027 em 11,3468% (arredondada para 11,3%), que segue ao Senado para fixação por resolução; use 11,3% como premissa da CBS, citando que ainda depende do Senado. O IBS continua sem alíquota de referência definida (premissa estimada).
 ` }];
   try{
     const {result,usage}=await respostaPlanejamentoIA({content,schema:diagnosticSchema,nomeSchema:"finder_reforma_analise",effort:"high",webSearch:true});
@@ -3653,6 +3653,7 @@ export default async function handler(req,res){
     "pasta-painel":pastaApi.pastaPainel,
     "pasta-carteira":pastaApi.pastaCarteira,
     "pasta-carteira-importar":pastaApi.pastaCarteiraImportar,
+    "pasta-carteira-regime":pastaApi.pastaCarteiraRegime,
     "pasta-narrativa":pastaApi.pastaNarrativa,
     "pasta-drive-clientes":pastaDrive.driveClientes,
     "pasta-drive-auditar":pastaDrive.driveAuditar,
