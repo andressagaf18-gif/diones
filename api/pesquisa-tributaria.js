@@ -9,6 +9,7 @@ import { exigirAutenticacao } from "../server/auth.js";
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
 const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V7_CBS_TCU_11_3";
 import { PREMISSA_REFERENCIA, TEXTO_CBS_TCU } from "../server/reforma-referencia.js";
+import { resumoRadarParaPrompt } from "../server/reforma-radar.js";
 const FONTES_OFICIAIS = [
   "planalto.gov.br",
   "gov.br",
@@ -421,8 +422,11 @@ async function pesquisar(req, res) {
 
   const cbsPremissa = numero(body.cbsReferenciaPct, PREMISSA_REFERENCIA.cbsPct);
   const ibsPremissa = numero(body.ibsReferenciaPct, PREMISSA_REFERENCIA.ibsPct);
+  const radarContexto = await resumoRadarParaPrompt();
   const prompt = `Você é um pesquisador tributário brasileiro. Pesquise a legislação vigente usando somente fontes oficiais.
 Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}. Premissas nominais da simulação: CBS ${cbsPremissa}% e IBS ${ibsPremissa}% — ${PREMISSA_REFERENCIA.situacao}. Não substitua essas premissas por uma alíquota apresentada como definitiva. Fato já ocorrido: ${TEXTO_CBS_TCU}
+Contexto verificado do radar da reforma (use como ponto de partida e cite a fonte; confirme na norma oficial antes de afirmar):
+${radarContexto||"(radar indisponível)"}
 Separe benefício legal vigente de alíquotas de referência estimadas ou ainda pendentes. Não trate CNAE isolado como prova do benefício. Verifique expressamente se a atividade possui redução de IBS/CBS na LC 214/2025, inclusive o art. 127 quando se tratar de profissão intelectual regulamentada. Todo requisito que não puder ser comprovado pelos dados pesquisados deve obrigatoriamente constar em informacoes_faltantes. Use grau_confianca ALTO somente quando as fontes oficiais sustentarem diretamente a conclusão e não houver requisito de elegibilidade pendente.
 Classifique automaticamente a operação como SERVICO, COMERCIO, INDUSTRIA ou MISTA. Para serviço, pesquise o item exato ou mais aderente da lista da LC 116/2003 e devolva o código no formato 17.19. Para comércio ou indústria, só devolva NCM quando o produto estiver suficientemente identificado; CNAE isolado não prova NCM. Se faltar produto, devolva codigo null e explique o dado necessário. Informe NBS ou cClassTrib somente quando houver correspondência oficial sustentada pela fonte.
 Pesquise também o tributo do regime atual. Para serviços, identifique o item da lista, o município competente, o ISS nominal/efetivo e a legislação municipal. Para comércio ou indústria, identifique o ICMS conforme NCM, UF de origem e destino, operação interna/interestadual, consumidor, benefício, ST, monofasia ou redução de base. Se os dados não permitirem uma alíquota exata, devolva null e liste precisamente o que falta; nunca devolva zero apenas por falta de informação.
