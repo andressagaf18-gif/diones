@@ -51,6 +51,7 @@ import VisaoPorPlano, { planoMaisAltoPago } from "./relatorios/VisaoPorPlano.jsx
 import { limparCodigoInternoRelatorio } from "./relatorios/limparTexto.js";
 import DossieAdminSimulador from "./simulador/DossieAdminSimulador.jsx";
 import { finderStyles } from "./Theme";
+import RadarReforma from "./reforma/RadarReforma.jsx";
 
 // Essas quatro telas são pesadas (Tributário sozinho carrega mais de 350KB de
 // código-fonte, incluindo jsPDF) e cada uma só é necessária quando a aba
@@ -25652,6 +25653,22 @@ export default function Admin() {
             token={token}
             onAbrirDiagnostico={abrirDiagnosticoDashboard}
           />
+        </ConteudoPadrao>
+      </FinderTechLayout>
+    );
+  }
+
+  if (aba === "reforma") {
+    return (
+      <FinderTechLayout
+        aba={aba}
+        setAba={setAba}
+        logout={sair}
+        titulo="Radar da Reforma Tributária"
+        subtitulo="Aprovado, em tramitação e solicitado — com base legal e fonte"
+      >
+        <ConteudoPadrao>
+          <RadarReforma token={token} />
         </ConteudoPadrao>
       </FinderTechLayout>
     );
