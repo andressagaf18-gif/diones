@@ -6,6 +6,7 @@ import { registrarEventoSistema, calcularDiferenca } from "../server/auditoria.j
 import * as pastaApi from "../server/pasta-api.js";
 import * as pastaDrive from "../server/pasta-drive.js";
 import * as apuracaoApi from "../server/apuracao-api.js";
+import * as reformaRadar from "../server/reforma-radar.js";
 
 const sql =
   neon(
@@ -3651,6 +3652,11 @@ export default async function handler(req,res){
     "pasta-obter":pastaApi.pastaObter,
     "pasta-relatorio":pastaApi.pastaRelatorio,
     "pasta-painel":pastaApi.pastaPainel,
+    "reforma-radar":reformaRadar.radarListar,
+    "reforma-radar-salvar":reformaRadar.radarSalvar,
+    "reforma-radar-verificar":reformaRadar.radarVerificar,
+    "reforma-radar-arquivar":reformaRadar.radarArquivar,
+    "reforma-radar-pesquisar":reformaRadar.radarPesquisar,
     "pasta-carteira":pastaApi.pastaCarteira,
     "pasta-carteira-importar":pastaApi.pastaCarteiraImportar,
     "pasta-carteira-regime":pastaApi.pastaCarteiraRegime,
