@@ -21,6 +21,7 @@ import {
   Target,
   Users,
   CalendarDays,
+  Scale,
   Menu,
   X,
 } from "lucide-react";
@@ -56,6 +57,7 @@ const GRUPOS = [
     itens: [
       { id: "diagnosticos", label: "Diagnósticos", icon: Gauge },
       { id: "tributario", label: "Inteligência Tributária", icon: Gauge },
+      { id: "reforma", label: "Radar da Reforma", icon: Scale },
     ],
   },
   {
