@@ -2749,7 +2749,7 @@ function SimuladorReformaPublico({
         }),
       });
       const data=await resposta.json().catch(()=>null);
-      if(!resposta.ok||!data?.sucesso)throw new Error(data?.error||"Não foi possível pesquisar o tratamento tributário.");
+      if(!resposta.ok||!data?.sucesso)throw new Error(data?.error||(resposta.status===504||resposta.status===502?"A pesquisa demorou demais no servidor (HTTP "+resposta.status+"). Tente novamente.":"Não foi possível pesquisar o tratamento tributário (HTTP "+resposta.status+")."));
       const pesquisaNova={
         id:data.pesquisaId,tokenPublico:data.tokenPublico,status:data.status,
         resultado:data.resultado,premissasConfirmadas:data.premissasConfirmadas||null,
