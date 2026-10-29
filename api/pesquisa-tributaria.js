@@ -128,11 +128,19 @@ async function limitarPesquisa(req) {
     ON CONFLICT (chave) DO UPDATE SET quantidade = pesquisas_tributarias_limites.quantidade + 1
     RETURNING quantidade
   `;
-  if (Number(linhas?.[0]?.quantidade || 0) > 12) {
+  if (Number(linhas?.[0]?.quantidade || 0) > 40) {
+    await sql`UPDATE pesquisas_tributarias_limites SET quantidade = GREATEST(0, quantidade - 1) WHERE chave = ${chave}`.catch(() => {});
     const erro = new Error("Limite temporário de pesquisas atingido. Tente novamente mais tarde.");
     erro.status = 429;
     throw erro;
   }
+  return chave;
+}
+
+// Pesquisa que falhou não deve consumir a cota do usuário.
+async function devolverCota(chave) {
+  if (!chave) return;
+  try { await sql`UPDATE pesquisas_tributarias_limites SET quantidade = GREATEST(0, quantidade - 1) WHERE chave = ${chave}`; } catch {}
 }
 
 function construirCacheKey(body) {
@@ -405,7 +413,6 @@ async function pesquisar(req, res) {
     return res.status(400).json({ sucesso:false, error:"Informe CNAE completo com 7 dígitos e descreva a atividade efetivamente exercida." });
   }
   if (!process.env.OPENAI_API_KEY) return res.status(500).json({ sucesso:false, error:"OPENAI_API_KEY não configurada." });
-  await limitarPesquisa(req);
   const cacheKey = construirCacheKey(body);
   const cache = await sql`
     SELECT * FROM pesquisas_tributarias
@@ -429,6 +436,8 @@ async function pesquisar(req, res) {
     return res.status(200).json({ sucesso:true, pesquisaId:id, tokenPublico, cache:true, status:statusAutomatico, resultado:resultadoCache, premissasConfirmadas:automatico.premissas });
   }
 
+  // A cota só é consumida quando a consulta realmente vai à IA (cache não conta).
+  const chaveLimite = await limitarPesquisa(req);
   const cbsPremissa = numero(body.cbsReferenciaPct, PREMISSA_REFERENCIA.cbsPct);
   const ibsPremissa = numero(body.ibsReferenciaPct, PREMISSA_REFERENCIA.ibsPct);
   const radarContexto = await Promise.race([resumoRadarParaPrompt(), new Promise((ok) => setTimeout(() => ok(""), 4000))]).catch(() => "");
@@ -457,14 +466,15 @@ Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários o
   });
   } catch (e) {
     clearTimeout(limite);
+    await devolverCota(chaveLimite);
     return res.status(504).json({ sucesso:false, error:e?.name==="AbortError"?"A pesquisa demorou mais que o limite. Tente novamente.":`Falha ao consultar a IA: ${e?.message||"erro de rede"}` });
   }
   clearTimeout(limite);
   const data = await resposta.json().catch(() => null);
-  if (!resposta.ok || !data) return res.status(502).json({ sucesso:false, error:data?.error?.message||"Falha na pesquisa tributária (resposta inválida da IA)." });
+  if (!resposta.ok || !data) { await devolverCota(chaveLimite); return res.status(502).json({ sucesso:false, error:data?.error?.message||"Falha na pesquisa tributária (resposta inválida da IA)." }); }
   let bruto;
   try { bruto = JSON.parse(limparJson(extrairOutputText(data))); }
-  catch { return res.status(502).json({ sucesso:false, error:"A pesquisa não retornou JSON válido." }); }
+  catch { await devolverCota(chaveLimite); return res.status(502).json({ sucesso:false, error:"A pesquisa não retornou JSON válido." }); }
   const fontesTool = lista(data?.output).filter(x=>x?.type==="web_search_call").flatMap(x=>lista(x?.action?.sources));
   const resultado = aplicarCatalogoLegal(
     normalizarResultado(bruto, body, fontesTool),
