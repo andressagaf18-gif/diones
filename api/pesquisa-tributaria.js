@@ -422,7 +422,7 @@ async function pesquisar(req, res) {
 
   const cbsPremissa = numero(body.cbsReferenciaPct, PREMISSA_REFERENCIA.cbsPct);
   const ibsPremissa = numero(body.ibsReferenciaPct, PREMISSA_REFERENCIA.ibsPct);
-  const radarContexto = await resumoRadarParaPrompt();
+  const radarContexto = await Promise.race([resumoRadarParaPrompt(), new Promise((ok) => setTimeout(() => ok(""), 4000))]).catch(() => "");
   const prompt = `Você é um pesquisador tributário brasileiro. Pesquise a legislação vigente usando somente fontes oficiais.
 Analise CNAE ${cnae}; atividade efetiva: ${atividadeReal}; NBS/NCM: ${texto(body.nbsNcm)||"não informado"}; regime: ${texto(body.regime)}; município/UF: ${texto(body.municipio)}/${texto(body.uf)}; ano: ${texto(body.ano)}. Premissas nominais da simulação: CBS ${cbsPremissa}% e IBS ${ibsPremissa}% — ${PREMISSA_REFERENCIA.situacao}. Não substitua essas premissas por uma alíquota apresentada como definitiva. Fato já ocorrido: ${TEXTO_CBS_TCU}
 Contexto verificado do radar da reforma (use como ponto de partida e cite a fonte; confirme na norma oficial antes de afirmar):
@@ -432,7 +432,12 @@ Classifique automaticamente a operação como SERVICO, COMERCIO, INDUSTRIA ou MI
 Pesquise também o tributo do regime atual. Para serviços, identifique o item da lista, o município competente, o ISS nominal/efetivo e a legislação municipal. Para comércio ou indústria, identifique o ICMS conforme NCM, UF de origem e destino, operação interna/interestadual, consumidor, benefício, ST, monofasia ou redução de base. Se os dados não permitirem uma alíquota exata, devolva null e liste precisamente o que falta; nunca devolva zero apenas por falta de informação.
 Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários ou texto antes/depois, contendo: tratamento_sugerido; classificacao_operacao {setor,tipo_codigo,codigo,descricao,origem,automatico,confianca,base_legal,informacoes_faltantes[]}; beneficio_legal {existe,tipo,situacao_normativa,base_legal}; reducao_pct; cbs_referencia_pct; ibs_referencia_pct; aliquota_referencia_total_pct; situacao_normativa_aliquotas; tributacao_local {tipo,incide,aplicavel_regime_atual,aliquota_nominal_pct,aliquota_efetiva_pct,codigo_enquadramento,local_competente,situacao_normativa,base_legal,memoria_calculo,requisitos[],informacoes_faltantes[]}; requisitos[]; informacoes_faltantes[]; alertas[]; grau_confianca; conclusao; fontes[{titulo,url,orgao,artigo}]. Percentuais devem ser números na escala 0 a 100 (30.0 significa 30%).`;
   const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
-  const resposta = await fetch("https://api.openai.com/v1/responses", {
+  const controle = new AbortController();
+  const limite = setTimeout(() => controle.abort(), 270000);
+  let resposta;
+  try {
+  resposta = await fetch("https://api.openai.com/v1/responses", {
+    signal:controle.signal,
     method:"POST",
     headers:{ Authorization:`Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type":"application/json" },
     body:JSON.stringify({
@@ -441,8 +446,13 @@ Responda exclusivamente com um objeto JSON válido, sem Markdown, comentários o
       tool_choice:"auto", include:["web_search_call.action.sources"],
     }),
   });
-  const data = await resposta.json();
-  if (!resposta.ok) return res.status(502).json({ sucesso:false, error:data?.error?.message||"Falha na pesquisa tributária." });
+  } catch (e) {
+    clearTimeout(limite);
+    return res.status(504).json({ sucesso:false, error:e?.name==="AbortError"?"A pesquisa demorou mais que o limite. Tente novamente.":`Falha ao consultar a IA: ${e?.message||"erro de rede"}` });
+  }
+  clearTimeout(limite);
+  const data = await resposta.json().catch(() => null);
+  if (!resposta.ok || !data) return res.status(502).json({ sucesso:false, error:data?.error?.message||"Falha na pesquisa tributária (resposta inválida da IA)." });
   let bruto;
   try { bruto = JSON.parse(limparJson(extrairOutputText(data))); }
   catch { return res.status(502).json({ sucesso:false, error:"A pesquisa não retornou JSON válido." }); }
