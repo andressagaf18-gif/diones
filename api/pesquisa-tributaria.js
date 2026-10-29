@@ -537,11 +537,11 @@ export default async function handler(req,res){
     if(!sql)return res.status(500).json({sucesso:false,error:"DATABASE_URL não configurada."});
     await garantirBanco();
     const acao=texto(req.query?.acao||req.body?.acao||(req.method==="POST"?"pesquisar":"")).toLowerCase();
-    if(req.method==="POST"&&acao==="pesquisar")return pesquisar(req,res);
-    if(req.method==="GET"&&acao==="status")return statusPublico(req,res);
-    if(req.method==="GET"&&acao==="listar")return listarAdmin(req,res);
-    if(req.method==="POST"&&acao==="validar")return validarAdmin(req,res);
-    if(req.method==="POST"&&acao==="rejeitar")return rejeitarAdmin(req,res);
+    if(req.method==="POST"&&acao==="pesquisar")return await pesquisar(req,res);
+    if(req.method==="GET"&&acao==="status")return await statusPublico(req,res);
+    if(req.method==="GET"&&acao==="listar")return await listarAdmin(req,res);
+    if(req.method==="POST"&&acao==="validar")return await validarAdmin(req,res);
+    if(req.method==="POST"&&acao==="rejeitar")return await rejeitarAdmin(req,res);
     return res.status(404).json({sucesso:false,error:"Operação não encontrada."});
   }catch(error){
     console.error("[pesquisa-tributaria]",error);
