@@ -2117,7 +2117,8 @@ function SimuladorReformaPublico({
   }
 
   function calcularRealEstimado(){
-    if(!fat)return null;
+    // Sem custos/despesas dedutíveis o lucro seria o faturamento inteiro (IRPJ/CSLL absurdos): não estima.
+    if(!fat||!n(custosDespesasDedutiveis))return null;
 
     const dedutiveis=Math.min(fat,Math.max(0,n(custosDespesasDedutiveis)));
     const lucroEstimado=Math.max(0,fat-dedutiveis);
@@ -2267,7 +2268,8 @@ function SimuladorReformaPublico({
   const issAtualUsado=n(issAtual)||(tipoLocal.includes("ISS")?valorEstimadoLocal:0);
   const ipiAtualUsado=n(ipiAtual);
   const cppAtualUsado=n(cppAtual);
-  const irpjAtualUsado=n(irpjAtual)||n(estimado.irpjMensalEquivalente)||n(estimado.irpj);
+  // IRPJ "normal" (15%); o adicional de 10% é uma linha própria. Antes o IRPJ já vinha com o adicional e ele era somado de novo.
+  const irpjAtualUsado=n(irpjAtual)||n(estimado.irpjNormalMensalEquivalente)||n(estimado.irpjNormal);
   const adicionalIrpjAtualUsado=n(adicionalIrpjAtual)||n(estimado.adicionalIrpjMensalEquivalente)||n(estimado.adicionalIrpj);
   const csllAtualUsado=n(csllAtual)||n(estimado.csllMensalEquivalente)||n(estimado.csll);
   const outrosAtuaisUsados=n(outrosAtuais)+fora;
@@ -2278,8 +2280,9 @@ function SimuladorReformaPublico({
   // PIS e Cofins. O Imposto Seletivo integra o valor da operação.
   const exclusoesBase=
     n(descontosIncondicionais)+
-    pisAtualUsado*proporcao.pisCofins+
-    cofinsAtualUsado*proporcao.pisCofins+
+    // Exclui-se o PIS/Cofins embutido no preço (débito bruto), não o valor líquido após créditos.
+    (n(pisAtual)||n(estimado.debitoPis)||pisAtualUsado)*proporcao.pisCofins+
+    (n(cofinsAtual)||n(estimado.debitoCofins)||cofinsAtualUsado)*proporcao.pisCofins+
     icmsAtualUsado*proporcao.icmsIss+
     issAtualUsado*proporcao.icmsIss+
     ipiAtualUsado*(manterIpiExcecao?1:proporcao.ipi);
@@ -2494,8 +2497,8 @@ function SimuladorReformaPublico({
   });
 
   const impostoRendaReforma=regime==="Lucro Presumido"
-    ?n(estimativaPresumidoComparativo?.irpjMensalEquivalente)
-    :regime==="Lucro Real"?n(estimativaRealComparativo?.irpj):irpjAtualUsado;
+    ?n(estimativaPresumidoComparativo?.irpjNormalMensalEquivalente)
+    :regime==="Lucro Real"?n(estimativaRealComparativo?.irpjNormal):irpjAtualUsado;
   const adicionalReforma=regime==="Lucro Presumido"
     ?n(estimativaPresumidoComparativo?.adicionalIrpjMensalEquivalente)
     :regime==="Lucro Real"?n(estimativaRealComparativo?.adicionalIrpj):adicionalIrpjAtualUsado;
@@ -3553,7 +3556,7 @@ ${decisao.pendencias?.length?`<h2 class="section">O que precisa ser confirmado</
 
   <h2>Comparação completa por regime e por tributo</h2>
   <table>
-    <thead><tr><th>Tributo</th><th>Lucro Real</th><th>Lucro Presumido</th><th>Simples</th><th>Reforma</th></tr></thead>
+    <thead><tr><th>Tributo</th><th>Lucro Real</th><th>Lucro Presumido</th><th>${regime==="Simples Nacional"?"Simples":"Atual informado"}</th><th>Reforma</th></tr></thead>
     <tbody>
       ${comparacaoRegimesPdf}
       <tr class="total"><td>Carga total estimada</td><td>${estimativaRealComparativo?moedaSimulador(estimativaRealComparativo.valor):"Pendente"}</td><td>${estimativaPresumidoComparativo?moedaSimulador(estimativaPresumidoComparativo.valor):"Pendente"}</td><td>${dasAtualReferencia?moedaSimulador(dasAtualReferencia+fora):"Pendente"}</td><td>${totalReformaExibido==null?"Pendente":moedaSimulador(totalReformaExibido)}</td></tr>
@@ -4578,7 +4581,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         <div className="sr-table-wrap" style={{marginTop:8}}>
           <table style={{width:"100%",minWidth:610,borderCollapse:"collapse",fontSize:7.5}}>
             <thead><tr style={{background:NAVY,color:"#fff"}}>
-              {['Tributo','Lucro Real atual','Lucro Presumido atual','Simples atual','Reforma no regime escolhido'].map(t=><th key={t} style={{padding:8,textAlign:t==='Tributo'?'left':'right'}}>{t}</th>)}
+              {['Tributo','Lucro Real atual','Lucro Presumido atual',regime==='Simples Nacional'?'Simples atual':`${regime||'Regime'} atual (informado)`,'Reforma no regime escolhido'].map(t=><th key={t} style={{padding:8,textAlign:t==='Tributo'?'left':'right'}}>{t}</th>)}
             </tr></thead>
             <tbody>
               {linhasComparacaoRegimes.map(([nome,realValor,presValor,simplesValor,reformaValor])=><tr key={nome} style={{borderBottom:"1px solid #E8ECF2"}}>
@@ -4594,9 +4597,9 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
               </tr>
               <tr>
                 <td data-label="Indicador" style={{padding:"8px 6px"}}>Alíquota nominal</td>
-                <td data-label="Lucro Real" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador((estimativaRealComparativo.valor+n(estimativaRealComparativo.creditoPisCofins))/fat*100):'Pendente'}</td>
+                <td data-label="Lucro Real" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaRealComparativo?percentualSimulador((estimativaRealComparativo.valor+n(estimativaRealComparativo.creditoPis)+n(estimativaRealComparativo.creditoCofins))/fat*100):'Pendente'}</td>
                 <td data-label="Lucro Presumido" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&estimativaPresumidoComparativo?percentualSimulador(estimativaPresumidoComparativo.valor/fat*100):'Pendente'}</td>
-                <td data-label="Simples" style={{padding:"8px 6px",textAlign:"right"}}>{fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
+                <td data-label="Simples" style={{padding:"8px 6px",textAlign:"right"}}>{regime==="Simples Nacional"&&estimativaAtual?.aliquotaNominalPct!=null?percentualSimulador(estimativaAtual.aliquotaNominalPct):fat&&dasAtualReferencia?percentualSimulador(dasAtualReferencia/fat*100):'Pendente'}</td>
                 <td data-label="Reforma" style={{padding:"8px 6px",textAlign:"right"}}>{percentualSimulador(iva)}</td>
               </tr>
               <tr style={{background:"#EAF1F5",fontWeight:950}}>
@@ -4609,6 +4612,10 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             </tbody>
           </table>
         </div>
+        {!estimativaRealComparativo&&regime!=="Simples Nacional"&&<div style={{marginTop:7,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:8,padding:8,fontSize:7.4,color:"#805B10"}}>
+          <b>Lucro Real pendente:</b> informe os custos e despesas dedutíveis do mês para estimar IRPJ/CSLL. Sem isso o lucro seria igual ao faturamento e o resultado ficaria errado.
+          <input value={custosDespesasDedutiveis} onChange={e=>setCustosDespesasDedutiveis(e.target.value)} style={{...input,marginTop:6}} placeholder="Custos e despesas dedutíveis do mês (R$)"/>
+        </div>}
         {!aliquotaLocalConfirmada&&natureza&&<div style={{marginTop:7,background:"#FFF8EC",borderRadius:8,padding:8,fontSize:7.2,color:"#805B10"}}><b>Atenção:</b> ICMS/ISS não integra os totais do Real e Presumido enquanto a alíquota efetiva sugerida não for confirmada.</div>}
       </div>
 
