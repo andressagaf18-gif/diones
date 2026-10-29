@@ -11,6 +11,61 @@ const STATUS = {
 const dBr = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(String(iso || "")) ? String(iso).slice(0, 10).split("-").reverse().join("/") : "—");
 const VAZIO = { slug: "", titulo: "", status: "tramitacao", orgao: "", baseLegal: "", resumo: "", dataEvento: "", proximaData: "", proximoPasso: "", impactoSistema: "", revisar: false, fontes: [{ titulo: "", url: "" }] };
 
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Monta o relatório em HTML limpo (sem rodapé do navegador) e abre a janela de impressão / salvar como PDF.
+export function htmlRelatorioRadar(itens, { ultimaVerificacao, alertas = [], filtroRotulo = "" } = {}) {
+  const hoje = new Date().toLocaleDateString("pt-BR");
+  const ordem = ["prazo", "tramitacao", "solicitado", "aprovado", "vigente"];
+  const grupos = ordem.map((k) => [k, itens.filter((i) => i.status === k)]).filter(([, l]) => l.length);
+  const cont = (k) => itens.filter((i) => i.status === k).length;
+  const cartao = (i) => {
+    const [r, cor, fundo] = STATUS[i.status] || [i.status, MUTED, "#EEF1F6"];
+    const fontes = (i.fontes || []).map((f) => `<li><b>${f.tipo === "oficial" ? "Oficial" : "Apoio"}:</b> ${esc(f.titulo || f.url)}<br><span class="url">${esc(f.url)}</span>${f.lida === false ? " <i>(link legal — conferir o texto)</i>" : ""}</li>`).join("");
+    return `<div class="item" style="border-left-color:${cor}">
+      <div class="topo"><span class="chip" style="background:${fundo};color:${cor}">${esc(r)}</span>${i.revisar ? '<span class="chip" style="background:#FFF1D6;color:#9A5B00">revisar andamento</span>' : ""}</div>
+      <h3>${esc(i.titulo)}</h3>
+      <div class="meta">${esc([i.orgao, i.baseLegal].filter(Boolean).join(" · "))}</div>
+      ${i.resumo ? `<p>${esc(i.resumo)}</p>` : ""}
+      ${i.dataEvento || i.proximaData ? `<p><b>Datas:</b> ${i.dataEvento ? "evento " + dBr(i.dataEvento) : ""}${i.proximaData ? " · próxima " + dBr(i.proximaData) : ""}</p>` : ""}
+      ${i.proximoPasso ? `<p><b>Próximo passo:</b> ${esc(i.proximoPasso)}</p>` : ""}
+      ${i.impactoSistema ? `<p><b>No sistema Finder:</b> ${esc(i.impactoSistema)}</p>` : ""}
+      <div class="fontes"><b>Fontes</b><ul>${fontes}</ul></div>
+      <div class="ver">Verificado em ${esc(dBr(i.verificadoEm))}${i.verificadoPor ? " por " + esc(i.verificadoPor) : ""}</div>
+    </div>`;
+  };
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Radar da Reforma Tributária - ${hoje.replace(/\//g, "-")}</title>
+<style>
+@page{size:A4;margin:0}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+html,body{margin:0;padding:0;background:#fff;color:${NAVY};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:11px;line-height:1.45}
+table.pg{width:184mm;margin:0 auto;border-collapse:collapse}
+table.pg>thead>tr>td>div{height:13mm}table.pg>tfoot>tr>td>div{height:17mm}
+table.pg>thead{display:table-header-group}table.pg>tfoot{display:table-footer-group}table.pg>tbody>tr>td{padding:0}
+.rodape{position:fixed;left:13mm;right:13mm;bottom:6mm;display:flex;justify-content:space-between;font-size:8.5px;color:${MUTED};border-top:1px solid ${BORDER};padding-top:4px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid ${NAVY};break-after:avoid}
+h3{font-size:12.5px;margin:6px 0 2px;break-after:avoid}
+.sub{color:${MUTED};font-size:11px;margin-bottom:10px}
+.kpis{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}.kpi{border:1px solid ${BORDER};border-radius:8px;padding:6px 10px;min-width:92px}.kpi b{display:block;font-size:18px}.kpi span{font-size:9px;color:${MUTED}}
+.alerta{background:#FDE4E1;border:1px solid #F5B9B1;border-radius:8px;padding:8px 10px;margin:10px 0;break-inside:avoid}
+.item{border:1px solid ${BORDER};border-left:4px solid ${MUTED};border-radius:8px;padding:9px 11px;margin-bottom:9px;break-inside:avoid;page-break-inside:avoid}
+.chip{display:inline-block;border-radius:999px;padding:2px 8px;font-size:9.5px;font-weight:800;margin-right:5px}
+.meta{color:${MUTED};font-size:10px}.item p{margin:4px 0}.fontes ul{margin:3px 0 0;padding-left:16px}.fontes li{margin-bottom:3px}.url{color:${MUTED};font-size:9px;word-break:break-all}.ver{color:${MUTED};font-size:9px;margin-top:5px}
+.aviso{color:${MUTED};font-size:9.5px;margin-top:14px;break-inside:avoid}
+</style></head><body>
+<div class="rodape"><span>Finder of Solutions · Radar da Reforma Tributária · uso interno</span><span>Emitido em ${hoje}</span></div>
+<table class="pg"><thead><tr><td><div></div></td></tr></thead><tfoot><tr><td><div></div></td></tr></tfoot><tbody><tr><td>
+<h1>Radar da Reforma Tributária</h1>
+<div class="sub">Emitido em ${hoje} · última verificação dos dados: ${esc(dBr(ultimaVerificacao))}${filtroRotulo ? " · filtro: " + esc(filtroRotulo) : ""}</div>
+<div class="kpis">${ordem.map((k) => `<div class="kpi"><b style="color:${STATUS[k][1]}">${cont(k)}</b><span>${esc(STATUS[k][0])}</span></div>`).join("")}</div>
+${alertas.length ? `<div class="alerta"><b style="color:#B3261E">Prazos e datas próximas</b>${alertas.map((a) => `<div>${esc(dBr(a.data))} — ${esc(a.titulo)}</div>`).join("")}</div>` : ""}
+${grupos.map(([k, l]) => `<h2>${esc(STATUS[k][0])} (${l.length})</h2>${l.map(cartao).join("")}`).join("")}
+<div class="aviso">Itens "Apoio" são imprensa/entidades técnicas e não substituem a norma: confirme no texto oficial antes de decidir. Este relatório é uma síntese para consulta interna e não constitui parecer jurídico. Itens com “revisar andamento” não tiveram a situação atual confirmada.</div>
+</td></tr></tbody></table>
+<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350)};<\/script>
+</body></html>`;
+}
+
 export default function RadarReforma({ token }) {
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState("");
@@ -51,6 +106,12 @@ export default function RadarReforma({ token }) {
   const arquivar = (i, ativo = false) => agir(`a${i.slug}`, async () => { await chamar("reforma-radar-arquivar", { slug: i.slug, ativo }); });
   const pesquisar = () => agir("pesquisar", async () => { const r = await chamar("reforma-radar-pesquisar", {}); setMsg(r.novas ? `${r.novas} sugestão(ões) encontrada(s) — revise na aba "Atualizar" antes de valer.` : "Nenhuma novidade com fonte oficial encontrada."); setVista(r.novas ? "atualizar" : vista); });
 
+  function gerarPdf() {
+    const w = window.open("", "_blank", "width=1000,height=800");
+    if (!w) { setErro("O navegador bloqueou a janela do PDF. Libere pop-ups para este site e tente de novo."); return; }
+    const rotuloFiltro = filtro === "todos" ? "" : filtro === "revisar" ? "revisar andamento" : STATUS[filtro]?.[0] || "";
+    w.document.open(); w.document.write(htmlRelatorioRadar(visiveis, { ultimaVerificacao: dados?.ultimaVerificacao, alertas: dados?.alertas || [], filtroRotulo: rotuloFiltro })); w.document.close();
+  }
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const campo = { width: "100%", padding: 8, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12.5, boxSizing: "border-box", background: WHITE, fontFamily: "inherit" };
   const rot = (t) => <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, margin: "10px 0 4px" }}>{t}</div>;
@@ -111,6 +172,7 @@ export default function RadarReforma({ token }) {
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {[["painel", "Painel"], ["atualizar", `Atualizar${dados?.sugestoes ? ` (${dados.sugestoes} sugestão)` : ""}`]].map(([k, r]) => <button key={k} type="button" onClick={() => setVista(k)} style={btn({ background: vista === k ? NAVY : WHITE, color: vista === k ? WHITE : NAVY })}>{r}</button>)}
           <button type="button" style={btn()} onClick={carregar}>Recarregar</button>
+          <button type="button" style={btn()} disabled={!visiveis.length} onClick={gerarPdf}>Gerar PDF</button>
           {podeEditar && <button type="button" style={btn({ background: CORAL, color: WHITE, border: "none" })} disabled={!!ocupado} onClick={pesquisar}>{ocupado === "pesquisar" ? "Pesquisando fontes oficiais…" : "Pesquisar novidades"}</button>}
         </div>
         {erro && <div style={{ marginTop: 10, color: "#B3261E", fontWeight: 700, fontSize: 12.5 }}>{erro}</div>}
