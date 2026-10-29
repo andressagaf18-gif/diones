@@ -2117,10 +2117,15 @@ function SimuladorReformaPublico({
   }
 
   function calcularRealEstimado(){
-    // Sem custos/despesas dedutíveis o lucro seria o faturamento inteiro (IRPJ/CSLL absurdos): não estima.
-    if(!fat||!n(custosDespesasDedutiveis))return null;
+    if(!fat)return null;
 
-    const dedutiveis=Math.min(fat,Math.max(0,n(custosDespesasDedutiveis)));
+    // Sem custos informados, o lucro NÃO pode ser o faturamento inteiro. Usa-se, como premissa
+    // explícita, a margem presumida (32% serviços / 8% comércio e indústria) até o usuário informar os custos.
+    const custosInformados=n(custosDespesasDedutiveis)>0;
+    const margemPremissa=natureza==="Serviço"?0.32:0.08;
+    const dedutiveis=custosInformados
+      ?Math.min(fat,Math.max(0,n(custosDespesasDedutiveis)))
+      :fat*(1-margemPremissa);
     const lucroEstimado=Math.max(0,fat-dedutiveis);
 
     const irpjNormal=lucroEstimado*0.15;
@@ -2154,6 +2159,7 @@ function SimuladorReformaPublico({
       valor:irpj+csll+pisCofinsLiquido+(tributoLocalMes||0),
       lucroEstimado,
       custosDespesasDedutiveis:dedutiveis,
+      custosEstimados:!custosInformados,
       irpjNormal,
       adicionalIrpj,
       irpj,
@@ -2171,7 +2177,7 @@ function SimuladorReformaPublico({
       aliquotaLocalConfirmada,
       sugestaoTributoLocal,
       fonte:"IRPJ: Receita Federal — 15% sobre o lucro e adicional de 10% sobre a parcela que excede R$ 20 mil por mês. CSLL: 9% para pessoas jurídicas em geral. PIS/Cofins não cumulativos: referência geral de 1,65% e 7,6%, com créditos sujeitos à legislação.",
-      observacao:"Estimativa gerencial. Lucro Real exige resultado contábil ajustado, adições, exclusões, compensações e validação dos créditos e despesas dedutíveis."
+      observacao:(custosInformados?"":`Custos não informados: lucro estimado em ${margemPremissa*100}% do faturamento (margem presumida). Informe os custos e despesas dedutíveis para refinar. `)+"Estimativa gerencial. Lucro Real exige resultado contábil ajustado, adições, exclusões, compensações e validação dos créditos e despesas dedutíveis."
     };
   }
 
@@ -4612,8 +4618,8 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             </tbody>
           </table>
         </div>
-        {!estimativaRealComparativo&&regime!=="Simples Nacional"&&<div style={{marginTop:7,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:8,padding:8,fontSize:7.4,color:"#805B10"}}>
-          <b>Lucro Real pendente:</b> informe os custos e despesas dedutíveis do mês para estimar IRPJ/CSLL. Sem isso o lucro seria igual ao faturamento e o resultado ficaria errado.
+        {estimativaRealComparativo?.custosEstimados&&regime!=="Simples Nacional"&&<div style={{marginTop:7,background:"#FFF8EC",border:"1px solid #F3D99B",borderRadius:8,padding:8,fontSize:7.4,color:"#805B10"}}>
+          <b>Lucro Real estimado:</b> sem os custos informados, o lucro foi estimado pela margem presumida ({natureza==="Serviço"?"32":"8"}% do faturamento). Informe os custos e despesas dedutíveis do mês para refinar IRPJ/CSLL.
           <input value={custosDespesasDedutiveis} onChange={e=>setCustosDespesasDedutiveis(e.target.value)} style={{...input,marginTop:6}} placeholder="Custos e despesas dedutíveis do mês (R$)"/>
         </div>}
         {!aliquotaLocalConfirmada&&natureza&&<div style={{marginTop:7,background:"#FFF8EC",borderRadius:8,padding:8,fontSize:7.2,color:"#805B10"}}><b>Atenção:</b> ICMS/ISS não integra os totais do Real e Presumido enquanto a alíquota efetiva sugerida não for confirmada.</div>}
