@@ -1988,10 +1988,10 @@ function SimuladorReformaPublico({
 
       return{
         tipo:"ISS",
-        aliquotaSugerida:null,
+        aliquotaSugerida:5,
         usarComoEfetiva:true,
-        fonte:"ISS depende da legislação do município competente e do item da lista de serviços.",
-        observacao:"O CNPJ informa município e CNAE, mas não determina sozinho a alíquota do ISS. Confirme a legislação municipal.",
+        fonte:`ISS de ${empresaCadastral?.endereco?.municipio||"município não identificado"}: lei municipal não cadastrada no sistema. Estimativa pelo teto de 5% da LC 116/2003 (alíquota máxima; mínima de 2%, LC 157/2016).`,
+        observacao:"Alíquota estimada pelo teto legal, que tende a superestimar o ISS. A alíquota real depende da lei do município e do item da lista de serviços (e há regimes especiais, como ISS fixo para sociedades profissionais). Ajuste o percentual quando confirmar na legislação municipal.",
       };
     }
 
