@@ -1995,14 +1995,27 @@ function SimuladorReformaPublico({
       };
     }
 
-    if((natureza==="Comércio"||natureza==="Indústria")&&uf==="PR"){
-      return{
-        tipo:"ICMS",
-        aliquotaSugerida:19.5,
-        usarComoEfetiva:false,
-        fonte:"Paraná — Lei Estadual 11.580/1996, art. 14, VIII, com redação da Lei 21.850/2023: 19,5% para as operações internas com os demais bens e mercadorias.",
-        observacao:"19,5% é alíquota nominal interna padrão. Não deve ser tratada automaticamente como carga efetiva: NCM, benefício, redução de base, ST, monofasia, destino e créditos de ICMS podem alterar o valor.",
-      };
+    if(natureza==="Comércio"||natureza==="Indústria"){
+      const padraoUf=ICMS_UF_PADRAO[uf];
+      if(padraoUf){
+        const fontePr=uf==="PR"?"Paraná — Lei Estadual 11.580/1996, art. 14, VIII, com redação da Lei 21.850/2023: 19,5% para as operações internas com os demais bens e mercadorias.":`${uf} — alíquota interna padrão do ICMS${padraoUf.adicional?` (já somado o adicional de ${padraoUf.adicional} p.p. do fundo de combate à pobreza)`:""}, conforme tabelas de alíquotas estaduais 2026; confirme no RICMS/${uf}.`;
+        return{
+          tipo:"ICMS",
+          aliquotaSugerida:padraoUf.pct,
+          usarComoEfetiva:true,
+          fonte:fontePr,
+          observacao:`Alíquota nominal interna de ${uf} aplicada sobre o faturamento como estimativa. Ela não considera créditos de ICMS das compras, substituição tributária, redução de base ou benefícios por NCM; por isso pode superar o ICMS efetivamente recolhido. Ajuste o percentual se souber a carga efetiva.`,
+        };
+      }
+      if(uf){
+        return{
+          tipo:"ICMS",
+          aliquotaSugerida:null,
+          usarComoEfetiva:false,
+          fonte:`${uf}: as fontes consultadas divergem sobre a alíquota interna padrão.`,
+          observacao:`Confirme a alíquota interna de ${uf} no RICMS e informe o percentual a usar.`,
+        };
+      }
     }
 
     return{
@@ -4969,6 +4982,14 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
     </>}
   </div>;
 }
+
+// Alíquotas internas padrão de ICMS (2026) — fontes secundárias conferidas entre si (Simtax, Treeunfe, Tributo de Vido).
+// "adicional" = p.p. do fundo de combate à pobreza já somado. AL, MA, MS e PI ficam de fora: as fontes divergem.
+const ICMS_UF_PADRAO={
+  AC:{pct:19},AM:{pct:20},AP:{pct:18},BA:{pct:20.5},CE:{pct:20},DF:{pct:20},ES:{pct:17},GO:{pct:19},MG:{pct:18},
+  MT:{pct:17},PA:{pct:19},PB:{pct:20},PE:{pct:20.5},PR:{pct:19.5},RJ:{pct:22,adicional:2},RN:{pct:20},RO:{pct:19.5},
+  RR:{pct:20},RS:{pct:17},SC:{pct:17},SE:{pct:20,adicional:1},SP:{pct:18},TO:{pct:20},
+};
 
 const PLANOS_DIAGNOSTICO = [
   { codigo:"INICIAL", nome:"Diagnóstico Inicial", valor:29.90, descricao:"Score, leitura executiva e principais sinais de atenção." },
