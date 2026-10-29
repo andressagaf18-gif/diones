@@ -8,8 +8,17 @@ import { exigirAutenticacao } from "../server/auth.js";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
 const PROMPT_VERSAO = "PESQUISA_TRIBUTARIA_V7_CBS_TCU_11_3";
-import { PREMISSA_REFERENCIA, TEXTO_CBS_TCU } from "../server/reforma-referencia.js";
-import { resumoRadarParaPrompt } from "../server/reforma-radar.js";
+// Referências da reforma carregadas com tolerância: se um arquivo de server/ não estiver publicado,
+// a pesquisa continua funcionando com os valores de segurança abaixo (nunca derruba a função).
+let PREMISSA_REFERENCIA = {
+  cbsPct: 11.3, ibsPct: 18.7, totalPct: 30,
+  situacao: "CBS_CALCULO_TCU_APROVADO_28_10_2026_AGUARDA_RESOLUCAO_SENADO_IBS_ESTIMATIVA_CGIBS",
+  fonte: "CBS: cálculo do TCU aprovado em 28/10/2026 (11,3468%, arredondada para 11,3%), pendente de resolução do Senado. IBS: estimativa técnica da Resolução CGIBS nº 14/2026. Premissas para projeção, não alíquotas definitivas.",
+};
+let TEXTO_CBS_TCU = "TCU aprovou, em 28/10/2026, o cálculo da alíquota de referência da CBS para 2027: 11,3468%, arredondada para 11,3%. O resultado vai ao Senado, que fixa a alíquota por resolução.";
+let resumoRadarParaPrompt = async () => "";
+try { const m = await import("../server/reforma-referencia.js"); PREMISSA_REFERENCIA = m.PREMISSA_REFERENCIA || PREMISSA_REFERENCIA; TEXTO_CBS_TCU = m.TEXTO_CBS_TCU || TEXTO_CBS_TCU; } catch (e) { console.error("reforma-referencia indisponível:", e?.message); }
+try { const m = await import("../server/reforma-radar.js"); if (typeof m.resumoRadarParaPrompt === "function") resumoRadarParaPrompt = m.resumoRadarParaPrompt; } catch (e) { console.error("reforma-radar indisponível:", e?.message); }
 const FONTES_OFICIAIS = [
   "planalto.gov.br",
   "gov.br",
