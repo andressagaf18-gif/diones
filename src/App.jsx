@@ -1764,12 +1764,12 @@ function SimuladorReformaPublico({
   const [planoPago,setPlanoPago]=useState(planoLiberadoInicial||"");
   useEffect(()=>{if(planoLiberadoInicial)setPlanoPago(p=>p||planoLiberadoInicial)},[planoLiberadoInicial]);
   const refCobranca=leadId?`simulador:${leadId}`:"";
-  const acessoValores=Boolean(planoPago);
+  const acessoValores=true; // comparativo é gratuito; a cobrança ocorre ao gerar o relatório
   const acessoRelatorio=["COMPLETO","ESPECIALISTA"].includes(planoPago);
   const TEXTOS_PLANOS_SIMULADOR={
     INICIAL:{nome:"Simulação",descricao:"Valores em reais, comparativo entre os cenários e memória de cálculo."},
-    COMPLETO:{nome:"Simulação + Relatório completo",descricao:"Tudo da simulação, mais parecer com IA, plano 30/60/90 dias e PDF executivo."},
-    ESPECIALISTA:{nome:"Simulação + Especialista",descricao:"Relatório completo e conversa individual com especialista da Finder."},
+    COMPLETO:{nome:"Relatório completo",descricao:"Parecer com IA sobre o seu cenário, memória de cálculo, plano 30/60/90 dias e PDF executivo."},
+    ESPECIALISTA:{nome:"Relatório + Especialista",descricao:"Relatório completo e conversa individual com especialista da Finder."},
   };
 
   const [cnpj,setCnpj]=useState(String(dadosIniciais?.cnpj||""));
@@ -4707,21 +4707,33 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         </details>
       </div>
 
+      {!acessoRelatorio&&<div style={{border:"1px solid #F3C9BD",background:"#FFF6F3",borderRadius:12,padding:11}}>
+        <div style={{fontSize:9.5,fontWeight:950,color:NAVY}}>O que o relatório completo traz</div>
+        <ul style={{margin:"6px 0 0",paddingLeft:16,fontSize:8.4,lineHeight:1.6,color:NAVY}}>
+          <li>Parecer com IA sobre o comparativo acima, no seu enquadramento e atividade.</li>
+          <li>Memória de cálculo, premissas e fontes legais da decisão.</li>
+          <li>Riscos, créditos a validar e pontos de atenção da transição.</li>
+          <li>Plano de preparação 30/60/90 dias.</li>
+          <li>PDF executivo para guardar ou enviar ao seu contador.</li>
+        </ul>
+        <div style={{fontSize:7.8,color:MUTED,marginTop:6}}>O pagamento só é solicitado na próxima etapa, ao gerar o relatório.</div>
+      </div>}
+
       <PrimaryButton onClick={()=>setEtapa("resultado")}>
         Gerar relatório <Sparkles size={15}/>
       </PrimaryButton>
     </>}
 
     {etapa==="resultado"&&!acessoRelatorio&&<PainelPagamentoSimulador
-      titulo={acessoValores?"Libere o relatório completo":"Seu relatório está pronto para ser liberado"}
-      texto={acessoValores
-        ?"Você já tem a simulação. O relatório completo inclui o parecer com IA, o plano de preparação e o PDF executivo."
-        :"Escolha o plano para ver a simulação e receber o relatório."}
+      titulo="Libere o relatório completo"
+      texto="O comparativo você já viu. O relatório completo inclui o parecer com IA sobre o seu cenário, a memória de cálculo, o plano de preparação 30/60/90 dias e o PDF executivo."
       refCobranca={refCobranca}
       nome={nome} email={email} telefone={telefone}
       cnpj={String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,"")}
       textosPlanos={TEXTOS_PLANOS_SIMULADOR}
-      somenteUpgrade={acessoValores}
+      somenteUpgrade={true}
+      tituloEscolha="Escolha como deseja receber o relatório"
+      textoEscolha="Selecione o plano para gerar o seu relatório."
       onLiberado={setPlanoPago}
     />}
 
@@ -4965,7 +4977,7 @@ const PLANOS_DIAGNOSTICO = [
 ];
 
 // Painel de pagamento do simulador: mesmo Pix, cupom e planos do diagnóstico.
-function PainelPagamentoSimulador({titulo,texto,refCobranca,nome,email,telefone,cnpj,textosPlanos,somenteUpgrade=false,onLiberado}){
+function PainelPagamentoSimulador({titulo,texto,refCobranca,nome,email,telefone,cnpj,textosPlanos,somenteUpgrade=false,tituloEscolha="",textoEscolha="",onLiberado}){
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <div style={{background:"linear-gradient(145deg,#101C35,#17233D)",color:"#fff",borderRadius:15,padding:14}}>
       <div style={{fontSize:7.5,fontWeight:900,color:"#FFB7A7"}}>SIMULADOR REFORMA</div>
@@ -4973,7 +4985,7 @@ function PainelPagamentoSimulador({titulo,texto,refCobranca,nome,email,telefone,
       <p style={{fontSize:9,color:"#D8DEEA",lineHeight:1.5,margin:0}}>{texto}</p>
     </div>
     {refCobranca
-      ?<PagamentoDiagnostico diagnosticoId={refCobranca} nome={nome} email={email} telefone={telefone} cnpj={cnpj} onLiberado={onLiberado} somenteUpgrade={somenteUpgrade} textosPlanos={textosPlanos}/>
+      ?<PagamentoDiagnostico diagnosticoId={refCobranca} nome={nome} email={email} telefone={telefone} cnpj={cnpj} onLiberado={onLiberado} somenteUpgrade={somenteUpgrade} textosPlanos={textosPlanos} tituloEscolha={tituloEscolha} textoEscolha={textoEscolha}/>
       :<p style={{fontSize:10.5,color:MUTED,textAlign:"center"}}>Aguarde alguns segundos: estamos preparando o pagamento.</p>}
     <p style={{fontSize:9,color:MUTED,lineHeight:1.5,margin:0}}>
       A simulação é uma estimativa com base nos dados informados e não substitui a apuração oficial. Veja a política de devolução nos Termos de Uso.
@@ -4981,7 +4993,7 @@ function PainelPagamentoSimulador({titulo,texto,refCobranca,nome,email,telefone,
   </div>;
 }
 
-function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado,somenteUpgrade=false,textosPlanos=null}){
+function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado,somenteUpgrade=false,textosPlanos=null,tituloEscolha="",textoEscolha=""}){
   const [documento,setDocumento]=useState(cnpj||"");
   const [carregando,setCarregando]=useState("");
   const [erro,setErro]=useState("");
@@ -5068,8 +5080,8 @@ function PagamentoDiagnostico({diagnosticoId,nome,email,telefone,cnpj,onLiberado
   }
 
   return <div style={{border:"1px solid #DDE2EA",borderRadius:14,padding:15,background:"#F7F8FB",marginBottom:16}}>
-    <p style={{fontFamily:DISPLAY_FONT,fontSize:19,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>{somenteUpgrade?"Aprofunde seu diagnóstico":"Escolha como deseja receber sua análise"}</p>
-    <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>{somenteUpgrade?(textosPlanos?"Sua simulação está liberada. Se desejar, adquira o relatório completo ou o acompanhamento de um especialista.":"Seu resultado inicial está liberado. Se desejar, adquira a análise completa ou o acompanhamento de um especialista."):(textosPlanos?"Selecione o plano que deseja liberar.":"Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar.")}</p>
+    <p style={{fontFamily:DISPLAY_FONT,fontSize:19,fontWeight:700,color:NAVY,margin:"0 0 5px"}}>{tituloEscolha||(somenteUpgrade?"Aprofunde seu diagnóstico":"Escolha como deseja receber sua análise")}</p>
+    <p style={{fontSize:10.5,color:MUTED,lineHeight:1.45,margin:"0 0 11px"}}>{textoEscolha?textoEscolha:somenteUpgrade?(textosPlanos?"Sua simulação está liberada. Se desejar, adquira o relatório completo ou o acompanhamento de um especialista.":"Seu resultado inicial está liberado. Se desejar, adquira a análise completa ou o acompanhamento de um especialista."):(textosPlanos?"Selecione o plano que deseja liberar.":"Seu diagnóstico foi processado. Selecione o nível de profundidade que deseja liberar.")}</p>
     <label style={{fontSize:9.5,fontWeight:800,color:NAVY}}>CPF ou CNPJ do pagador
       <input value={documento} onChange={e=>setDocumento(e.target.value)} placeholder="Somente números" inputMode="numeric" style={{width:"100%",boxSizing:"border-box",marginTop:5,padding:"10px 11px",border:"1px solid #DDE2EA",borderRadius:9,background:WHITE}}/>
     </label>
