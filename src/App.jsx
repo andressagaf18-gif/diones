@@ -11567,15 +11567,15 @@ function DiagnosticoPrototipo() {
                   Responda algumas perguntas e veja onde há risco tributário, desperdício e oportunidade de melhorar a gestão do seu negócio.
                 </p>
 
-                {origemAtual && origemAtual !== "direto" && origemAtual !== "link-direto" && (
-                  <div style={{display:"inline-flex",alignItems:"center",gap:6,borderRadius:999,padding:"7px 12px",background:"#EEF4FF",border:"1px solid #C9D8FF",color:NAVY,fontSize:11.5,fontWeight:800}}>
-                    Origem: {origemAtual}
-                  </div>
-                )}
-
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-                  {[`Cerca de ${TEMPO_ESTIMADO_DIAGNOSTICO}`,"Pelo celular","4 etapas"].map((t)=>(
-                    <span key={t} style={{background:"#F2F5FA",border:"1px solid #E1E6EF",borderRadius:999,padding:"6px 11px",fontSize:12,fontWeight:700,color:NAVY}}>{t}</span>
+                {/* Uma única linha compacta: origem + tempo + etapas + celular. */}
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"center",margin:"-4px 0"}}>
+                  {[
+                    ...(origemAtual && origemAtual !== "direto" && origemAtual !== "link-direto" ? [{t:`Origem: ${origemAtual}`,d:true}] : []),
+                    {t:`~${TEMPO_ESTIMADO_DIAGNOSTICO}`},
+                    {t:"4 etapas"},
+                    {t:"pelo celular"},
+                  ].map(({t,d})=>(
+                    <span key={t} style={{background:d?"#EEF4FF":"#F2F5FA",border:`1px solid ${d?"#C9D8FF":"#E1E6EF"}`,borderRadius:999,padding:"3px 8px",fontSize:10.5,fontWeight:700,color:NAVY,lineHeight:1.3,whiteSpace:"nowrap"}}>{t}</span>
                   ))}
                 </div>
 
