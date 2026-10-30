@@ -78,6 +78,8 @@ async function ensureSchema() {
   await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS taxa NUMERIC(12,2)`;
   await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS confirmado_em TIMESTAMPTZ`;
   await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS produto TEXT NOT NULL DEFAULT 'DIAGNOSTICO'`;
+  // Cobranças de teste (marcadas pela rotina de higiene de dados) ficam fora da receita.
+  await sql`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS teste BOOLEAN NOT NULL DEFAULT FALSE`;
   await sql`UPDATE asaas_pagamentos SET produto = 'SIMULADOR' WHERE produto = 'DIAGNOSTICO' AND diagnostico_id LIKE 'simulador:%'`;
   await sql`
     CREATE TABLE IF NOT EXISTS asaas_cupons (
@@ -550,6 +552,8 @@ async function adminDashboard(req, res) {
   const fim = txt(req.query?.fim, 20);
   const origemFiltro = txt(req.query?.origem, 80).toLowerCase();
   const produtoFiltroSql = txt(req.query?.produto, 20).toUpperCase();
+  // Por padrão a receita mostra só dados reais; ?incluirTestes=1 traz também as cobranças de teste.
+  const incluirTestes = String(req.query?.incluirTestes || '') === '1';
   // A origem (evento/link de divulgação) vem do lead que gerou a cobrança.
   const pagamentos = await sql`
     SELECT p.payment_id, p.diagnostico_id, p.plano, p.valor, p.valor_original, p.desconto,
@@ -563,7 +567,8 @@ async function adminDashboard(req, res) {
       WHERE diagnostico_id = p.diagnostico_id OR ('simulador:' || id) = p.diagnostico_id
       ORDER BY updated_at DESC LIMIT 1
     ) l ON TRUE
-    WHERE (${produtoFiltroSql} = '' OR p.produto = ${produtoFiltroSql})
+    WHERE (${incluirTestes} OR COALESCE(p.teste, FALSE) = FALSE)
+      AND (${produtoFiltroSql} = '' OR p.produto = ${produtoFiltroSql})
       AND (${origemFiltro} = '' OR LOWER(COALESCE(l.origem, '')) = ${origemFiltro})
       AND (${status} = '' OR p.status = ${status})
       AND (${plano} = '' OR p.plano = ${plano})
@@ -587,8 +592,10 @@ async function adminDashboard(req, res) {
       COALESCE(SUM(valor) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS bruto,
       COALESCE(SUM(valor_liquido) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS liquido,
       COALESCE(SUM(taxa) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS taxas,
-      COALESCE(SUM(desconto),0) AS descontos
+      COALESCE(SUM(desconto),0) AS descontos,
+      (SELECT COUNT(*)::int FROM asaas_pagamentos WHERE COALESCE(teste, FALSE) = TRUE) AS testes_ocultos
     FROM asaas_pagamentos
+    WHERE (${incluirTestes} OR COALESCE(teste, FALSE) = FALSE)
   `;
   const porProduto = await sql`
     SELECT produto,
@@ -596,7 +603,7 @@ async function adminDashboard(req, res) {
       COUNT(*) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH'))::int AS recebidos,
       COALESCE(SUM(valor) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS bruto,
       COALESCE(SUM(valor_liquido) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')),0) AS liquido
-    FROM asaas_pagamentos GROUP BY produto
+    FROM asaas_pagamentos WHERE (${incluirTestes} OR COALESCE(teste, FALSE) = FALSE) GROUP BY produto
   `;
   const porOrigem = await sql`
     SELECT COALESCE(NULLIF(l.origem, ''), 'sem origem') AS origem,
@@ -609,6 +616,7 @@ async function adminDashboard(req, res) {
       WHERE diagnostico_id = p.diagnostico_id OR ('simulador:' || id) = p.diagnostico_id
       ORDER BY updated_at DESC LIMIT 1
     ) l ON TRUE
+    WHERE (${incluirTestes} OR COALESCE(p.teste, FALSE) = FALSE)
     GROUP BY 1 ORDER BY bruto DESC
   `;
   const eventos = await sql`
