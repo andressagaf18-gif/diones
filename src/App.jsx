@@ -30,6 +30,8 @@ const ICE = "#E9EDF5";
 const CORAL = "#FF6B4A";
 const MUTED = "#5B667A";
 const WHITE = "#FFFFFF";
+// Tempo médio estimado exibido na introdução do diagnóstico. Ajuste após medir o tempo real de preenchimento.
+const TEMPO_ESTIMADO_DIAGNOSTICO = "5 minutos";
 const DISPLAY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif";
 const BODY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const MAX_DORES = 3;
@@ -11485,140 +11487,74 @@ function DiagnosticoPrototipo() {
           >
 
             {step === "intro" && (
-              <div
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  gap: 14,
-                  padding: "20px 14px",
-                }}
-              >
-                <img
-                  src="/finder-logo.png"
-                  alt="Finder of Solutions"
-                  style={{
-                    width: 210,
-                    maxWidth: "88%",
-                    height: "auto",
-                    objectFit: "contain",
-                    marginBottom: 2,
-                  }}
-                />
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",gap:14,padding:"18px 14px"}}>
+                <img src="/finder-logo.png" alt="Finder of Solutions" style={{width:190,maxWidth:"80%",height:"auto",objectFit:"contain"}} />
 
-                <div>
-                  <h1
-                    style={{
-                      fontFamily: DISPLAY_FONT,
-                      fontSize: 28,
-                      fontWeight: 800,
-                      color: NAVY,
-                      margin: "2px 0 7px",
-                    }}
-                  >
-                    Diagnóstico Empresarial
-                  </h1>
+                <h1 style={{fontFamily:DISPLAY_FONT,fontSize:26,lineHeight:1.14,fontWeight:800,color:NAVY,margin:"2px 0 0"}}>
+                  Sua empresa pode estar <span style={{color:CORAL}}>pagando imposto demais</span> sem você saber
+                </h1>
 
-                  <p
-                    style={{
-                      fontSize: 13.5,
-                      color: MUTED,
-                      lineHeight: 1.5,
-                      maxWidth: 360,
-                      margin: "0 auto",
-                    }}
-                  >
-                    Descubra em poucos minutos os principais gargalos e oportunidades da sua empresa.
-                  </p>
-                </div>
+                <p style={{fontSize:13.5,color:MUTED,lineHeight:1.5,maxWidth:350,margin:0}}>
+                  Responda algumas perguntas e veja onde há risco tributário, desperdício e oportunidade de melhorar a gestão do seu negócio.
+                </p>
 
                 {origemAtual && origemAtual !== "direto" && origemAtual !== "link-direto" && (
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      borderRadius: 999,
-                      padding: "7px 12px",
-                      background: "#EEF4FF",
-                      border: "1px solid #C9D8FF",
-                      color: NAVY,
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                    }}
-                  >
+                  <div style={{display:"inline-flex",alignItems:"center",gap:6,borderRadius:999,padding:"7px 12px",background:"#EEF4FF",border:"1px solid #C9D8FF",color:NAVY,fontSize:11.5,fontWeight:800}}>
                     Origem: {origemAtual}
                   </div>
                 )}
 
-                <div
-                  style={{
-                    background: "#FFFFFF",
-                    padding: 10,
-                    borderRadius: 18,
-                    border: "1px solid #E5E7EB",
-                    boxShadow: "0 8px 26px rgba(23,35,61,0.10)",
-                  }}
-                >
-                  {/* QR gerado a partir do link do evento aberto (mesma origem). */}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+                  {[`Cerca de ${TEMPO_ESTIMADO_DIAGNOSTICO}`,"Pelo celular","4 etapas"].map((t)=>(
+                    <span key={t} style={{background:"#F2F5FA",border:"1px solid #E1E6EF",borderRadius:999,padding:"6px 11px",fontSize:12,fontWeight:700,color:NAVY}}>{t}</span>
+                  ))}
+                </div>
+
+                <div style={{width:"100%",maxWidth:350,display:"flex",gap:10,alignItems:"stretch"}}>
+                <div style={{flex:1,minWidth:0,textAlign:"left",background:"#F7F8FB",border:"1px solid #E5E7EB",borderRadius:14,padding:"12px 14px"}}>
+                  <b style={{fontSize:11.5,letterSpacing:".05em",color:MUTED,textTransform:"uppercase"}}>Como funciona</b>
+                  {[
+                    ["Seus dados","20 segundos"],
+                    ["Sobre a empresa","CNPJ e porte"],
+                    ["Perguntas rápidas","por área"],
+                    ["Seu resultado","na hora"],
+                  ].map(([titulo,detalhe],idx)=>(
+                    <div key={titulo} style={{display:"flex",gap:10,alignItems:"center",marginTop:9,fontSize:13.5,color:NAVY}}>
+                      <span style={{width:22,height:22,borderRadius:"50%",background:NAVY,color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flex:"none"}}>{idx+1}</span>
+                      <span>{titulo} <small style={{color:MUTED,fontSize:12}}>· {detalhe}</small></span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* QR Code ao lado do "Como funciona": acesso fácil ao diagnóstico a partir de outra tela/aparelho. */}
+                <div style={{flex:"none",width:108,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,background:"#FFFFFF",border:"1px solid #E5E7EB",borderRadius:14,padding:"8px 6px",textAlign:"center"}}>
                   <QrLink
                     valor={linkDoEventoAtual(origemAtual)}
-                    tamanho={190}
+                    tamanho={90}
                     titulo="QR Code do Diagnóstico Empresarial"
                   />
+                  <span style={{fontSize:10.5,fontWeight:800,color:NAVY,lineHeight:1.25}}>Abrir no celular</span>
+                  <span style={{fontSize:9.5,color:MUTED,lineHeight:1.25}}>Escaneie o QR Code</span>
+                </div>
                 </div>
 
-                <div>
-                  <p
-                    style={{
-                      fontFamily: DISPLAY_FONT,
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: NAVY,
-                      margin: "0 0 5px",
-                    }}
-                  >
-                    Escaneie para começar
-                  </p>
-
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: MUTED,
-                      lineHeight: 1.45,
-                      maxWidth: 340,
-                      margin: 0,
-                    }}
-                  >
-                    Faça seu diagnóstico gratuito e descubra onde sua empresa pode melhorar.
-                  </p>
+                <div style={{width:"100%",maxWidth:350,textAlign:"left",fontSize:12,color:MUTED,background:"#FFF6F3",border:"1px solid #F3C9BD",borderRadius:12,padding:"10px 12px",lineHeight:1.45}}>
+                  <b style={{color:NAVY}}>Gratuito:</b> resultado inicial com os principais sinais de atenção.<br />
+                  <b style={{color:NAVY}}>Análise completa (opcional):</b> a partir de R$ 29,90 — você vê os valores antes de decidir.
                 </div>
 
-                <div
-                  style={{
-                    width: "100%",
-                    maxWidth: 330,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    margin: "1px 0",
-                  }}
-                >
-                  <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
-                  <span style={{ fontSize: 11.5, color: MUTED }}>ou</span>
-                  <div style={{ height: 1, background: "#E5E7EB", flex: 1 }} />
+                <div style={{width:"100%",maxWidth:350}}>
+                  <PrimaryButton onClick={() => setStep("cadastro")}>
+                    Começar meu diagnóstico <ArrowRight size={16} />
+                  </PrimaryButton>
                 </div>
 
-                <PrimaryButton onClick={() => setStep("cadastro")}>
-                  Iniciar diagnóstico <ArrowRight size={16} />
-                </PrimaryButton>
+                <p style={{fontSize:11,color:"#8A93A3",lineHeight:1.4,maxWidth:330,margin:0}}>
+                  Seus dados são usados só para gerar o diagnóstico e não há compromisso.
+                </p>
+
               </div>
             )}
-
-            
 
             {step === "cadastro" && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
