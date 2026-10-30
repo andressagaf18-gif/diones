@@ -186,16 +186,27 @@ async function customerFor(cliente, diagnosticoId) {
   const found = await asaas(`/customers?cpfCnpj=${encodeURIComponent(cpfCnpj)}&limit=1`, { method: "GET" });
   if (found?.data?.[0]) return found.data[0];
 
-  return asaas("/customers", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      cpfCnpj,
-      ...(email ? { email } : {}),
-      ...(mobilePhone ? { mobilePhone } : {}),
-      externalReference: `diagnostico:${diagnosticoId}`,
-    }),
-  });
+  // E-mail ou telefone digitado errado nunca deve impedir o Pix: o contato do cliente fica
+  // registrado no nosso banco/CRM e o Asaas só precisa do nome e do CPF/CNPJ.
+  const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+  const telefoneValido = mobilePhone.length === 10 || mobilePhone.length === 11;
+  const corpo = {
+    name,
+    cpfCnpj,
+    ...(emailValido ? { email } : {}),
+    ...(telefoneValido ? { mobilePhone } : {}),
+    externalReference: `diagnostico:${diagnosticoId}`,
+  };
+  try {
+    return await asaas("/customers", { method: "POST", body: JSON.stringify(corpo) });
+  } catch (erro) {
+    // Se o Asaas ainda recusar o e-mail/telefone, tenta de novo só com os dados essenciais.
+    if (/e-?mail|mobile|phone|celular|telefone/i.test(String(erro?.message || "")) && (corpo.email || corpo.mobilePhone)) {
+      const { email: _e, mobilePhone: _m, ...essencial } = corpo;
+      return asaas("/customers", { method: "POST", body: JSON.stringify(essencial) });
+    }
+    throw erro;
+  }
 }
 
 async function createCharge(req, res) {
