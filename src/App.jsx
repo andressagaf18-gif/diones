@@ -11567,16 +11567,16 @@ function DiagnosticoPrototipo() {
                   Responda algumas perguntas e veja onde há risco tributário, desperdício e oportunidade de melhorar a gestão do seu negócio.
                 </p>
 
-                {/* Uma única linha compacta: origem + tempo + etapas + celular. */}
-                <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"center",margin:"-4px 0"}}>
-                  {[
-                    ...(origemAtual && origemAtual !== "direto" && origemAtual !== "link-direto" ? [{t:`Origem: ${origemAtual}`,d:true}] : []),
-                    {t:`~${TEMPO_ESTIMADO_DIAGNOSTICO}`},
-                    {t:"4 etapas"},
-                    {t:"pelo celular"},
-                  ].map(({t,d})=>(
-                    <span key={t} style={{background:d?"#EEF4FF":"#F2F5FA",border:`1px solid ${d?"#C9D8FF":"#E1E6EF"}`,borderRadius:999,padding:"3px 8px",fontSize:10.5,fontWeight:700,color:NAVY,lineHeight:1.3,whiteSpace:"nowrap"}}>{t}</span>
-                  ))}
+                {/* Origem em cima; tempo, etapas e celular numa linha reta embaixo. */}
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,margin:"-4px 0"}}>
+                  {origemAtual && origemAtual !== "direto" && origemAtual !== "link-direto" && (
+                    <span style={{background:"#EEF4FF",border:"1px solid #C9D8FF",borderRadius:999,padding:"3px 10px",fontSize:11,fontWeight:800,color:NAVY,lineHeight:1.3}}>Origem: {origemAtual}</span>
+                  )}
+                  <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"nowrap"}}>
+                    {[`~${TEMPO_ESTIMADO_DIAGNOSTICO}`,"4 etapas","pelo celular"].map((t)=>(
+                      <span key={t} style={{background:"#F2F5FA",border:"1px solid #E1E6EF",borderRadius:999,padding:"3px 9px",fontSize:11,fontWeight:700,color:NAVY,lineHeight:1.3,whiteSpace:"nowrap"}}>{t}</span>
+                    ))}
+                  </div>
                 </div>
 
                 <div style={{width:"100%",maxWidth:350,display:"flex",gap:10,alignItems:"stretch"}}>
