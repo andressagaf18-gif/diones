@@ -7262,6 +7262,12 @@ export default async function handler(req, res) {
       return dashboardHandler(req, res);
     }
 
+    // Higiene de dados (arquivar testes/incompletos, e-mail de abandono) e rotinas
+    // automáticas da Vercel — server/higiene-dados.js.
+    if (action === "higiene" || action === "higiene-cron") {
+      return (await import("../server/higiene-dados.js")).default(req, res);
+    }
+
     // Visão completa do sistema (LGPD, análise consultiva, planos por área,
     // clientes, agenda, checkout, auditoria) — server/dashboard-visao.js.
     // Também antes da migração geral: cada bloco tem fallback próprio.
