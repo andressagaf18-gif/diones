@@ -1744,6 +1744,7 @@ function SimuladorReformaPublico({
   onVoltar,
   onSnapshot,
   onPersistirResultado,
+  onEmpresaIdentificada,
   diagnosticoIdSalvo="",
   agendaData="",
   agendaHora="",
@@ -1997,7 +1998,7 @@ function SimuladorReformaPublico({
       };
     }
 
-    if(natureza==="Comércio"||natureza==="Indústria"){
+    if(natureza==="Comércio"||natureza==="Indústria"||natureza==="Comércio e Indústria"){
       const padraoUf=ICMS_UF_PADRAO[uf];
       if(padraoUf){
         const fontePr=uf==="PR"?"Paraná — Lei Estadual 11.580/1996, art. 14, VIII, com redação da Lei 21.850/2023: 19,5% para as operações internas com os demais bens e mercadorias.":`${uf} — alíquota interna padrão do ICMS${padraoUf.adicional?` (já somado o adicional de ${padraoUf.adicional} p.p. do fundo de combate à pobreza)`:""}, conforme tabelas de alíquotas estaduais 2026; confirme no RICMS/${uf}.`;
@@ -2664,6 +2665,29 @@ function SimuladorReformaPublico({
       setConsultandoCnpj(false);
     }
   }
+
+  // Mantém o lead (CRM) atualizado assim que a empresa é localizada: razão social, CNPJ e CNAE.
+  const ultimaEmpresaLeadRef=useRef("");
+  useEffect(()=>{
+    if(!empresaCadastral||!onEmpresaIdentificada)return;
+    const cnpjLimpo=String(empresaCadastral.cnpj||cnpj||"").replace(/\D/g,"");
+    if(cnpjLimpo.length!==14)return;
+    const assinatura=`${cnpjLimpo}|${atividadeSelecionada}`;
+    if(ultimaEmpresaLeadRef.current===assinatura)return;
+    ultimaEmpresaLeadRef.current=assinatura;
+    onEmpresaIdentificada({
+      cnpj:cnpjLimpo,
+      razaoSocial:empresaCadastral.razaoSocial||empresaCadastral.nomeFantasia||"",
+      nomeFantasia:empresaCadastral.nomeFantasia||"",
+      porte:empresaCadastral.porte||"",
+      municipio:empresaCadastral.endereco?.municipio||"",
+      uf:empresaCadastral.endereco?.uf||"",
+      cnaePrincipal:(atividadesReais.find(x=>x.principal)||{}).codigo
+        ?`${(atividadesReais.find(x=>x.principal)||{}).codigo} — ${(atividadesReais.find(x=>x.principal)||{}).descricao||""}`
+        :"",
+      cnaeSelecionado:atividadeSelecionada||"",
+    });
+  },[empresaCadastral,atividadeSelecionada]);
 
   function valorAtividade(item){
     return `${item.codigo}${item.codigo?" — ":""}${item.descricao}`;
@@ -3950,7 +3974,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           <label style={labelStyle}>Natureza da operação
             <select value={natureza} onChange={e=>setNatureza(e.target.value)} style={input}>
               <option value="">Selecione</option>
-              {["Serviço","Comércio","Indústria"].map(x=><option key={x}>{x}</option>)}
+              {["Serviço","Comércio","Indústria","Comércio e Indústria"].map(x=><option key={x}>{x}</option>)}
             </select>
           </label>
         </div>
@@ -5229,6 +5253,9 @@ function DiagnosticoPrototipo() {
   const [operacoesReforma, setOperacoesReforma] = useState([]);
   const [preparacaoReforma, setPreparacaoReforma] = useState("");
   const [simuladorReformaDados, setSimuladorReformaDados] = useState(null);
+  // Empresa identificada dentro do simulador (CNPJ/razão social). Usada para o autosave do lead
+  // não apagar esses dados: o fluxo do simulador não tem "empresas" do diagnóstico.
+  const [empresaLeadSimulador, setEmpresaLeadSimulador] = useState({cnpj:"",razaoSocial:""});
   const [tiposHolding, setTiposHolding] = useState([]);
   const [objetivosHolding, setObjetivosHolding] = useState([]);
   const [patrimonioHolding, setPatrimonioHolding] = useState("");
@@ -7657,14 +7684,17 @@ function DiagnosticoPrototipo() {
     const empresaLead =
       empresaPrincipal || {};
 
-    const cnpjLead =
+    const cnpjLeadBase =
       fluxoSemCnpj
         ? ""
         : empresaLead?.cnpjDigits ||
           empresaLead?.cnpj ||
           "";
+    const cnpjLead =
+      cnpjLeadBase ||
+      (trilhaSimuladorReformaAtiva ? empresaLeadSimulador.cnpj : "");
 
-    const razaoSocialLead =
+    const razaoSocialLeadBase =
       trilhaPFAtiva
         ? nome || "Pessoa Física"
         : avaliarHoldingAtiva
@@ -7683,6 +7713,9 @@ function DiagnosticoPrototipo() {
         : empresaLead?.razao ||
           empresaLead?.razaoSocial ||
           "";
+    const razaoSocialLead =
+      razaoSocialLeadBase ||
+      (trilhaSimuladorReformaAtiva ? empresaLeadSimulador.razaoSocial : "");
 
     const respostasParciais =
       todasPerguntas
@@ -7966,6 +7999,7 @@ function DiagnosticoPrototipo() {
 
     cnpjInput,
     empresas,
+    empresaLeadSimulador,
     cnaesEmpresa,
     atividadesSelecionadas,
     atividadePredominante,
@@ -12469,6 +12503,23 @@ function DiagnosticoPrototipo() {
                 onVoltar={()=>setStep("estrutura")}
                 onSnapshot={setSimuladorReformaDados}
                 onPersistirResultado={persistirResultadoSimuladorReforma}
+                onEmpresaIdentificada={(emp)=>{
+                  setEmpresaLeadSimulador({cnpj:emp.cnpj||"",razaoSocial:emp.razaoSocial||emp.nomeFantasia||""});
+                  return atualizarLeadCRM({
+                  cnpj:emp.cnpj,
+                  razaoSocial:emp.razaoSocial||emp.nomeFantasia||"",
+                  contextoCliente:{empresaSimulador:{
+                    razaoSocial:emp.razaoSocial,
+                    nomeFantasia:emp.nomeFantasia,
+                    cnpj:emp.cnpj,
+                    cnaePrincipal:emp.cnaePrincipal,
+                    cnaeSelecionado:emp.cnaeSelecionado,
+                    porte:emp.porte,
+                    municipio:emp.municipio,
+                    uf:emp.uf,
+                  }},
+                  });
+                }}
                 diagnosticoIdSalvo={diagnosticoIdSalvo}
                 agendaData={agendaData}
                 agendaHora={agendaHora}
@@ -12498,6 +12549,23 @@ function DiagnosticoPrototipo() {
                 onVoltar={()=>setStep("resultado")}
                 onSnapshot={setSimuladorReformaDados}
                 onPersistirResultado={persistirResultadoSimuladorReforma}
+                onEmpresaIdentificada={(emp)=>{
+                  setEmpresaLeadSimulador({cnpj:emp.cnpj||"",razaoSocial:emp.razaoSocial||emp.nomeFantasia||""});
+                  return atualizarLeadCRM({
+                  cnpj:emp.cnpj,
+                  razaoSocial:emp.razaoSocial||emp.nomeFantasia||"",
+                  contextoCliente:{empresaSimulador:{
+                    razaoSocial:emp.razaoSocial,
+                    nomeFantasia:emp.nomeFantasia,
+                    cnpj:emp.cnpj,
+                    cnaePrincipal:emp.cnaePrincipal,
+                    cnaeSelecionado:emp.cnaeSelecionado,
+                    porte:emp.porte,
+                    municipio:emp.municipio,
+                    uf:emp.uf,
+                  }},
+                  });
+                }}
                 diagnosticoIdSalvo={diagnosticoIdSalvo}
                 agendaData={agendaData}
                 agendaHora={agendaHora}
