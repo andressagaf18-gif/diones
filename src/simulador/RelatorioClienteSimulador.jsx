@@ -179,7 +179,7 @@ return { manchete, sentido, pontos, pendencias, passos, comparavel, dif };
 // premissas, memória de cálculo, créditos, transição, conferências
 // automáticas e pontos para a reunião. Uso interno.
 
-export default function RelatorioClienteSimulador({ snapshot, geradoEm }) {
+export default function RelatorioClienteSimulador({ snapshot, geradoEm, resumido = false }) {
   const s = adaptarRegimeProfundo(snapshot || {}, snapshot?.configuracao?.regime);
   const emp = s.empresa || {};
   const cfg = s.configuracao || {};
@@ -281,7 +281,7 @@ export default function RelatorioClienteSimulador({ snapshot, geradoEm }) {
         </div>
       </Secao>
 
-      {leitura.comparavel && (
+      {!resumido && leitura.comparavel && (
         <Secao titulo="Como chegamos ao resultado">
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Tabela colunas={["Hoje", "Valor / mês"]} linhas={linhasAtual} destaqueUltima alinharDireita={[1]} />
@@ -290,7 +290,7 @@ export default function RelatorioClienteSimulador({ snapshot, geradoEm }) {
         </Secao>
       )}
 
-      {leitura.pontos.length > 0 && (
+      {!resumido && leitura.pontos.length > 0 && (
         <Secao titulo="O que isso significa">
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11 }}>
             {leitura.pontos.map((p, i) => <li key={i} style={{ marginBottom: 3 }}>{p}</li>)}
@@ -298,13 +298,13 @@ export default function RelatorioClienteSimulador({ snapshot, geradoEm }) {
         </Secao>
       )}
 
-      {linhasTransicao.length > 0 && (
+      {!resumido && linhasTransicao.length > 0 && (
         <Secao titulo="Transição de 2026 a 2033">
           <Tabela colunas={["Ano", "Carga total / mês", "IBS/CBS / mês", "Situação"]} linhas={linhasTransicao} alinharDireita={[1, 2]} />
         </Secao>
       )}
 
-      {leitura.pendencias.length > 0 && (
+      {!resumido && leitura.pendencias.length > 0 && (
         <Secao titulo="Pontos a confirmar">
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 10.5 }}>
             {leitura.pendencias.map((p, i) => <li key={i}>{String(p)}</li>)}
