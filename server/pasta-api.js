@@ -185,6 +185,7 @@ function garantirCarteira() {
         extra JSONB,
         atualizado_em TIMESTAMPTZ DEFAULT NOW()
       )`;
+      await sql`ALTER TABLE carteira_cadastro ADD COLUMN IF NOT EXISTS regime_manual TEXT`;
       await sql`CREATE TABLE IF NOT EXISTS apuracao_auditorias (id BIGSERIAL PRIMARY KEY, cliente_codigo TEXT NOT NULL, cliente_nome TEXT NOT NULL, regime TEXT, saude INTEGER, criticos INTEGER DEFAULT 0, atencoes INTEGER DEFAULT 0, infos INTEGER DEFAULT 0, resultado JSONB NOT NULL, usuario TEXT, created_at TIMESTAMPTZ DEFAULT NOW())`;
     })().catch((e) => { carteiraPronta = null; throw e; });
   }
@@ -201,7 +202,7 @@ export async function pastaCarteira(req, res) {
         FROM pasta_auditorias ORDER BY cliente_codigo, created_at DESC, id DESC LIMIT 700`,
     sql`SELECT DISTINCT ON (cliente_codigo) cliente_codigo, regime, resultado->'entregas'->'semMovimento' AS sem, created_at
         FROM apuracao_auditorias ORDER BY cliente_codigo, created_at DESC, id DESC LIMIT 700`,
-    sql`SELECT cliente_codigo, cliente_nome, regime, carteira, responsavel, movimento FROM carteira_cadastro LIMIT 2000`,
+    sql`SELECT cliente_codigo, cliente_nome, regime, regime_manual, carteira, responsavel, movimento FROM carteira_cadastro LIMIT 2000`,
   ]);
   const cad = new Map(cadRows.map((c) => [String(c.cliente_codigo), c]));
   const apu = new Map(apuRows.map((a) => [String(a.cliente_codigo), a]));
@@ -221,10 +222,10 @@ export async function pastaCarteira(req, res) {
     const a = apu.get(r.codigo);
     let sem = [];
     try { sem = Array.isArray(a?.sem) ? a.sem : JSON.parse(a?.sem || "[]"); } catch { sem = []; }
-    const sit = situacaoCliente({ painel: r.painel, cadastro: c ? { regime: c.regime } : (a ? { regime: a.regime === "SIMPLES" ? "SIMPLES" : "" } : null), competencia: comp, hoje, extras: { semMovimento: sem } });
+    const sit = situacaoCliente({ painel: r.painel, cadastro: { regime: c?.regime || (a?.regime === "SIMPLES" ? "SIMPLES" : ""), regimeManual: c?.regime_manual || "" }, competencia: comp, hoje, extras: { semMovimento: sem } });
     saida.push({
       codigo: r.codigo, nome: c?.cliente_nome || r.nome, carteira: c?.carteira || "", responsavel: c?.responsavel || "", movimento: c?.movimento || "",
-      regime: sit.regime, regimeFonte: sit.regimeFonte, auditadoEm: r.auditadoEm || null, semLeitura: sit.semLeitura, saude: r.saude, achadosCriticos: r.achadosCriticos || 0,
+      regime: sit.regime, regimeFonte: sit.regimeFonte, regimeAuto: sit.regimeAuto, regimePlanilha: sit.regimePlanilha, regimeManual: sit.regimeManual, driveId: r.painel?.driveId || "", auditadoEm: r.auditadoEm || null, semLeitura: sit.semLeitura, saude: r.saude, achadosCriticos: r.achadosCriticos || 0,
       faltando: sit.faltando, atraso: sit.atraso, noPrazo: sit.noPrazo, semMovimento: sit.semMovimento, aVencer: sit.aVencer,
       itens: sit.itens.map((i) => ({ key: i.key, status: i.status, prazo: i.prazo, postadoEm: i.postadoEm, arquivo: i.arquivo, diasAtraso: i.diasAtraso })),
     });
@@ -250,4 +251,18 @@ export async function pastaCarteiraImportar(req, res) {
     salvos += 1;
   }
   return enviar(res, 200, { sucesso: true, salvos });
+}
+
+
+// POST { codigo, nome?, regime } — define o regime manualmente; regime vazio volta ao automático (pasta do Drive).
+export async function pastaCarteiraRegime(req, res) {
+  if (req.method !== "POST") return enviar(res, 405, { sucesso: false, error: "Use POST." });
+  await garantirCarteira();
+  const codigo = texto(req.body?.codigo, 30);
+  if (!codigo) return enviar(res, 400, { sucesso: false, error: "Informe o cliente." });
+  const regime = normalizarRegime(req.body?.regime) || "";
+  await sql`INSERT INTO carteira_cadastro (cliente_codigo, cliente_nome, regime_manual, atualizado_em)
+    VALUES (${codigo}, ${texto(req.body?.nome, 200)}, ${regime || null}, NOW())
+    ON CONFLICT (cliente_codigo) DO UPDATE SET regime_manual = ${regime || null}, atualizado_em = NOW()`;
+  return enviar(res, 200, { sucesso: true, codigo, regime });
 }
