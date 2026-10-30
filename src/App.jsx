@@ -4558,15 +4558,19 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
               </tr></thead>
               <tbody>
                 {[
-                  ["DAS total",simplesDentro,simplesFora==null?null:dasResidualUsado],
-                  ["IBS/CBS embutidos no DAS",parcelaConsumoDasEstimada,null],
-                  ["IBS líquido",null,ibsLiquido],
+                  // "NA" = não se aplica a esta coluna ("—"); null = ainda falta dado ("A validar").
+                  ["DAS (por dentro: total · por fora: residual IRPJ/CSLL/CPP)",dasAtualReferencia>0?dasAtualReferencia:null,dasResidualUsado],
+                  ["Tributos sobre consumo embutidos no DAS",parcelaConsumoDasEstimada,"NA"],
+                  ["CBS líquida","NA",simplesFora==null?null:cbsLiquida],
+                  ["IBS líquido","NA",simplesFora==null?null:ibsLiquido],
                   ["Carga total comparável",simplesDentro,simplesFora],
-                ].map(([rotulo,dentro,foraValor])=><tr key={rotulo} style={{borderBottom:"1px solid #E8ECF2"}}>
+                ].map(([rotulo,dentro,foraValor])=>{
+                  const fmt=v=>v==="NA"?"—":v==null?"A validar":moedaSimulador(v);
+                  return <tr key={rotulo} style={{borderBottom:"1px solid #E8ECF2"}}>
                   <td style={{padding:7,fontWeight:800}}>{rotulo}</td>
-                  <td style={{padding:7,textAlign:"right"}}>{dentro==null?"A validar":moedaSimulador(dentro)}</td>
-                  <td style={{padding:7,textAlign:"right"}}>{foraValor==null?"A validar":moedaSimulador(foraValor)}</td>
-                </tr>)}
+                  <td style={{padding:7,textAlign:"right"}}>{fmt(dentro)}</td>
+                  <td style={{padding:7,textAlign:"right"}}>{fmt(foraValor)}</td>
+                </tr>})}
               </tbody>
             </table>
           </div>
