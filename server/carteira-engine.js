@@ -74,12 +74,28 @@ export function normalizarRegime(txt) {
 }
 export const ROTULO_REGIME = { SIMPLES: "Simples Nacional", MEI: "MEI", PRESUMIDO: "Lucro Presumido", REAL: "Lucro Real", "": "Não identificado" };
 
+// Regime pela movimentação da pasta: o que foi entregue/guiado nos últimos meses mostra o regime em que a empresa opera.
+const SIMPLES_KEYS = ["pgdas", "das"], LUCRO_KEYS = ["mit", "efd_contrib", "efd_fiscal", "irpj_csll", "pis_cofins"];
+export function inferirRegime(ob, regimePasta = "") {
+  if (!ob) return "";
+  const ultimo = (keys) => { let u = ""; for (const [m, v] of Object.entries(ob)) if (keys.some((k) => v?.[k]) && m > u) u = m; return u; };
+  const s = ultimo(SIMPLES_KEYS), l = ultimo(LUCRO_KEYS);
+  if (!s && !l) return "";
+  if (s && (!l || s >= l)) return "SIMPLES";
+  const r = normalizarRegime(regimePasta);
+  return r === "REAL" ? "REAL" : "PRESUMIDO";
+}
+
 // ---- situação de cada obrigação ----
 // painel.obrigacoes = { "AAAA-MM": { chave: { n, primeiro, ultimo, nome, semMovimento? } } }
 // extras.semMovimento = [ "AAAA-MM", ... ] (da auditoria de apurações)
 export function situacaoCliente({ painel, cadastro, competencia, hoje = new Date(), extras = {} }) {
-  const regime = normalizarRegime(cadastro?.regime) || normalizarRegime(painel?.regime) || "";
-  const regimeFonte = normalizarRegime(cadastro?.regime) ? "planilha" : regime ? "pasta" : "";
+  // Prioridade: escolha manual > movimentação da pasta (Drive) > regime detectado na pasta > planilha.
+  const manual = normalizarRegime(cadastro?.regimeManual);
+  const auto = inferirRegime(painel?.obrigacoes, painel?.regime) || normalizarRegime(painel?.regime);
+  const planilha = normalizarRegime(cadastro?.regime);
+  const regime = manual || auto || planilha || "";
+  const regimeFonte = manual ? "manual" : auto ? "pasta" : planilha ? "planilha" : "";
   const grupoRegime = regime === "MEI" ? "SIMPLES" : regime;
   const ob = painel?.obrigacoes || null;
   const hojeIso = hoje.toISOString().slice(0, 10);
@@ -106,5 +122,5 @@ export function situacaoCliente({ painel, cadastro, competencia, hoje = new Date
   const semMovDecl = itens.some((i) => (i.key === "pgdas" || i.key === "mit") && i.status === "sem_movimento");
   if (semMovDecl) for (const i of itens) if (i.tipo === "guia" && i.status === "faltando") i.status = "na";
   const conta = (s) => itens.filter((i) => i.status === s).length;
-  return { regime, regimeFonte, semLeitura: !ob, itens, faltando: conta("faltando"), atraso: conta("atraso"), noPrazo: conta("no_prazo"), semMovimento: conta("sem_movimento"), aVencer: conta("a_vencer") };
+  return { regime, regimeFonte, regimeAuto: auto, regimePlanilha: planilha, regimeManual: manual, semLeitura: !ob, itens, faltando: conta("faltando"), atraso: conta("atraso"), noPrazo: conta("no_prazo"), semMovimento: conta("sem_movimento"), aVencer: conta("a_vencer") };
 }
