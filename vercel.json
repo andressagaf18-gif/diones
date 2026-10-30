@@ -49,6 +49,9 @@
     },
     "api/pesquisa-tributaria.js": {
       "maxDuration": 300
+    },
+    "api/diagnosticos.js": {
+      "maxDuration": 300
     }
   }
 }
