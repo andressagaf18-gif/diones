@@ -553,12 +553,13 @@ async function blocoAnaliseConsultiva(db) {
 }
 
 async function blocoAsaas(db) {
+  try { await db`ALTER TABLE asaas_pagamentos ADD COLUMN IF NOT EXISTS teste BOOLEAN NOT NULL DEFAULT FALSE`; } catch { /* sem permissão ou tabela: segue sem o filtro */ }
   const [ck] = await db`
     SELECT COUNT(*)::int AS criadas,
       COUNT(*) FILTER (WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH'))::int AS pagas,
       COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pendentes,
       COUNT(*) FILTER (WHERE status IN ('OVERDUE','CANCELLED','DELETED','REFUNDED'))::int AS falhas
-    FROM asaas_pagamentos WHERE criado_em > NOW() - INTERVAL '90 days'
+    FROM asaas_pagamentos WHERE COALESCE(teste,FALSE) = FALSE AND criado_em > NOW() - INTERVAL '90 days'
   `;
   const [mes] = await db`
     WITH m AS (SELECT (date_trunc('month', NOW() AT TIME ZONE ${FUSO}) AT TIME ZONE ${FUSO}) AS ini)
@@ -568,25 +569,25 @@ async function blocoAsaas(db) {
       COUNT(*) FILTER (WHERE p.pago_em >= m.ini)::int AS recebidos_mes,
       COALESCE(SUM(COALESCE(p.valor_liquido,p.valor)) FILTER (WHERE p.pago_em >= m.ini - INTERVAL '1 month' AND p.pago_em < m.ini),0)::numeric AS liquido_anterior
     FROM asaas_pagamentos p CROSS JOIN m
-    WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')
+    WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH') AND COALESCE(p.teste,FALSE) = FALSE
   `;
   const porPlano = await db`
     SELECT COALESCE(NULLIF(UPPER(plano),''),'SEM_PLANO') AS plano, COUNT(*)::int AS vendas,
       COALESCE(SUM(valor),0)::numeric AS bruto, COALESCE(SUM(COALESCE(valor_liquido,valor)),0)::numeric AS liquido
-    FROM asaas_pagamentos WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')
+    FROM asaas_pagamentos WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH') AND COALESCE(teste,FALSE) = FALSE
     GROUP BY 1 ORDER BY liquido DESC
   `;
   const porOrigem = await db`
     SELECT COALESCE(NULLIF(LOWER(TRIM(l.origem)),''),'direto') AS origem, COUNT(*)::int AS vendas,
       COALESCE(SUM(COALESCE(p.valor_liquido,p.valor)),0)::numeric AS liquido, COALESCE(SUM(COALESCE(p.desconto,0)),0)::numeric AS descontos
     FROM asaas_pagamentos p LEFT JOIN diagnostico_leads l ON p.diagnostico_id <> '' AND l.diagnostico_id = p.diagnostico_id
-    WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')
+    WHERE p.status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH') AND COALESCE(p.teste,FALSE) = FALSE
     GROUP BY 1 ORDER BY liquido DESC LIMIT 8
   `;
   const porCupom = await db`
     SELECT UPPER(cupom_codigo) AS cupom, COUNT(*)::int AS usos, COALESCE(SUM(desconto),0)::numeric AS descontos,
       COALESCE(SUM(COALESCE(valor_liquido,valor)),0)::numeric AS liquido
-    FROM asaas_pagamentos WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH') AND COALESCE(cupom_codigo,'') <> ''
+    FROM asaas_pagamentos WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH') AND COALESCE(teste,FALSE) = FALSE AND COALESCE(cupom_codigo,'') <> ''
     GROUP BY 1 ORDER BY usos DESC LIMIT 8
   `;
   return {
