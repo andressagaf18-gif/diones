@@ -50,6 +50,7 @@ import RelatorioClienteSimulador from "./simulador/RelatorioClienteSimulador.jsx
 import VisaoPorPlano, { planoMaisAltoPago } from "./relatorios/VisaoPorPlano.jsx";
 import { limparCodigoInternoRelatorio } from "./relatorios/limparTexto.js";
 import DossieAdminSimulador from "./simulador/DossieAdminSimulador.jsx";
+import VisaoPlanoSimulador from "./simulador/VisaoPlanoSimulador.jsx";
 import { finderStyles } from "./Theme";
 import RadarReforma from "./reforma/RadarReforma.jsx";
 
@@ -15884,7 +15885,7 @@ function DetalheDiagnostico({
               Relatório Administração
             </Botao>
 
-            {!usaRelatorioClienteSimulador && [
+            {[
               ["plano_inicial", "Plano R$ 29,90"],
               ["plano_completo", "Plano R$ 299,90"],
               ["plano_especialista", "Plano R$ 799,90 + consultor"],
@@ -15958,6 +15959,16 @@ function DetalheDiagnostico({
           />
         )}
 
+        {String(abaRelatorio).startsWith("plano_") && usaRelatorioClienteSimulador && (
+          <VisaoPlanoSimulador
+            plano={abaRelatorio === "plano_especialista" ? "ESPECIALISTA" : abaRelatorio === "plano_completo" ? "COMPLETO" : "INICIAL"}
+            snapshot={snapshotSimulador}
+            geradoEm={item.criadoEm}
+            planoPago={planoMaisAltoPago(item.pagamentos)}
+            onIrParaAdministracao={() => setAbaRelatorio("administracao")}
+          />
+        )}
+
         {String(abaRelatorio).startsWith("plano_") && !usaRelatorioClienteSimulador && (
           <VisaoPorPlano
             plano={abaRelatorio === "plano_especialista" ? "ESPECIALISTA" : abaRelatorio === "plano_completo" ? "COMPLETO" : "INICIAL"}
@@ -15974,6 +15985,21 @@ function DetalheDiagnostico({
 
         {abaRelatorio === "administracao" && (
           <>
+            {usaRelatorioClienteSimulador && (
+              <div style={{ background: "#FFF3EF", border: "1px solid #F3C9BD", borderRadius: 12, padding: "11px 14px", marginBottom: 14, fontSize: 12, lineHeight: 1.55, color: NAVY, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ flex: 1, minWidth: 220 }}>
+                  <b>Análise consultiva da Reforma Tributária deste cliente.</b> Gere a leitura com IA feita para esta simulação específica: hipóteses, caminhos, plano 30/60/90 e roteiro da reunião. É de uso interno.
+                </span>
+                <Botao
+                  onClick={() => {
+                    const alvo = document.getElementById("analise-consultiva-reforma");
+                    if (alvo) alvo.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                >
+                  Ir para a análise consultiva
+                </Botao>
+              </div>
+            )}
             {usaRelatorioClienteSimulador && (
               <DossieAdminSimulador snapshot={snapshotSimulador} />
             )}
@@ -16052,6 +16078,7 @@ function DetalheDiagnostico({
               </BlocoDossie>
             )}
 
+            <div id="analise-consultiva-reforma" />
             <VisaoConsultiva
               token={token}
               diagnosticoId={id}
