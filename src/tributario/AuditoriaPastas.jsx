@@ -474,6 +474,25 @@ export default function AuditoriaPastas({ token, onVoltar }) {
     return [...m.values()];
   };
   const auditarUmDrive = (c) => api("pasta-drive-auditar", { pastaId: c.id, codigo: c.codigo, nome: c.nome, raiz: c.raiz, regime, inicio, outros: listaOutros() });
+  // Aba 5: lê as pastas dos clientes no Drive (um a um, salvando cada uma) e atualiza a visão geral.
+  const [carteiraLendo, setCarteiraLendo] = useState(""); const [carteiraVersao, setCarteiraVersao] = useState(0); const [carteiraAvisos, setCarteiraAvisos] = useState([]);
+  async function lerCarteiraDrive(alvos) {
+    const avisos = [];
+    try {
+      for (let i = 0; i < alvos.length; i++) {
+        const c = alvos[i];
+        setCarteiraLendo(`Lendo o Drive — ${i + 1} de ${alvos.length}: ${c.codigo} - ${c.nome}`);
+        try {
+          const d = await auditarUmDrive(c);
+          const ids = await salvarVersoes([d.auditoria], "drive");
+          if (!ids[c.codigo]) avisos.push(`${c.codigo} - ${c.nome}: lido, mas não consegui salvar. Tente de novo.`);
+          if (d.parcial) avisos.push(`${c.codigo} - ${c.nome}: leitura parcial (limite de tempo); rode de novo só este cliente.`);
+        } catch (e) { avisos.push(`${c.codigo} - ${c.nome}: não consegui ler (${e.message}).`); }
+        setCarteiraAvisos([...avisos]);
+        if ((i + 1) % 5 === 0) setCarteiraVersao((v) => v + 1);
+      }
+    } finally { setCarteiraLendo(""); setCarteiraVersao((v) => v + 1); carregarPainel(); }
+  }
   async function auditarDrive() {
     setErro(""); setSalvo(""); setAviso([]); setLendo(true);
     const alvos = driveUm === "todos" ? driveLista.clientes : [...driveLista.clientes, ...(driveLista.inativos || [])].filter((c) => c.id === driveUm);
@@ -841,7 +860,7 @@ export default function AuditoriaPastas({ token, onVoltar }) {
       {aba === "geral" && abaGeral}
       {aba === "cliente" && abaCliente}
       {aba === "vencimentos" && abaVenc}
-      {aba === "carteira" && <CarteiraGeral api={api} />}
+      {aba === "carteira" && <CarteiraGeral api={api} driveLista={driveLista} carregarDrive={carregarDrive} onLerDrive={lerCarteiraDrive} lendo={carteiraLendo} avisos={carteiraAvisos} versao={carteiraVersao} />}
     </div>
   );
 }
