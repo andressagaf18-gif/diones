@@ -42,7 +42,7 @@ async function lerPlanilha(arquivo) {
   return [...out.values()];
 }
 
-export default function CarteiraGeral({ api }) {
+export default function CarteiraGeral({ api, driveLista, carregarDrive, onLerDrive, lendo = "", avisos = [], versao = 0 }) {
   const [comp, setComp] = useState(() => mesesOpcoes()[0]);
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState("");
@@ -59,7 +59,8 @@ export default function CarteiraGeral({ api }) {
     try { setDados(await api("pasta-carteira", null, "GET", { competencia: c })); }
     catch (e) { setErro(e.message); } finally { setCarregando(false); }
   }
-  useEffect(() => { carregar(comp); }, [comp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { carregar(comp); }, [comp, versao]);
+  useEffect(() => { if (!driveLista && carregarDrive) carregarDrive(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function importar(e) {
     const f = e.target.files?.[0]; e.target.value = "";
@@ -74,7 +75,23 @@ export default function CarteiraGeral({ api }) {
     } catch (er) { setMsg(""); setErro(er.message); }
   }
 
-  const clientes = dados?.clientes || [];
+  const clientes = useMemo(() => {
+    const base = dados?.clientes || [];
+    const mapa = new Map(base.map((c) => [String(c.codigo), c]));
+    for (const d of driveLista?.clientes || []) {
+      const k = String(d.codigo);
+      if (mapa.has(k)) mapa.set(k, { ...mapa.get(k), driveId: mapa.get(k).driveId || d.id, raiz: d.raiz, nome: mapa.get(k).nome || d.nome });
+      else mapa.set(k, { codigo: k, nome: d.nome, carteira: "", movimento: "", regime: "", regimeFonte: "", regimeAuto: "", regimePlanilha: "", regimeManual: "", semLeitura: true, faltando: 0, atraso: 0, noPrazo: 0, semMovimento: 0, aVencer: 0, itens: [], driveId: d.id, raiz: d.raiz });
+    }
+    return [...mapa.values()].sort((a, b) => (Number(a.codigo) - Number(b.codigo)) || String(a.codigo).localeCompare(String(b.codigo)));
+  }, [dados, driveLista]);
+  const doDrive = (driveLista?.clientes || []);
+  const alvoDrive = (c) => { const d = doDrive.find((x) => String(x.codigo) === String(c.codigo)); return d || null; };
+  async function trocarRegime(c, valor) {
+    setErro("");
+    try { await api("pasta-carteira-regime", { codigo: c.codigo, nome: c.nome, regime: valor }); await carregar(); }
+    catch (e) { setErro(e.message); }
+  }
   const obrig = dados?.obrigacoes || [];
   const carteiras = useMemo(() => [...new Set(clientes.map((c) => c.carteira).filter(Boolean))].sort(), [clientes]);
   const filtrados = useMemo(() => clientes.filter((c) => {
@@ -102,14 +119,18 @@ export default function CarteiraGeral({ api }) {
     <div>
       <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 16, marginBottom: 12 }}>
         <div style={{ fontWeight: 900, fontSize: 16 }}>Visão geral por cliente</div>
-        <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4 }}>Cada cliente com o regime e as obrigações do mês (modelo da planilha de controle da carteira), conferidas pelo que está na pasta do Drive. Os dados vêm da última auditoria de cada pasta.</div>
+        <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4 }}>Cada cliente com o regime e as obrigações do mês (modelo da planilha de controle da carteira), conferidas pelo que está na pasta do Drive. Tudo vem da leitura das pastas no Drive (botão “Ler pastas”); a planilha é opcional.</div>
         <div className="nao-imprimir" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
           <label style={{ fontSize: 12.5 }}>Competência <select value={comp} onChange={(e) => setComp(e.target.value)} style={sel}>{mesesOpcoes().map((m) => <option key={m} value={m}>{rotMes(m)}</option>)}</select></label>
           <button type="button" onClick={() => carregar()} style={{ ...sel, cursor: "pointer", fontWeight: 800 }}>{carregando ? "Atualizando…" : "Atualizar"}</button>
-          <button type="button" onClick={() => arq.current?.click()} style={{ ...sel, cursor: "pointer", fontWeight: 800, color: NAVY }}>Importar planilha da carteira</button>
+          <button type="button" disabled={!!lendo || !doDrive.length} onClick={() => onLerDrive(doDrive.filter((d) => { const c = clientes.find((x) => String(x.codigo) === String(d.codigo)); return !c || c.semLeitura; }))} style={{ ...sel, cursor: "pointer", fontWeight: 800, background: CORAL, color: WHITE, border: "none" }}>Ler pastas ainda não lidas ({clientes.filter((c) => c.semLeitura && alvoDrive(c)).length})</button>
+          <button type="button" disabled={!!lendo || !doDrive.length} onClick={() => { if (window.confirm(`Reler as ${doDrive.length} pastas do Drive? Pode levar vários minutos.`)) onLerDrive(doDrive); }} style={{ ...sel, cursor: "pointer", fontWeight: 800 }}>Reler todas pelo Drive</button>
+          <button type="button" onClick={() => arq.current?.click()} style={{ ...sel, cursor: "pointer", fontWeight: 800, color: NAVY }}>Importar planilha (opcional)</button>
           <input ref={arq} type="file" accept=".xlsx,.xls" onChange={importar} style={{ display: "none" }} />
           <button type="button" onClick={exportar} disabled={!filtrados.length} style={{ ...sel, cursor: "pointer", fontWeight: 800, background: NAVY, color: WHITE, border: "none" }}>Exportar Excel</button>
         </div>
+        {lendo && <div style={{ marginTop: 10, fontSize: 12.5, color: NAVY, fontWeight: 800 }}>{lendo}</div>}
+        {avisos.length > 0 && <details style={{ marginTop: 8, fontSize: 12, color: "#9A5B00" }}><summary>{avisos.length} aviso(s) da leitura</summary>{avisos.map((a, i) => <div key={i}>{a}</div>)}</details>}
         {msg && <div style={{ marginTop: 10, fontSize: 12.5, color: "#1B6E2E", fontWeight: 700 }}>{msg}</div>}
         {erro && <div style={{ marginTop: 10, fontSize: 12.5, color: "#B3261E", fontWeight: 700 }}>{erro}</div>}
       </div>
@@ -147,7 +168,13 @@ export default function CarteiraGeral({ api }) {
               <tr key={c.codigo} style={{ borderTop: `1px solid ${BORDER}` }}>
                 <td style={{ padding: "7px 10px", fontWeight: 800 }}>{c.codigo}</td>
                 <td style={{ padding: "7px 10px", minWidth: 220 }}>{c.nome || "—"}{c.carteira ? <span style={{ color: MUTED, fontSize: 11 }}> · {c.carteira}</span> : null}{c.semLeitura ? <div style={{ fontSize: 10.5, color: "#9A5B00" }}>pasta ainda não auditada nesta versão</div> : null}</td>
-                <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}><b style={{ color: c.regime ? NAVY : "#9A5B00" }}>{REGIMES[c.regime]}</b>{c.regime && c.regimeFonte === "pasta" ? <span style={{ fontSize: 10, color: MUTED }} title="Regime identificado pelos documentos da pasta"> ·pasta</span> : null}</td>
+                <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
+                  <select value={c.regimeManual || ""} onChange={(e) => trocarRegime(c, e.target.value)} title="Automático = pela movimentação da pasta no Drive. Escolha um regime para fixar manualmente." style={{ ...sel, padding: "3px 4px", fontWeight: 800, color: c.regime ? NAVY : "#9A5B00", maxWidth: 150 }}>
+                    <option value="">{c.regimeAuto || c.regimePlanilha ? `Auto: ${REGIMES[c.regimeAuto || c.regimePlanilha]}` : "Auto: não identificado"}</option>
+                    <option value="SIMPLES">Simples</option><option value="MEI">MEI</option><option value="PRESUMIDO">Presumido</option><option value="REAL">Real</option>
+                  </select>
+                  <span style={{ fontSize: 10, color: MUTED }}> {c.regimeFonte === "manual" ? "manual" : c.regimeFonte === "pasta" ? "pela pasta" : c.regimeFonte === "planilha" ? "planilha" : ""}</span>
+                </td>
                 <td style={{ padding: "7px 10px", color: MUTED }}>{c.movimento || "—"}</td>
                 {colunas.map((o) => {
                   const i = c.itens.find((x) => x.key === o.key); const s = ST[i?.status || "na"];
@@ -156,11 +183,11 @@ export default function CarteiraGeral({ api }) {
                 })}
                 <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 900, color: c.faltando + c.atraso ? "#B3261E" : "#1B6E2E" }}>{c.semLeitura ? "—" : c.faltando + c.atraso}</td>
               </tr>))}
-            {!filtrados.length && <tr><td colSpan={5 + colunas.length} style={{ padding: 22, textAlign: "center", color: MUTED }}>{carregando ? "Carregando…" : clientes.length ? "Nenhum cliente neste filtro." : "Ainda não há clientes auditados. Use a aba 1 para auditar as pastas do Drive e, se quiser, importe a planilha da carteira para trazer carteira, movimento e regime."}</td></tr>}
+            {!filtrados.length && <tr><td colSpan={5 + colunas.length} style={{ padding: 22, textAlign: "center", color: MUTED }}>{carregando ? "Carregando…" : clientes.length ? "Nenhum cliente neste filtro." : "Nenhum cliente carregado ainda. Use “Ler pastas ainda não lidas” para trazer os clientes e as obrigações direto do Drive."}</td></tr>}
           </tbody>
         </table>
       </div>
-      <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8 }}>Uma obrigação só aparece como “não encontrada” quando a empresa já tem esse tipo de documento em outros meses (ou é uma declaração principal do regime). O regime da planilha tem prioridade sobre o detectado na pasta.</div>
+      <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8 }}>Uma obrigação só aparece como “não encontrada” quando a empresa já tem esse tipo de documento em outros meses (ou é uma declaração principal do regime). O regime é preenchido sozinho pela movimentação da pasta (PGDAS/DAS = Simples; MIT, EFD, DARF de IRPJ/PIS/COFINS = Presumido); use a caixa do regime para fixar outro. A planilha só entra se a pasta não mostrar nada.</div>
     </div>
   );
 }
