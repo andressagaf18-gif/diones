@@ -42,6 +42,7 @@ import {
   AbaSistema,
   AvisosBlocos,
 } from "./dashboard/visao.jsx";
+import DadosReais from "./dashboard/DadosReais.jsx";
 
 const NAVY = "#17233D";
 const CORAL = "#FF6B4A";
@@ -442,6 +443,7 @@ export default function Dashboard({
 
   const ABAS_DASHBOARD = [
     { id: "geral", label: "Geral" },
+    { id: "dadosReais", label: "Dados reais" },
     { id: "leads", label: "Leads" },
     { id: "diagnosticos", label: "Diagnósticos" },
     { id: "reforma", label: "Reforma + Planejamento" },
@@ -970,6 +972,8 @@ export default function Dashboard({
           </div>
         </>
       )}
+
+      {abaAtiva === "dadosReais" && <DadosReais />}
 
       {abaAtiva === "areas" && <AbaAreas visao={extra.visao} carregando={extra.carregando} />}
 
