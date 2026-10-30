@@ -3389,11 +3389,12 @@ function SimuladorReformaPublico({
   },[etapa,acessoRelatorio]);
 
   async function finalizarRelatorioReforma(){
-    if(!relatorioIa||persistenciaRelatorioRef.current)return;
+    if(persistenciaRelatorioRef.current)return;
     persistenciaRelatorioRef.current=true;
     setPersistenciaRelatorio("saving");
     try{
-      const resposta=await onPersistirResultado?.({snapshot,relatorioIa});
+      // Sem IA neste momento: o diagnóstico entra no painel com os relatórios padrão (Administração, Cliente, Equipe e planos).
+      const resposta=await onPersistirResultado?.({snapshot,relatorioIa:null});
       if(!resposta?.sucesso)throw new Error("Não foi possível concluir o relatório da Reforma.");
       setDiagnosticoIdPersistido(resposta.diagnosticoId||"");
       setPersistenciaRelatorio("saved");
@@ -3416,14 +3417,27 @@ function SimuladorReformaPublico({
   useEffect(()=>{
     if(
       etapa==="resultado" &&
-      acessoRelatorio &&
-      relatorioIa &&
+      empresaCadastral &&
+      fat>0 &&
       persistenciaRelatorio==="idle" &&
       !persistenciaRelatorioRef.current
     ){
       finalizarRelatorioReforma();
     }
-  },[etapa,relatorioIa,persistenciaRelatorio]);
+  },[etapa,persistenciaRelatorio]);
+
+  // Pagamento feito depois do diagnóstico salvo: vincula a cobrança do simulador ao diagnóstico.
+  const pagamentoVinculadoRef=useRef("");
+  useEffect(()=>{
+    if(!planoPago||!diagnosticoIdPersistido||!leadId)return;
+    const chave=`${leadId}|${diagnosticoIdPersistido}|${planoPago}`;
+    if(pagamentoVinculadoRef.current===chave)return;
+    pagamentoVinculadoRef.current=chave;
+    fetch("/api/asaas?acao=vincular",{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({leadId,diagnosticoId:diagnosticoIdPersistido}),
+    }).catch(()=>{});
+  },[planoPago,diagnosticoIdPersistido,leadId]);
 
   function gerarRelatorioExecutivoCliente(){
     const empresaNome=empresaCadastral?.razaoSocial||empresaCadastral?.nomeFantasia||"Empresa";
@@ -4780,20 +4794,16 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       </PrimaryButton>
     </>}
 
-    {etapa==="resultado"&&!acessoRelatorio&&<PainelPagamentoSimulador
-      titulo="Libere o relatório completo"
-      texto="O comparativo você já viu. O relatório completo inclui o parecer com IA sobre o seu cenário, a memória de cálculo, o plano de preparação 30/60/90 dias e o PDF executivo."
+    {etapa==="resultado"&&!planoPago&&<PainelPagamentoSimulador
+      titulo="Libere o seu relatório"
+      texto="Sua simulação foi concluída e o diagnóstico já está registrado. Escolha o plano para liberar o relatório."
       refCobranca={refCobranca}
       nome={nome} email={email} telefone={telefone}
       cnpj={String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,"")}
-      textosPlanos={TEXTOS_PLANOS_SIMULADOR}
-      somenteUpgrade={true}
-      tituloEscolha="Escolha como deseja receber o relatório"
-      textoEscolha="Selecione o plano para gerar o seu relatório."
       onLiberado={setPlanoPago}
     />}
 
-    {etapa==="resultado"&&acessoRelatorio&&<>
+    {etapa==="resultado"&&planoPago&&<>
       <div style={{
         background:"linear-gradient(145deg,#101C35,#17233D)",
         color:"#fff",borderRadius:15,padding:14
@@ -4840,7 +4850,7 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
         </div>
       </div>}
 
-      <div style={card}>
+      {acessoRelatorio&&<div style={card}>
         <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
           <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:0}}>
             Leitura da IA
@@ -4894,7 +4904,11 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
           O relatório foi gerado, mas não conseguimos gravar no painel.
         </div>}
 
-        {relatorioIa&&<>
+        {relatorioIa&&!acessoRelatorio&&<div style={{marginTop:8,background:"#FFF6F3",border:"1px solid #F3C9BD",borderRadius:9,padding:9,fontSize:8.4,lineHeight:1.5,color:NAVY}}>
+          <b>Leitura concluída.</b> A análise com IA já foi registrada e está com a equipe Finder. Libere abaixo o parecer completo, o plano 30/60/90 dias e o PDF executivo.
+        </div>}
+
+        {relatorioIa&&acessoRelatorio&&<>
           <p style={{fontSize:8.5,lineHeight:1.55,color:NAVY}}>
             {relatorioIa.leituraExecutiva}
           </p>
@@ -4920,7 +4934,17 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
             </ol>
           </>}
         </>}
-      </div>
+      </div>}
+
+      {!acessoRelatorio&&<PainelPagamentoSimulador
+        titulo="Aprofunde o seu relatório"
+        texto="Seu plano libera os valores da simulação. O relatório completo inclui o parecer com IA sobre o seu cenário, o plano de preparação 30/60/90 dias e o PDF executivo."
+        refCobranca={refCobranca}
+        nome={nome} email={email} telefone={telefone}
+        cnpj={String(empresaCadastral?.cnpj||cnpj||"").replace(/\D/g,"")}
+        somenteUpgrade={true}
+        onLiberado={setPlanoPago}
+      />}
 
       <div style={card}>
         <h3 style={{fontFamily:DISPLAY_FONT,fontSize:16,margin:"0 0 7px"}}>
@@ -4948,15 +4972,15 @@ window.onload=function(){setTimeout(function(){window.print()},500)}
       <button
         type="button"
         onClick={gerarRelatorioExecutivoCliente}
-        disabled={!relatorioIa}
+        disabled={!relatorioIa||!acessoRelatorio}
         style={{
           minHeight:44,border:0,borderRadius:11,
-          background:relatorioIa?CORAL:"#D7DDE8",
-          color:"#fff",fontWeight:900,cursor:relatorioIa?"pointer":"default"
+          background:relatorioIa&&acessoRelatorio?CORAL:"#D7DDE8",
+          color:"#fff",fontWeight:900,cursor:relatorioIa&&acessoRelatorio?"pointer":"default"
         }}
       >
         <Download size={15} style={{verticalAlign:"middle",marginRight:6}}/>
-        Gerar PDF do relatório
+        {acessoRelatorio?"Gerar PDF do relatório":"PDF executivo (liberado após o pagamento)"}
       </button>
 
       <div style={{
@@ -7671,6 +7695,12 @@ function DiagnosticoPrototipo() {
       return;
     }
 
+    // Simulador da Reforma concluído (diagnóstico salvo no painel): o autosave não pode
+    // rebaixar o lead de CONCLUIDO/100% de volta para EM_PREENCHIMENTO/85%.
+    if (trilhaSimuladorReformaAtiva && diagnosticoIdSalvo) {
+      return;
+    }
+
     const progresso =
       progressoDoDiagnostico();
 
@@ -7997,6 +8027,7 @@ function DiagnosticoPrototipo() {
     telefone,
     consentimentoEmail,
 
+    diagnosticoIdSalvo,
     cnpjInput,
     empresas,
     empresaLeadSimulador,
