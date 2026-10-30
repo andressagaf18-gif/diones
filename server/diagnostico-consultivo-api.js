@@ -524,7 +524,7 @@ async function gerarInterno(req, res) {
 // e-mail ou telefone do cliente. O resultado é de uso interno e precisa de
 // conferência: cada item traz fonte, data e link.
 // ---------------------------------------------------------
-const TEMPO_PESQUISA_MS = 85_000;
+const TEMPO_PESQUISA_MS = 240_000; // maxDuration da função: 300s
 const INTERVALO_PESQUISA_MS = 20_000;
 const TIPOS_REFERENCIA = ["CASO_REAL", "DIFICULDADE_DO_SETOR", "REGULATORIO"];
 
@@ -676,6 +676,7 @@ async function pesquisarInterno(req, res) {
         model: process.env.OPENAI_PESQUISA_MODEL || process.env.OPENAI_CONSULTIVO_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini",
         input: montarPromptPesquisa({ atividades, segmento, dores, lacunas: orientacao }),
         tools: [{ type: "web_search" }],
+        ...(/^(gpt-5|o\d)/i.test(String(process.env.OPENAI_PESQUISA_MODEL || process.env.OPENAI_CONSULTIVO_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini")) ? { reasoning: { effort: "low" } } : {}),
       }),
       signal: AbortSignal.timeout(TEMPO_PESQUISA_MS),
     });
