@@ -37,6 +37,16 @@
       "destination": "/index.html"
     }
   ],
+  "crons": [
+    {
+      "path": "/api/crm?action=higiene-cron&tarefa=limpeza",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/crm?action=higiene-cron&tarefa=abandono",
+      "schedule": "17 * * * *"
+    }
+  ],
   "functions": {
     "api/gerar-perguntas.js": {
       "maxDuration": 60
