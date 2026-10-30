@@ -26,7 +26,7 @@ import {
 const sql = neon(process.env.DATABASE_URL);
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
-const TEMPO_LIMITE_MS = 110_000;
+const TEMPO_LIMITE_MS = 270_000; // a função roda com maxDuration 300s (vercel.json)
 const INTERVALO_MIN_MS = 15_000;
 const MAX_VERSOES_ANTERIORES = 4;
 const MAX_RESPOSTAS = 140;
@@ -305,6 +305,10 @@ function limparJson(t) {
 }
 
 async function chamarIA(prompt) {
+  const modelo = process.env.OPENAI_CONSULTIVO_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
+  // Modelos de raciocínio (gpt-5*, o*) gastam muito tempo "pensando"; esforço baixo
+  // mantém a qualidade da análise e evita estourar o tempo limite.
+  const raciocinio = /^(gpt-5|o\d)/i.test(modelo) ? { reasoning: { effort: process.env.OPENAI_CONSULTIVO_ESFORCO || "low" } } : {};
   const resposta = await fetch(OPENAI_URL, {
     method: "POST",
     headers: {
@@ -312,8 +316,9 @@ async function chamarIA(prompt) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_CONSULTIVO_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini",
+      model: modelo,
       input: prompt,
+      ...raciocinio,
       text: { format: { type: "json_object" } },
     }),
     signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
