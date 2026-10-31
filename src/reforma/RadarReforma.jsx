@@ -8,6 +8,25 @@ const STATUS = {
   solicitado: ["Solicitado / aguardando envio", "#7A3E9D", "#F3E6FA"],
   prazo: ["Prazo em curso", "#B3261E", "#FDE4E1"],
 };
+// Chaves de norma citadas num texto ("Resolução CGSN nº 194/2026" → resolucao194). Servem para
+// reconhecer que uma sugestão trata de uma norma que o radar já tem.
+function chavesNorma(t) {
+  const s = String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const out = new Set();
+  const re = /(lei complementar|lc|emenda constitucional|ec|decreto|plp|pl|mp|resolucao|portaria|ato conjunto)[^0-9]{0,25}?(\d{1,3}(?:\.\d{3})+|\d{1,5})/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const tipo = m[1] === "lei complementar" ? "lc" : m[1] === "emenda constitucional" ? "ec" : m[1].replace(/\s+/g, "");
+    out.add(`${tipo}${m[2].replace(/\./g, "")}`);
+  }
+  return [...out];
+}
+const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const hojeBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+// Texto pesquisável de um item: título, órgão, base legal, resumo, próximo passo, impacto e títulos das fontes.
+const textoBusca = (i) => norm([i.titulo, i.orgao, i.baseLegal, i.resumo, i.proximoPasso, i.impactoSistema, ...(i.fontes || []).map((f) => f.titulo)].join(" "));
+// Mais recentes primeiro, pela data do evento/publicação (sem data, vai para o fim).
+const maisRecentes = (a, b) => String(b.dataEvento || "").localeCompare(String(a.dataEvento || "")) || String(b.atualizadoEm || "").localeCompare(String(a.atualizadoEm || ""));
 const dBr = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(String(iso || "")) ? String(iso).slice(0, 10).split("-").reverse().join("/") : "—");
 const VAZIO = { slug: "", titulo: "", status: "tramitacao", orgao: "", baseLegal: "", resumo: "", dataEvento: "", proximaData: "", proximoPasso: "", impactoSistema: "", revisar: false, fontes: [{ titulo: "", url: "" }] };
 
@@ -85,6 +104,9 @@ export default function RadarReforma({ token }) {
     return d;
   }
   const [recarregando, setRecarregando] = useState(false);
+  const [ordem, setOrdem] = useState("recentes");
+  const [termo, setTermo] = useState("");
+  const [buscaSug, setBuscaSug] = useState("");
   const [lidoEm, setLidoEm] = useState("");
   async function carregar() {
     setErro(""); setRecarregando(true);
@@ -97,8 +119,9 @@ export default function RadarReforma({ token }) {
 
   const itens = dados?.itens || [];
   const confirmados = itens.filter((i) => i.revisao === "confirmado");
-  const sugestoes = itens.filter((i) => i.revisao === "sugestao" && i.ativo);
-  const visiveis = useMemo(() => confirmados.filter((i) => (filtro === "todos" || i.status === filtro || (filtro === "revisar" && i.revisar)) && (!busca || `${i.titulo} ${i.baseLegal} ${i.resumo}`.toLowerCase().includes(busca.toLowerCase()))), [confirmados, filtro, busca]);
+  const sugestoes = itens.filter((i) => i.revisao === "sugestao" && i.ativo && (!buscaSug || textoBusca(i).includes(norm(buscaSug)))).sort(maisRecentes);
+  const totalSugestoes = itens.filter((i) => i.revisao === "sugestao" && i.ativo).length;
+  const visiveis = useMemo(() => confirmados.filter((i) => (filtro === "todos" || (i.status === filtro && !i.prazoVencido) || (filtro === "encerrado" && i.prazoVencido) || (filtro === "revisar" && i.revisar)) && (!busca || textoBusca(i).includes(norm(busca)))).sort(ordem === "recentes" ? maisRecentes : () => 0), [confirmados, filtro, busca, ordem]);
   const podeEditar = !!dados?.podeEditar;
 
   async function agir(rotulo, fn) {
@@ -106,10 +129,11 @@ export default function RadarReforma({ token }) {
     try { await fn(); await carregar(); } catch (e) { setErro(e.message); } finally { setOcupado(""); }
   }
   const editar = (i) => { setForm({ ...VAZIO, ...i, fontes: (i.fontes?.length ? i.fontes : VAZIO.fontes).map((f) => ({ titulo: f.titulo, url: f.url, lida: f.lida })) }); setVista("atualizar"); window.scrollTo?.(0, 0); };
-  const salvar = () => agir("salvar", async () => { const r = await chamar("reforma-radar-salvar", form); setMsg("Item salvo e marcado como verificado hoje."); setForm(VAZIO); setVista("painel"); return r; });
+  const salvar = () => agir("salvar", async () => { const r = await chamar("reforma-radar-salvar", form); setMsg(ehSugestaoForm ? "Sugestão aprovada e publicada no radar (verificada hoje)." : "Item salvo e marcado como verificado hoje."); setForm(VAZIO); setVista("painel"); return r; });
   const verificar = (i) => agir(`v${i.slug}`, async () => { await chamar("reforma-radar-verificar", { slug: i.slug }); setMsg("Marcado como verificado hoje."); });
   const arquivar = (i, ativo = false) => agir(`a${i.slug}`, async () => { await chamar("reforma-radar-arquivar", { slug: i.slug, ativo }); });
-  const pesquisar = () => agir("pesquisar", async () => { const r = await chamar("reforma-radar-pesquisar", {}); setMsg(r.novas ? `${r.novas} sugestão(ões) encontrada(s) — revise na aba "Atualizar" antes de valer.` : "Nenhuma novidade com fonte oficial encontrada."); setVista(r.novas ? "atualizar" : vista); });
+  const descartarTodas = () => { if (!sugestoes.length || !window.confirm(`Descartar ${sugestoes.length} sugestão(ões)? Elas saem da lista (ficam arquivadas, nada é publicado no radar).`)) return; return agir("descartar", async () => { for (const i of sugestoes) await chamar("reforma-radar-arquivar", { slug: i.slug, ativo: false }); setMsg(`${sugestoes.length} sugestão(ões) descartada(s).`); }); };
+  const pesquisar = () => agir("pesquisar", async () => { const r = await chamar("reforma-radar-pesquisar", { termo: termo.trim() }); setMsg(r.novas ? `${r.novas} sugestão(ões) encontrada(s)${r.ignoradasDuplicadas || r.ignoradasVencidas ? ` (ignoradas: ${r.ignoradasDuplicadas || 0} já no radar, ${r.ignoradasVencidas || 0} com prazo vencido)` : ""} — revise na aba "Atualizar" antes de valer.` : r.ignoradasDuplicadas || r.ignoradasVencidas ? `Nada novo: ${r.ignoradasDuplicadas || 0} já estavam no radar e ${r.ignoradasVencidas || 0} tinham prazo vencido.` : termo.trim() ? `Nenhuma novidade com fonte oficial encontrada sobre "${termo.trim()}".` : "Nenhuma novidade com fonte oficial encontrada."); setVista(r.novas ? "atualizar" : vista); });
 
   function gerarPdf() {
     const w = window.open("", "_blank", "width=1000,height=800");
@@ -117,6 +141,7 @@ export default function RadarReforma({ token }) {
     const rotuloFiltro = filtro === "todos" ? "" : filtro === "revisar" ? "revisar andamento" : STATUS[filtro]?.[0] || "";
     w.document.open(); w.document.write(htmlRelatorioRadar(visiveis, { ultimaVerificacao: dados?.ultimaVerificacao, alertas: dados?.alertas || [], filtroRotulo: rotuloFiltro })); w.document.close();
   }
+  const ehSugestaoForm = String(form.slug || "").startsWith("sug-");
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const campo = { width: "100%", padding: 8, borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12.5, boxSizing: "border-box", background: WHITE, fontFamily: "inherit" };
   const rot = (t) => <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, margin: "10px 0 4px" }}>{t}</div>;
@@ -131,12 +156,16 @@ export default function RadarReforma({ token }) {
   );
 
   function Cartao({ i, sugestao = false }) {
-    const [r, cor, fundo] = STATUS[i.status] || [i.status, MUTED, "#EEF1F6"];
+    const [r0, cor0, fundo0] = STATUS[i.status] || [i.status, MUTED, "#EEF1F6"];
+    const [r, cor, fundo] = i.prazoVencido ? ["Prazo encerrado", MUTED, "#EEF1F6"] : [r0, cor0, fundo0];
+    const dup = sugestao ? confirmados.find((c) => chavesNorma(i.titulo).some((k) => chavesNorma(`${c.titulo} ${c.baseLegal}`).includes(k))) : null;
     return (
       <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderLeft: `4px solid ${cor}`, borderRadius: 12, padding: 14, marginBottom: 10, opacity: i.ativo ? 1 : 0.55 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
           <span style={{ background: fundo, color: cor, borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 900 }}>{r}</span>
           {i.revisar && <span style={{ background: "#FFF1D6", color: "#9A5B00", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 900 }}>revisar andamento</span>}
+          {dup && <span title={`Já existe no radar: ${dup.titulo}`} style={{ background: "#E8EEF9", color: "#1D4ED8", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 900 }}>possível repetido — já no radar</span>}
+          {sugestao && i.proximaData && i.proximaData < hojeBR() && <span title="A próxima data sugerida já passou: confirme se o item ainda interessa" style={{ background: "#FFF1D6", color: "#9A5B00", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 900 }}>data já passou</span>}
           {sugestao && <span style={{ background: "#F3E6FA", color: "#7A3E9D", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 900 }}>sugestão da pesquisa — não confirmada</span>}
           {!i.ativo && <span style={{ fontSize: 11, color: MUTED }}>arquivado</span>}
         </div>
@@ -178,7 +207,8 @@ export default function RadarReforma({ token }) {
           {[["painel", "Painel"], ["atualizar", `Atualizar${dados?.sugestoes ? ` (${dados.sugestoes} sugestão)` : ""}`]].map(([k, r]) => <button key={k} type="button" onClick={() => setVista(k)} style={btn({ background: vista === k ? NAVY : WHITE, color: vista === k ? WHITE : NAVY })}>{r}</button>)}
           <button type="button" style={btn()} disabled={recarregando} onClick={carregar}>{recarregando ? "Recarregando…" : "Recarregar"}</button>{lidoEm && !recarregando && <span style={{ fontSize: 11, color: MUTED, alignSelf: "center" }}>Lido do servidor às {lidoEm}</span>}
           <button type="button" style={btn()} disabled={!visiveis.length} onClick={gerarPdf}>Gerar PDF</button>
-          {podeEditar && <button type="button" style={btn({ background: CORAL, color: WHITE, border: "none" })} disabled={!!ocupado} onClick={pesquisar}>{ocupado === "pesquisar" ? "Pesquisando fontes oficiais…" : "Pesquisar novidades"}</button>}
+          {podeEditar && <input value={termo} onChange={(e) => setTermo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !ocupado) pesquisar(); }} placeholder="Palavra específica (opcional): split payment, cashback…" aria-label="Palavra específica para pesquisar novidades" style={{ ...campo, width: 270, padding: "6px 9px", fontSize: 11.5 }} />}
+          {podeEditar && <button type="button" style={btn({ background: CORAL, color: WHITE, border: "none" })} disabled={!!ocupado} onClick={pesquisar}>{ocupado === "pesquisar" ? "Pesquisando fontes oficiais…" : termo.trim() ? `Pesquisar “${termo.trim().slice(0, 24)}”` : "Pesquisar novidades"}</button>}
         </div>
         {erro && <div style={{ marginTop: 10, color: "#B3261E", fontWeight: 700, fontSize: 12.5 }}>{erro}</div>}
         {msg && <div style={{ marginTop: 10, color: "#1B6E2E", fontWeight: 700, fontSize: 12.5 }}>{msg}</div>}
@@ -200,10 +230,17 @@ export default function RadarReforma({ token }) {
             <button type="button" onClick={() => setFiltro(filtro === "revisar" ? "todos" : "revisar")} style={{ textAlign: "left", cursor: "pointer", border: `1px solid ${filtro === "revisar" ? "#9A5B00" : BORDER}`, background: WHITE, borderRadius: 12, padding: "9px 12px" }}>
               <div style={{ fontSize: 10.5, color: MUTED }}>Revisar andamento</div><div style={{ fontSize: 26, fontWeight: 900, color: "#9A5B00" }}>{confirmados.filter((i) => i.revisar).length}</div>
             </button>
+            <button type="button" onClick={() => setFiltro(filtro === "encerrado" ? "todos" : "encerrado")} style={{ textAlign: "left", cursor: "pointer", border: `1px solid ${filtro === "encerrado" ? "#5B667A" : BORDER}`, background: WHITE, borderRadius: 12, padding: "9px 12px" }}>
+              <div style={{ fontSize: 10.5, color: MUTED }}>Prazo encerrado</div><div style={{ fontSize: 26, fontWeight: 900, color: "#5B667A" }}>{contagem.encerrado || 0}</div>
+            </button>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar (CBS, Simples, Imposto Seletivo, LC 214…)" style={{ ...campo, maxWidth: 360 }} />
             <label style={{ fontSize: 12, color: MUTED }}><input type="checkbox" checked={arquivados} onChange={(e) => setArquivados(e.target.checked)} /> mostrar arquivados</label>
+            <select value={ordem} onChange={(e) => setOrdem(e.target.value)} aria-label="Ordem dos itens" style={{ ...campo, width: "auto", padding: "6px 8px", fontSize: 12 }}>
+              <option value="recentes">Mais recentes primeiro</option>
+              <option value="situacao">Por situação</option>
+            </select>
             <span style={{ fontSize: 12, color: MUTED }}>{visiveis.length} item(ns)</span>
           </div>
           {!dados && !erro && <div style={{ color: MUTED, padding: 16 }}>Carregando…</div>}
@@ -213,16 +250,20 @@ export default function RadarReforma({ token }) {
 
       {vista === "atualizar" && (
         <div>
-          {sugestoes.length > 0 && (
+          {totalSugestoes > 0 && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 900, color: NAVY, marginBottom: 6 }}>Sugestões da pesquisa em fontes oficiais ({sugestoes.length})</div>
-              <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Nada vale até você revisar, conferir a fonte e salvar.</div>
+              {podeEditar && <button type="button" style={btn({ color: "#B3261E", float: "right" })} disabled={!!ocupado || !sugestoes.length} onClick={descartarTodas}>{ocupado === "descartar" ? "Descartando…" : `Descartar ${buscaSug ? "as listadas" : "todas"} (${sugestoes.length})`}</button>}
+              <input value={buscaSug} onChange={(e) => setBuscaSug(e.target.value)} placeholder="Buscar nas sugestões por palavra (CBS, Simples, TCU…)" style={{ ...campo, maxWidth: 360, marginBottom: 10 }} />
+              <div style={{ fontWeight: 900, color: NAVY, marginBottom: 6 }}>Sugestões da pesquisa em fontes oficiais ({sugestoes.length}{buscaSug ? ` de ${totalSugestoes}` : ""})</div>
+              <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Da mais recente para a mais antiga. Nada vale até você revisar, conferir a fonte e aprovar.</div>
+              {sugestoes.length === 0 && <div style={{ color: MUTED, fontSize: 12.5 }}>Nenhuma sugestão com essa palavra.</div>}
               {sugestoes.map((i) => <Cartao key={i.slug} i={i} sugestao />)}
             </div>
           )}
           {!podeEditar ? <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, color: MUTED }}>Somente administradores podem atualizar o radar.</div> : (
             <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 16 }}>
-              <div style={{ fontWeight: 900, color: NAVY, fontSize: 15 }}>{form.slug ? "Editar item" : "Novo item"}</div>
+              <div style={{ fontWeight: 900, color: NAVY, fontSize: 15 }}>{ehSugestaoForm ? "Revisar sugestão da pesquisa" : form.slug ? "Editar item" : "Novo item"}</div>
+              {ehSugestaoForm && <div style={{ background: "#F3E6FA", border: "1px solid #E0C8F0", borderRadius: 10, padding: "8px 11px", fontSize: 12, color: "#5A2B78", marginTop: 8, lineHeight: 1.5 }}>Esta sugestão veio da pesquisa e ainda <b>não vale</b>. Abra os links das fontes, confira datas, números e a base legal, ajuste o que for preciso e só então aprove. Ao aprovar, o item entra no radar como verificado por você.</div>}
               {rot("Título *")}<input style={campo} value={form.titulo} onChange={(e) => setF("titulo", e.target.value)} />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
                 <div>{rot("Situação *")}<select style={campo} value={form.status} onChange={(e) => setF("status", e.target.value)}>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}</select></div>
@@ -244,7 +285,7 @@ export default function RadarReforma({ token }) {
               <button type="button" style={btn()} onClick={() => setF("fontes", [...form.fontes, { titulo: "", url: "" }])}>+ Fonte</button>
               <label style={{ display: "block", marginTop: 12, fontSize: 12.5 }}><input type="checkbox" checked={!!form.revisar} onChange={(e) => setF("revisar", e.target.checked)} /> Marcar como “revisar andamento” (não consegui confirmar a situação atual)</label>
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                <button type="button" style={btn({ background: NAVY, color: WHITE, border: "none" })} disabled={!!ocupado} onClick={salvar}>{ocupado === "salvar" ? "Salvando…" : "Salvar e marcar como verificado"}</button>
+                <button type="button" style={btn({ background: NAVY, color: WHITE, border: "none" })} disabled={!!ocupado} onClick={salvar}>{ocupado === "salvar" ? "Salvando…" : ehSugestaoForm ? "Aprovar e publicar no radar" : "Salvar e marcar como verificado"}</button>
                 <button type="button" style={btn()} onClick={() => setForm(VAZIO)}>Limpar</button>
               </div>
             </div>
