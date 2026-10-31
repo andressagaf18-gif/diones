@@ -9,6 +9,8 @@ import { usuarioAutenticado } from "./auth.js";
 const sql = neon(process.env.DATABASE_URL);
 const enviar = (res, status, corpo) => res.status(status).json(corpo);
 const texto = (v, n = 600) => String(v ?? "").trim().slice(0, n);
+// Data de hoje no fuso de Brasília (o servidor roda em UTC: após 21h o "hoje" UTC já seria amanhã).
+const hojeBrasilia = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 export const STATUS_RADAR = {
   vigente: "Aprovado e em vigor",
@@ -129,14 +131,14 @@ export async function radarListar(req, res) {
   const linhas = await sql`SELECT * FROM reforma_radar ORDER BY atualizado_em DESC`;
   const itens = linhas.map(dto).filter((i) => incluirArquivados || i.ativo);
   itens.sort((a, b) => (PESO[a.status] ?? 9) - (PESO[b.status] ?? 9) || String(a.proximaData || "9999").localeCompare(String(b.proximaData || "9999")));
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = hojeBrasilia();
   const em = (d) => Math.round((Date.parse(d) - Date.parse(hoje)) / 86400000);
   const alertas = itens.filter((i) => i.ativo && i.revisao === "confirmado" && i.proximaData && /^\d{4}-\d{2}-\d{2}$/.test(i.proximaData) && em(i.proximaData) >= -7 && em(i.proximaData) <= 30)
     .map((i) => ({ slug: i.slug, titulo: i.titulo, data: i.proximaData, dias: em(i.proximaData) }));
   const contagem = {};
   for (const i of itens) if (i.ativo && i.revisao === "confirmado") contagem[i.status] = (contagem[i.status] || 0) + 1;
   const ultima = itens.map((i) => i.verificadoEm).filter(Boolean).sort().pop() || null;
-  return enviar(res, 200, { sucesso: true, itens, alertas, contagem, ultimaVerificacao: ultima, sugestoes: itens.filter((i) => i.revisao === "sugestao").length, podeEditar: ehAdmin(usuarioAutenticado(req)) });
+  return enviar(res, 200, { sucesso: true, itens, alertas, contagem, ultimaVerificacao: ultima, consultadoEm: new Date().toISOString(), sugestoes: itens.filter((i) => i.revisao === "sugestao").length, podeEditar: ehAdmin(usuarioAutenticado(req)) });
 }
 
 export async function radarSalvar(req, res) {
@@ -191,7 +193,7 @@ export async function radarPesquisar(req, res) {
   if (!process.env.OPENAI_API_KEY) return enviar(res, 503, { sucesso: false, error: "Pesquisa automática indisponível: OPENAI_API_KEY não configurada." });
   await garantirTabela();
   const atuais = await sql`SELECT slug, titulo, status, proxima_data FROM reforma_radar WHERE ativo = TRUE AND revisao = 'confirmado'`;
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = hojeBrasilia();
   const prompt = `Hoje é ${hoje}. Pesquise SOMENTE em fontes oficiais as novidades da Reforma Tributária do consumo brasileira (IBS, CBS, Imposto Seletivo, Simples Nacional, Comitê Gestor, regulamentos, resoluções do Senado, atos da Receita/CGIBS, decisões do TCU).
 Itens que o radar já tem (não repita sem fato novo): ${atuais.map((a) => `${a.slug} [${a.status}]`).join("; ")}.
 Devolva SOMENTE JSON: {"itens":[{"slug":"","titulo":"","status":"vigente|aprovado|tramitacao|solicitado|prazo","orgao":"","baseLegal":"número/data da norma ou projeto","resumo":"","dataEvento":"AAAA-MM-DD","proximaData":"AAAA-MM-DD ou vazio","proximoPasso":"","fontes":[{"titulo":"","url":"https://..."}]}]}.
