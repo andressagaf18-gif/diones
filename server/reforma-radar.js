@@ -12,6 +12,20 @@ const texto = (v, n = 600) => String(v ?? "").trim().slice(0, n);
 // Data de hoje no fuso de Brasília (o servidor roda em UTC: após 21h o "hoje" UTC já seria amanhã).
 const hojeBrasilia = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
+// Chaves de norma citadas num texto ("Resolução CGSN nº 194/2026" → resolucao194). Servem para
+// reconhecer que uma sugestão trata de uma norma que o radar já tem.
+export function chavesNorma(t) {
+  const s = String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const out = new Set();
+  const re = /(lei complementar|lc|emenda constitucional|ec|decreto|plp|pl|mp|resolucao|portaria|ato conjunto)[^0-9]{0,25}?(\d{1,3}(?:\.\d{3})+|\d{1,5})/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const tipo = m[1] === "lei complementar" ? "lc" : m[1] === "emenda constitucional" ? "ec" : m[1].replace(/\s+/g, "");
+    out.add(`${tipo}${m[2].replace(/\./g, "")}`);
+  }
+  return [...out];
+}
+
 export const STATUS_RADAR = {
   vigente: "Aprovado e em vigor",
   aprovado: "Aprovado — efeitos futuros",
@@ -129,14 +143,16 @@ export async function radarListar(req, res) {
   await garantirTabela();
   const incluirArquivados = req.query?.arquivados === "1";
   const linhas = await sql`SELECT * FROM reforma_radar ORDER BY atualizado_em DESC`;
-  const itens = linhas.map(dto).filter((i) => incluirArquivados || i.ativo);
-  itens.sort((a, b) => (PESO[a.status] ?? 9) - (PESO[b.status] ?? 9) || String(a.proximaData || "9999").localeCompare(String(b.proximaData || "9999")));
   const hoje = hojeBrasilia();
+  const itens = linhas.map(dto).filter((i) => incluirArquivados || i.ativo);
+  // Prazo cuja data já passou deixa de ser "em curso": aparece como "Prazo encerrado".
+  for (const i of itens) i.prazoVencido = i.status === "prazo" && /^\d{4}-\d{2}-\d{2}$/.test(i.proximaData || "") && i.proximaData < hoje;
+  itens.sort((a, b) => (PESO[a.status] ?? 9) - (PESO[b.status] ?? 9) || String(a.proximaData || "9999").localeCompare(String(b.proximaData || "9999")));
   const em = (d) => Math.round((Date.parse(d) - Date.parse(hoje)) / 86400000);
   const alertas = itens.filter((i) => i.ativo && i.revisao === "confirmado" && i.proximaData && /^\d{4}-\d{2}-\d{2}$/.test(i.proximaData) && em(i.proximaData) >= -7 && em(i.proximaData) <= 30)
     .map((i) => ({ slug: i.slug, titulo: i.titulo, data: i.proximaData, dias: em(i.proximaData) }));
   const contagem = {};
-  for (const i of itens) if (i.ativo && i.revisao === "confirmado") contagem[i.status] = (contagem[i.status] || 0) + 1;
+  for (const i of itens) if (i.ativo && i.revisao === "confirmado") { const k = i.prazoVencido ? "encerrado" : i.status; contagem[k] = (contagem[k] || 0) + 1; }
   const ultima = itens.map((i) => i.verificadoEm).filter(Boolean).sort().pop() || null;
   return enviar(res, 200, { sucesso: true, itens, alertas, contagem, ultimaVerificacao: ultima, consultadoEm: new Date().toISOString(), sugestoes: itens.filter((i) => i.revisao === "sugestao").length, podeEditar: ehAdmin(usuarioAutenticado(req)) });
 }
@@ -192,12 +208,13 @@ export async function radarPesquisar(req, res) {
   if (!ehAdmin(user)) return enviar(res, 403, { sucesso: false, error: "Somente administradores." });
   if (!process.env.OPENAI_API_KEY) return enviar(res, 503, { sucesso: false, error: "Pesquisa automática indisponível: OPENAI_API_KEY não configurada." });
   await garantirTabela();
-  const atuais = await sql`SELECT slug, titulo, status, proxima_data FROM reforma_radar WHERE ativo = TRUE AND revisao = 'confirmado'`;
+  const atuais = await sql`SELECT slug, titulo, base_legal, status, proxima_data FROM reforma_radar WHERE ativo = TRUE AND revisao = 'confirmado'`;
   const hoje = hojeBrasilia();
+  const termo = texto(req.body?.termo, 80).replace(/[`$\\"]/g, " ");
   const prompt = `Hoje é ${hoje}. Pesquise SOMENTE em fontes oficiais as novidades da Reforma Tributária do consumo brasileira (IBS, CBS, Imposto Seletivo, Simples Nacional, Comitê Gestor, regulamentos, resoluções do Senado, atos da Receita/CGIBS, decisões do TCU).
-Itens que o radar já tem (não repita sem fato novo): ${atuais.map((a) => `${a.slug} [${a.status}]`).join("; ")}.
+${termo ? `Foque a pesquisa neste assunto específico: "${termo}". Traga apenas fatos que tratem dele.\n` : ""}Itens que o radar já tem (não repita sem fato novo): ${atuais.map((a) => `${a.slug} [${a.status}]`).join("; ")}.
 Devolva SOMENTE JSON: {"itens":[{"slug":"","titulo":"","status":"vigente|aprovado|tramitacao|solicitado|prazo","orgao":"","baseLegal":"número/data da norma ou projeto","resumo":"","dataEvento":"AAAA-MM-DD","proximaData":"AAAA-MM-DD ou vazio","proximoPasso":"","fontes":[{"titulo":"","url":"https://..."}]}]}.
-Regras: cada item precisa de ao menos uma fonte com URL https oficial; não invente números de lei, datas ou alíquotas; se não houver novidade, devolva {"itens":[]}; para fato já existente no radar use o mesmo slug apenas se houver mudança de status/data.`;
+Regras: cada item precisa de ao menos uma fonte com URL https oficial; não invente números de lei, datas ou alíquotas; ordene do fato mais recente para o mais antigo; ignore prazos que já passaram, salvo se houver fato novo; se não houver novidade, devolva {"itens":[]}; para fato já existente no radar use o mesmo slug apenas se houver mudança de status/data.`;
   const modelo = process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
   let data;
   try {
@@ -213,23 +230,29 @@ Regras: cada item precisa de ao menos uma fonte com URL https oficial; não inve
   let json;
   try { json = JSON.parse(bruto.replace(/^```json\s*|```$/g, "").trim()); } catch { return enviar(res, 502, { sucesso: false, error: "A pesquisa não retornou JSON válido." }); }
   let novas = 0;
+  let ignoradasVencidas = 0;
+  let ignoradasDuplicadas = 0;
+  const chavesExistentes = new Set(atuais.flatMap((a) => chavesNorma(`${a.titulo} ${a.base_legal || ""}`)));
   for (const i of Array.isArray(json?.itens) ? json.itens : []) {
     const fontes = limparFontes(i.fontes).filter((f) => f.tipo === "oficial");
     if (!i.titulo || !STATUS_RADAR[i.status] || !fontes.length) continue;
+    // Já está no radar (mesma norma no título) ou é um prazo que já passou: não vira sugestão.
+    if (i.status === "prazo" && /^\d{4}-\d{2}-\d{2}$/.test(texto(i.proximaData, 10)) && texto(i.proximaData, 10) < hoje) { ignoradasVencidas += 1; continue; }
+    if (chavesNorma(i.titulo).some((k) => chavesExistentes.has(k))) { ignoradasDuplicadas += 1; continue; }
     const slug = `sug-${crypto.createHash("sha1").update(`${i.slug || i.titulo}|${i.dataEvento || ""}`).digest("hex").slice(0, 10)}`;
     await sql`INSERT INTO reforma_radar (slug, titulo, status, orgao, base_legal, resumo, data_evento, proxima_data, proximo_passo, fontes, origem, revisao)
       VALUES (${slug}, ${texto(i.titulo, 200)}, ${i.status}, ${texto(i.orgao, 200)}, ${texto(i.baseLegal, 500)}, ${texto(i.resumo, 2000)}, ${texto(i.dataEvento, 10)}, ${texto(i.proximaData, 10)}, ${texto(i.proximoPasso, 800)}, ${JSON.stringify(fontes)}::jsonb, 'ia', 'sugestao')
       ON CONFLICT (slug) DO NOTHING`;
     novas += 1;
   }
-  return enviar(res, 200, { sucesso: true, novas });
+  return enviar(res, 200, { sucesso: true, novas, ignoradasVencidas, ignoradasDuplicadas });
 }
 
 // Resumo textual dos itens vigentes/em tramitação para embasar prompts de IA (com fontes).
 export async function resumoRadarParaPrompt(limite = 14) {
   try {
     await garantirTabela();
-    const l = await sql`SELECT titulo, status, base_legal, resumo, fontes FROM reforma_radar WHERE ativo = TRUE AND revisao = 'confirmado'`;
-    return l.slice(0, limite).map((i) => `- [${STATUS_RADAR[i.status] || i.status}] ${i.titulo} — ${i.base_legal || ""}. ${String(i.resumo || "").slice(0, 280)} Fonte: ${(i.fontes || [])[0]?.url || "—"}`).join("\n");
+    const l = await sql`SELECT titulo, status, base_legal, resumo, fontes, proxima_data FROM reforma_radar WHERE ativo = TRUE AND revisao = 'confirmado'`;
+    return l.slice(0, limite).map((i) => `- [${i.status === "prazo" && /^\d{4}-\d{2}-\d{2}$/.test(i.proxima_data || "") && i.proxima_data < hojeBrasilia() ? "Prazo encerrado" : (STATUS_RADAR[i.status] || i.status)}] ${i.titulo} — ${i.base_legal || ""}. ${String(i.resumo || "").slice(0, 280)} Fonte: ${(i.fontes || [])[0]?.url || "—"}`).join("\n");
   } catch { return ""; }
 }
