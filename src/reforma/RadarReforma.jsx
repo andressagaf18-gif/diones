@@ -79,14 +79,19 @@ export default function RadarReforma({ token }) {
 
   async function chamar(action, body, method = "POST", query = {}) {
     const p = new URLSearchParams({ action, ...query });
-    const r = await fetch(`/api/tributario?${p}`, { method, headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: method === "GET" ? undefined : JSON.stringify(body) });
+    const r = await fetch(`/api/tributario?${p}`, { method, cache: "no-store", headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: method === "GET" ? undefined : JSON.stringify(body) });
     const txt = await r.text(); let d = null; try { d = JSON.parse(txt); } catch { d = null; }
     if (!r.ok || !d?.sucesso) throw new Error(d?.error || `Erro (${r.status}).`);
     return d;
   }
+  const [recarregando, setRecarregando] = useState(false);
+  const [lidoEm, setLidoEm] = useState("");
   async function carregar() {
-    setErro("");
-    try { setDados(await chamar("reforma-radar", null, "GET", arquivados ? { arquivados: "1" } : {})); } catch (e) { setErro(e.message); }
+    setErro(""); setRecarregando(true);
+    try {
+      setDados(await chamar("reforma-radar", null, "GET", { ...(arquivados ? { arquivados: "1" } : {}), _: String(Date.now()) }));
+      setLidoEm(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    } catch (e) { setErro(e.message); } finally { setRecarregando(false); }
   }
   useEffect(() => { carregar(); }, [arquivados]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -167,11 +172,11 @@ export default function RadarReforma({ token }) {
             <div style={{ fontWeight: 900, fontSize: 17, color: NAVY }}>Radar da Reforma Tributária</div>
             <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, maxWidth: 760 }}>O que está aprovado, em tramitação ou solicitado, com base legal e fonte de cada item. Nada entra sem link de fonte. Itens "APOIO" (imprensa especializada) não substituem a norma: confirme no texto oficial antes de decidir.</div>
           </div>
-          <div style={{ fontSize: 11.5, color: MUTED, textAlign: "right" }}>Última verificação<br /><b style={{ color: NAVY }}>{dBr(dados?.ultimaVerificacao)}</b></div>
+          <div style={{ fontSize: 11.5, color: MUTED, textAlign: "right" }}>Última verificação<br /><b style={{ color: NAVY }}>{dBr(dados?.ultimaVerificacao)}</b><br /><span style={{ fontSize: 10 }}>data em que um administrador conferiu os itens</span></div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {[["painel", "Painel"], ["atualizar", `Atualizar${dados?.sugestoes ? ` (${dados.sugestoes} sugestão)` : ""}`]].map(([k, r]) => <button key={k} type="button" onClick={() => setVista(k)} style={btn({ background: vista === k ? NAVY : WHITE, color: vista === k ? WHITE : NAVY })}>{r}</button>)}
-          <button type="button" style={btn()} onClick={carregar}>Recarregar</button>
+          <button type="button" style={btn()} disabled={recarregando} onClick={carregar}>{recarregando ? "Recarregando…" : "Recarregar"}</button>{lidoEm && !recarregando && <span style={{ fontSize: 11, color: MUTED, alignSelf: "center" }}>Lido do servidor às {lidoEm}</span>}
           <button type="button" style={btn()} disabled={!visiveis.length} onClick={gerarPdf}>Gerar PDF</button>
           {podeEditar && <button type="button" style={btn({ background: CORAL, color: WHITE, border: "none" })} disabled={!!ocupado} onClick={pesquisar}>{ocupado === "pesquisar" ? "Pesquisando fontes oficiais…" : "Pesquisar novidades"}</button>}
         </div>
